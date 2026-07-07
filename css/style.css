@@ -99,7 +99,9 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   position: relative;
   color: var(--cream-100);
   background:
-    radial-gradient(900px 500px at 50% -10%, rgba(234,182,63,0.28), transparent 60%),
+    radial-gradient(900px 500px at 50% -10%, rgba(234,182,63,0.22), transparent 60%),
+    linear-gradient(180deg, rgba(20,53,39,0.72), rgba(20,38,28,0.90)),
+    url("../assets/photos/hero-lake.jpg") center 40% / cover no-repeat,
     linear-gradient(180deg, var(--green-900), var(--green-950));
   padding: 70px 0 130px;
   text-align: center;
@@ -168,6 +170,8 @@ section { padding: 70px 0; position: relative; }
 .leaflet-popup-content h3 { font-size: 1.4rem; color: var(--rust-600); margin: 0 0 4px; }
 .leaflet-popup-content .riddle { font-family: var(--font-mono); font-size: .9rem; background: var(--cream-200); border-left: 3px solid var(--gold-500); padding: 6px 10px; margin: 8px 0; }
 .leaflet-popup-content a.pop-link { font-family: var(--font-pirate); font-size: 1.15rem; }
+.leaflet-popup-content .pop-img { width: 100%; height: 110px; object-fit: cover; border-radius: 5px; border: 2px solid var(--ink-900); margin: 0 0 8px; }
+.leaflet-popup-content { min-width: 210px; }
 
 /* ---------- islands / property cards ---------- */
 .islands { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
@@ -182,7 +186,9 @@ section { padding: 70px 0; position: relative; }
   transition: transform .12s ease, box-shadow .12s ease;
 }
 .card:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(20,38,28,0.32); }
-.card__num { position: absolute; margin: 10px; font-family: var(--font-pirate); font-size: 1.4rem; color: var(--gold-300); background: var(--green-900); border: 2px solid var(--gold-500); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; }
+.card__img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; border-bottom: 3px dashed var(--gold-500); }
+.card:hover .card__img { filter: saturate(1.08); }
+.card__num { position: absolute; z-index: 2; margin: 10px; font-family: var(--font-pirate); font-size: 1.4rem; color: var(--gold-300); background: var(--green-900); border: 2px solid var(--gold-500); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 3px 8px rgba(0,0,0,0.4); }
 .card__body { padding: 20px 22px 24px; display: flex; flex-direction: column; flex: 1; }
 .card__island { font-family: var(--font-pirate); color: var(--rust-600); font-size: 1.1rem; margin: 0; }
 .card h3 { font-size: 1.7rem; color: var(--green-900); margin: 2px 0 8px; }
@@ -217,6 +223,13 @@ section { padding: 70px 0; position: relative; }
 .gallery .section-lead { color: var(--cream-200); }
 .gallery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 20px; max-width: 1000px; margin: 0 auto; }
 .gallery-grid .ph { border-radius: 12px; overflow: hidden; border: 2px solid var(--gold-500); border-bottom-style: dashed; box-shadow: var(--shadow-card); }
+.gallery-grid .shot { margin: 0; position: relative; border-radius: 12px; overflow: hidden; border: 2px solid var(--gold-500); box-shadow: var(--shadow-card); }
+.gallery-grid .shot img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.gallery-grid .shot figcaption {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 24px 14px 10px;
+  font-family: var(--font-mono); font-size: .82rem; color: var(--cream-100);
+  background: linear-gradient(180deg, transparent, rgba(20,38,28,0.85));
+}
 
 /* ---------- how to play ---------- */
 .howto { background: linear-gradient(180deg, var(--cream-200), var(--cream-100)); }

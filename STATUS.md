@@ -9,7 +9,10 @@ A fun, cheesy, pirate-themed treasure-hunt website for Seba Beach, AB. Premise: 
 - Single-page static site: `index.html` + `css/style.css` + `js/site.js`. No build step.
 - Interactive **satellite treasure map** (Leaflet, **vendored locally** in `js/vendor/leaflet/` — no CDN dependency; Esri World Imagery tiles, no API key).
 - Four property "islands" as map pins + cards, plus three real bonus landmark markers. Map pins and cards share one `SPOTS` data source in `js/site.js`.
-- Pictures/videos are **styled placeholder tiles** ("coming soon"), per the brief.
+- **Real photos now in** (v2): pulled from each property's own local project folder (`sebahub-site`, `sebastays-site`, `village-vows-website`, `kokanee-springs-rv`), web-optimized (~1000–1920px, ~2.2 MB total) into `assets/photos/`:
+  - Hero background = SebaStays lake aerial. Card heroes = SebaHub community fair, SebaStays lake beach, Village Vows lakeside wedding arch, Kokanee camper-among-spruces. Gallery = marina aerial + forest ceremony + community powwow (plus 3 "video coming soon" tiles).
+  - These are the **owners' own images** reused across their own network (per Tim's request). Easy to swap any specific shot he'd rather not feature — replace the file in `assets/photos/` or edit `img:` in `SPOTS` / the gallery tiles in `js/site.js`. Originals live in each site's folder (see `scratchpad/thumbs` for the contact sheet that was used to pick).
+- **Video** still placeholder ("coming soon") tiles, per the brief.
 - Palette + hero badge lifted from the existing "Always Sunny in Seba" badge (`assets/seba-badge.png`).
 - Verified locally in the Claude preview: 4 cards, 6 gallery tiles, 7 map markers, fonts/theme applied, no console errors.
 
