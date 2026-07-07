@@ -1,0 +1,6 @@
+# tooling / OS cruft — keep the public repo clean
+.claude/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
