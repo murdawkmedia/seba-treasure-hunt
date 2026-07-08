@@ -87,12 +87,24 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   border-bottom: 3px solid var(--gold-500);
   backdrop-filter: blur(4px);
 }
-.topbar .wrap { display: flex; align-items: center; gap: 16px; height: 62px; }
+.topbar .wrap { display: flex; align-items: center; gap: 16px; min-height: 62px; padding-top: 6px; padding-bottom: 6px; }
 .topbar .brand { font-family: var(--font-pirate); color: var(--gold-300); font-size: 1.5rem; text-decoration: none; white-space: nowrap; }
-.topbar nav { margin-left: auto; display: flex; gap: 20px; flex-wrap: wrap; }
-.topbar nav a { color: var(--cream-100); text-decoration: none; font-size: 1.05rem; letter-spacing: .3px; }
+.topbar nav { margin-left: auto; display: flex; gap: 15px; flex-wrap: wrap; }
+.topbar nav a { color: var(--cream-100); text-decoration: none; font-size: 1rem; letter-spacing: .2px; white-space: nowrap; }
 .topbar nav a:hover { color: var(--gold-300); }
 .topbar .menu-toggle { display: none; }
+
+/* ---------- CFCW partner strip ---------- */
+.partner-strip {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  background: var(--green-950); border-bottom: 2px solid var(--gold-500);
+  padding: 8px 22px; text-decoration: none; color: var(--cream-100);
+}
+.partner-strip__logo { height: 46px; width: auto; flex: 0 0 auto; }
+.partner-strip__text { font-family: var(--font-mono); font-size: .82rem; letter-spacing: .3px; color: var(--cream-200); }
+.partner-strip__text strong { color: var(--gold-300); }
+.partner-strip:hover .partner-strip__text strong { color: var(--gold-400); }
+@media (max-width: 560px) { .partner-strip { gap: 10px; padding: 7px 14px; } .partner-strip__logo { height: 36px; } .partner-strip__text { font-size: .68rem; } }
 
 /* ---------- hero ---------- */
 .hero {
@@ -307,7 +319,48 @@ section { padding: 70px 0; position: relative; }
 .checklist .box { flex: 0 0 auto; width: 22px; height: 22px; margin-top: 3px; border: 3px solid var(--gold-400); border-radius: 5px; background: rgba(0,0,0,0.2); }
 .checklist .firstmate { font-size: .98rem; color: var(--cream-200); background: rgba(0,0,0,0.22); border-left: 3px solid var(--gold-500); padding: 10px 14px; border-radius: 6px; margin: 0; }
 
+/* ---------- prize CFCW line ---------- */
+.prize-cfcw { max-width: 760px; margin: 14px auto 0; text-align: center; font-family: var(--font-mono); font-size: .95rem; color: var(--cream-200); }
+.prize-cfcw strong { color: var(--gold-300); }
+
+/* ---------- the long game (vision) ---------- */
+.longgame { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
+.years { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px,1fr)); gap: 22px; max-width: 1000px; margin: 0 auto 30px; }
+.year { background: var(--cream-100); border: 2px solid var(--cream-300); border-radius: 14px; padding: 24px; box-shadow: var(--shadow-card); border-top: 6px solid var(--gold-500); }
+.year__tag { display: inline-block; font-family: var(--font-mono); font-size: .72rem; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-900); background: var(--gold-300); border-radius: 30px; padding: 4px 12px; }
+.year h3 { color: var(--green-900); font-size: 1.5rem; margin: 12px 0 8px; }
+.year p { margin: 0; color: var(--ink-700); }
+.heart { max-width: 760px; margin: 0 auto; text-align: center; font-size: 1.15rem; color: var(--green-900); background: rgba(224,160,30,0.12); border-left: 4px solid var(--gold-500); border-radius: 8px; padding: 16px 20px; }
+
+/* ---------- become a sponsor ---------- */
+.sponsor { background: linear-gradient(180deg, var(--green-900), var(--green-800)); color: var(--cream-100); }
+.sponsor .section-title { color: var(--cream-100); }
+.sponsor .section-lead { color: var(--cream-200); }
+.anchor-sponsor { max-width: 760px; margin: 0 auto 30px; display: flex; align-items: center; gap: 22px; background: var(--cream-100); border: 3px solid var(--gold-500); border-radius: 16px; padding: 20px 26px; text-decoration: none; box-shadow: var(--shadow-card); }
+.anchor-sponsor img { height: 90px; width: auto; flex: 0 0 auto; }
+.anchor-sponsor .tag { display: inline-block; font-family: var(--font-pirate); font-size: 1.15rem; color: var(--rust-600); }
+.anchor-sponsor p { margin: 4px 0 0; color: var(--ink-700); font-size: 1.02rem; }
+.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px,1fr)); gap: 18px; max-width: 1000px; margin: 0 auto 26px; }
+.tier { background: rgba(0,0,0,0.22); border: 2px solid var(--gold-500); border-radius: 14px; padding: 20px; text-align: center; }
+.tier h3 { font-family: var(--font-pirate); color: var(--gold-300); font-size: 1.6rem; margin: 0; }
+.tier__amt { font-family: var(--font-mono); color: var(--cream-100); font-size: 1.02rem; margin: 4px 0 10px; }
+.tier p { margin: 0; color: var(--cream-200); font-size: .92rem; }
+.sponsor-cta { text-align: center; }
+.sponsor-note { display: block; margin-top: 12px; font-family: var(--font-mono); font-size: .85rem; color: var(--cream-200); }
+@media (max-width: 560px) { .anchor-sponsor { flex-direction: column; text-align: center; } }
+
+/* ---------- the fine print (official rules) ---------- */
+.fineprint { background: linear-gradient(180deg, var(--cream-200), var(--cream-100)); }
+.rules-doc { max-width: 800px; margin: 0 auto; background: var(--cream-100); border: 2px solid var(--cream-300); border-radius: 12px; padding: 10px 28px 20px; box-shadow: var(--shadow-card); }
+.rules-doc dt { font-family: var(--font-pirate); font-size: 1.3rem; color: var(--green-900); margin: 18px 0 4px; }
+.rules-doc dd { margin: 0 0 6px; color: var(--ink-700); font-size: 1.02rem; }
+.rules-doc dd strong { color: var(--rust-600); }
+.fineprint-note { max-width: 800px; margin: 14px auto 0; text-align: center; font-family: var(--font-mono); font-size: .82rem; color: var(--ink-700); opacity: .8; }
+
 /* ---------- footer ---------- */
+.footer-cfcw { display: inline-flex; align-items: center; gap: 14px; margin: 0 auto 16px; text-decoration: none; }
+.footer-cfcw img { height: 58px; width: auto; }
+.footer-cfcw span { font-family: var(--font-mono); font-size: .8rem; color: var(--cream-200); max-width: 260px; text-align: left; }
 .footer { background: var(--green-950); color: var(--cream-200); padding: 50px 0 40px; text-align: center; border-top: 3px solid var(--gold-500); }
 .footer .badge-mini { width: 90px; margin: 0 auto 14px; opacity: .95; }
 .footer a { color: var(--gold-300); }
