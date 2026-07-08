@@ -100,8 +100,8 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   color: var(--cream-100);
   background:
     radial-gradient(900px 500px at 50% -10%, rgba(234,182,63,0.22), transparent 60%),
-    linear-gradient(180deg, rgba(20,53,39,0.72), rgba(20,38,28,0.90)),
-    url("../assets/photos/hero-lake.jpg") center 40% / cover no-repeat,
+    linear-gradient(180deg, rgba(20,53,39,0.74), rgba(20,38,28,0.90)),
+    url("../assets/photos/hero-aerial.jpg") center 45% / cover no-repeat,
     linear-gradient(180deg, var(--green-900), var(--green-950));
   padding: 70px 0 130px;
   text-align: center;
@@ -118,6 +118,50 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
 .hero .kicker { font-family: var(--font-mono); letter-spacing: 3px; text-transform: uppercase; color: var(--gold-400); font-size: .8rem; margin-bottom: 6px; }
 .hero .sub { font-size: 1.35rem; max-width: 720px; margin: 10px auto 26px; color: var(--cream-200); }
 .hero .cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.hero .prizeflash { font-family: var(--font-pirate); font-size: clamp(1.4rem, 4vw, 2.3rem); color: var(--cream-100); margin: 4px 0 2px; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
+.hero .prizeflash .amt { color: var(--gold-300); }
+.hero .hero-double { margin: 22px auto 0; display: inline-block; font-family: var(--font-mono); font-size: .95rem; letter-spacing: .5px; color: var(--ink-900); background: var(--gold-400); border: 2px solid var(--ink-900); border-radius: 40px; padding: 8px 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
+.hero .hero-double strong { color: var(--rust-600); }
+
+.gold { color: var(--gold-500); }
+
+/* ---------- the prize ---------- */
+.prize { background: linear-gradient(180deg, var(--green-950), var(--green-900)); color: var(--cream-100); }
+.prize .section-title { color: var(--cream-100); }
+.prize .section-lead { color: var(--cream-200); }
+.coins { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 22px; max-width: 1000px; margin: 0 auto 34px; }
+.coin { background: rgba(0,0,0,0.22); border: 2px solid var(--gold-500); border-radius: 16px; padding: 26px 24px; text-align: center; }
+.coin--hot { background: linear-gradient(180deg, rgba(224,160,30,0.22), rgba(0,0,0,0.25)); border-color: var(--gold-300); box-shadow: 0 0 0 4px rgba(234,182,63,0.15), var(--shadow-card); transform: scale(1.03); }
+.coin__big { font-family: var(--font-pirate); font-size: clamp(2.6rem, 7vw, 3.8rem); color: var(--gold-300); line-height: 1; text-shadow: 0 3px 0 var(--ink-900); }
+.coin h3 { color: var(--cream-100); font-size: 1.5rem; margin: 8px 0 8px; }
+.coin p { color: var(--cream-200); font-size: 1.02rem; margin: 0; }
+.coin--hot h3 { color: var(--gold-300); }
+.prize-real { max-width: 760px; margin: 0 auto; text-align: center; background: rgba(0,0,0,0.28); border-left: 4px solid var(--gold-500); border-radius: 8px; padding: 16px 20px; color: var(--cream-100); font-size: 1.08rem; }
+.prize-real a { color: var(--gold-300); }
+
+/* ---------- rules ---------- */
+.rules { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
+.rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; max-width: 1000px; margin: 0 auto; }
+.rule { background: var(--cream-100); border: 2px solid var(--cream-300); border-radius: 12px; padding: 22px; box-shadow: var(--shadow-card); border-top: 6px solid var(--rust-500); }
+.rule--yes { border-top-color: var(--green-700); }
+.rule .ic { font-size: 2rem; display: block; }
+.rule h3 { color: var(--green-900); font-size: 1.35rem; margin: 8px 0 6px; }
+.rule p { margin: 0; font-size: 1rem; color: var(--ink-700); }
+.rule--no h3::before { content: "🚫 "; font-size: .9em; }
+
+/* ---------- map note ---------- */
+.map-note { max-width: 900px; margin: 18px auto 0; text-align: center; font-family: var(--font-mono); font-size: .92rem; color: var(--cream-200); background: rgba(0,0,0,0.25); border: 1px dashed var(--gold-500); border-radius: 8px; padding: 12px 18px; }
+.map-note strong { color: var(--gold-300); }
+
+/* ---------- festival ---------- */
+.festival { background: linear-gradient(180deg, var(--green-900), var(--green-800)); color: var(--cream-100); padding: 54px 0; }
+.festival-card { max-width: 900px; margin: 0 auto; display: flex; gap: 26px; align-items: center; background: rgba(0,0,0,0.25); border: 2px solid var(--gold-500); border-radius: 16px; padding: 28px 32px; }
+.festival-emoji { font-size: 3.2rem; line-height: 1; flex: 0 0 auto; }
+.festival-card h2 { font-size: clamp(1.7rem, 4vw, 2.4rem); color: var(--cream-100); margin: 0 0 8px; }
+.festival-card p { margin: 0; color: var(--cream-200); font-size: 1.08rem; }
+@media (max-width: 620px) { .festival-card { flex-direction: column; text-align: center; } }
+
+/* ---------- footer ---------- */
 
 /* torn parchment / wave divider */
 .wave {

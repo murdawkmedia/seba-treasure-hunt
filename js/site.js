@@ -18,7 +18,7 @@ var SPOTS = [
     name: "SebaHub",
     island: "Skull Rock HQ",
     emoji: "🏴‍☠️",
-    lat: 53.559, lng: -114.7362,          // village core, the old Seba Beach School (est.)
+    lat: 53.5618, lng: -114.742,          // the old Seba Beach School, WEST across Hwy 31 (approx — confirm)
     url: "https://sebahub.com",
     linkLabel: "Visit SebaHub →",
     img: "assets/photos/card-sebahub.jpg",
@@ -32,11 +32,11 @@ var SPOTS = [
     name: "SebaStays",
     island: "Cozy Cove",
     emoji: "🏕️",
-    lat: 53.5626, lng: -114.7393,          // at the Forest Lodge, nudged so its pin clears Village Vows
+    lat: 53.567, lng: -114.7451,           // Forest Lodge, just NORTH of Kokanee (nudged off Village Vows)
     url: "https://sebastays.com",
     linkLabel: "Visit SebaStays →",
     img: "assets/photos/card-sebastays.jpg",
-    alt: "Families on a sandy Wabamun Lake beach with a kayak on a sunny day",
+    alt: "Aerial view of the Seba Beach marina and shoreline on Wabamun Lake",
     riddle: "Rest yer weary sea-legs where the cabins hide, / a real bed by the lake for the pirate inside.",
     blurb: "Even fierce buccaneers need a proper berth. Cabins, lodges and lakeside stays at the Forest Lodge for scallywags who fancy a mattress over a barnacled deck."
   },
@@ -46,7 +46,7 @@ var SPOTS = [
     name: "Village Vows",
     island: "Lovers' Lagoon",
     emoji: "💍",
-    lat: 53.56201, lng: -114.73865,        // The Forest Lodge, 53117 Highway 31
+    lat: 53.5666, lng: -114.7458,          // The Forest Lodge (53117 Hwy 31), just north of Kokanee
     url: "https://villagevows.com",
     linkLabel: "Visit Village Vows →",
     img: "assets/photos/card-villagevows.jpg",
@@ -129,9 +129,9 @@ function initMap() {
   });
 
   LANDMARKS.forEach(function (m) {
-    L.marker([m.lat, m.lng], { icon: emojiIcon("❌", false), title: m.name })
+    L.marker([m.lat, m.lng], { icon: emojiIcon("🪧", false), title: m.name })
       .addTo(map)
-      .bindPopup('<h3>❌ ' + m.name + "</h3><div class=\"riddle\">" + m.note + "</div>");
+      .bindPopup('<h3>🪧 ' + m.name + "</h3><div class=\"riddle\">" + m.note + "</div>");
     bounds.push([m.lat, m.lng]);
   });
 
@@ -177,12 +177,12 @@ function renderGallery() {
   var grid = document.getElementById("gallery-grid");
   if (!grid) return;
   var tiles = [
-    { src: "assets/photos/gallery-marina.jpg", label: "The marina on Wabamun Lake", alt: "Aerial view of the Seba Beach marina and docks on Wabamun Lake" },
-    { icon: "🎥", label: "Drone flyover of the hunt", video: true },
-    { src: "assets/photos/gallery-ceremony.jpg", label: "Vows at Lovers' Lagoon", alt: "A lakeside wedding ceremony at the Forest Lodge" },
-    { icon: "🎥", label: "The big treasure reveal", video: true },
+    { src: "assets/photos/gallery-woods.jpg", label: "The woods, where the loot lies waiting", alt: "A wooden ceremony deck among the aspens at the Forest Lodge" },
+    { icon: "🎥", label: "Tim counts the $5,000 in real cash", video: true },
+    { src: "assets/photos/gallery-ceremony.jpg", label: "Lovers' Lagoon down by the lake", alt: "A lakeside wedding ceremony at the Forest Lodge" },
+    { icon: "🎥", label: "Tim buries the loot from his side-by-side", video: true },
     { src: "assets/photos/gallery-powwow.jpg", label: "Community days at Skull Rock HQ", alt: "A dancer in regalia at a Seba Beach community gathering" },
-    { icon: "🎥", label: "Marshmallows at the Wharf", video: true }
+    { icon: "🎥", label: "The big treasure reveal (someday soon!)", video: true }
   ];
   grid.innerHTML = tiles.map(function (t) {
     if (t.src) {

@@ -3,41 +3,49 @@
 _Last updated: 2026-07-07_
 
 ## What this is
-A fun, cheesy, pirate-themed treasure-hunt website for Seba Beach, AB. Premise: **"Captain Tim lost his wallet in the woods"** → the wallet is buried treasure, and the hunt threads through four real SebaHub-ecosystem spots on Wabamun Lake. Static site, GitHub Pages, `murdawkmedia`, public.
+A fun/cheesy/pirate-themed promo site for a **REAL $5,000 cash treasure hunt** in the woods of Seba Beach, AB (north shore of Lake Wabamun). Marketing theme: **"Tim lost his wallet in the woods."** Static site, GitHub Pages, `murdawkmedia`, public. **Live: https://murdawkmedia.github.io/seba-treasure-hunt/**
 
-## Current state (shipped v1)
-- Single-page static site: `index.html` + `css/style.css` + `js/site.js`. No build step.
-- Interactive **satellite treasure map** (Leaflet, **vendored locally** in `js/vendor/leaflet/` — no CDN dependency; Esri World Imagery tiles, no API key).
-- Four property "islands" as map pins + cards, plus three real bonus landmark markers. Map pins and cards share one `SPOTS` data source in `js/site.js`.
-- **Real photos now in** (v2): pulled from each property's own local project folder (`sebahub-site`, `sebastays-site`, `village-vows-website`, `kokanee-springs-rv`), web-optimized (~1000–1920px, ~2.2 MB total) into `assets/photos/`:
-  - Hero background = SebaStays lake aerial. Card heroes = SebaHub community fair, SebaStays lake beach, Village Vows lakeside wedding arch, Kokanee camper-among-spruces. Gallery = marina aerial + forest ceremony + community powwow (plus 3 "video coming soon" tiles).
-  - These are the **owners' own images** reused across their own network (per Tim's request). Easy to swap any specific shot he'd rather not feature — replace the file in `assets/photos/` or edit `img:` in `SPOTS` / the gallery tiles in `js/site.js`. Originals live in each site's folder (see `scratchpad/thumbs` for the contact sheet that was used to pick).
-- **Video** still placeholder ("coming soon") tiles, per the brief.
-- Palette + hero badge lifted from the existing "Always Sunny in Seba" badge (`assets/seba-badge.png`).
-- Verified locally in the Claude preview: 4 cards, 6 gallery tiles, 7 map markers, fonts/theme applied, no console errors.
+## The hunt (public-facing facts baked into the site)
+- **Prize:** $5,000 cash, wrapped in rubber bands, hidden in a plain **coffee can**. Buried **Thu Jul 9, 2026 (afternoon)** — hunt is on once it's in the ground.
+- **Weekday double:** found on a **Mon/Tue/Wed → $10,000** (drives weekday visits).
+- **Sweetener:** if unfound after ~2 weeks (~Jul 23), **+$5,000** added.
+- **Rules (real):** no cutting trees, no fires, no digging in the driving range. Plus (playful, unattributed): no trucks/excavators/helicopters; park in designated areas; leave it better than you found it.
+- **No complex clues** — just the map (playing field + parking) and the rules. Authentic **real photos/videos, no AI**; proof videos coming (Tim counting cash, burying it on his side-by-side).
+- **Festival tie-in:** soft promo for the **"In the Woods" music festival**; the older **golf-balls-for-festival-tickets** idea runs quietly alongside (mentioned in the Festival section).
 
-## The four spots (nicknames + verified-ish coords)
-| # | Spot | Nickname | Coord (lat,lng) | Confidence | Link |
-|---|------|----------|-----------------|-----------|------|
-| 1 | SebaHub | Skull Rock HQ | 53.559, -114.7362 | low (est., village core / old school) | sebahub.com |
-| 2 | SebaStays | Cozy Cove | 53.5626, -114.7393 | med (Forest Lodge, pin nudged) | sebastays.com |
-| 3 | Village Vows | Lovers' Lagoon | 53.56201, -114.73865 | med (Forest Lodge, 53117 Hwy 31) | villagevows.com |
-| 4 | Kokanee Springs RV | Wheelhouse Wharf | 53.5645731, -114.7464346 | high (53118 Hwy 31) | Google Maps link |
+## Deliberately kept OFF the public site (internal planning context)
+Team friction and names — Ian's property-damage worries, Samantha's logistics/security anxiety, partner **Stephanie / CSCW**, the two-day-notice scramble, and the photo **metadata/GPS-stripping** operational detail. None of this is published. (Ask before adding any of it.)
 
-Coords geocoded via OpenStreetMap Nominatim / geocoder.ca and adversarially bounding-box-checked against the Seba Beach anchor (53.5648, -114.7297). **Note:** SebaStays and Village Vows are the *same* Forest Lodge property (two brands); SebaStays' pin is nudged ~30–40 m so both markers are tappable.
+## Site sections (v3)
+Hero (aerial + $5,000 flash + weekday-double) → **The Loot** ($5k/$10k/+$5k tiers) → The Legend (guerrilla-entrepreneur story) → **The Playing Field** map → The Four Spots (cards) → **The Pirate's Code** (rules) → How to Play + checklist → Festival tie-in → **Proof It's Real** (gallery).
+
+## Photos (all REAL, GPS-EXIF stripped, ~2.2 MB in `assets/photos/`)
+Pulled from each property's own local project folder, web-optimized (re-encode strips EXIF — audited, **no GPS on any file**):
+- Hero = **`schoolhouse-wide`** aerial of Seba Beach / Hwy 31 / the lake (village-vows repo).
+- Cards: SebaHub = InTheWoods community fair; SebaStays = Seba Beach marina aerial; Village Vows = lakeside wedding arch; Kokanee = camper-among-spruces.
+- Gallery: Forest-Lodge woods deck, lakeside ceremony, community powwow (+ 3 "video coming soon" tiles).
+- **Removed the two SebaStays `sunny-lake` images** — orphaned in `output/zip-assets`, unreferenced by the site, and AI-risk; SebaStays' own design.md mandates "real visuals, no AI." Swapped for confirmed-real shots.
+
+## Map coordinates (corrected per owner; still approximate — "we're pirates, not surveyors")
+| Spot | lat, lng | Confidence |
+|------|----------|-----------|
+| SebaHub (old Seba Beach School) | 53.5618, -114.742 | **LOW — needs owner confirm.** Moved WEST across Hwy 31 per owner note; no rooftop-precise coord exists (Nominatim has no school node; 53117 is a shared brand mailing address; site's map embed 53.5817 is a generic placeholder). |
+| Kokanee Springs RV | 53.5645731, -114.7464346 | high (OSM-named, 53118 Hwy 31) |
+| Village Vows (Forest Lodge) | 53.5666, -114.7458 | med — placed just N of Kokanee per owner |
+| SebaStays (Forest Lodge) | 53.567, -114.7451 | med — same lodge, nudged off Village Vows |
+
+Map now framed as the **playing field**, treasure explicitly **not** marked; official boundary + parking pins to be added when cash is hidden Thursday. Landmark markers changed from ❌ to 🪧 (an X wrongly implied "treasure here"). Did **not** touch ResNexus (offered as fallback, but it holds booking data, not the school's GPS — unnecessary).
 
 ## Decisions in force
-- **Map:** OpenStreetMap/Leaflet + Esri satellite tiles (no API key) chosen over Google Maps because it needs no key and suits "keep it open" + GitHub Pages.
-- **Leaflet vendored locally** rather than CDN, for resilience.
-- Kokanee has no confirmed website, so its link points to a Google Maps search (safe) rather than a possibly-dead domain.
-- Coordinates are intentionally approximate ("we're pirates, not surveyors"); confidence noted above.
+- Map = OpenStreetMap/Leaflet (**vendored locally**) + Esri satellite tiles (no API key). Kokanee links to a Google Maps search (no confirmed site).
+- Coffee-can/cash facts, prize amounts, dates, and rules are stated plainly (cheese as garnish only) — these are real stakes.
 
-## Open / next (awaiting Tim's "more details as we go")
-- **Real photos/videos** to replace placeholder tiles (drop in `assets/`, swap `.ph` blocks for `<img>`/`<video>`).
-- Confirm/refine exact pin locations, especially **SebaHub** (low confidence) — drop a precise pin if desired.
-- Decide the **prize / how to claim** the treasure (currently "coming soon").
-- Optional: custom domain (e.g. a sebahub.com subdomain) instead of the `github.io` path.
-- Optional: repo/URL rename if a different public name is preferred.
+## Open / next
+1. **Confirm SebaHub's exact pin** (the old school across Hwy 31) — low confidence; drop a precise pin or say "good enough."
+2. **Official playing-field boundary + parking areas** — add map polygon/pins when the cash is hidden Thu Jul 9.
+3. **Real proof media** — Tim counting the $5k, side-by-side bury video, raw stills (screenshot to strip GPS before upload).
+4. Decide claim mechanics (how a finder proves it / contacts you).
+5. Optional: custom domain; repo/URL rename.
 
 ## Deploy
-Repo root on `main` → GitHub Pages (Source = branch `main`, `/root`). `.nojekyll` present. See README for details.
+Repo root on `main` → GitHub Pages (branch `main`, `/root`). `.nojekyll` present. See README.
