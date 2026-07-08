@@ -42,7 +42,7 @@ Map now framed as the **playing field**, treasure explicitly **not** marked; off
 
 ## Open / next
 1. **Confirm SebaHub's exact pin** (the old school across Hwy 31) — low confidence; drop a precise pin or say "good enough."
-2. **Official playing-field boundary + parking areas** — add map polygon/pins when the cash is hidden Thu Jul 9.
+2. **Playing-field boundary** — still to add (map polygon) when the cash is hidden Thu Jul 9. **Parking: two 🅿️ pins added** (SebaHub school lot; Kokanee lot at the main entrance by the RV Pub & Grill, ~53.5633,-114.7400). Owner unsure of others — add more as confirmed.
 3. **Real proof media** — Tim counting the $5k, side-by-side bury video, raw stills (screenshot to strip GPS before upload).
 4. Decide claim mechanics (how a finder proves it / contacts you).
 5. Optional: custom domain; repo/URL rename.
