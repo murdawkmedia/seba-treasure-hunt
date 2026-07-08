@@ -77,6 +77,12 @@ var LANDMARKS = [
   { name: "The Beach & Pier", lat: 53.5535, lng: -114.7356, note: "The sandy shore and pier on Wabamun Lake, where gulls plot mutiny and stones beg to be skipped." }
 ];
 
+// Known designated parking (confirmed by owner). More may be added when the hunt goes live.
+var PARKING = [
+  { name: "SebaHub parking lot", lat: 53.5621, lng: -114.7424, note: "Park at the old Seba Beach School, then set off on foot." },
+  { name: "Kokanee Springs parking", lat: 53.5633344, lng: -114.7399789, note: "At the front main entrance, right next to the RV Pub & Grill. Grab a bite, then hunt." }
+];
+
 /* ---------------- Map ---------------- */
 function initMap() {
   var mapEl = document.getElementById("map");
@@ -133,6 +139,13 @@ function initMap() {
       .addTo(map)
       .bindPopup('<h3>🪧 ' + m.name + "</h3><div class=\"riddle\">" + m.note + "</div>");
     bounds.push([m.lat, m.lng]);
+  });
+
+  PARKING.forEach(function (p) {
+    L.marker([p.lat, p.lng], { icon: emojiIcon("🅿️", false), title: p.name })
+      .addTo(map)
+      .bindPopup('<h3>🅿️ ' + p.name + "</h3><div class=\"riddle\">" + p.note + "</div>");
+    bounds.push([p.lat, p.lng]);
   });
 
   if (bounds.length) {
