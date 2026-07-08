@@ -22,7 +22,7 @@ var SPOTS = [
     url: "https://sebahub.com",
     linkLabel: "Visit SebaHub →",
     img: "assets/photos/card-sebahub.jpg",
-    alt: "A sunny community fair at Seba Beach with families and games",
+    alt: "An evening community gathering at SebaHub in Seba Beach",
     riddle: "Where every venture drops its anchor first, / start yer hunt at the heart of the burgh.",
     blurb: "The flagship o' the whole fleet, where every Seba venture musters afore it sets sail. If this hunt's got a crow's nest, ye be standin' in it, ye salty dog."
   },
