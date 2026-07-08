@@ -141,6 +141,16 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
 
 /* ---------- rules ---------- */
 .rules { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
+.hours-banner {
+  max-width: 900px; margin: 0 auto 34px; display: flex; gap: 18px; align-items: center;
+  background: var(--green-900); color: var(--cream-100);
+  border: 3px solid var(--gold-500); border-radius: 14px; padding: 18px 24px;
+  box-shadow: var(--shadow-card);
+}
+.hours-banner .hours-ic { font-size: 2.4rem; line-height: 1; flex: 0 0 auto; }
+.hours-banner strong { display: block; font-family: var(--font-pirate); font-size: 1.6rem; color: var(--gold-300); letter-spacing: .5px; }
+.hours-banner span:last-child { font-size: 1rem; color: var(--cream-200); }
+@media (max-width: 560px) { .hours-banner { flex-direction: column; text-align: center; gap: 10px; } }
 .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; max-width: 1000px; margin: 0 auto; }
 .rule { background: var(--cream-100); border: 2px solid var(--cream-300); border-radius: 12px; padding: 22px; box-shadow: var(--shadow-card); border-top: 6px solid var(--rust-500); }
 .rule--yes { border-top-color: var(--green-700); }
