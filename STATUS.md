@@ -29,7 +29,7 @@ Pulled from each property's own local project folder, web-optimized (re-encode s
 ## Map coordinates (corrected per owner; still approximate — "we're pirates, not surveyors")
 | Spot | lat, lng | Confidence |
 |------|----------|-----------|
-| SebaHub (old Seba Beach School) | 53.5618, -114.742 | **LOW — needs owner confirm.** Moved WEST across Hwy 31 per owner note; no rooftop-precise coord exists (Nominatim has no school node; 53117 is a shared brand mailing address; site's map embed 53.5817 is a generic placeholder). |
+| SebaHub (old Seba Beach School) | 53.5603733, -114.7397426 | **HIGH — owner-provided exact coord (2026-07-08).** Village-core side, east of Hwy 31 (the Kokanee/Lodge cluster is across the highway to the west). |
 | Kokanee Springs RV | 53.5645731, -114.7464346 | high (OSM-named, 53118 Hwy 31) |
 | Village Vows (Forest Lodge) | 53.5666, -114.7458 | med — placed just N of Kokanee per owner |
 | SebaStays (Forest Lodge) | 53.567, -114.7451 | med — same lodge, nudged off Village Vows |
@@ -41,8 +41,8 @@ Map now framed as the **playing field**, treasure explicitly **not** marked; off
 - Coffee-can/cash facts, prize amounts, dates, and rules are stated plainly (cheese as garnish only) — these are real stakes.
 
 ## Open / next
-1. **Confirm SebaHub's exact pin** (the old school across Hwy 31) — low confidence; drop a precise pin or say "good enough."
-2. **Playing-field boundary** — still to add (map polygon) when the cash is hidden Thu Jul 9. **Parking: two 🅿️ pins added** (SebaHub school lot; Kokanee lot at the main entrance by the RV Pub & Grill, ~53.5633,-114.7400). Owner unsure of others — add more as confirmed.
+1. ~~Confirm SebaHub's exact pin~~ ✅ DONE 2026-07-08 — owner gave exact school + parking coords.
+2. **Playing-field boundary** — still to add (map polygon) when the cash is hidden Thu Jul 9. **Parking: two 🅿️ pins** (SebaHub school lot 53.559917,-114.739583 [owner DMS]; Kokanee lot at the main entrance by the RV Pub & Grill ~53.5633,-114.7400). Owner unsure of other lots / the boundary — add as confirmed.
 3. **Real proof media** — Tim counting the $5k, side-by-side bury video, raw stills (screenshot to strip GPS before upload).
 4. Decide claim mechanics (how a finder proves it / contacts you).
 5. Optional: custom domain; repo/URL rename.

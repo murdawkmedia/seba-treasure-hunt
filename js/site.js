@@ -18,7 +18,7 @@ var SPOTS = [
     name: "SebaHub",
     island: "Skull Rock HQ",
     emoji: "🏴‍☠️",
-    lat: 53.5618, lng: -114.742,          // the old Seba Beach School, WEST across Hwy 31 (approx — confirm)
+    lat: 53.5603733, lng: -114.7397426,   // the old Seba Beach School — owner-confirmed exact coords
     url: "https://sebahub.com",
     linkLabel: "Visit SebaHub →",
     img: "assets/photos/card-sebahub.jpg",
@@ -79,7 +79,7 @@ var LANDMARKS = [
 
 // Known designated parking (confirmed by owner). More may be added when the hunt goes live.
 var PARKING = [
-  { name: "SebaHub parking lot", lat: 53.5621, lng: -114.7424, note: "Park at the old Seba Beach School, then set off on foot." },
+  { name: "SebaHub parking lot", lat: 53.559917, lng: -114.739583, note: "Park at the old Seba Beach School, then set off on foot." },
   { name: "Kokanee Springs parking", lat: 53.5633344, lng: -114.7399789, note: "At the front main entrance, right next to the RV Pub & Grill. Grab a bite, then hunt." }
 ];
 
