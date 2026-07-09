@@ -9,6 +9,7 @@ A fun/cheesy/pirate-themed promo site for a **REAL $5,000 cash treasure hunt** i
 - **Prize:** $5,000 cash, wrapped in rubber bands, hidden in a plain **coffee can**. Buried **Thu Jul 9, 2026 (afternoon)**; **hunt LAUNCHES Fri Jul 10 (tentative)** — not the moment it's buried.
 - **Weekday double:** found on a **Mon/Tue/Wed → $10,000** (drives weekday visits).
 - **Sweetener:** if unfound after ~2 weeks (~Jul 24), **+$5,000** added; pot may also grow as sponsors join.
+- **Bonus loot:** **two real diamond rings** also hidden as separate finds, just for fun ("find a ring, keep the ring"). In hero, Loot section, and Fine Print.
 - **Hours:** hunt only **9 AM–8 PM daily** (don't wake the campers).
 - **Rules (real):** no cutting trees, no fires, no digging in the driving range. Plus (playful, unattributed): no trucks/excavators/helicopters; park in designated areas; leave it better than you found it.
 - **No complex clues** — just the map (playing field + parking) and the rules. Authentic **real photos/videos, no AI**; proof videos coming (Tim counting cash, burying it on his side-by-side).
