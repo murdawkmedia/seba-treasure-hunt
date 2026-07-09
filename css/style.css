@@ -132,6 +132,8 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
 .hero .cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
 .hero .prizeflash { font-family: var(--font-pirate); font-size: clamp(1.4rem, 4vw, 2.3rem); color: var(--cream-100); margin: 4px 0 2px; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
 .hero .prizeflash .amt { color: var(--gold-300); }
+.hero .hero-rings { font-family: var(--font-mono); font-size: .98rem; letter-spacing: .3px; color: var(--gold-300); margin: 2px 0 0; }
+.hero .hero-rings strong { color: var(--cream-100); }
 .hero .hero-double { margin: 22px auto 0; display: inline-block; font-family: var(--font-mono); font-size: .95rem; letter-spacing: .5px; color: var(--ink-900); background: var(--gold-400); border: 2px solid var(--ink-900); border-radius: 40px; padding: 8px 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
 .hero .hero-double strong { color: var(--rust-600); }
 
@@ -148,6 +150,12 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
 .coin h3 { color: var(--cream-100); font-size: 1.5rem; margin: 8px 0 8px; }
 .coin p { color: var(--cream-200); font-size: 1.02rem; margin: 0; }
 .coin--hot h3 { color: var(--gold-300); }
+.rings-band { max-width: 760px; margin: 0 auto 22px; display: flex; align-items: center; gap: 20px; background: linear-gradient(180deg, rgba(242,205,106,0.18), rgba(0,0,0,0.25)); border: 2px dashed var(--gold-300); border-radius: 16px; padding: 20px 26px; }
+.rings-band .rings-emoji { font-size: 2.6rem; line-height: 1; flex: 0 0 auto; }
+.rings-band h3 { font-family: var(--font-pirate); color: var(--gold-300); font-size: 1.6rem; margin: 0 0 4px; }
+.rings-band p { margin: 0; color: var(--cream-200); font-size: 1.02rem; }
+.rings-band p strong { color: var(--cream-100); }
+@media (max-width: 560px) { .rings-band { flex-direction: column; text-align: center; } }
 .prize-real { max-width: 760px; margin: 0 auto; text-align: center; background: rgba(0,0,0,0.28); border-left: 4px solid var(--gold-500); border-radius: 8px; padding: 16px 20px; color: var(--cream-100); font-size: 1.08rem; }
 .prize-real a { color: var(--gold-300); }
 
