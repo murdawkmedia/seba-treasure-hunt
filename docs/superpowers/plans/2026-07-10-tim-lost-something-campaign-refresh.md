@@ -393,9 +393,12 @@ Expected: a successful Pages deployment; immediately smoke-test the returned dep
 
 Attach `www.timlostsomething.com` and `timlostsomething.com` to the existing Pages project through the Murdawk account. Poll both Pages-domain states until active and verify Cloudflare-managed DNS/SSL is healthy.
 
-- [ ] **Step 5: Create the apex canonical redirect**
+- [x] **Step 5: Create the apex canonical redirect**
 
-Create one zone-level dynamic redirect rule:
+The available credentials did not include zone Rulesets permission. Use the
+tested Pages advanced-mode worker in `_worker.js` and
+`canonical-host-worker.mjs` instead. It applies this exact behavior at the
+Pages edge:
 
 ```text
 When: http.host eq "timlostsomething.com"
@@ -404,7 +407,7 @@ Status: 301
 Preserve query string: true
 ```
 
-Do not replace or reorder unrelated existing zone rules.
+No unrelated zone rule is replaced or reordered.
 
 - [ ] **Step 6: Verify production behavior**
 

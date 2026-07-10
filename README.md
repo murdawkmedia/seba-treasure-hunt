@@ -55,20 +55,22 @@ preserving paths and query strings.
 
 ## Test and preview
 
-    node --test tests/campaign-refresh.test.mjs
+    node --test tests/*.test.mjs
     python -m http.server 8080
 
 Open <http://localhost:8080>, /route.html and /interview.html.
 
-The contract test verifies the campaign name, canonical domains, four Sunny
-Guarantee links, structured data, crawl files, prop disclosure and the
-ID-bundle terminology.
+The eight contract tests verify the campaign name, canonical domains, four
+Sunny Guarantee links, structured data, crawl files, prop disclosure,
+ID-bundle terminology, apex redirect and static-asset pass-through.
 
 ## Deploy
 
 - Cloudflare Pages project: **seba-treasure-hunt**
 - Production source: tracked files from **main**
 - Deployment method: direct Wrangler upload from a clean git archive
+- Canonicalization: Pages advanced-mode worker redirects only the bare hostname
+  and passes all other requests to the static asset binding.
 
 Never deploy the working directory directly. The gitignored planning/,
 source-media/ and .wrangler/ directories are not public assets.
@@ -83,3 +85,5 @@ source-media/ and .wrangler/ directories are not public assets.
 - The evidence photo remains the social preview.
 - No fabricated claims or fake urgency on the website.
 - The published MP4 must remain below Cloudflare Pages' 25 MiB per-file limit.
+- _worker.js and canonical-host-worker.mjs are the tested production redirect;
+  do not replace them with an unverified client-side redirect.

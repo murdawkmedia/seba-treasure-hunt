@@ -14,9 +14,9 @@ Finders may keep the cash and rings. Tim only asks that his ID bundle be
 returned to SebaHub. The site is a static three-page Cloudflare Pages project
 with a 12-waypoint route, 61 GPS-tagged photographs and a route video.
 
-Implementation is complete on the campaign-refresh branch. Cloudflare
-deployment, custom-hostname activation and apex redirect verification are the
-remaining release steps for this update.
+The refresh is live on Cloudflare Pages. Both custom hostnames are active and
+HTTPS-valid. The bare hostname returns a permanent path/query-preserving
+redirect to the canonical www hostname.
 
 ## Public surfaces
 
@@ -25,6 +25,7 @@ remaining release steps for this update.
 - Pages fallback: https://seba-treasure-hunt.pages.dev/
 - Pages project: seba-treasure-hunt
 - Pages: home, /route and /interview
+- Verified production deployment: e9a6ca29.seba-treasure-hunt.pages.dev
 
 ## 2026-07-10 campaign refresh
 
@@ -45,6 +46,9 @@ remaining release steps for this update.
   missing card.
 - Updated canonical copy from “wallet” to “ID bundle” except where Tim's
   verbatim explanation distinguishes the bundle from a conventional wallet.
+- Added a tested Pages advanced-mode worker that redirects only
+  timlostsomething.com to www.timlostsomething.com and passes www/Pages aliases
+  through unchanged to static assets.
 
 ## Route video
 
@@ -73,20 +77,21 @@ remaining release steps for this update.
 
 ## Verification
 
-- Campaign contract: 6 passing tests.
+- Campaign and canonical-host contracts: 8 passing tests.
 - JSON-LD parses on all three pages.
 - Git whitespace check passes.
 - Remotion end-card regression test, ESLint and TypeScript pass.
 - Video frame/audio invariants pass.
+- Cloudflare Pages reports both custom hostnames active with active validation.
+- Live apex check: 301 to www with path/query preservation.
+- Live www checks: home, /route, /interview, robots.txt, sitemap.xml, prop image
+  and route MP4 return successfully.
+- Live Sunny Guarantee links: 4, all with accessible new-tab labels.
+- Public-release denylist scan: no tracked-file hits.
 
 ## Remaining release work
 
-1. Complete desktop/mobile browser QA of the refreshed pages.
-2. Run the public-release privacy scan on the final tracked surface.
-3. Deploy the clean tracked archive to Cloudflare Pages.
-4. Activate both custom hostnames and the apex-to-www 301 redirect.
-5. Verify canonical pages, media, sitemap, badge links and redirect behavior
-   live.
-6. Obtain final legal/owner sign-off on the official hunt rules and prize
+1. Integrate and push the verified campaign-refresh branch to main.
+2. Obtain final legal/owner sign-off on the official hunt rules and prize
    language; this remains an operational review item rather than a deployment
    blocker requested for this technical refresh.
