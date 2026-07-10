@@ -58,5 +58,9 @@ Re-render for 12 stops/61 photos + **music bed**: kie.ai Suno instrumental ("The
 4. Fine Print legal sign-off; sponsor email (CTA still routes via sebahub.com).
 5. ~~Wallet/ring close-ups~~ ✅ CLOSED per Tim 2026-07-10: no ring close-ups coming; the wallet exists only in the evidence photos we have.
 
-## Deploy
-Repo root on `main` → GitHub Pages (branch `main`, `/root`), `.nojekyll`. Verify after push: index/route/interview 200, photo spot-checks, no "coffee can" remnants live.
+## Deploy (migrating to Cloudflare Pages, 2026-07-10)
+- **Cloudflare Pages LIVE:** https://seba-treasure-hunt.pages.dev (project `seba-treasure-hunt`, Murdawk account, direct-upload via `wrangler pages deploy` from a `git archive` staging dir — NEVER deploy the working dir raw; planning/ + source-media/ live there un-ignored by wrangler). Video transcoded to 20.3 MiB (Pages caps files at 25 MiB). Pretty URLs: /route, /interview.
+- **GitHub Pages still live** (github.io) until the custom-domain cutover completes. Then: update og:image/QRs/marketing URLs/video end-card → make repo PRIVATE (auto-disables github.io).
+- **Custom domain:** candidates checked via RDAP 2026-07-10 — timlosthiswallet.com AVAILABLE, sebatreasurehunt.com AVAILABLE, lostinthewoods.com taken (also free: findtimswallet.com, sebabeachtreasurehunt.com, sebatreasure.com, .ca variants). Awaiting Tim's registration (purchase = his action; wrangler OAuth has no registrar scope). Recommendation: sebatreasurehunt.com canonical + timlosthiswallet.com redirect.
+- **Cloudflare access notes:** wrangler OAuth (murdawkmedia@gmail.com) = Pages/Workers/KV/D1 write + zone READ. The `cloudflare-murdawk-dns.env` DNS-edit token is DEAD (401) — re-issue if raw DNS edits needed (Pages custom-domain flow may not need it). That env file's comment block leaks an example `cfat_` token — scrub/rotate. sebahub.com DNS = GoDaddy, not Cloudflare.
+- Old GH flow: repo root on `main` → GitHub Pages, `.nojekyll`. Post-push verify: index/route/interview 200, photo spot-checks.
