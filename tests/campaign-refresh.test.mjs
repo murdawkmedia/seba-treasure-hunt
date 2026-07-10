@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { test } from "node:test";
+
+const read = (path) =>
+  readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+const pages = ["index.html", "route.html", "interview.html"];
+const canonical = {
+  "index.html": "https://www.timlostsomething.com/",
+  "route.html": "https://www.timlostsomething.com/route",
+  "interview.html": "https://www.timlostsomething.com/interview",
+};
+
+const escapeRegExp = (value) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+test("all pages use the campaign brand and canonical domain", () => {
+  for (const page of pages) {
+    const html = read(page);
+    assert.match(html, /Tim Lost Something\?/);
+    assert.match(
+      html,
+      new RegExp(
+        `<link rel="canonical" href="${escapeRegExp(canonical[page])}"`,
+      ),
+    );
+    assert.doesNotMatch(
+      html,
+      /murdawkmedia\.github\.io\/seba-treasure-hunt/,
+    );
+  }
+});
+
+test("all four Sunny badges link accessibly to the guarantee", () => {
+  const html = pages.map(read).join("\n");
+  const links =
+    html.match(
+      /href="https:\/\/www\.sebastays\.com\/guarantee"/g,
+    ) ?? [];
+  const labels =
+    html.match(
+      /aria-label="Visit the SebaStays Sunny Guarantee \(opens in a new tab\)"/g,
+    ) ?? [];
+
+  assert.equal(links.length, 4);
+  assert.equal(labels.length, 4);
+});
+
+test("SEO and answer-engine surfaces are present and parseable", () => {
+  for (const page of pages) {
+    const html = read(page);
+    assert.match(html, /<meta name="description"/);
+    assert.match(html, /<meta property="og:url"/);
+    assert.match(
+      html,
+      /<meta name="twitter:card" content="summary_large_image"/,
+    );
+
+    const blocks = [
+      ...html.matchAll(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
+      ),
+    ];
+    assert.ok(blocks.length > 0, `${page} should have JSON-LD`);
+    for (const block of blocks) JSON.parse(block[1]);
+  }
+
+  assert.match(read("index.html"), /id="what-is-tim-lost-something"/);
+  assert.match(read("index.html"), /id="hunt-faq"/);
+});
+
+test("the campaign prop is disclosed and never replaces evidence", () => {
+  const html = read("index.html");
+  assert.match(
+    html,
+    /assets\/photos\/tim-lost-id-campaign-prop\.webp/,
+  );
+  assert.match(html, /Campaign prop \/ dramatization/);
+  assert.match(html, /assets\/photos\/evidence-cash\.jpg/);
+  assert.ok(
+    existsSync(
+      new URL(
+        "../assets/photos/tim-lost-id-campaign-prop.webp",
+        import.meta.url,
+      ),
+    ),
+  );
+});
+
+test("crawl files use only the canonical hostname", () => {
+  assert.ok(
+    existsSync(new URL("../robots.txt", import.meta.url)),
+    "robots.txt should exist",
+  );
+  assert.ok(
+    existsSync(new URL("../sitemap.xml", import.meta.url)),
+    "sitemap.xml should exist",
+  );
+  assert.match(
+    read("robots.txt"),
+    /Sitemap: https:\/\/www\.timlostsomething\.com\/sitemap\.xml/,
+  );
+
+  const sitemap = read("sitemap.xml");
+  for (const url of Object.values(canonical)) {
+    assert.match(sitemap, new RegExp(escapeRegExp(url)));
+  }
+});
