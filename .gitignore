@@ -7,3 +7,4 @@ source-media/
 Thumbs.db
 desktop.ini
 *.log
+.wrangler/
