@@ -195,16 +195,16 @@ function renderGallery() {
     { src: "assets/photos/gallery-ceremony.jpg", label: "The lakeside ceremony grounds", alt: "A lakeside wedding ceremony at the Forest Lodge" },
     { src: "assets/photos/gallery-sebahub-open.jpg", label: "SebaHub is open — return the ID here", alt: "A SEBAHUB IS OPEN banner on a chain-link fence by the ball field" },
     { src: "assets/photos/gallery-powwow.jpg", label: "Community days at the old school", alt: "A dancer in regalia at a Seba Beach community gathering" },
-    { icon: "🎥", label: "Side-by-side route video — comin' soon", video: true }
+    { src: "assets/route/route-video-poster.jpg", label: "🎬 Watch: The Route in 78 Seconds", alt: "Title card of the route video: The Route — Retraced", href: "route.html#route-video" }
   ];
   grid.innerHTML = tiles.map(function (t) {
     if (t.src) {
-      return (
+      var fig =
         '<figure class="shot">' +
           '<img src="' + t.src + '" alt="' + (t.alt || t.label) + '" loading="lazy" />' +
           '<figcaption>' + t.label + "</figcaption>" +
-        "</figure>"
-      );
+        "</figure>";
+      return t.href ? '<a class="shot-link" href="' + t.href + '">' + fig + "</a>" : fig;
     }
     return (
       '<div class="ph ' + (t.video ? "ph--video" : "") + '">' +

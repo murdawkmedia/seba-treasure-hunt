@@ -304,6 +304,8 @@ section { padding: 70px 0; position: relative; }
   font-family: var(--font-mono); font-size: .82rem; color: var(--cream-100);
   background: linear-gradient(180deg, transparent, rgba(20,38,28,0.85));
 }
+.gallery-grid .shot-link { display: block; text-decoration: none; }
+.gallery-grid .shot-link:hover .shot { outline: 3px solid var(--gold-400); border-radius: 12px; }
 
 /* ---------- how to play ---------- */
 .howto { background: linear-gradient(180deg, var(--cream-200), var(--cream-100)); }

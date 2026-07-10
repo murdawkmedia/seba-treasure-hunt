@@ -42,6 +42,15 @@
     }
     .route-hero .sub { max-width: 760px; margin: 0 auto; color: var(--cream-200); font-size: 1.2rem; }
 
+    /* ---------- route video ---------- */
+    .routevideo { background: linear-gradient(180deg, var(--green-800), var(--green-900)); color: var(--cream-100); }
+    .routevideo .section-title { color: var(--gold-300); }
+    .routevideo .section-lead { color: var(--cream-200); }
+    .video-frame { max-width: 980px; margin: 0 auto; border: 10px solid transparent;
+      border-image: repeating-linear-gradient(45deg, var(--gold-500) 0 12px, var(--ink-700) 12px 22px) 10;
+      border-radius: 4px; box-shadow: var(--shadow-card); background: var(--ink-900); }
+    .video-frame video { width: 100%; display: block; }
+
     /* ---------- what to look for ---------- */
     .lookfor { background: linear-gradient(180deg, var(--cream-200), var(--cream-100)); }
     .lookfor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 22px; max-width: 1000px; margin: 0 auto 26px; }
@@ -189,6 +198,20 @@
     <p class="map-note">🔥 <strong>Hot zone</strong> = last-confirmed-sighting &amp; highest-probability stops. Prioritize the red pins.</p>
   </section>
 
+  <!-- ===================== ROUTE VIDEO ===================== -->
+  <section class="routevideo" id="route-video">
+    <div class="wrap">
+      <h2 class="section-title">🎬 The Route in 78 Seconds</h2>
+      <p class="section-lead">Every stop, every photo, in tour order — assembled straight from the GPS-tagged frames above. No AI, no re-enactments; just the route as the camera saw it.</p>
+      <div class="video-frame">
+        <video controls preload="metadata" poster="assets/route/route-video-poster.jpg" playsinline>
+          <source src="assets/route/route-video.mp4" type="video/mp4" />
+          Yer browser doesn't do video, matey — <a href="assets/route/route-video.mp4">download it here</a>.
+        </video>
+      </div>
+    </div>
+  </section>
+
   <!-- ===================== WHAT TO LOOK FOR ===================== -->
   <section class="lookfor" id="lookfor">
     <div class="wrap">
@@ -279,7 +302,7 @@
       <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.552278,-114.735404" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.552278, -114.735404</span></p>
       <div class="stop-gallery">
         <figure class="photo">
-          <a href="assets/route/stop-02/IMG_5040.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5040.jpg" alt="Wide view of the sandy beach at Randy&#x27;s 9th Street Beach property, with a UTV parked near a bench, dock ramps leading into the lake, and a timber retaining wall in the foreground." loading="lazy" /></a>
+          <a href="assets/route/stop-02/IMG_5040.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5040.jpg" alt="Wide view of the sandy public beach at Randy&#x27;s freshly opened waterfront, with a UTV parked near a bench, dock ramps leading into the lake, and a timber retaining wall in the foreground." loading="lazy" /></a>
           <figcaption>Randy's beach — the last confirmed spot the cash was seen before it vanished. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5553639,-114.7351222" target="_blank" rel="noopener">📍 Map</a></figcaption>
         </figure>
         <figure class="photo">
