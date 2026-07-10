@@ -119,6 +119,14 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   text-align: center;
   overflow: hidden;
 }
+.sunny-badge-link {
+  display: inline-block;
+  border-radius: 16px;
+  line-height: 0;
+  transition: filter .15s ease, transform .15s ease;
+}
+.sunny-badge-link:hover { filter: brightness(1.08); }
+.sunny-badge-link:focus-visible { outline: 4px solid var(--gold-300); outline-offset: 6px; }
 .hero__badge { width: 190px; margin: 0 auto 14px; filter: drop-shadow(0 8px 18px rgba(0,0,0,0.4)); animation: bob 5s ease-in-out infinite; }
 @keyframes bob { 0%,100%{ transform: translateY(0) rotate(-1deg);} 50%{ transform: translateY(-12px) rotate(1deg);} }
 .hero h1 {
@@ -128,6 +136,14 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   text-shadow: 0 3px 0 var(--ink-900), 0 6px 18px rgba(0,0,0,0.5);
 }
 .hero .kicker { font-family: var(--font-mono); letter-spacing: 3px; text-transform: uppercase; color: var(--gold-400); font-size: .8rem; margin-bottom: 6px; }
+.campaign-season {
+  max-width: 760px;
+  margin: 8px auto 4px;
+  color: var(--cream-100);
+  font-family: var(--font-mono);
+  font-size: clamp(.88rem, 2vw, 1.05rem);
+  letter-spacing: .5px;
+}
 .hero .sub { font-size: 1.35rem; max-width: 720px; margin: 10px auto 26px; color: var(--cream-200); }
 .hero .cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
 .hero .prizeflash { font-family: var(--font-pirate); font-size: clamp(1.4rem, 4vw, 2.3rem); color: var(--cream-100); margin: 4px 0 2px; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
@@ -138,6 +154,25 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
 .hero .hero-double strong { color: var(--rust-600); }
 
 .gold { color: var(--gold-500); }
+
+/* ---------- direct answer / campaign identity ---------- */
+.answer-block {
+  background: var(--cream-100);
+  color: var(--ink-900);
+  padding-top: 54px;
+  padding-bottom: 54px;
+}
+.answer-block__inner { max-width: 900px; text-align: center; }
+.answer-block h2 { color: var(--green-900); font-size: clamp(2rem, 5vw, 3.25rem); margin: 4px 0 14px; }
+.answer-block p:last-child { max-width: 780px; margin: 0 auto; font-size: 1.2rem; }
+.answer-block .eyebrow {
+  margin: 0;
+  color: var(--rust-600);
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
 
 /* ---------- the prize ---------- */
 .prize { background: linear-gradient(180deg, var(--green-950), var(--green-900)); color: var(--cream-100); }
@@ -398,12 +433,32 @@ section { padding: 70px 0; position: relative; }
 .rules-doc dd strong { color: var(--rust-600); }
 .fineprint-note { max-width: 800px; margin: 14px auto 0; text-align: center; font-family: var(--font-mono); font-size: .82rem; color: var(--ink-700); opacity: .8; }
 
+/* ---------- quick-answer FAQ ---------- */
+.hunt-faq { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
+.faq-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.faq-grid > div {
+  background: var(--cream-100);
+  border: 2px solid var(--cream-300);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  padding: 20px 22px;
+}
+.faq-grid dt { color: var(--green-900); font-family: var(--font-pirate); font-size: 1.4rem; margin-bottom: 6px; }
+.faq-grid dd { color: var(--ink-700); margin: 0; }
+
 /* ---------- footer ---------- */
 .footer-cfcw { display: inline-flex; align-items: center; gap: 14px; margin: 0 auto 16px; text-decoration: none; }
 .footer-cfcw img { height: 58px; width: auto; }
 .footer-cfcw span { font-family: var(--font-mono); font-size: .8rem; color: var(--cream-200); max-width: 260px; text-align: left; }
 .footer { background: var(--green-950); color: var(--cream-200); padding: 50px 0 40px; text-align: center; border-top: 3px solid var(--gold-500); }
 .footer .badge-mini { width: 90px; margin: 0 auto 14px; opacity: .95; }
+.campaign-season-footer { color: var(--gold-300); font-family: var(--font-mono); font-size: .85rem; margin: 0 0 12px; }
 .footer a { color: var(--gold-300); }
 .footer .fine { font-family: var(--font-mono); font-size: .8rem; opacity: .7; margin-top: 18px; }
 .footer .links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin: 12px 0; }
@@ -421,6 +476,7 @@ section { padding: 70px 0; position: relative; }
   .topbar .menu-toggle { display: inline-block; margin-left: auto; background: transparent; border: 2px solid var(--gold-400); color: var(--gold-300); font-size: 1.3rem; border-radius: 8px; padding: 2px 12px; cursor: pointer; }
   #map { height: 420px; }
   .scroll { padding: 24px 22px; }
+  .faq-grid { grid-template-columns: 1fr; }
 }
 
 /* respect reduced motion */

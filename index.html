@@ -1,14 +1,107 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-CA">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Great Seba Beach Treasure Hunt · Help Tim Find His ID · $5,000 + Two Diamond Rings</title>
-  <meta name="description" content="Tim lost his ID, $5,000 cash, and two diamond rings somewhere along his route through the Seba Beach properties. Find it and keep the cash and the rings — he just needs his ID back. It's real. It's out there." />
-  <meta property="og:title" content="Help Tim Find His ID — Keep the $5,000 + Two Diamond Rings" />
-  <meta property="og:description" content="Tim lost his wallet on the Seba Beach properties. The cash and rings are yours if you find them. He just needs his ID back. 12 waypoints, 61 GPS-tagged photos, one lost treasure." />
+  <title>Tim Lost Something? · This Year, Tim Lost His ID · Seba Beach Treasure Hunt</title>
+  <meta name="description" content="Tim Lost Something? is the 2026 Seba Beach treasure hunt: find Tim's ID, roughly $5,000 cash and two diamond rings across 12 GPS-mapped waypoints." />
+  <meta name="robots" content="index,follow,max-image-preview:large" />
+  <link rel="canonical" href="https://www.timlostsomething.com/" />
+  <meta property="og:site_name" content="Tim Lost Something?" />
+  <meta property="og:title" content="Tim Lost Something? This Year, Tim Lost His ID" />
+  <meta property="og:description" content="A real Seba Beach treasure hunt: find Tim's ID, keep roughly $5,000 and two diamond rings, and retrace 12 GPS-mapped waypoints." />
   <meta property="og:type" content="website" />
-  <meta property="og:image" content="https://murdawkmedia.github.io/seba-treasure-hunt/assets/photos/evidence-cash.jpg" />
+  <meta property="og:url" content="https://www.timlostsomething.com/" />
+  <meta property="og:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
+  <meta property="og:image:alt" content="The real last-known photo of Tim's cash, blurred ID bundle and keys before they went missing in Seba Beach" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Tim Lost Something? This Year, Tim Lost His ID" />
+  <meta name="twitter:description" content="Search 12 GPS-mapped Seba Beach waypoints. Finders keep roughly $5,000 and two diamond rings; Tim only wants his ID back." />
+  <meta name="twitter:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://www.timlostsomething.com/#website",
+        "url": "https://www.timlostsomething.com/",
+        "name": "Tim Lost Something?",
+        "alternateName": "The Seba Beach Treasure Hunt",
+        "inLanguage": "en-CA"
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://www.timlostsomething.com/#webpage",
+        "url": "https://www.timlostsomething.com/",
+        "name": "Tim Lost Something? — This Year, Tim Lost His ID",
+        "description": "The 2026 Seba Beach treasure hunt for Tim's lost ID, roughly $5,000 cash and two diamond rings.",
+        "isPartOf": { "@id": "https://www.timlostsomething.com/#website" },
+        "about": [
+          { "@type": "Place", "name": "Seba Beach, Alberta" },
+          { "@type": "Place", "name": "Lake Wabamun, Alberta" },
+          { "@type": "Organization", "name": "SebaHub", "url": "https://sebahub.com/" },
+          { "@type": "Organization", "name": "SebaStays", "url": "https://www.sebastays.com/" }
+        ],
+        "inLanguage": "en-CA"
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://www.timlostsomething.com/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What did Tim lose?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Tim lost his government ID wrapped in an elastic band, roughly $5,000 in cash, and two diamond rings in a small baggie somewhere along a Seba Beach property tour."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What can the finder keep?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The finder may keep the cash and both diamond rings. Tim only asks that his ID be returned to SebaHub."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "When and where can people search?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The hunt runs from 9:00 AM to 8:00 PM daily until the items are found. The public route covers 12 GPS-mapped waypoints around Seba Beach, Alberta."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it cost anything to enter?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. The hunt is free and no purchase is necessary."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How should Tim's ID be returned?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Return the ID to SebaHub at 162 Second Avenue in Seba Beach or use the contact details published on the hunt website."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What safety rules apply?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Use designated parking, respect guests and private homes, and do not dig, cut trees, light fires, or bring trucks, excavators or helicopters onto the route."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 
   <!-- Leaflet (open-source map, no API key needed) — vendored locally, no CDN dependency -->
   <link rel="stylesheet" href="js/vendor/leaflet/leaflet.css" />
@@ -25,7 +118,7 @@
   <!-- ===================== NAV ===================== -->
   <header class="topbar">
     <div class="wrap">
-      <a class="brand" href="index.html">💰 Seba Treasure Hunt</a>
+      <a class="brand" href="index.html"><span aria-hidden="true">💰</span> Tim Lost Something?</a>
       <button class="menu-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
       <nav id="nav">
         <a href="#deal">The Deal</a>
@@ -51,8 +144,11 @@
     <span class="doodad" style="bottom:26%;left:12%">🌲</span>
     <span class="doodad" style="bottom:20%;right:14%">🏴‍☠️</span>
     <div class="wrap">
-      <img class="hero__badge" src="assets/seba-badge.png" alt="Always Sunny in Seba badge" />
-      <p class="kicker">Real. Lost. Yours if ye find it. · Seba Beach, Alberta</p>
+      <a class="sunny-badge-link" href="https://www.sebastays.com/guarantee" target="_blank" rel="noopener" aria-label="Visit the SebaStays Sunny Guarantee (opens in a new tab)">
+        <img class="hero__badge" src="assets/seba-badge.png" alt="Always Sunny in Seba" />
+      </a>
+      <p class="kicker">Tim Lost Something? · The 2026 Seba Beach Treasure Hunt</p>
+      <p class="campaign-season">This year: Tim lost his ID—along with $5,000 and two diamond rings.</p>
       <h1>Help Tim Find His ID</h1>
       <p class="prizeflash">Ye keep the <span class="amt">$5,000</span> — and both diamond rings.</p>
       <p class="sub">Tim drove every Seba Beach property in his side-by-side. Somewhere along the way — the back trails, the cliff edge, the new beach — his ID, <strong>$5,000 in hundred-dollar bills</strong>, and <strong>two diamond rings</strong> slipped away into the woods. Find them, and everything but the ID is yours. He just wants his ID back. That's it. That's the whole deal.</p>
@@ -66,6 +162,15 @@
       <svg viewBox="0 0 1440 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
         <path fill="#f6efdd" d="M0,40 C180,90 360,0 540,30 C720,60 900,90 1080,55 C1260,25 1350,45 1440,50 L1440,90 L0,90 Z"></path>
       </svg>
+    </div>
+  </section>
+
+  <!-- ===================== DIRECT ANSWER ===================== -->
+  <section class="answer-block" id="what-is-tim-lost-something" aria-labelledby="what-is-title">
+    <div class="wrap answer-block__inner">
+      <p class="eyebrow">The 2026 Seba Beach Treasure Hunt</p>
+      <h2 id="what-is-title">What is Tim Lost Something?</h2>
+      <p><strong>Tim Lost Something?</strong> is a real public treasure hunt around Seba Beach on Lake Wabamun, Alberta. This year, Tim lost his ID—along with roughly $5,000 in cash and two diamond rings. Finders may keep the cash and rings; Tim only asks that his ID be returned to SebaHub.</p>
     </div>
   </section>
 
@@ -352,6 +457,40 @@
     </div>
   </section>
 
+  <!-- ===================== HUNT FAQ ===================== -->
+  <section class="hunt-faq" id="hunt-faq" aria-labelledby="hunt-faq-title">
+    <div class="wrap">
+      <h2 class="section-title" id="hunt-faq-title">Tim Lost Something? — Quick Answers</h2>
+      <p class="section-lead">The short version of the 2026 Seba Beach Treasure Hunt. The official rules below remain the final word.</p>
+      <dl class="faq-grid">
+        <div>
+          <dt>What did Tim lose?</dt>
+          <dd>His government ID wrapped in an elastic band, roughly <strong>$5,000 in cash</strong>, and <strong>two diamond rings</strong> in a small baggie somewhere along the property tour.</dd>
+        </div>
+        <div>
+          <dt>What can the finder keep?</dt>
+          <dd>Keep the cash and both diamond rings. Tim only asks that his ID be returned to SebaHub.</dd>
+        </div>
+        <div>
+          <dt>When and where can people search?</dt>
+          <dd>The hunt runs from <strong>9:00 AM to 8:00 PM daily</strong> until the items are found. Follow the 12 published GPS-mapped waypoints around Seba Beach.</dd>
+        </div>
+        <div>
+          <dt>Does it cost anything to enter?</dt>
+          <dd>No. The hunt is free, no purchase is necessary, and the official eligibility rules still apply.</dd>
+        </div>
+        <div>
+          <dt>How should Tim's ID be returned?</dt>
+          <dd>Return it to SebaHub at <strong>162 Second Avenue, Seba Beach</strong>, or use the contact details published in the official rules.</dd>
+        </div>
+        <div>
+          <dt>What safety rules apply?</dt>
+          <dd>Use designated parking, respect guests and private homes, and do not dig, cut trees, light fires, or bring trucks, excavators or helicopters onto the route.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
   <!-- ===================== THE FINE PRINT (OFFICIAL RULES) ===================== -->
   <section class="fineprint" id="official-rules">
     <div class="wrap">
@@ -385,7 +524,10 @@
   <!-- ===================== FOOTER ===================== -->
   <footer class="footer" id="footer">
     <div class="wrap">
-      <img class="badge-mini" src="assets/seba-badge.png" alt="Always Sunny in Seba" />
+      <a class="sunny-badge-link" href="https://www.sebastays.com/guarantee" target="_blank" rel="noopener" aria-label="Visit the SebaStays Sunny Guarantee (opens in a new tab)">
+        <img class="badge-mini" src="assets/seba-badge.png" alt="Always Sunny in Seba" />
+      </a>
+      <p class="campaign-season-footer">This year: Tim lost his ID.</p>
       <p>Made with 🏴‍☠️ &amp; ☀️ in Seba Beach, Alberta — on the north shore of Lake Wabamun.</p>
       <a class="footer-cfcw" href="https://cfcw.com" target="_blank" rel="noopener">
         <img src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
