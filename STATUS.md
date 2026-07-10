@@ -35,7 +35,15 @@ Ready-to-post social copy (FB/IG/X/email/teaser + Friday one-liners), CFCW annou
 - No fabricated claims on the website, ever (escalation posts are social-side, team's call).
 - Leaflet vendored; Esri tiles; no API keys. Marketing kit + originals never in the public repo.
 
-## Stop corrections (Tim, 2026-07-10) — APPLIED
+## v6 — THE 12-WAYPOINT RESTRUCTURE (Tim's photo-by-photo review, 2026-07-10 PM)
+Tim reviewed every numbered gallery photo and dictated true locations; combined with EXIF GPS/timestamps this produced a **GPS-true 12-waypoint route** (`planning/route-data-v2.json` = source of truth; `build_route_v2.py` regenerates assets):
+1 Creek Property · 2 Public Beach & Farmers' Market Lot · 3 The Beach (Randy's) 🔥 · 4 In Town (Seniors Centre + Derby's) · 5 Gated Road & School Grounds (old tennis court → SebaHub hockey programming) · 6 Back Trails 🔥 (now incl. the 16:02–16:06 corridor + meadow shots) · 7 Lodge Trails (Log Cabin) · 8 Vista Lands (wedding stage=Village Vows, geodome+sauna, NEW geodome pad, yurt=SebaStays, InstaCabins) · 9 Cliff-Edge Slope 🔥 · 10 Driving Range & future **Digger Café** · 11 Kokanee Front Gate (sign+Adirondacks, office, Pub & Grill, chickens/ducks) · 12 The Old Seba Beach School (SebaHub) — **Pixel school photos now published** (school/banner/Kokanee shots from the PXL set; no EXIF GPS so their map links use the landmark coords, `approx:true`).
+61 photos total. Dropped as dupes per Tim: IMG_5183, IMG_5189, IMG_5092 (+5040 moved to public beach — agent-verified DIFFERENT beach). Tim's canonical story stays "ten stops"; route page says "split into twelve waypoints." Contacts now include **tim@businessasaforceforgood.ca** (his spoken "businesshasaforgood.com" was a transcription garble — used the business-card/system-verified address).
+
+## Video v2 (in progress this session)
+Re-render for 12 stops/61 photos + **music bed**: kie.ai Suno instrumental ("The Route Retraced", acoustic country-folk, 152s source → trimmed/faded), generated with the **KIE_API_KEY from the NAS signal21 .env** (//192.168.1.158/docker/signal21/.env — only known local copy; key not stored in this repo). Embed switched to `autoplay muted loop playsinline controls` per Tim. Raw track: `planning/music-raw.mp3`.
+
+## Stop corrections (Tim, 2026-07-10 AM) — APPLIED (superseded by v6 above)
 - **S2** renamed "The Beach (Randy's) — Open to Everyone" (was "9th Street Beach"; photos are the property's own public waterfront; still the last-confirmed-cash stop; tilled-soft-sand woven in).
 - **S5** confirmed fine as-is (gate visible on the road; forest clue in sauna/dome frames).
 - **S9** renamed "The Driving Range (Kokanee)" (was "Public Pavilion Beach") — HIGH-PRIORITY badge removed (map pin de-hotted; 3 hot stops now: 2/3/6); captions un-hedged.

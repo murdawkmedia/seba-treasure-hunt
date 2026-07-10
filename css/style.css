@@ -358,7 +358,9 @@ section { padding: 70px 0; position: relative; }
 .contact-card { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; background: var(--green-900); border: 3px solid var(--gold-500); border-radius: 16px; padding: 22px 40px; box-shadow: var(--shadow-card); transition: transform .1s ease; }
 .contact-card:hover { transform: translateY(-4px); }
 .contact-card .who { font-family: var(--font-pirate); font-size: 1.5rem; color: var(--gold-300); }
-.contact-card .num { font-family: var(--font-mono); font-size: 1.25rem; color: var(--cream-100); letter-spacing: 1px; }
+.contact-card .num { font-family: var(--font-mono); font-size: 1.25rem; color: var(--cream-100); letter-spacing: 1px; text-decoration: none; }
+.contact-card a.num:hover { color: var(--gold-300); }
+.contact-card .num--email { font-size: .95rem; letter-spacing: .3px; color: var(--gold-300); }
 .contact-card .note { font-size: .9rem; color: var(--cream-200); }
 .dropoff { max-width: 640px; margin: 0 auto; text-align: center; background: var(--cream-100); border: 2px dashed var(--gold-500); border-radius: 10px; padding: 14px 20px; font-size: 1.05rem; }
 
