@@ -112,6 +112,20 @@
     }
     .stop-pin--hot { background: var(--rust-600); border-color: var(--gold-300); color: var(--cream-100); }
 
+    /* per-stop photo numbering (1..N within each stop) — helps folks reference exact shots */
+    .stop-gallery { counter-reset: photo; }
+    .stop-gallery .photo { position: relative; counter-increment: photo; }
+    .stop-gallery .photo::before {
+      content: counter(photo);
+      position: absolute; top: 8px; left: 8px; z-index: 2;
+      min-width: 30px; height: 30px; padding: 0 6px;
+      display: grid; place-items: center;
+      font-family: var(--font-pirate); font-size: 1.15rem;
+      color: var(--gold-300); background: rgba(20, 38, 28, 0.88);
+      border: 2px solid var(--gold-500); border-radius: 50%;
+      pointer-events: none;
+    }
+
     /* ---------- footer note ---------- */
     .route-footnote { background: var(--green-950); color: var(--cream-200); text-align: center; padding: 36px 0; font-family: var(--font-mono); font-size: .95rem; }
     .route-footnote strong { color: var(--gold-300); }
@@ -256,12 +270,12 @@
       <div class="stop-head">
         <span class="stop-num">2</span>
         <div class="stop-head-text">
-          <h2 class="stop-name">9th Street Beach (Randy's)</h2>
+          <h2 class="stop-name">The Beach (Randy's) — Open to Everyone</h2>
           <span class="hot-badge">🔥 HIGH PRIORITY</span>
         </div>
       </div>
       <blockquote class="stop-quote">“Randy just opened it up and did a fantastic job. I had the cash out right here — photographed it to text Randy.” The last confirmed sighting of the loot.</blockquote>
-      <p class="stop-shows"><strong>What the photos show:</strong> Randy's 9th Street Beach — the last confirmed spot the cash was seen before it vanished. A sandy, tire-churned shoreline and floating dock ramps give way to a rough trail into thick poplar and spruce, where old outbuildings hide among the trees; the final frame is the very photo Tim texted Randy, cash in hand, right before it slipped away.</p>
+      <p class="stop-shows"><strong>What the photos show:</strong> Our own stretch of open waterfront — the beach that's anyone's to use, freshly opened up (and tilled soft — ye sink right into it) by Randy and his crew. It's also the last confirmed spot the cash was seen. A sandy, tire-churned shoreline and floating dock ramps give way to a rough trail into thick poplar and spruce, where old outbuildings hide among the trees; the final frame is the very photo Tim texted Randy, cash in hand, right before it slipped away.</p>
       <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.552278,-114.735404" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.552278, -114.735404</span></p>
       <div class="stop-gallery">
         <figure class="photo">
@@ -565,21 +579,20 @@
       <div class="stop-head">
         <span class="stop-num">9</span>
         <div class="stop-head-text">
-          <h2 class="stop-name">Public Pavilion Beach</h2>
-          <span class="hot-badge">🔥 HIGH PRIORITY</span>
+          <h2 class="stop-name">The Driving Range (Kokanee)</h2>
         </div>
       </div>
-      <blockquote class="stop-quote">“Brand-new beach — I did the ploughing myself. You drop about a foot into the sand with every step. We got out and walked it.”</blockquote>
-      <p class="stop-shows"><strong>What the photos show:</strong> The frames here show the mowed grounds and driving-range field by the Kokanee Springs campground — tee bays, target boards, RVs along the treeline. The brand-new pavilion beach itself is deep, freshly tilled sand: you sink about a foot with every step.</p>
+      <blockquote class="stop-quote">Part of the loop back through the Kokanee grounds — the side-by-side rolled right past the range.</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> The driving-range grounds at Kokanee Springs — mowed tee bays, cutout target boards, RVs along the treeline. And remember the Pirate's Code: no digging up the range, ye keeners.</p>
       <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.563411,-114.739512" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.563411, -114.739512</span></p>
       <div class="stop-gallery">
         <figure class="photo">
           <a href="assets/route/stop-09/IMG_5186.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-09/IMG_5186.jpg" alt="Wide view of a golf driving range at Kokanee Springs RV and Campground under a blue sky, showing rows of tee bays, picnic tables, a foreground rock, and RVs from the neighboring campground along the tree line." loading="lazy" /></a>
-          <figcaption>The widest look at this spot — but heads up, it's a driving range, not a beach. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634111,-114.7395167" target="_blank" rel="noopener">📍 Map</a></figcaption>
+          <figcaption>The widest look at the range — tee bays, picnic tables, and the campground along the trees. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634111,-114.7395167" target="_blank" rel="noopener">📍 Map</a></figcaption>
         </figure>
         <figure class="photo">
           <a href="assets/route/stop-09/IMG_5183.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-09/IMG_5183.jpg" alt="Black trash barrel beside a red &#x27;Caution: Use At Own Risk&#x27; liability sign naming Kokanee Springs RV and Campground, next to a &#x27;Buy 10 Baskets, Get 2 Free&#x27; golf-ball promo sign, with driving range bays behind." loading="lazy" /></a>
-          <figcaption>The signage that pins down exactly where this was shot: Kokanee Springs, not a public beach. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634111,-114.7395083" target="_blank" rel="noopener">📍 Map</a></figcaption>
+          <figcaption>The signage that pins it down — Kokanee Springs' own range, right by the campground. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634111,-114.7395083" target="_blank" rel="noopener">📍 Map</a></figcaption>
         </figure>
         <figure class="photo">
           <a href="assets/route/stop-09/IMG_5185.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-09/IMG_5185.jpg" alt="Driving range bays with cutout target boards and folded picnic tables, with RVs and trailers from the campground visible along the tree line in the background." loading="lazy" /></a>
@@ -596,7 +609,7 @@
       <div class="stop-head">
         <span class="stop-num">10</span>
         <div class="stop-head-text">
-          <h2 class="stop-name">Museum &amp; Back to School (SebaHub)</h2>
+          <h2 class="stop-name">The Home Stretch — Back to the School</h2>
         </div>
       </div>
       <blockquote class="stop-quote">“Back to the school — I reached for my stuff and it was just... gone. Checked every pocket. Backtracked everything. Nothing.”</blockquote>
@@ -703,15 +716,15 @@
     /* ---------------- Route data (generated from planning/route-data.json via planning/gen_route_html.py --js) ---------------- */
 var ROUTE_STOPS = [
   { n: 1, name: "Creek Property \u2014 The Starting Point", hot: false, lat: 53.556236, lng: -114.737043, maps: "https://www.google.com/maps/search/?api=1&query=53.556236,-114.737043" },
-  { n: 2, name: "9th Street Beach (Randy's)", hot: true, lat: 53.552278, lng: -114.735404, maps: "https://www.google.com/maps/search/?api=1&query=53.552278,-114.735404" },
+  { n: 2, name: "The Beach (Randy's)", hot: true, lat: 53.552278, lng: -114.735404, maps: "https://www.google.com/maps/search/?api=1&query=53.552278,-114.735404" },
   { n: 3, name: "The Back Trails (2\u20133 km)", hot: true, lat: 53.560735, lng: -114.7392, maps: "https://www.google.com/maps/search/?api=1&query=53.560735,-114.7392" },
   { n: 4, name: "The Log Cabin", hot: false, lat: 53.561632, lng: -114.737411, maps: "https://www.google.com/maps/search/?api=1&query=53.561632,-114.737411" },
   { n: 5, name: "The Secret Road & the Gate", hot: false, lat: 53.559601, lng: -114.73794, maps: "https://www.google.com/maps/search/?api=1&query=53.559601,-114.73794" },
   { n: 6, name: "Vista Lounge / Cliff Edge Overlook", hot: true, lat: 53.561141, lng: -114.739685, maps: "https://www.google.com/maps/search/?api=1&query=53.561141,-114.739685" },
   { n: 7, name: "Kokanee / General Store Area", hot: false, lat: 53.562128, lng: -114.73717, maps: "https://www.google.com/maps/search/?api=1&query=53.562128,-114.73717" },
   { n: 8, name: "Farmers Market Lot", hot: false, lat: 53.563285, lng: -114.739381, maps: "https://www.google.com/maps/search/?api=1&query=53.563285,-114.739381" },
-  { n: 9, name: "Public Pavilion Beach", hot: true, lat: 53.563411, lng: -114.739512, maps: "https://www.google.com/maps/search/?api=1&query=53.563411,-114.739512" },
-  { n: 10, name: "Museum & Back to School (SebaHub)", hot: false, lat: 53.56323, lng: -114.740033, maps: "https://www.google.com/maps/search/?api=1&query=53.56323,-114.740033" },
+  { n: 9, name: "The Driving Range (Kokanee)", hot: false, lat: 53.563411, lng: -114.739512, maps: "https://www.google.com/maps/search/?api=1&query=53.563411,-114.739512" },
+  { n: 10, name: "The Home Stretch — Back to the School", hot: false, lat: 53.56323, lng: -114.740033, maps: "https://www.google.com/maps/search/?api=1&query=53.56323,-114.740033" },
 ];
 
     /* ---------------- Trail map (Esri imagery, same tile URLs as js/site.js) ---------------- */
