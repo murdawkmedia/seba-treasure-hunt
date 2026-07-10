@@ -72,7 +72,7 @@ var SPOTS = [
 
 // Real Seba Beach landmarks (OSM-verified), sprinkled as bonus clue markers.
 var LANDMARKS = [
-  { name: "Seba Beach Heritage Museum", lat: 53.5599331, lng: -114.7361936, note: "An old church full o' lake relics and a Memory Wall. Ask the ghosts about Tim's wallet." },
+  { name: "Seba Beach Heritage Museum", lat: 53.5599331, lng: -114.7361936, note: "An old church full o' lake relics and a Memory Wall. Ask the ghosts about Tim's missing ID." },
   { name: "Mini Golf & Ice Cream", lat: 53.5564909, lng: -114.7382734, note: "Windmills, waffle cones, and a hole-in-one worthy of a doubloon. A fine spot to re-provision the crew." },
   { name: "The Beach & Pier", lat: 53.5535, lng: -114.7356, note: "The sandy shore and pier on Wabamun Lake, where gulls plot mutiny and stones beg to be skipped." }
 ];
@@ -195,7 +195,7 @@ function renderGallery() {
     { src: "assets/photos/gallery-ceremony.jpg", label: "The lakeside ceremony grounds", alt: "A lakeside wedding ceremony at the Forest Lodge" },
     { src: "assets/photos/gallery-sebahub-open.jpg", label: "SebaHub is open — return the ID here", alt: "A SEBAHUB IS OPEN banner on a chain-link fence by the ball field" },
     { src: "assets/photos/gallery-powwow.jpg", label: "Community days at the old school", alt: "A dancer in regalia at a Seba Beach community gathering" },
-    { src: "assets/route/route-video-poster.jpg", label: "🎬 Watch: The Route in 78 Seconds", alt: "Title card of the route video: The Route — Retraced", href: "route.html#route-video" }
+    { src: "assets/route/route-video-poster.jpg", label: "🎬 Watch: The Route in 81 Seconds", alt: "Title card of the route video: The Route — Retraced", href: "route.html#route-video" }
   ];
   grid.innerHTML = tiles.map(function (t) {
     if (t.src) {

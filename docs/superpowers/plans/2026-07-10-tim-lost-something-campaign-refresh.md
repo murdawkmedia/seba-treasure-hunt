@@ -366,11 +366,15 @@ git commit -m "docs: make campaign handoff ready"
 
 ### Task 6: Deploy and configure Cloudflare
 
-**External target:** Murdawk Media account `d113f919b7e29373ccac141104bea5b0`, Pages project `seba-treasure-hunt`, zone `timlostsomething.com`.
+**External target:** Approved Cloudflare deployment account, Pages project
+`seba-treasure-hunt`, zone `timlostsomething.com`.
 
 - [ ] **Step 1: Verify account/project/zone without exposing credentials**
 
-Confirm Wrangler/API identity is the Murdawk Media account, list the `seba-treasure-hunt` Pages project, and confirm `timlostsomething.com` is in the same account. Do not print token values or use Signal21 credentials.
+Confirm Wrangler/API identity is the approved deployment account, list the
+`seba-treasure-hunt` Pages project, and confirm `timlostsomething.com` is in
+the same account. Do not print token values or borrow credentials from an
+unrelated Cloudflare account.
 
 - [ ] **Step 2: Create a clean tracked-file deployment archive**
 
@@ -416,11 +420,11 @@ Verify:
 
 After production verification and privacy scan, push the intended commits to `origin/main` and confirm local/upstream parity.
 
-### Task 7: Close the MurphyOS handoff
+### Task 7: Close the project handoff
 
 **Files:**
 - Modify: project `STATUS.md` if deployment results changed after its predeploy update.
-- Create: dated sanitized MurphyOS history note in the approved history zone.
+- Record outside this public repository: dated sanitized private activity note.
 
 - [ ] **Step 1: Record actual deployed state**
 
@@ -428,7 +432,7 @@ Add exact live URLs, active/redirect behavior, Pages project, verification resul
 
 - [ ] **Step 2: Re-run final checks**
 
-Run the campaign contract, git diff check, public privacy scan, Pages/custom-domain smoke tests, and MurphyOS read-only checks. Resolve any stale README/STATUS statement before completion.
+Run the campaign contract, git diff check, public privacy scan, Pages/custom-domain smoke tests, and private workspace read-only checks. Resolve any stale README/STATUS statement before completion.
 
 - [ ] **Step 3: Commit/push the final status-only correction if needed**
 

@@ -107,3 +107,21 @@ test("crawl files use only the canonical hostname", () => {
     assert.match(sitemap, new RegExp(escapeRegExp(url)));
   }
 });
+
+test("canonical campaign copy calls the lost item an ID bundle", () => {
+  const publicCopy = [...pages.map(read), read("js/site.js")].join("\n");
+  const stalePhrases = [
+    "The Legend of Tim's Lost Wallet",
+    "1 Missing Wallet",
+    "The wallet is out there",
+    "and so is the wallet",
+    "One lost wallet.",
+    'This year Tim "lost" a wallet',
+    "Ask the ghosts about Tim's wallet",
+    "78 Seconds",
+  ];
+
+  for (const phrase of stalePhrases) {
+    assert.doesNotMatch(publicCopy, new RegExp(escapeRegExp(phrase), "i"));
+  }
+});
