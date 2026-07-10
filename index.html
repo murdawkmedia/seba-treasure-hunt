@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Great Seba Beach Treasure Hunt · $5,000 Cash · Arrr!</title>
-  <meta name="description" content="There's $5,000 in real cash buried in the woods of Seba Beach on Wabamun Lake — double to $10,000 if you find it on a Monday, Tuesday, or Wednesday. Captain Tim lost his wallet in the woods. Come dig it up." />
-  <meta property="og:title" content="The Great Seba Beach Treasure Hunt — $5,000 Real Cash" />
-  <meta property="og:description" content="Tim buried $5,000 cash in the woods of Seba Beach. No riddles, no tricks — just a map, some rules, and a shovel-free hunt. Doubles to $10,000 on weekdays." />
+  <title>The Great Seba Beach Treasure Hunt · Help Tim Find His ID · $5,000 + Two Diamond Rings</title>
+  <meta name="description" content="Tim lost his ID, $5,000 cash, and two diamond rings somewhere along a 10-stop route at Seba Beach, Alberta. Find it and keep the cash and the rings — he just needs his ID back. It's real. It's out there." />
+  <meta property="og:title" content="Help Tim Find His ID — Keep the $5,000 + Two Diamond Rings" />
+  <meta property="og:description" content="Tim lost his wallet on the Seba Beach properties. The cash and rings are yours if you find them. He just needs his ID back. 10 stops, 150 GPS-tagged photos, one lost treasure." />
   <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://murdawkmedia.github.io/seba-treasure-hunt/assets/photos/evidence-cash.jpg" />
 
   <!-- Leaflet (open-source map, no API key needed) — vendored locally, no CDN dependency -->
   <link rel="stylesheet" href="js/vendor/leaflet/leaflet.css" />
@@ -24,16 +25,14 @@
   <!-- ===================== NAV ===================== -->
   <header class="topbar">
     <div class="wrap">
-      <a class="brand" href="#top">💰 Seba Treasure Hunt</a>
+      <a class="brand" href="index.html">💰 Seba Treasure Hunt</a>
       <button class="menu-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
       <nav id="nav">
-        <a href="#prize">The $5,000</a>
-        <a href="#legend">The Legend</a>
-        <a href="#map-section">The Map</a>
+        <a href="#deal">The Deal</a>
+        <a href="#legend">The Story</a>
+        <a href="route.html">The Route 🗺️</a>
+        <a href="interview.html">The Interview 🎙️</a>
         <a href="#rules">The Rules</a>
-        <a href="#islands">The Spots</a>
-        <a href="#gallery">Proof</a>
-        <a href="#sponsor">Sponsor</a>
         <a href="#official-rules">Fine Print</a>
       </nav>
     </div>
@@ -53,16 +52,15 @@
     <span class="doodad" style="bottom:20%;right:14%">🏴‍☠️</span>
     <div class="wrap">
       <img class="hero__badge" src="assets/seba-badge.png" alt="Always Sunny in Seba badge" />
-      <p class="kicker">A real cash hunt · Launches Fri, July 10 · Seba Beach, Alberta</p>
-      <h1>The Great Seba Beach Treasure Hunt</h1>
-      <p class="prizeflash"><span class="amt">$5,000</span> in real cash, buried in the woods.</p>
-      <p class="hero-rings">💍 …plus <strong>two real diamond rings</strong>, hidden just for the fun of it.</p>
-      <p class="sub">Captain Tim lost his wallet in the woods of Seba Beach — and a lost wallet, matey, is just <em>buried treasure</em> waitin' for a braver soul. No riddles, no tricks. Just a map, a few rules, and a big ol' coffee can of cash somewhere on the shores of Wabamun Lake.</p>
+      <p class="kicker">Real. Lost. Yours if ye find it. · Seba Beach, Alberta</p>
+      <h1>Help Tim Find His ID</h1>
+      <p class="prizeflash">Ye keep the <span class="amt">$5,000</span> — and both diamond rings.</p>
+      <p class="sub">Tim drove all ten Seba Beach properties in his side-by-side. Somewhere along the way — the back trails, the cliff edge, the new beach — his ID, <strong>$5,000 in hundred-dollar bills</strong>, and <strong>two diamond rings</strong> slipped away into the woods. Find them, and everything but the ID is yours. He just wants his ID back. That's it. That's the whole deal.</p>
       <div class="cta-row">
-        <a class="btn" href="#prize">💰 See the $5,000</a>
-        <a class="btn btn--ghost" href="#map-section">🗺️ Open the Map</a>
+        <a class="btn" href="route.html">🗺️ See All 10 Stops</a>
+        <a class="btn btn--ghost" href="interview.html">🎙️ Read the Interview</a>
       </div>
-      <p class="hero-double">🔥 Find it on a <strong>Mon, Tue or Wed</strong> and the pot <strong>DOUBLES to $10,000</strong>.</p>
+      <p class="hero-double">🔥 Not found quickly? The pot may rise to <strong>$10,000</strong>. Tick tock, mateys.</p>
     </div>
     <div class="wave" aria-hidden="true">
       <svg viewBox="0 0 1440 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -71,64 +69,94 @@
     </div>
   </section>
 
-  <!-- ===================== THE PRIZE ===================== -->
-  <section class="prize" id="prize">
+  <!-- ===================== THE DEAL ===================== -->
+  <section class="prize" id="deal">
     <div class="wrap">
-      <h2 class="section-title">The Loot: <span class="gold">$5,000 Cash</span></h2>
-      <p class="section-lead">Real money. Really buried. This isn't a gift card, a coupon, or a "chance to win." It's cold hard cash in a coffee can in the ground.</p>
+      <h2 class="section-title">The Deal: <span class="gold">Finders Keepers</span></h2>
+      <p class="section-lead">No riddles to buy, no entry fee, no catch. Three things are lost out there. Two of them are yours to keep.</p>
 
       <div class="coins">
-        <div class="coin">
-          <div class="coin__big">$5,000</div>
-          <h3>Buried Thu, hunt on Fri</h3>
-          <p>Tim buries the cash <strong>Thursday afternoon, July&nbsp;9</strong> — wrapped in rubber bands, stuffed in a plain coffee can. The hunt <strong>launches Friday, July&nbsp;10</strong> (tentative, but that's the plan).</p>
-        </div>
         <div class="coin coin--hot">
-          <div class="coin__big">$10,000</div>
-          <h3>Double on weekdays</h3>
-          <p>Dig it up on a <strong>Monday, Tuesday, or Wednesday</strong> and Tim <strong>doubles it to $10,000</strong>. Weekday warriors get paid extra. Sleep in on Saturday if ye like — it'll cost ye.</p>
+          <div class="coin__big">$5,000</div>
+          <h3>The cash is all yours</h3>
+          <p>About five grand in <strong>hundred-dollar bills</strong> (with some 20s and 5s riding along) — it was earmarked to pay Randy's crew, and now it's earmarked for <em>you</em>. Keep every dollar.</p>
         </div>
         <div class="coin">
-          <div class="coin__big">+$5,000</div>
-          <h3>Sweetens over time</h3>
-          <p>If the loot's still buried two weeks on (around <strong>July&nbsp;24</strong>), Tim tosses in <strong>another $5,000</strong>. The longer she hides — and the more sponsors climb aboard — the fatter the prize.</p>
+          <div class="coin__big">💍💍</div>
+          <h3>The rings are all yours</h3>
+          <p><strong>Two diamond rings</strong> in a teeny little baggie — pawn-shop finds, a couple of diamonds each, meant to be gifts someday. Consider them gifted. Keep 'em both.</p>
+        </div>
+        <div class="coin">
+          <div class="coin__big">🪪</div>
+          <h3>All he needs: his ID</h3>
+          <p>Tim's government ID, wrapped in an elastic band. It's his identity, and it's the <em>only</em> thing he's asking for. Drop it at SebaHub (162 Second Ave) or mail it in. No questions asked.</p>
         </div>
       </div>
 
-      <div class="rings-band">
-        <span class="rings-emoji">💍💍</span>
-        <div class="rings-text">
-          <h3>Bonus Loot: Two Diamond Rings</h3>
-          <p>Just for the fun of it, Tim's hidden <strong>two real diamond rings</strong> out in the woods alongside the cash. Not the main prize — just a little extra sparkle for the lucky few. <strong>Find a ring, keep the ring.</strong></p>
-        </div>
-      </div>
-
-      <p class="prize-real">🏴‍☠️ <strong>Is this for real?</strong> Aye. We're filming Tim counting the cash, wrapping the bundles, and hauling them out on his side-by-side. No AI, no funny business — real photos and real video, comin' to the <a href="#gallery">Proof</a> section below.</p>
-      <p class="prize-cfcw">📻 Prize totals are announced <strong>Friday mornings on 840 CFCW</strong> — tune in to hear the pot climb.</p>
+      <p class="prize-real">🏴‍☠️ <strong>Is this for real?</strong> Aye — dead serious. Scroll down for the last photo of the loot, then read <a href="interview.html">the interview</a> where Tim retraces every stop. The clues are in his answers.</p>
+      <p class="prize-cfcw">📻 Hunt updates <strong>Friday mornings on 840 CFCW</strong> — tune in to hear if the pot climbs to $10,000.</p>
     </div>
   </section>
 
-  <!-- ===================== LEGEND ===================== -->
+  <!-- ===================== EVIDENCE ===================== -->
+  <section class="evidence" id="evidence">
+    <div class="wrap">
+      <h2 class="section-title">The Last Known Photo</h2>
+      <div class="rope"></div>
+      <p class="section-lead">Taken on tour day — Tim photographed the cash to text Randy: <em>"I have the cash, where do you want me to leave it?"</em> Hours later, all of it was gone.</p>
+      <figure class="evidence-fig">
+        <img src="assets/photos/evidence-cash.jpg" alt="Tim's pocket contents on a granite counter: stacks of Canadian hundred-dollar bills, twenties and fives, a bundle of cards in an elastic band (blurred), a yellow keychain with keys, and an Alberta Open Farm Days flyer" loading="lazy" />
+        <figcaption>
+          <strong>🔍 EVIDENCE:</strong> Canadian bills ($100s, $20s, $5s) · thick stack with elastic band · ID bundled in the elastic · yellow keychain · Alberta Open Farm Days flyer. Everything here (minus the keys and phone) is now somewhere on the trail.
+          <span class="redact-note">ID &amp; cards blurred — that part's Tim's problem, not yours. The cash is the readable part, and the cash is what ye keep.</span>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ===================== THE STORY ===================== -->
   <section class="legend" id="legend">
     <div class="wrap">
       <h2 class="section-title">The Legend of Tim's Lost Wallet</h2>
       <div class="rope"></div>
-      <p class="section-lead">Some folks wanted a slow, clever teaser hunt. Tim wanted to bury real money and see who shows up. Tim won.</p>
+      <p class="section-lead">Except this time it's not a legend. It actually happened. Classic Tim.</p>
       <div class="scroll">
-        <p>Gather 'round, ye barnacle-brained beach bums. The marketin' crew had a <em>plan</em> — a slow, careful little rollout, scatter some golf balls, win some festival tickets, drag it out 'til the leaves turn. Real tidy. Real safe.</p>
-        <p>Then Tim — a guerrilla entrepreneur with sand in his boots and a glint in his eye — said "Arrr, enough overthinkin' it." Why tease when ye can just <strong>bury five grand in the woods</strong> and let the whole county come lookin'? So he did. Or he will. This Thursday. In a coffee can.</p>
-        <p>The story we're tellin' is simple and true: <strong>Tim lost his wallet in the woods.</strong> And what be a lost wallet, if not buried treasure? Find it and it's yours — no clues to decode, no hoops to jump. Just you, the pines, and the shores of Wabamun Lake.</p>
-        <p>They say the Ghost of Captain Tim already haunts the pier — moanin' not for revenge nor gold, but for the loyalty punch-card that was <em>one stamp</em> shy of a free coffee. Bring the whole crew and put him to rest.</p>
-        <p class="sign">— The Ghost of Captain Tim 👻</p>
+        <p>Gather 'round, ye barnacle-brained beach bums. Tim set out on a regular day of rounds — him, Ian, Casey, and Bob the entrepreneur, four souls in a side-by-side, touring all ten Seba Beach properties. Coffee at the school. Randy's freshly opened beach. Then the back trails — two, three kilometres of twisting, bouncing, tree-dodging glory that ye're <em>technically</em> not supposed to take a side-by-side through. (He did anyway. For Bob.)</p>
+        <p>In his pocket: his ID wrapped in an elastic band, about <strong>$5,000 in cash</strong> for Randy's crew, and <strong>two diamond rings</strong> in a teeny baggie. They rode along past the log cabin, down the secret road, out to the cliff edge at the Vista Lounge — where Tim stood eighty feet down a narrow path, gesturing at the lake like a man who owns a view — through the deep sand of the brand-new pavilion beach, past the museum, and back to the school.</p>
+        <p>He reached for his pocket. <strong>Gone.</strong> All of it. He backtracked every stop and found nothing but tire tracks and regret.</p>
+        <p>So here's the deal he's making with the whole of Alberta: <strong>find it, keep the cash and the rings.</strong> He'd just like his ID back — drop it at SebaHub, 162 Second Avenue, no questions asked. And if it doesn't turn up quickly? The pot may climb to <strong>$10,000</strong>.</p>
+        <p class="sign">— As told to the crew at 840 CFCW 📻</p>
       </div>
+      <p class="center" style="margin-top:26px"><a class="btn" href="interview.html">🎙️ Read Tim's Full 20-Question Interview</a></p>
     </div>
   </section>
 
-  <!-- ===================== MAP ===================== -->
+  <!-- ===================== ROUTE TEASER ===================== -->
+  <section class="route-teaser" id="route">
+    <div class="wrap">
+      <h2 class="section-title">🗺️ The Route: 10 Stops, 58 GPS-Tagged Photos</h2>
+      <p class="section-lead">Tim retraced the whole tour with a camera — over 150 frames shot, and the 58 best published, every one GPS-tagged with a Google Maps link so ye know exactly where the side-by-side went. Study the trail. The hot zones are marked.</p>
+      <ol class="stop-list">
+        <li><span>1</span> Creek Property — the starting point</li>
+        <li class="hot"><span>2</span> 9th Street Beach (Randy's) — last confirmed cash sighting 🔥</li>
+        <li class="hot"><span>3</span> The Back Trails — 2-3 km of bounce 🔥</li>
+        <li><span>4</span> The Log Cabin</li>
+        <li><span>5</span> The Secret Road &amp; the Gate</li>
+        <li class="hot"><span>6</span> Vista Lounge / Cliff Edge — Tim got out here 🔥</li>
+        <li><span>7</span> Kokanee / General Store</li>
+        <li><span>8</span> Farmers Market Lot</li>
+        <li class="hot"><span>9</span> Public Pavilion Beach — deep sand 🔥</li>
+        <li><span>10</span> Museum &amp; Back to School — where he noticed</li>
+      </ol>
+      <p class="center"><a class="btn" href="route.html">🧭 Open the Full Route — Map, Photos &amp; Clues</a></p>
+    </div>
+  </section>
+
+  <!-- ===================== TERRITORY MAP ===================== -->
   <section class="mapsection" id="map-section">
     <div class="wrap">
-      <h2 class="section-title">🗺️ The Playing Field</h2>
-      <p class="section-lead">Here's <em>where to hunt</em> — the four legendary spots of the SebaHub shoreline. It is <strong>not</strong> a map to the treasure (that'd be too easy, wouldn't it?). The official playing-field boundary and parking areas go live the day the cash goes in the ground.</p>
+      <h2 class="section-title">The Territory</h2>
+      <p class="section-lead">The lay of the land: the four home-base properties, the village landmarks, and where to park. The stop-by-stop trail map lives on <a href="route.html" style="color:var(--gold-300)">the Route page</a>.</p>
     </div>
     <div class="map-frame">
       <div id="map"></div>
@@ -141,15 +169,15 @@
       <span><span class="dot">🅿️</span> Parking</span>
       <span><span class="dot">🪧</span> Around town</span>
     </div>
-    <p class="map-note">🅿️ Park only in <strong>designated areas</strong>: the <strong>SebaHub school lot</strong> and the <strong>Kokanee Springs lot</strong> (by the RV Pub &amp; Grill at the main entrance). More may be added when the hunt goes live. The treasure is <strong>not</strong> marked here. No, seriously, stop zooming in on the coffee can. It's not on the map.</p>
+    <p class="map-note">🅿️ Park only in <strong>designated areas</strong>: the <strong>SebaHub school lot</strong> and the <strong>Kokanee Springs lot</strong> (by the RV Pub &amp; Grill at the main entrance). And no — the wallet is <strong>not</strong> pinned on this map. That'd be a short hunt.</p>
   </section>
 
   <!-- ===================== ISLANDS / SPOTS ===================== -->
   <section class="islands" id="islands">
     <div class="wrap">
-      <h2 class="section-title">The Four Legendary Spots</h2>
+      <h2 class="section-title">The Home-Base Properties</h2>
       <div class="rope"></div>
-      <p class="section-lead">Four real neighbours on the Seba Beach shoreline — the whole reason we're luring ye out here. Get to know 'em while ye hunt.</p>
+      <p class="section-lead">Four real neighbours on the Seba Beach shoreline — the folks behind the hunt. Get to know 'em while ye search.</p>
       <div class="card-grid" id="card-grid">
         <!-- cards injected by js/site.js so map + cards share one source of truth -->
       </div>
@@ -166,16 +194,16 @@
         <span class="hours-ic">⏰</span>
         <div>
           <strong>Hunt hours: 9:00 AM – 8:00 PM, daily.</strong>
-          <span>Be off the playing field by 8. There be campers sleepin' out here — no 2 a.m. prowlin' about with headlamps, ye night owls. Anyone caught huntin' after dark be disqualified (and walkin' the plank).</span>
+          <span>Be off the properties by 8. There be campers sleepin' out here — no 2 a.m. prowlin' about with headlamps, ye night owls. After-dark hunting = disqualified (and walkin' the plank).</span>
         </div>
       </div>
       <div class="rules-grid">
-        <div class="rule rule--no"><span class="ic">🌲</span><h3>No cutting down trees</h3><p>The forest stays standin'. Ye cannot chainsaw yer way to riches. The cash is not inside a tree.</p></div>
+        <div class="rule rule--no"><span class="ic">🌲</span><h3>No cutting down trees</h3><p>The forest stays standin'. Ye cannot chainsaw yer way to riches. The wallet fell — it is not <em>inside</em> a tree.</p></div>
         <div class="rule rule--no"><span class="ic">🔥</span><h3>No fires</h3><p>Not one. No burnin' the brush to "smoke it out." We will find you, and so will the fire marshal.</p></div>
-        <div class="rule rule--no"><span class="ic">⛳</span><h3>No digging in the driving range</h3><p>Leave the range as ye found it. No craters between the golfers. The loot is not under the range.</p></div>
+        <div class="rule rule--no"><span class="ic">⛳</span><h3>No digging up the driving range</h3><p>It <em>fell out of a pocket</em>, ye keeners — nothing is buried. Leave the shovels and the range alone.</p></div>
         <div class="rule rule--no"><span class="ic">🚁</span><h3>No trucks, excavators, or helicopters</h3><p>Aye, someone asked. This is a hunt, not a demolition derby. Use yer eyes, yer boots, and yer wits.</p></div>
-        <div class="rule rule--yes"><span class="ic">🅿️</span><h3>Park in designated areas</h3><p>Stick to the marked lots and the playing field. Respect the neighbours, the fences, and the folks who live here.</p></div>
-        <div class="rule rule--yes"><span class="ic">🤝</span><h3>Leave it better than ye found it</h3><p>Pack out yer trash, be kind to the crew, and share the fun. That's the pirate code. Arrr.</p></div>
+        <div class="rule rule--yes"><span class="ic">🅿️</span><h3>Park in designated areas</h3><p>Stick to the marked lots. Respect the neighbours, the fences, the guests, and the folks who live here.</p></div>
+        <div class="rule rule--yes"><span class="ic">🤝</span><h3>Leave it better than ye found it</h3><p>Pack out yer trash, bring a friend, and share the fun. That's the pirate code. Arrr.</p></div>
       </div>
     </div>
   </section>
@@ -185,41 +213,63 @@
     <div class="wrap">
       <h2 class="section-title">How to Play</h2>
       <div class="rope"></div>
-      <p class="section-lead">No treasure-huntin' license required. No riddles to crack. Just show up and look, ye clever dog.</p>
+      <p class="section-lead">No treasure-huntin' license required. The hunt is live <em>right now</em>.</p>
       <div class="steps">
         <div class="step">
           <div class="n">1</div>
-          <h3>Study the Map</h3>
-          <p>Scope the playing field above and find the four spots along Wabamun Lake. Screenshot it, memorize it, tattoo it — yer call.</p>
+          <h3>Read the Clues</h3>
+          <p>Start with <a href="interview.html">the interview</a> — Tim's answers contain the clues. Then study <a href="route.html">the route</a>: 150 GPS-tagged photos across 10 stops.</p>
         </div>
         <div class="step">
           <div class="n">2</div>
-          <h3>Come to Seba Beach</h3>
-          <p>Roll out to the shoreline, park in a designated area, and hunt the playing field <strong>9 AM–8 PM daily</strong> (the hunt launches Friday, July 10).</p>
+          <h3>Pick Yer Zones</h3>
+          <p>The hot zones: Randy's beach (last confirmed sighting), the back trails, the cliff edge, and the deep-sand pavilion beach. Prioritize like a pro.</p>
         </div>
         <div class="step">
           <div class="n">3</div>
-          <h3>Search (Nicely)</h3>
-          <p>Use yer eyes, not a backhoe. Follow the Code. The loot's in a plain coffee can — hidden well, but not buried in the earth.</p>
+          <h3>Come Search</h3>
+          <p>Roll out to Seba Beach, park in a designated lot, and hunt <strong>9 AM–8 PM daily</strong>. Bring a friend — two sets of eyes beat one.</p>
         </div>
         <div class="step">
           <div class="n">4</div>
-          <h3>Claim the Cash</h3>
-          <p>Find it and it's <strong>$5,000</strong> — or <strong>$10,000</strong> on a Mon/Tue/Wed. Tell us how ye did it. Become a Seba Beach legend.</p>
+          <h3>Found It?</h3>
+          <p><strong>Keep the cash. Keep the rings.</strong> Call or text Tim or Casey (numbers below) and return the ID at SebaHub — 162 Second Ave. Become a Seba Beach legend.</p>
         </div>
       </div>
 
       <div class="checklist" aria-label="Pirate's checklist">
-        <h3>☑️ Ye Olde Pirate's Checklist</h3>
+        <h3>☑️ Ye Olde Hunter's Checklist</h3>
         <ul>
-          <li><span class="box"></span> Wore me finest treasure-huntin' hat</li>
-          <li><span class="box"></span> Read the Pirate's Code (no fires, no chainsaws, no choppers)</li>
-          <li><span class="box"></span> Parked in a designated area like a gentleman-scallywag</li>
-          <li><span class="box"></span> Searched with me eyes, not an excavator</li>
-          <li><span class="box"></span> Planned to strike on a Mon / Tue / Wed for the $10,000</li>
+          <li><span class="box"></span> Read the interview (the clues are in there, matey)</li>
+          <li><span class="box"></span> Studied the 10-stop route and the hot zones</li>
+          <li><span class="box"></span> Brought a friend — two sets of eyes are better than one</li>
+          <li><span class="box"></span> Looked for a wee elastic-band bundle and a teeny baggie — not a fat wallet</li>
+          <li><span class="box"></span> Kept an eye out for golf balls (festival tickets, arrr!)</li>
         </ul>
-        <p class="firstmate">🧭 <strong>First Mate's Corner:</strong> bring the wee ones, mind yer step by the water, pack sunscreen and bug spray, and leave every spot nicer than ye found it. Arrr-esponsible pirates only.</p>
+        <p class="firstmate">🧭 <strong>First Mate's Corner:</strong> bring the wee ones, mind yer step by the water and the cliff edge, pack sunscreen and bug spray, and leave every spot nicer than ye found it. Arrr-esponsible pirates only.</p>
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== CONTACT ===================== -->
+  <section class="found" id="found">
+    <div class="wrap">
+      <h2 class="section-title">📞 Found Something?</h2>
+      <div class="rope"></div>
+      <p class="section-lead">These are personal cell numbers — please treat them with the respect ye'd want for yer own. Found the ID, the cash, the rings, or even a golf ball? Call or text. We're happy to hear from ye.</p>
+      <div class="contact-cards">
+        <a class="contact-card" href="tel:+17809096544">
+          <span class="who">👤 Tim</span>
+          <span class="num">780-909-6544</span>
+          <span class="note">Call or text anytime</span>
+        </a>
+        <a class="contact-card" href="tel:+17807002271">
+          <span class="who">👤 Casey</span>
+          <span class="num">(780) 700-2271</span>
+          <span class="note">Call or text anytime</span>
+        </a>
+      </div>
+      <p class="dropoff">🏠 <strong>ID drop-off:</strong> SebaHub — 162 Second Avenue, Seba Beach, Alberta. No questions asked. Or mail it in. Tim just wants his identity back, sort of thing.</p>
     </div>
   </section>
 
@@ -229,18 +279,18 @@
       <div class="festival-card">
         <div class="festival-emoji">🎸🌲</div>
         <div>
-          <h2>Psst… there's also <span class="gold">"In the Woods"</span></h2>
-          <p>This whole caper is warmin' up the crowd for the <strong>"In the Woods" music festival</strong> comin' to Seba Beach. And runnin' quietly alongside the cash hunt: keep yer eyes peeled for <strong>scattered golf balls</strong> around the property — snag one and ye could win <strong>festival tickets</strong>. Two hunts, one beach. More details as the summer rolls on.</p>
+          <h2>Bonus quest: golf balls &amp; <span class="gold">"In the Woods"</span></h2>
+          <p>While ye're out there searching for Tim's ID, keep yer eyes peeled for <strong>golf balls hidden across the properties</strong>. Find one and ye win <strong>trips and tickets to the "In the Woods" Music Festival</strong> at Seba Beach. The hunt has layers — come out and see what ye find.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ===================== PROOF / GALLERY ===================== -->
+  <!-- ===================== GALLERY ===================== -->
   <section class="gallery" id="gallery">
     <div class="wrap">
-      <h2 class="section-title">Proof It's Real</h2>
-      <p class="section-lead">Real place, real photos, real cash. The videos of Tim counting the loot and burying it on his side-by-side are comin' soon — no AI, no stock, no baloney.</p>
+      <h2 class="section-title">The Grounds</h2>
+      <p class="section-lead">Real place, real photos. This is what ye're searching — and it's worth the drive even if ye come home with nothin' but sand in yer boots.</p>
       <div class="gallery-grid" id="gallery-grid">
         <!-- real photos + "video coming soon" tiles injected by js/site.js -->
       </div>
@@ -257,7 +307,7 @@
         <div class="year">
           <span class="year__tag">Year 1 · 2026</span>
           <h3>Prove it</h3>
-          <p>One coffee can. Five grand. A whole village on the map. This first year is about showin' the province that a little Alberta lake town can throw the best treasure hunt around.</p>
+          <p>One lost wallet. Five grand. Two diamond rings. A whole village on the map. This first year is about showin' the province that a little Alberta lake town can throw the best treasure hunt around.</p>
         </div>
         <div class="year">
           <span class="year__tag">Year 2</span>
@@ -267,10 +317,10 @@
         <div class="year">
           <span class="year__tag">Year 3 &amp; beyond</span>
           <h3>The Alberta circuit</h3>
-          <p>A hunt that hops town to town across Central Alberta, with CFCW callin' the play-by-play. (This year it's a wallet <em>and</em> two diamond rings — next year, who knows what Tim'll "lose.")</p>
+          <p>A hunt that hops town to town across Central Alberta, with CFCW callin' the play-by-play. (This year Tim "lost" a wallet and two rings — next year, who knows what the man'll misplace.)</p>
         </div>
       </div>
-      <p class="heart">💛 At the bottom of it all, this be real money for a real person who could use a win. Every dollar in that can is a dollar of hope for whoever digs it up.</p>
+      <p class="heart">💛 At the bottom of it all, this be real money for a real person who could use a win. Every dollar out there is a dollar of hope for whoever finds it.</p>
     </div>
   </section>
 
@@ -307,23 +357,25 @@
       <p class="section-lead">The official rules. Boring, aye — but real, because the money is real.</p>
       <dl class="rules-doc">
         <dt>Eligibility</dt>
-        <dd>Open to residents of Alberta, Canada, 18 and over. Organizers, sponsors, and their employees aren't eligible to win.</dd>
+        <dd>Open to residents of Alberta, Canada, 18 and over (wee pirates welcome with a grown-up first mate). Organizers, sponsors, and their employees aren't eligible to win.</dd>
         <dt>No purchase necessary</dt>
-        <dd>Free to play. No entry fee, no purchase, no catch. Just come to Seba Beach and hunt.</dd>
+        <dd>Free to play. No entry fee, no purchase, no catch. Just come to Seba Beach and look.</dd>
         <dt>When</dt>
-        <dd>The cash goes in the ground <strong>Thursday, July 9, 2026</strong>. The hunt launches <strong>Friday, July 10, 2026</strong> (tentative) and runs until the treasure is found. Hunt hours are <strong>9:00 AM–8:00 PM daily</strong>.</dd>
-        <dt>The prize</dt>
-        <dd>$5,000 in cash — <strong>doubling to $10,000 if found on a Monday, Tuesday, or Wednesday</strong>. The pot may grow over time and as new sponsors come aboard. Prize is cash and non-transferable. <strong>Two real diamond rings</strong> are also hidden as separate bonus finds — find a ring, keep the ring.</dd>
-        <dt>How to claim</dt>
-        <dd>Found it? To collect, you'll present valid government-issued photo ID and sign a short declaration confirming you're eligible and followed the rules. Then we hand you the can.</dd>
+        <dd>The hunt is <strong>live now</strong> (launched July 10, 2026) and runs until the items are found. Hunt hours are <strong>9:00 AM–8:00 PM daily</strong>.</dd>
+        <dt>The find</dt>
+        <dd>Lost along the route: Tim's government ID wrapped in an elastic band, roughly <strong>$5,000 in cash</strong>, and <strong>two diamond rings</strong> in a small baggie. They may be together or separate — there may be more than one thing to find.</dd>
+        <dt>The deal</dt>
+        <dd><strong>Keep the cash. Keep the rings.</strong> Return the ID to SebaHub (162 Second Avenue, Seba Beach) or by mail — that's the whole ask. If the items aren't found quickly, the reward may rise to <strong>$10,000</strong>; updates announced Fridays on 840 CFCW. Reward is as-found and non-transferable.</dd>
+        <dt>Reporting a find</dt>
+        <dd>Call or text Tim (780-909-6544) or Casey (780-700-2271). For everyone's peace of mind, the find will be confirmed with a quick photo of where and what you found before the "found" flag goes up sitewide.</dd>
         <dt>Play fair &amp; safe</dt>
-        <dd>No cutting trees, no fires, no digging the driving range, and no trucks, excavators, or helicopters. Park only in designated areas and leave every spot better than you found it. Breaking the code means disqualification.</dd>
+        <dd>No cutting trees, no fires, no digging (nothing is buried — it <em>fell</em>), and no trucks, excavators, or helicopters. Park only in designated areas. Respect guests, private homes, and event bookings on the properties. Mind the cliff edge and the water. Breaking the code means disqualification.</dd>
         <dt>Disputes</dt>
         <dd>The organizers' decision on any dispute is final.</dd>
         <dt>Privacy</dt>
-        <dd>Any personal info we collect is used only to run the hunt, and isn't shared without your consent.</dd>
+        <dd>Any personal info we collect is used only to run the hunt, and isn't shared without your consent. The contact numbers published here are personal cells — be kind.</dd>
       </dl>
-      <p class="fineprint-note">Plain-language rules of the hunt — may be updated before launch.</p>
+      <p class="fineprint-note">Plain-language rules of the hunt — may be updated as the hunt evolves.</p>
     </div>
   </section>
 
@@ -337,6 +389,8 @@
         <span>Official Radio Partner — 840 CFCW, serving Central Alberta since 1954</span>
       </a>
       <div class="links">
+        <a href="route.html">The Route</a>
+        <a href="interview.html">The Interview</a>
         <a href="https://sebahub.com" target="_blank" rel="noopener">SebaHub</a>
         <a href="https://sebastays.com" target="_blank" rel="noopener">SebaStays</a>
         <a href="https://villagevows.com" target="_blank" rel="noopener">Village Vows</a>
@@ -344,7 +398,7 @@
         <a href="#sponsor">Become a Sponsor</a>
         <a href="#official-rules">Official Rules</a>
       </div>
-      <p class="fine">A SebaHub Production. The treasure is real (and so is the wallet). Follow the Code, park where yer told, and don't set anything on fire. Map data © OpenStreetMap contributors · Imagery © Esri.</p>
+      <p class="fine">A SebaHub Production. The treasure is real (and so is the missing ID). Follow the Code, park where yer told, and don't set anything on fire. Map data © OpenStreetMap contributors · Imagery © Esri.</p>
     </div>
   </footer>
 

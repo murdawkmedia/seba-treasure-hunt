@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Interview — What Happened to Tim's Wallet? · Seba Beach Treasure Hunt</title>
+  <meta name="description" content="Twenty questions with Tim about the day his ID, $5,000 cash, and two diamond rings vanished along the 10-stop Seba Beach tour. Read his answers carefully — they contain the clues." />
+  <meta property="og:title" content="The Interview — What Happened to Tim's Wallet?" />
+  <meta property="og:description" content="20 questions, 10 stops, 11 Hunter's Notes. Tim's own words are the map. Read carefully — the details matter." />
+  <meta property="og:type" content="website" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+  <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Special+Elite&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%B0%3C/text%3E%3C/svg%3E" />
+
+  <!-- Page-specific styles (interview.html only — do not edit css/style.css) -->
+  <style>
+    /* ---------- stat chips (hero) ---------- */
+    .stat-chips { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 22px 0 0; }
+    .stat-chip {
+      font-family: var(--font-mono); font-size: .82rem; letter-spacing: .6px; text-transform: uppercase;
+      color: var(--ink-900); background: var(--gold-400); border: 2px solid var(--ink-900);
+      border-radius: 30px; padding: 8px 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    /* ---------- notes toggle ---------- */
+    .toggle-row { margin: 26px 0 0; }
+    #notesToggle { font-size: 1.1rem; padding: 10px 26px; }
+
+    /* ---------- interview section ---------- */
+    .interview-section { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
+    .interview-list { max-width: 820px; margin: 0 auto; }
+
+    details.qa {
+      background: var(--cream-100); border: 2px solid var(--cream-300); border-radius: 12px;
+      box-shadow: var(--shadow-card); margin: 0 0 16px; overflow: hidden;
+    }
+    details.qa summary {
+      list-style: none; cursor: pointer; display: flex; align-items: center; gap: 14px;
+      padding: 16px 22px;
+    }
+    details.qa summary::-webkit-details-marker { display: none; }
+    details.qa summary::marker { content: ""; }
+    .qa-num {
+      font-family: var(--font-pirate); font-size: 1.25rem; color: var(--gold-300);
+      background: var(--green-900); border: 2px solid var(--gold-500);
+      width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+      flex: 0 0 auto;
+    }
+    .qa-title { font-family: var(--font-pirate); font-size: 1.3rem; color: var(--green-900); flex: 1; letter-spacing: .3px; }
+    .clue-badge {
+      font-family: var(--font-mono); font-size: .68rem; letter-spacing: .5px; text-transform: uppercase;
+      color: var(--ink-900); background: var(--gold-400); border: 2px solid var(--ink-900);
+      border-radius: 30px; padding: 4px 10px; flex: 0 0 auto; white-space: nowrap;
+    }
+    .qa-arrow { font-size: 1.1rem; color: var(--rust-600); flex: 0 0 auto; transition: transform .15s ease; }
+    details.qa[open] .qa-arrow { transform: rotate(90deg); }
+    .qa-body { padding: 0 22px 22px 74px; }
+    .qa-body p { margin: 0 0 12px; font-size: 1.06rem; }
+    .qa-body p:last-of-type { margin-bottom: 0; }
+
+    .hunters-note {
+      display: none; margin-top: 14px;
+      background: var(--green-900); color: var(--cream-100);
+      border-left: 5px solid var(--gold-500); border-radius: 8px;
+      padding: 14px 18px;
+    }
+    .hunters-note .hn-tag {
+      display: inline-block; font-family: var(--font-mono); font-size: .72rem; letter-spacing: .8px;
+      text-transform: uppercase; color: var(--gold-300); margin-bottom: 6px;
+    }
+    .hunters-note p { margin: 0; font-size: .98rem; color: var(--cream-100); }
+    body.notes-on .hunters-note { display: block; }
+
+    /* ---------- evidence section ---------- */
+    .evidence-section { background: linear-gradient(180deg, var(--green-900), var(--green-800)); color: var(--cream-100); }
+    .evidence-section .section-title { color: var(--gold-300); }
+    .evidence-section .section-lead { color: var(--cream-200); }
+    .evidence-card {
+      max-width: 640px; margin: 0 auto; background: var(--cream-100);
+      border: 2px solid var(--gold-500); border-radius: 14px; overflow: hidden;
+      box-shadow: var(--shadow-card);
+    }
+    .evidence-card img { width: 100%; display: block; border-bottom: 3px dashed var(--gold-500); }
+    .evidence-card figcaption { padding: 20px 26px 26px; color: var(--ink-700); font-size: 1.03rem; }
+    .evidence-card figcaption strong { color: var(--rust-600); }
+    .evidence-card figcaption .last-line { display: block; margin-top: 10px; font-family: var(--font-mono); font-size: .92rem; color: var(--green-900); }
+
+    /* ---------- final CTA ---------- */
+    .final-cta { background: linear-gradient(180deg, var(--green-950), var(--green-900)); color: var(--cream-100); text-align: center; }
+    .final-cta .section-title { color: var(--cream-100); }
+    .final-cta .section-lead { color: var(--cream-200); }
+    .final-cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+
+  <!-- ===================== NAV ===================== -->
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="index.html">💰 Seba Treasure Hunt</a>
+      <button class="menu-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
+      <nav id="nav">
+        <a href="index.html#deal">The Deal</a>
+        <a href="index.html#legend">The Story</a>
+        <a href="route.html">The Route 🗺️</a>
+        <a href="interview.html">The Interview 🎙️</a>
+        <a href="index.html#rules">The Rules</a>
+        <a href="index.html#official-rules">Fine Print</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===================== CFCW PARTNER STRIP ===================== -->
+  <a class="partner-strip" href="https://cfcw.com" target="_blank" rel="noopener">
+    <img class="partner-strip__logo" src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
+    <span class="partner-strip__text"><strong>Official Radio Partner</strong> · prize &amp; hunt updates every Friday on 840&nbsp;AM</span>
+  </a>
+
+  <!-- ===================== HEADER / HERO ===================== -->
+  <section class="hero" id="top">
+    <span class="doodad" style="top:14%;left:6%">🎙️</span>
+    <span class="doodad" style="top:22%;right:8%">🧭</span>
+    <span class="doodad" style="bottom:26%;left:12%">🌲</span>
+    <span class="doodad" style="bottom:20%;right:14%">🔍</span>
+    <div class="wrap">
+      <p class="kicker">The full transcript · read it before you dig</p>
+      <h1>🎙️ The Interview — What Happened to Tim's Wallet?</h1>
+      <p class="sub">Tim drove every Seba Beach property in his side-by-side, showing a group of potential entrepreneurs around. Somewhere along the 10-stop route — through the back trails, the cliff edge, the new beach, the forest — his ID, $5,000 in cash, and two <strong>diamond rings</strong> disappeared.</p>
+      <p class="sub"><em>His answers contain the clues. Read carefully. The details matter.</em></p>
+      <div class="stat-chips">
+        <span class="stat-chip">20 Questions</span>
+        <span class="stat-chip">10 Stops Covered</span>
+        <span class="stat-chip">11 Hunter's Clues</span>
+      </div>
+      <div class="toggle-row">
+        <button id="notesToggle" class="btn" type="button" aria-pressed="false">🔍 Show Hunter's Notes</button>
+      </div>
+    </div>
+    <div class="wave" aria-hidden="true">
+      <svg viewBox="0 0 1440 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#f6efdd" d="M0,40 C180,90 360,0 540,30 C720,60 900,90 1080,55 C1260,25 1350,45 1440,50 L1440,90 L0,90 Z"></path>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ===================== THE 20 QUESTIONS ===================== -->
+  <section class="interview-section" id="interview">
+    <div class="wrap">
+      <h2 class="section-title">The 20 Questions</h2>
+      <div class="rope"></div>
+      <p class="section-lead">Tap any question to read Tim's full answer. Flip on Hunter's Notes above to see what each answer might mean for the hunt.</p>
+
+      <div class="interview-list">
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">1</span>
+            <span class="qa-title">SETTING THE SCENE — What was the plan for that day?</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>So I had a few people I wanted to show around — potential entrepreneurs who were interested in what we're building out at Seba Beach. One of them was Bob, who was looking at possibly opening up a co-op office at the school. Financial services, accounting, maybe a lawyer once a week — that sort of thing. I wanted to show them the full picture of what's out there, all ten properties, so they could really see the opportunity.</p>
+            <p>I had Ian Mitchell with me — he's our project manager at the camp, knows everything about the area. And Casey, who runs the SebaHub school. So it was the four of us in the side-by-side. Me driving, showing them around.</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">2</span>
+            <span class="qa-title">THE GROUP — Who was with you, what was the vibe?</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Pretty casual, yeah. It was me, Ian, Casey, and Bob. Ian knows every inch of the place, so he was chiming in with details. Casey was talking about the school and what's happening there. And Bob was just taking it all in, asking questions, thinking about what he might do there.</p>
+            <p>It was one of those good days where you're excited to show people something and they're genuinely interested. We were just driving around, getting out, looking at things. No agenda really — just "here's what we've got, here's what's possible."</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">3</span>
+            <span class="qa-title">WHY YOU HAD THE CASH</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Right, so that's the thing — I needed to pay Randy. Randy just opened up the 9th Street Beach property and did a fantastic job with it. Him and his crew. I had the cash to pay them out. I actually took a photo of it — I texted Randy and said "Randy, I have the cash, where do you want me to leave it?" So there's a photo of the cash on my phone. That's how I know roughly what was there.</p>
+            <p>So that's why I had it. It wasn't just random cash I was carrying around — it was earmarked for Randy's crew. And then somewhere along the way it just... disappeared. Along with everything else.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Tim has a photo of the cash on his phone. The cash was meant to pay Randy's crew at the 9th Street Beach property — Stop 2 on the route. This was early in the day, meaning Tim had the wallet confirmed at Stop 2.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">4</span>
+            <span class="qa-title">THE LOST ITEMS</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>So there's three things. The ID — that's wrapped in an elastic band. I don't carry a big wallet or anything like that. Just my ID in an elastic band, sort of thing. That's the most important thing to me. It's my identity. I'm worried about it ending up on the dark web or someone using it for identity theft. That's what keeps me up at night.</p>
+            <p>Then there's the cash — about $5,000, maybe a little more. Hundred dollar bills. I'm not worried about the money. Honestly, if somebody finds it and keeps it, that's fine by me.</p>
+            <p>And then there's two diamond rings in a teeny little baggie. I picked them up from the pawn shop — they're not brand new but each one has a couple of diamonds. I was planning to give them as gifts down the road. Also not worried about those.</p>
+            <p>I assume they were all together when I lost them, but I'm not a hundred percent sure. They could have come apart. But I think they were all in the same spot.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>The ID is wrapped in an elastic band — NOT in a wallet. Look for a small bundle. The rings are in a small baggie. These items may be together or separate.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">5</span>
+            <span class="qa-title">STOP 1 — THE CREEK PROPERTY</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>We started at the Creek Property — it's right across from the pavilion parking lot. Double lot, old white house on it, nobody living there right now. We walked across the deck and I showed them down to the creek. Beautiful property. Creek running right through it. Anyone can actually walk through it right now — it's not locked up or anything.</p>
+            <p>That was the first stop. Got out, walked around a bit, showed them the creek and the layout. It's a great piece of land.</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">6</span>
+            <span class="qa-title">STOP 2 — 9TH STREET BEACH (RANDY'S)</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Next was the 9th Street Beach — that's Randy's property. He just opened it up and honestly he did a great job. That's a great spot. Randy really cleaned it up and made it accessible. We spent a bit of time there.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>This is the last confirmed location where Tim had the cash. He photographed it here. If the items were lost early in the day, the 9th Street Beach area is a strong candidate.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">7</span>
+            <span class="qa-title">STOP 3 — THE BACK TRAILS</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Yeah, so after the beach we turned right before the staff area — there's trail access there. I squeezed the side-by-side in. I know you're not really supposed to take it through there, but I wanted to give them the full tour, so we went for it. About 2 or 3 kilometres of twisting trails through the trees.</p>
+            <p>It's beautiful back there. You're weaving through the forest, and you come out in different spots. We were bouncing around a fair bit on those trails — it's not a smooth ride, sort of thing. Definitely the kind of terrain where things could shift around in your pockets.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Rough, twisting trails for 2-3 km. The side-by-side was bouncing. This is a prime location for items to fall out of pockets — and the trail covers a lot of ground through the trees.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">8</span>
+            <span class="qa-title">STOP 4 — THE LOG CABIN</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>We came out at the log cabin. There are weddings that go on there — it's a beautiful spot. We couldn't get too close because there was activity going on, so we went around the outside on the trails. Just showed them the exterior, the setting. It's a stunning building in the trees.</p>
+            <p>We didn't spend a ton of time there — just drove around the perimeter and moved on.</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">9</span>
+            <span class="qa-title">STOP 5 — THE SECRET ROAD &amp; THE GATE</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>So we came back out through what we call the secret road — up by the gate. The gate was locked, so we had to go through the woods by one of the yards right off the highway. It's a bit of a squeeze but we know the way. Ian knows all these little routes.</p>
+            <p>That's one of the things about this place — there are paths and access points that most people don't know about. Part of what makes it interesting for the hunt, I suppose.</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">10</span>
+            <span class="qa-title">STOP 6 — THE VISTA LOUNGE AREA</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Yeah, that was a big one. The Vista Lounge is kitty corner to the old Polo courts. We showed them a couple of yards, the Instacabins lined up, new RVs coming on for daily rentals. There's a geodome already there and another one going up. An outdoor wood sauna. A wedding stage. And then the view — the view over the lake from the edge of the trees is just stunning.</p>
+            <p>We drove about 80 feet down a little path to the cliff edge overlooking the lake. Turned around there. That's the most northerly cut-in view we have. I got out there to show them the view — it's one of those spots where you just stop and go "okay, this is special."</p>
+            <p>We spent a fair bit of time in that area. Lots to see.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Tim got out of the side-by-side at the cliff edge overlooking the lake. This is a remote, narrow path — 80 feet down from the main trail. If something fell here, it would be easy to miss on a backtrack.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">11</span>
+            <span class="qa-title">STOP 7 — FARMERS MARKET PARKING LOT</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>We drove through the parking lot but we didn't stop — it was a Friday and the market is on Saturdays. So it was empty. Just showed them where it is, explained what happens there on Saturdays. Didn't get out of the side-by-side for that one.</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">12</span>
+            <span class="qa-title">STOP 8 — THE PUBLIC PAVILION BEACH</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>That was a great stop. Brand new beach — I actually did the ploughing myself. We've had it ploughed and tilled. When you walk on it, you drop about a foot into the sand. It's pretty amazing. There's a little bit of rock in there but eventually we'll bring in new sand.</p>
+            <p>We got out of the side-by-side there and walked through it. None of us got in the water — we all had shoes on. But we walked around the beach area, showed them the layout, talked about what it could become.</p>
+            <p>That's one of the spots I really wanted Bob to see — the potential there is incredible.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Tim got out of the side-by-side here and walked on soft, deep sand — you sink about a foot with each step. Items can fall from pockets on uneven, sinking ground without you noticing.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">13</span>
+            <span class="qa-title">STOP 9 — MUSEUM &amp; FARM AREA</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>We went over to the museum area — showed them the farm, the senior centre, the museum. Got out in the parking lot but we didn't go into the senior's pavilion or the museum itself. Just showed them the layout from outside, explained what's there and what the community uses it for.</p>
+            <p>It was more of a drive-by for that one. Parked briefly, looked around, and then headed back.</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">14</span>
+            <span class="qa-title">THE DISCOVERY</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Yeah, we came back to the school — that was Stop 10, the end of the loop. And that's when I went to reach for my stuff and it was just... gone. Reached into my pocket, nothing there. Checked all my pockets. Nothing.</p>
+            <p>I went back with my phone — at least I had that. But the ID, the cash, the rings — all gone. I backtracked, went back through as many of the spots as I could, and I couldn't find anything. Not a trace.</p>
+            <p>It's one of those things where you're retracing your steps in your head and you just can't pinpoint the moment. Could have been the trails. Could have been the cliff edge. Could have been the beach. I genuinely don't know.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Tim confirmed he had his phone but lost everything else. He backtracked and found nothing. The spots he couldn't get back to properly — the cliff edge path, the back trails — are the ones worth prioritizing.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">15</span>
+            <span class="qa-title">THE LAST CLEAR MEMORY</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>The clearest memory I have is at Randy's beach — the 9th Street property. That's where I had the cash out to take the photo. I know I had it there. After that, I can't say for certain.</p>
+            <p>The trails were rough — we were bouncing around a lot. The cliff edge at the Vista Lounge, I was getting in and out of the side-by-side. The beach, I was walking on soft sand. Any of those could have been the moment. But Randy's beach is the last time I know for sure I had it.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Randy's 9th Street Beach is the last confirmed sighting. Everything after that — the back trails, the log cabin, the Vista Lounge cliff edge, the pavilion beach — is the search zone.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">16</span>
+            <span class="qa-title">THE TRAILS</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Oh, absolutely. Those trails are not smooth. You're going through the trees, there are roots, it's uneven. The side-by-side is open — there's no door, nothing to stop something from bouncing out. And we were in there for a couple of kilometres.</p>
+            <p>I know I'm not supposed to take it through there, so I wasn't exactly going slow and careful. We were having fun with it. In hindsight, yeah — that's definitely a place where something could have gone without me knowing.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Open vehicle, rough terrain, 2-3 km of twisting trails. High probability zone. The trail starts just before the staff area — turn right at that junction.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">17</span>
+            <span class="qa-title">THE CLIFF EDGE</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>It's a narrow little path — you go about 80 feet down from the main trail and you're right at the edge of the cliff overlooking the lake. Stunning view. I got out there to show them — you can't really appreciate it from the vehicle.</p>
+            <p>I was standing at the edge, pointing things out, gesturing around. It's one of those moments where you're excited to show people something beautiful. I wasn't thinking about my pockets, that's for sure. And then you turn around and drive back out the same way.</p>
+            <p>If something fell there, it could be sitting right on that path or just over the edge. It's a pretty remote spot.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>Tim was standing at a cliff edge, gesturing with both hands, excited and distracted. Remote location, narrow path, 80 feet from the main trail. This is one of the highest-probability locations in the entire hunt.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">18</span>
+            <span class="qa-title">THE RINGS</span>
+            <span class="clue-badge">🔍 Clue</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>I think they were all together, but I'm honestly not a hundred percent sure. The rings were in a little baggie — teeny little thing. I picked them up from the pawn shop. They're not brand new but they've each got a couple of diamonds. I was planning to give them as gifts.</p>
+            <p>I assume the baggie was with the ID and the cash, but they could have come apart. So there might be two things to find — the ID bundle and the ring baggie. Or they might all be in the same spot. I just don't know.</p>
+            <p>Either way, keep the rings. I don't need them back. The ID is what matters.</p>
+            <div class="hunters-note">
+              <span class="hn-tag">🔍 Hunter's Note</span>
+              <p>The rings are in a small baggie — separate from the elastic-band ID bundle. There may be two distinct items to find, potentially in different locations.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">19</span>
+            <span class="qa-title">THE GOLF BALLS</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Ha — yeah, there are golf balls hidden around the properties too. If you find one of those, you win trips and tickets to the Music Festival. So while you're out there looking for my ID, keep your eyes open for golf balls as well.</p>
+            <p>We wanted to make the whole thing a bit of an adventure. Come out, explore the properties, see what Seba Beach is all about. Maybe you find my ID, maybe you find a golf ball, maybe you just have a great afternoon out here. That's kind of the spirit of it.</p>
+          </div>
+        </details>
+
+        <details class="qa">
+          <summary>
+            <span class="qa-num">20</span>
+            <span class="qa-title">THE MESSAGE</span>
+            <span class="qa-arrow">▶</span>
+          </summary>
+          <div class="qa-body">
+            <p>Literally, if anybody finds it — I take no offence to somebody keeping the money and the rings. In fact, I want you to keep them. Keep the cash. Keep the diamond rings. They're yours. That's your treasure for doing this.</p>
+            <p>The ID is what's most important to me. It's my identity. I don't want it ending up somewhere it shouldn't. Just drop it at SebaHub — 162 Second Avenue, Seba Beach — or mail it in. No questions asked. No strings attached.</p>
+            <p>And honestly, even if you come out and don't find anything — come see what we're building out here. It's a special place. The beach, the trails, the views over the lake. Worth the drive just for that, sort of thing.</p>
+          </div>
+        </details>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== THE LAST PHOTO (EVIDENCE) ===================== -->
+  <section class="evidence-section" id="evidence">
+    <div class="wrap">
+      <h2 class="section-title">The Last Photo</h2>
+      <div class="rope"></div>
+      <p class="section-lead">Taken just before the tour. This is the last known state of everything that's now missing.</p>
+      <figure class="evidence-card">
+        <img src="assets/photos/evidence-cash.jpg" alt="Tim's pocket contents — the cash stack, elastic-band ID bundle, and keychain — photographed just before the tour" />
+        <figcaption>
+          <p>Canadian bills — <strong>$100s, $20s, and $5s</strong> — in a thick stack held together with an elastic band. The <strong>ID is bundled right into that same elastic</strong>. A yellow keychain sits alongside it, plus an Alberta Open Farm Days flyer.</p>
+          <span class="last-line">Everything you see here (minus the keys and phone) is now somewhere on the trail.</span>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ===================== FINAL CTA ===================== -->
+  <section class="final-cta">
+    <div class="wrap">
+      <h2 class="section-title">Now Go Find It</h2>
+      <p class="section-lead">Twenty questions read. Details noted. Time to walk the route.</p>
+      <div class="final-cta-row">
+        <a class="btn" href="route.html">🗺️ See All 10 Stops</a>
+        <a class="btn" href="index.html#deal">💰 The Deal</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer" id="footer">
+    <div class="wrap">
+      <img class="badge-mini" src="assets/seba-badge.png" alt="Always Sunny in Seba" />
+      <p>Made with 🏴‍☠️ &amp; ☀️ in Seba Beach, Alberta — on the north shore of Lake Wabamun.</p>
+      <a class="footer-cfcw" href="https://cfcw.com" target="_blank" rel="noopener">
+        <img src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
+        <span>Official Radio Partner — 840 CFCW, serving Central Alberta since 1954</span>
+      </a>
+      <div class="links">
+        <a href="https://sebahub.com" target="_blank" rel="noopener">SebaHub</a>
+        <a href="https://sebastays.com" target="_blank" rel="noopener">SebaStays</a>
+        <a href="https://villagevows.com" target="_blank" rel="noopener">Village Vows</a>
+        <a href="https://www.google.com/maps/search/?api=1&amp;query=Kokanee+Springs+RV+Park+Seba+Beach+Alberta" target="_blank" rel="noopener">Kokanee Springs RV</a>
+        <a href="index.html#sponsor">Become a Sponsor</a>
+        <a href="index.html#official-rules">Official Rules</a>
+      </div>
+      <p class="fine">A SebaHub Production. The treasure is real (and so is the wallet). Follow the Code, park where yer told, and don't set anything on fire. Map data © OpenStreetMap contributors · Imagery © Esri.</p>
+    </div>
+  </footer>
+
+  <!-- Inline scripts: mobile nav toggle + Hunter's Notes toggle (no site.js on this page) -->
+  <script>
+    (function () {
+      var toggle = document.querySelector(".menu-toggle");
+      var nav = document.getElementById("nav");
+      if (toggle && nav) {
+        toggle.addEventListener("click", function () {
+          var open = nav.classList.toggle("open");
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+        nav.addEventListener("click", function (e) {
+          if (e.target.tagName === "A") {
+            nav.classList.remove("open");
+            toggle.setAttribute("aria-expanded", "false");
+          }
+        });
+      }
+
+      var notesBtn = document.getElementById("notesToggle");
+      if (notesBtn) {
+        notesBtn.addEventListener("click", function () {
+          var on = document.body.classList.toggle("notes-on");
+          notesBtn.textContent = on ? "🔍 Hunter's Notes ON" : "🔍 Show Hunter's Notes";
+          notesBtn.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

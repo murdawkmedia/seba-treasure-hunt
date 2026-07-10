@@ -331,6 +331,35 @@ section { padding: 70px 0; position: relative; }
 .prize-cfcw { max-width: 760px; margin: 14px auto 0; text-align: center; font-family: var(--font-mono); font-size: .95rem; color: var(--cream-200); }
 .prize-cfcw strong { color: var(--gold-300); }
 
+/* ---------- evidence (last known photo) ---------- */
+.evidence { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
+.evidence-fig { max-width: 680px; margin: 0 auto; }
+.evidence-fig img { width: 100%; border: 3px solid var(--ink-900); border-radius: 10px; box-shadow: var(--shadow-card); transform: rotate(-0.6deg); }
+.evidence-fig figcaption { margin-top: 16px; background: var(--green-900); color: var(--cream-200); border-left: 4px solid var(--gold-500); border-radius: 8px; padding: 14px 18px; font-size: 1rem; }
+.evidence-fig figcaption strong { color: var(--gold-300); }
+.evidence-fig .redact-note { display: block; margin-top: 8px; font-family: var(--font-mono); font-size: .8rem; opacity: .85; }
+
+/* ---------- route teaser ---------- */
+.route-teaser { background: linear-gradient(180deg, var(--green-900), var(--green-800)); color: var(--cream-100); }
+.route-teaser .section-title { color: var(--gold-300); }
+.route-teaser .section-lead { color: var(--cream-200); }
+.stop-list { max-width: 640px; margin: 0 auto 30px; list-style: none; padding: 0; counter-reset: none; }
+.stop-list li { display: flex; align-items: center; gap: 14px; padding: 10px 16px; font-size: 1.1rem; border-bottom: 1px dashed rgba(234,182,63,0.25); }
+.stop-list li:last-child { border-bottom: 0; }
+.stop-list li span { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; font-family: var(--font-pirate); font-size: 1.2rem; color: var(--gold-300); background: rgba(0,0,0,0.3); border: 2px solid var(--gold-500); border-radius: 50%; }
+.stop-list li.hot { background: rgba(224,160,30,0.12); border-radius: 8px; }
+.stop-list li.hot span { background: var(--rust-600); border-color: var(--gold-300); color: var(--cream-100); }
+
+/* ---------- found / contact ---------- */
+.found { background: linear-gradient(180deg, var(--cream-200), var(--cream-100)); }
+.contact-cards { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; margin: 0 auto 22px; }
+.contact-card { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; background: var(--green-900); border: 3px solid var(--gold-500); border-radius: 16px; padding: 22px 40px; box-shadow: var(--shadow-card); transition: transform .1s ease; }
+.contact-card:hover { transform: translateY(-4px); }
+.contact-card .who { font-family: var(--font-pirate); font-size: 1.5rem; color: var(--gold-300); }
+.contact-card .num { font-family: var(--font-mono); font-size: 1.25rem; color: var(--cream-100); letter-spacing: 1px; }
+.contact-card .note { font-size: .9rem; color: var(--cream-200); }
+.dropoff { max-width: 640px; margin: 0 auto; text-align: center; background: var(--cream-100); border: 2px dashed var(--gold-500); border-radius: 10px; padding: 14px 20px; font-size: 1.05rem; }
+
 /* ---------- the long game (vision) ---------- */
 .longgame { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
 .years { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px,1fr)); gap: 22px; max-width: 1000px; margin: 0 auto 30px; }

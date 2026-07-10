@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Route — 10 Stops, 58 GPS-Tagged Photos · Seba Beach Treasure Hunt</title>
+  <meta name="description" content="The full 10-stop Seba Beach side-by-side tour, retraced stop by stop: 58 GPS-tagged photos, Tim's own account of each spot, and a live trail map showing exactly where his ID, $5,000 cash, and two diamond rings went missing." />
+  <meta property="og:title" content="The Route — Tim's Tour, Retraced" />
+  <meta property="og:description" content="10 stops. 58 GPS-tagged photos. Every one links to a Google Maps pin. Study the trail, find the hot zones, and go stand exactly where the side-by-side stood." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/photos/evidence-cash.jpg" />
+
+  <!-- Leaflet (open-source map, no API key needed) — vendored locally, no CDN dependency -->
+  <link rel="stylesheet" href="js/vendor/leaflet/leaflet.css" />
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+  <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Special+Elite&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%B0%3C/text%3E%3C/svg%3E" />
+
+  <!-- Page-specific styles (route.html only — do not edit css/style.css) -->
+  <style>
+    /* ---------- stat chips (reused pattern from interview.html) ---------- */
+    .stat-chips { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 22px 0 0; }
+    .stat-chip {
+      font-family: var(--font-mono); font-size: .82rem; letter-spacing: .6px; text-transform: uppercase;
+      color: var(--ink-900); background: var(--gold-400); border: 2px solid var(--ink-900);
+      border-radius: 30px; padding: 8px 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    /* ---------- header / hero (dark green, mapsection-style) ---------- */
+    .route-hero {
+      position: relative; overflow: hidden; text-align: center;
+      color: var(--cream-100); padding: 66px 0 56px;
+      background: linear-gradient(180deg, var(--green-900), var(--green-950));
+    }
+    .route-hero h1 {
+      font-size: clamp(2.2rem, 5.6vw, 3.6rem); color: var(--gold-300); margin: 0 0 10px;
+      text-shadow: 0 3px 0 var(--ink-900), 0 6px 18px rgba(0,0,0,0.5);
+    }
+    .route-hero .sub { max-width: 760px; margin: 0 auto; color: var(--cream-200); font-size: 1.2rem; }
+
+    /* ---------- what to look for ---------- */
+    .lookfor { background: linear-gradient(180deg, var(--cream-200), var(--cream-100)); }
+    .lookfor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 22px; max-width: 1000px; margin: 0 auto 26px; }
+    .lookfor-card {
+      background: var(--cream-100); border: 2px solid var(--cream-300); border-top: 6px solid var(--gold-500);
+      border-radius: 14px; padding: 26px 22px; text-align: center; box-shadow: var(--shadow-card);
+    }
+    .lookfor-card .lf-icon { font-size: 2.6rem; display: block; margin-bottom: 8px; }
+    .lookfor-card h3 { color: var(--green-900); font-size: 1.4rem; margin: 0 0 8px; }
+    .lookfor-card p { margin: 0; color: var(--ink-700); font-size: 1rem; }
+    .lookfor-note {
+      max-width: 780px; margin: 0 auto; text-align: center; background: rgba(224,160,30,0.14);
+      border-left: 4px solid var(--gold-500); border-radius: 8px; padding: 14px 20px; font-size: 1.02rem; color: var(--ink-700);
+    }
+    .lookfor-note a { color: var(--rust-600); font-weight: bold; }
+
+    /* ---------- stops intro ---------- */
+    .stops-intro { background: var(--cream-100); padding-bottom: 6px; }
+
+    /* ---------- individual stop sections ---------- */
+    .stop { background: var(--cream-100); padding: 54px 0; }
+    .stop-head { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; flex-wrap: wrap; }
+    .stop-num {
+      font-family: var(--font-pirate); font-size: 2.6rem; line-height: 1; color: var(--gold-300);
+      background: var(--green-900); border: 3px solid var(--gold-500); width: 74px; height: 74px;
+      border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; box-shadow: var(--shadow-card);
+    }
+    .stop-head-text { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .stop-name { font-size: clamp(1.7rem, 4vw, 2.5rem); color: var(--green-900); margin: 0; }
+    .hot-badge {
+      display: inline-block; font-family: var(--font-mono); font-size: .76rem; letter-spacing: .6px;
+      text-transform: uppercase; color: var(--cream-100); background: var(--rust-600);
+      border: 2px solid var(--ink-900); border-radius: 30px; padding: 6px 14px; white-space: nowrap;
+      box-shadow: 0 3px 8px rgba(0,0,0,.3);
+    }
+    .stop-quote {
+      font-style: italic; font-size: 1.26rem; color: var(--ink-900); max-width: 820px; margin: 18px 0;
+      padding: 18px 26px; background: var(--cream-200); border-left: 5px solid var(--gold-500);
+      border-radius: 8px; box-shadow: var(--shadow-card);
+    }
+    .stop-shows { max-width: 820px; color: var(--ink-700); font-size: 1.04rem; margin: 0 0 14px; }
+    .stop-shows strong { color: var(--green-900); }
+    .stop-meta {
+      font-family: var(--font-mono); font-size: .92rem; color: var(--ink-700); margin: 0 0 26px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .stop-meta a { color: var(--rust-600); font-weight: bold; }
+    .stop-meta .coords { background: var(--cream-200); border: 1px dashed var(--gold-500); border-radius: 6px; padding: 3px 10px; }
+    .stop-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    @media (max-width: 900px) { .stop-gallery { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .stop-gallery { grid-template-columns: 1fr; } }
+    .photo { margin: 0; border-radius: 12px; overflow: hidden; border: 2px solid var(--gold-500); box-shadow: var(--shadow-card); background: var(--ink-900); }
+    .photo a { display: block; }
+    .photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+    .photo figcaption {
+      font-family: var(--font-mono); font-size: .78rem; color: var(--cream-100); background: var(--green-950);
+      padding: 10px 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; line-height: 1.4;
+    }
+    .photo-map { flex: 0 0 auto; color: var(--gold-300); text-decoration: none; white-space: nowrap; font-weight: bold; }
+    .photo-map:hover { color: var(--gold-400); }
+    .stop-divider { margin: 0 auto; }
+
+    /* ---------- leaflet stop pins ---------- */
+    .stop-pin {
+      width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-pirate); font-size: 1.05rem; color: var(--gold-300); background: var(--green-900);
+      border: 3px solid var(--gold-500); box-shadow: 0 3px 10px rgba(0,0,0,.5); cursor: pointer;
+    }
+    .stop-pin--hot { background: var(--rust-600); border-color: var(--gold-300); color: var(--cream-100); }
+
+    /* ---------- footer note ---------- */
+    .route-footnote { background: var(--green-950); color: var(--cream-200); text-align: center; padding: 36px 0; font-family: var(--font-mono); font-size: .95rem; }
+    .route-footnote strong { color: var(--gold-300); }
+
+    /* ---------- contact action buttons ---------- */
+    .contact-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+  </style>
+</head>
+<body>
+
+  <!-- ===================== NAV ===================== -->
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="index.html">💰 Seba Treasure Hunt</a>
+      <button class="menu-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
+      <nav id="nav">
+        <a href="index.html#deal">The Deal</a>
+        <a href="index.html#legend">The Story</a>
+        <a href="route.html">The Route 🗺️</a>
+        <a href="interview.html">The Interview 🎙️</a>
+        <a href="index.html#rules">The Rules</a>
+        <a href="index.html#official-rules">Fine Print</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===================== CFCW PARTNER STRIP ===================== -->
+  <a class="partner-strip" href="https://cfcw.com" target="_blank" rel="noopener">
+    <img class="partner-strip__logo" src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
+    <span class="partner-strip__text"><strong>Official Radio Partner</strong> · prize &amp; hunt updates every Friday on 840&nbsp;AM</span>
+  </a>
+
+  <!-- ===================== HEADER / HERO ===================== -->
+  <section class="route-hero" id="top">
+    <span class="doodad" style="top:14%;left:6%">🧭</span>
+    <span class="doodad" style="top:22%;right:8%">📸</span>
+    <span class="doodad" style="bottom:22%;left:12%">🌲</span>
+    <span class="doodad" style="bottom:18%;right:14%">🗺️</span>
+    <div class="wrap">
+      <p class="kicker">Every stop. Every photo. Every pin.</p>
+      <h1>🗺️ The Route: Tim's Tour, Retraced</h1>
+      <p class="sub">Every photo from the tour, organized by stop — every one GPS-tagged with a Google Maps link, so ye know exactly where the side-by-side went. Study the trail. The hot zones are marked.</p>
+      <div class="stat-chips">
+        <span class="stat-chip">10 Stops</span>
+        <span class="stat-chip">58 Photos</span>
+        <span class="stat-chip">All GPS-Tagged</span>
+        <span class="stat-chip">1 Missing Wallet</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== THE TRAIL MAP ===================== -->
+  <section class="mapsection" id="trail-map">
+    <div class="wrap">
+      <h2 class="section-title">The Trail Map</h2>
+      <p class="section-lead">All ten stops, numbered in tour order, connected by the route the side-by-side actually drove. Tap a pin to jump to its photos or open it directly in Google Maps.</p>
+    </div>
+    <div class="map-frame">
+      <div id="map"></div>
+    </div>
+    <p class="map-note">🔥 <strong>Hot zone</strong> = last-confirmed-sighting &amp; highest-probability stops. Prioritize the red pins.</p>
+  </section>
+
+  <!-- ===================== WHAT TO LOOK FOR ===================== -->
+  <section class="lookfor" id="lookfor">
+    <div class="wrap">
+      <h2 class="section-title">What to Look For</h2>
+      <p class="section-lead">Three things went missing, and they might not all be together. Here's exactly what ye're hunting for.</p>
+      <div class="lookfor-grid">
+        <div class="lookfor-card">
+          <span class="lf-icon">🪪</span>
+          <h3>Tim's ID</h3>
+          <p>Wrapped in an elastic band — a wee bundle, <strong>NOT</strong> a fat wallet. This is the only thing Tim actually wants back.</p>
+        </div>
+        <div class="lookfor-card">
+          <span class="lf-icon">💵</span>
+          <h3>~$5,000 Cash</h3>
+          <p>Mostly hundred-dollar bills, with some 20s and 5s riding along. Keep every dollar ye find.</p>
+        </div>
+        <div class="lookfor-card">
+          <span class="lf-icon">💍💍</span>
+          <h3>Two Diamond Rings</h3>
+          <p>Tucked in a teeny baggie. They may have separated from the bundle — possibly <strong>TWO</strong> things to find, in two different spots.</p>
+        </div>
+      </div>
+      <p class="lookfor-note">📌 Also in the same pocket: a <strong>yellow keychain</strong> and an <strong>Alberta Open Farm Days flyer</strong> — if ye spot either, the rest is probably close by. <a href="index.html#evidence">See the last known photo →</a></p>
+    </div>
+  </section>
+
+  <!-- ===================== THE 10 STOPS ===================== -->
+  <section class="stops-intro" id="stops">
+    <div class="wrap">
+      <h2 class="section-title">The 10 Stops</h2>
+      <p class="section-lead">Every photo below is GPS-tagged. Tap any image to open it full-size, or tap its 📍 Map link to stand in that exact spot.</p>
+    </div>
+  </section>
+
+  <section class="stop" id="stop-1">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">1</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">Creek Property — The Starting Point</h2>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“We started at the Creek Property — got out, walked across the deck and down to the creek. Anyone can walk through it right now.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> A double-lot creek property: an old white single-story house with a covered deck, a firewood-stacked canvas shed, and a sloped grassy yard running down toward the brushy treeline where the creek reportedly runs. A mown double-track trail leads out through a tall-grass field, with the pavilion beach and docks just across the road.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.556236,-114.737043" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.556236, -114.737043</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-01/IMG_5034.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-01/IMG_5034.jpg" alt="White single-story house with a covered deck and stairs, a canvas-sided shed stacked with firewood to the left, and a dirt-and-grass path leading through the yard." loading="lazy" /></a>
+          <figcaption>The creek property — old white house, deck, and shed where the tour kicked off. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5555833,-114.7361" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-01/IMG_5030.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-01/IMG_5030.jpg" alt="View through a side-by-side&#x27;s windshield approaching the property, with a white pipe railing visible in the tree line ahead." loading="lazy" /></a>
+          <figcaption>Rolling in on the side-by-side — first glimpse of the railing down toward the creek. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5553889,-114.7361611" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-01/IMG_5031.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-01/IMG_5031.jpg" alt="Sloped grassy yard leading up to the white house&#x27;s deck, framed by trees, with a worn dirt track visible at the lower right." loading="lazy" /></a>
+          <figcaption>Looking up the yard toward the deck — that worn track at the bottom is worth a closer look. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5552556,-114.736075" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-01/IMG_5039.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-01/IMG_5039.jpg" alt="Grassy double-track trail cutting through a tall-grass field, flanked by aspen trees, leading toward a distant treeline." loading="lazy" /></a>
+          <figcaption>The trail leading out of the property, mown right into the long grass. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5553194,-114.7351611" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-01/IMG_5125.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-01/IMG_5125.jpg" alt="Wide grassy field with a faint vehicle track curving toward a stand of spruce trees in the distance." loading="lazy" /></a>
+          <figcaption>Open ground past the yard — a lot of grass between here and the treeline. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5612556,-114.745925" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-01/IMG_5038.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-01/IMG_5038.jpg" alt="Blue and red playground climbing structure on sand, with a side-by-side parked near the beach, docks, and boats on the lake behind it." loading="lazy" /></a>
+          <figcaption>Across the road at the pavilion beach — docks and playground within sight of the property. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5555167,-114.7351083" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-2">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">2</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">9th Street Beach (Randy's)</h2>
+          <span class="hot-badge">🔥 HIGH PRIORITY</span>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Randy just opened it up and did a fantastic job. I had the cash out right here — photographed it to text Randy.” The last confirmed sighting of the loot.</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> Randy's 9th Street Beach — the last confirmed spot the cash was seen before it vanished. A sandy, tire-churned shoreline and floating dock ramps give way to a rough trail into thick poplar and spruce, where old outbuildings hide among the trees; the final frame is the very photo Tim texted Randy, cash in hand, right before it slipped away.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.552278,-114.735404" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.552278, -114.735404</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5040.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5040.jpg" alt="Wide view of the sandy beach at Randy&#x27;s 9th Street Beach property, with a UTV parked near a bench, dock ramps leading into the lake, and a timber retaining wall in the foreground." loading="lazy" /></a>
+          <figcaption>Randy's beach — the last confirmed spot the cash was seen before it vanished. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5553639,-114.7351222" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5047.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5047.jpg" alt="View along the beach toward the dock ramps, with a UTV parked on the sand and a boat anchored near the shoreline." loading="lazy" /></a>
+          <figcaption>Further down the beach, dock ramps reaching out toward open water. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5514028,-114.7342139" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5048.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5048.jpg" alt="Close view of muddy, disturbed sand near the dock ramps with visible tire tracks." loading="lazy" /></a>
+          <figcaption>Tire-churned mud by the dock ramps — exactly the kind of ground that could swallow a dropped bill. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5514028,-114.7342139" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5064.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5064.jpg" alt="View through overhanging tree branches down a grassy path toward the beach, where a truck is parked near the dock." loading="lazy" /></a>
+          <figcaption>The willow-framed approach to the water, dock crew working in the distance. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5513694,-114.7347111" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5043.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5043.jpg" alt="Gravel access road entrance to the beach property with an information sign posted and forest on both sides." loading="lazy" /></a>
+          <figcaption>The turnoff into Randy's place — sign posted, trees closing in. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5517056,-114.7350833" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5044.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5044.jpg" alt="A dirt trail continuing into the forest away from the beach, with the rear of a UTV visible in the foreground." loading="lazy" /></a>
+          <figcaption>Where the trail keeps going, past the beach and into the trees. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5517167,-114.7349861" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5052.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5052.jpg" alt="An open garage-style outbuilding in the trees with muddy tire tracks leading up to it." loading="lazy" /></a>
+          <figcaption>An old garage tucked in the trees behind the beach, tracks worn right up to the door. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5513417,-114.7351833" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5055.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5055.jpg" alt="A small red wooden shed with a boarded-up window, standing alone in tall grass." loading="lazy" /></a>
+          <figcaption>A weathered red shed standing watch in the underbrush. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5513083,-114.735275" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5061.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5061.jpg" alt="A tin-roofed cabin with a covered porch and a &#x27;NO TRESPASSING&#x27; sign posted on the door." loading="lazy" /></a>
+          <figcaption>One of the outbuildings on the property — mind the sign, treasure hunters. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5515778,-114.7355333" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-02/IMG_5069.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-02/IMG_5069.jpg" alt="A hand in a canvas work sleeve holding a small wrapped bundle up toward the camera, with the front of a UTV visible in the background." loading="lazy" /></a>
+          <figcaption>The photo Tim texted Randy — cash in hand, right before it disappeared. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.551425,-114.734" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-3">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">3</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">The Back Trails (2–3 km)</h2>
+          <span class="hot-badge">🔥 HIGH PRIORITY</span>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Turned right before the staff area and squeezed the side-by-side in — two, three kilometres of twisting trails, bouncing around a fair bit.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> A rough, twisting side-by-side trail runs 2-3 km through aspen and birch — from an open trailhead into a tight tree-lined corridor, then down past power poles to a campground of RVs and tents before hitting a posted 'Private Road / Employees Only' boundary. Loose gravel, ruts, grassy shoulders, and a spur ducking off into the woods the whole way: prime terrain for something to bounce loose.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.560735,-114.7392" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.560735, -114.739200</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5131.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5131.jpg" alt="Dirt side-by-side trail running from an open grassy field into a dense treeline under a partly cloudy sky." loading="lazy" /></a>
+          <figcaption>Where the back trail leaves the open field and dives into the trees. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5607333,-114.7427139" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5132.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5132.jpg" alt="Narrow dirt trail winding through a dense stand of aspen and spruce with dappled sunlight on the path." loading="lazy" /></a>
+          <figcaption>Tight, twisting corridor through the trees — exactly the kind of bounce that could shake a wallet loose. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5606778,-114.7422639" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5133.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5133.jpg" alt="Grass-lined dirt trail stretching toward a treeline with a light-colored vehicle visible far in the distance." loading="lazy" /></a>
+          <figcaption>Long straightaway through the grass, with another rig way up ahead on the trail. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5622056,-114.7422417" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5137.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5137.jpg" alt="Dirt trail descending through birch and aspen trees toward a row of parked RVs and wooden power poles visible ahead." loading="lazy" /></a>
+          <figcaption>Trail dips down through the birch stand toward the campground below — rough and rutted. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5629,-114.7421944" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5140.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5140.jpg" alt="Wide dirt driveway through a grassy campground with rows of parked RVs and spruce trees under open sky." loading="lazy" /></a>
+          <figcaption>Trail opens onto the campground road, RVs lined up on both sides. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5640806,-114.7426389" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5143.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5143.jpg" alt="Campsite along the trail with a star-shaped canopy tent, a travel trailer, a parked SUV, and a small dog on the grass." loading="lazy" /></a>
+          <figcaption>Rolling past a campsite — tent, trailer, and a small dog keeping watch. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5646361,-114.7423639" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5147.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5147.jpg" alt="Yellow sign reading PRIVATE ROAD, NO ENTRY, NO EXIT, EMPLOYEES ONLY beside a dirt trail curving into the trees, with a tree stump at the trail edge." loading="lazy" /></a>
+          <figcaption>The trail hits its limit — private road, employees only, no further. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5656778,-114.7415306" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-03/IMG_5148.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-03/IMG_5148.jpg" alt="Narrow grassy footpath branching into a birch and aspen forest, with a rusted metal ring and small trail sign at the entrance." loading="lazy" /></a>
+          <figcaption>A side spur ducks off into the woods past an old metal ring — worth a look off the main track. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5657083,-114.7414389" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-4">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">4</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">The Log Cabin</h2>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“We came out at the log cabin — weddings go on there, so we circled the outside on the trails.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> The log-sided Seba Beach Seniors Centre marks Stop 4, with Derby's Lakeview General Store as a handy landmark nearby. From the mown, signposted grounds a dirt trail ducks into the aspens past an old fire ring, opening to a gravel clearing and a hillside view down over the marina and lake.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.561632,-114.737411" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.561632, -114.737411</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-04/IMG_5085.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-04/IMG_5085.jpg" alt="Wide view of a log-sided building with a green metal roof, a sign reading Seba Seniors Centre out front, a concrete sidewalk and metal gate leading up to it, and a grassy hillside with houses behind." loading="lazy" /></a>
+          <figcaption>The log building at Stop 4 — sign, sidewalk, and gate right where the trail search begins. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5593028,-114.7359167" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-04/IMG_5090.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-04/IMG_5090.jpg" alt="Derby&#x27;s Lakeview General Store, a two-story blue wood-sided building with a covered upper balcony and Canadian flag, seen from the street." loading="lazy" /></a>
+          <figcaption>Derby's General Store — the landmark hunters can use to get their bearings near this stop. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5567361,-114.7377167" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-04/IMG_5149.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-04/IMG_5149.jpg" alt="A dirt side-by-side trail entering aspen forest, with a rusted metal ring and a small trail marker sign at the treeline, photographed from inside a vehicle with its side mirror visible in frame." loading="lazy" /></a>
+          <figcaption>Where the trail ducks into the trees — an old metal ring marks the entrance. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5657111,-114.7414389" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-04/IMG_5151.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-04/IMG_5151.jpg" alt="A grassy, rutted forest trail heading uphill through aspen trees, with a red Trail Etiquette sign posted at the near end." loading="lazy" /></a>
+          <figcaption>Trail etiquette sign at the start of the loop trail around the grounds. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5657,-114.7414083" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-04/IMG_5153.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-04/IMG_5153.jpg" alt="An open gravel clearing ringed by aspen forest, with a glimpse of water visible through the trees at the far edge." loading="lazy" /></a>
+          <figcaption>A bare clearing at the treeline — open ground worth a second look. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5624611,-114.7350833" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-04/IMG_5154.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-04/IMG_5154.jpg" alt="A hillside view looking down through brush over a marina full of small boats to the open lake beyond." loading="lazy" /></a>
+          <figcaption>The view opens up over the marina and lake from higher ground near this stop. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5622833,-114.7343361" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-5">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">5</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">The Secret Road &amp; the Gate</h2>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Came back out through the secret road, up by the gate. Gate was locked, so we went through the woods by one of the yards off the highway.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> A gravel side road peels off toward the Seba Hub, threading past Derby's Lakeview General Store, a fenced sport court, the Nolan Park playground, a lone barrel sauna, and a glamping dome tucked into the aspens with camp facilities out front. Mixed gravel-and-grass ground, quiet-lane feel throughout.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.559601,-114.73794" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.559601, -114.737940</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-05/IMG_5094.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-05/IMG_5094.jpg" alt="Gravel road curving uphill toward a fenced sports field and buildings, with a sign reading &#x27;Kid&#x27;s Camp! Seba Hub is open&#x27; beside it, seen from inside a side-by-side with the roll bar in frame." loading="lazy" /></a>
+          <figcaption>The gravel side road peeling off toward Seba Hub — the quiet-lane look this stop is named for. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5586278,-114.7387694" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-05/IMG_5092.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-05/IMG_5092.jpg" alt="Blue two-story building with a covered upper deck reading &#x27;Derby&#x27;s Lakeview General Store,&#x27; flags flying, along the main road." loading="lazy" /></a>
+          <figcaption>Derby's Lakeview General Store — a landmark on the road through town. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5567361,-114.7377083" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-05/IMG_5095.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-05/IMG_5095.jpg" alt="Empty fenced outdoor sport court surrounded by grass and a line of evergreen trees." loading="lazy" /></a>
+          <figcaption>A fenced court tucked behind the tree line. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5589,-114.740775" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-05/IMG_5096.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-05/IMG_5096.jpg" alt="Playground with climbing structures and a sign reading &#x27;Nolan Park,&#x27; set against a dense wall of trees." loading="lazy" /></a>
+          <figcaption>Nolan Park's playground, backed by dense bush. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5597389,-114.7401583" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-05/IMG_5158.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-05/IMG_5158.jpg" alt="Round wood-fired barrel sauna with a glass front and metal chimney, standing alone in an open grassy area near trees." loading="lazy" /></a>
+          <figcaption>A barrel sauna standing alone in the grass — an odd but memorable marker. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5618944,-114.7356944" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-05/IMG_5159.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-05/IMG_5159.jpg" alt="White geodesic dome tent among aspen trees, with a portable toilet, water tank, and storage unit lined up in front on a gravel pad." loading="lazy" /></a>
+          <figcaption>A glamping dome tucked into the aspens, camp facilities lined up out front. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5619083,-114.7354806" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-6">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">6</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">Vista Lounge / Cliff Edge Overlook</h2>
+          <span class="hot-badge">🔥 HIGH PRIORITY</span>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Instacabins, the geodome, the sauna, the wedding stage — then eighty feet down a little path to the cliff edge. I got out there. Wasn't thinking about my pockets, that's for sure.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> Stop 6 crowns the high ground above Lake Wabamun: a gravel UTV trail winds through spruce and aspen to a mown clearing where a big wooden wedding-stage deck (shown mid-build and finished) stares straight down the lake, cream glamping tents and a row of colour-trimmed InstaCabins pitched nearby. A short birch-lined slope drops from the clearing toward the cliff edge and shoreline — mind your footing, and check under that stump.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.561141,-114.739685" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.561141, -114.739685</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5161.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5161.jpg" alt="Wooden wedding-stage deck with white plank benches on log stands, framed by aspen trees with Lake Wabamun visible through the trunks." loading="lazy" /></a>
+          <figcaption>The wedding stage, decked out and staring straight down the lake. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5613972,-114.7357778" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5167.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5167.jpg" alt="Wedding stage deck under construction with plywood subfloor, a rolling scaffold and stepladder on top, lake visible beyond the treeline." loading="lazy" /></a>
+          <figcaption>The stage mid-build, before the benches went in. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5611722,-114.7371611" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5169.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5169.jpg" alt="Two large white bell-shaped canvas glamping tents pitched on open grass with a treeline behind them." loading="lazy" /></a>
+          <figcaption>The glamping tents, pitched and none the wiser about a missing $5,000. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5612806,-114.7380139" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5173.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5173.jpg" alt="Two InstaCabin trailers with yellow and teal trim parked side by side on grass, each marked with the InstaCabin logo." loading="lazy" /></a>
+          <figcaption>Two of the InstaCabins, trailer-mounted and ready to roll. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5616639,-114.737175" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5174.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5174.jpg" alt="A row of five InstaCabin trailers with different trim colours lined up on grass in front of a treeline." loading="lazy" /></a>
+          <figcaption>The whole InstaCabin lineup, five tiny houses in a row. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5617944,-114.7371667" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5103.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5103.jpg" alt="Gravel side-by-side trail through the forest with another UTV visible ahead in the distance." loading="lazy" /></a>
+          <figcaption>Following the gravel trail in, another buggy up ahead. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5603833,-114.7422639" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5112.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5112.jpg" alt="Wide view from a grassy hilltop clearing looking out over a rolling, densely treed valley to the horizon." loading="lazy" /></a>
+          <figcaption>The high ground before the drop, treetops for miles. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5617472,-114.7429278" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5102.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5102.jpg" alt="Narrow dirt footpath cutting through tall grass into a stand of spruce trees, dappled with sunlight and shade." loading="lazy" /></a>
+          <figcaption>One of the foot trails threading into the trees near the overlook. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5602639,-114.74205" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5164.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5164.jpg" alt="View from a side-by-side&#x27;s dashboard looking downhill through white-barked aspen trunks toward open lake water." loading="lazy" /></a>
+          <figcaption>The gap in the aspens where the cliff path opens onto the lake. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.561275,-114.7354444" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-06/IMG_5165.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-06/IMG_5165.jpg" alt="Aspen-lined slope leading down toward the lake, with a weathered tree stump and cut branches on the ground beside the vehicle." loading="lazy" /></a>
+          <figcaption>Same lake-view gap, this time with a stump worth checking under. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5612833,-114.7354972" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-7">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">7</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">Kokanee / General Store Area</h2>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Drove through the Kokanee Springs area — the general store, the community hub — on the way to the market.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> An open prairie field lined with a row of brightly painted tiny-house trailers, reached by side-by-side over worn grass ruts, with a treeline along one edge and more structures off in the distance.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.562128,-114.73717" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.562128, -114.737170</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-07/IMG_5175.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-07/IMG_5175.jpg" alt="A row of six colorful tiny house trailers with dark peaked roofs lined up diagonally across a grass field under a wide blue sky with wispy clouds; a tree line runs along the left horizon." loading="lazy" /></a>
+          <figcaption>The lineup of tiny house trailers marking the Kokanee general store stop. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5619361,-114.737175" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-07/IMG_5176.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-07/IMG_5176.jpg" alt="View from inside a side-by-side vehicle looking across a mowed grass field toward two tiny house trailers, with a worn dirt path/rut curving through the grass toward them and more structures visible in the far distance." loading="lazy" /></a>
+          <figcaption>A worn trail rut leads straight toward the tiny houses — exactly the kind of ground worth kicking through. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5621944,-114.737175" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-8">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">8</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">Farmers Market Lot</h2>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Drove through the empty lot — the market runs Saturdays. Didn't get out of the side-by-side.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> An open market field laid out with rows of green-screened vendor-stall posts, a bench, a picnic table, and a 'buy tickets' A-frame sign, plus a fenced corner holding a chicken coop, pens, and kiddie pools. On the day these were shot the lot sat empty — no market, no crowds, just bare dirt patches and open ground.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.563285,-114.739381" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.563285, -114.739381</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-08/IMG_5181.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-08/IMG_5181.jpg" alt="Wide view of the empty farmers market field showing rows of dark wooden vendor-stall posts with green screens, a white bench, a trash bin, and a &#x27;buy tickets&#x27; A-frame sign near a large pine tree, backed by a treeline." loading="lazy" /></a>
+          <figcaption>The market grounds, empty and quiet — stall posts standing in rows, ticket sign still out front. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634194,-114.7394333" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-08/IMG_5180.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-08/IMG_5180.jpg" alt="The same farmers market field from a different angle, showing a picnic table on the left, rows of vendor-stall posts with green screens across the middle, and patches of bare worn dirt in the right foreground." loading="lazy" /></a>
+          <figcaption>Same lot, further back — bare dirt patches where the grass has worn through. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5633889,-114.73935" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-08/IMG_5179.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-08/IMG_5179.jpg" alt="A fenced animal-pen area near the market with a wooden chicken coop, a wire dog-run enclosure, two blue kiddie pools, a white canopy tent, and a chalkboard sign advertising chickens for sale." loading="lazy" /></a>
+          <figcaption>The coop corner of the lot — pens, pools, and a 'chicks available' sign. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5631778,-114.7393583" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-9">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">9</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">Public Pavilion Beach</h2>
+          <span class="hot-badge">🔥 HIGH PRIORITY</span>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Brand-new beach — I did the ploughing myself. You drop about a foot into the sand with every step. We got out and walked it.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> The frames here show the mowed grounds and driving-range field by the Kokanee Springs campground — tee bays, target boards, RVs along the treeline. The brand-new pavilion beach itself is deep, freshly tilled sand: you sink about a foot with every step.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.563411,-114.739512" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.563411, -114.739512</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-09/IMG_5186.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-09/IMG_5186.jpg" alt="Wide view of a golf driving range at Kokanee Springs RV and Campground under a blue sky, showing rows of tee bays, picnic tables, a foreground rock, and RVs from the neighboring campground along the tree line." loading="lazy" /></a>
+          <figcaption>The widest look at this spot — but heads up, it's a driving range, not a beach. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634111,-114.7395167" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-09/IMG_5183.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-09/IMG_5183.jpg" alt="Black trash barrel beside a red &#x27;Caution: Use At Own Risk&#x27; liability sign naming Kokanee Springs RV and Campground, next to a &#x27;Buy 10 Baskets, Get 2 Free&#x27; golf-ball promo sign, with driving range bays behind." loading="lazy" /></a>
+          <figcaption>The signage that pins down exactly where this was shot: Kokanee Springs, not a public beach. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634111,-114.7395083" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-09/IMG_5185.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-09/IMG_5185.jpg" alt="Driving range bays with cutout target boards and folded picnic tables, with RVs and trailers from the campground visible along the tree line in the background." loading="lazy" /></a>
+          <figcaption>Driving bays and campground trailers strung out along the back fence line. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5634083,-114.7395167" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rope stop-divider"></div>
+
+  <section class="stop" id="stop-10">
+    <div class="wrap">
+      <div class="stop-head">
+        <span class="stop-num">10</span>
+        <div class="stop-head-text">
+          <h2 class="stop-name">Museum &amp; Back to School (SebaHub)</h2>
+        </div>
+      </div>
+      <blockquote class="stop-quote">“Back to the school — I reached for my stuff and it was just... gone. Checked every pocket. Backtracked everything. Nothing.”</blockquote>
+      <p class="stop-shows"><strong>What the photos show:</strong> The loop's end: the RV Pub &amp; Grill with its pergola patio, and the rental office with side-by-sides on the gravel lot. From here it's a short hop back to the old school on Second Avenue — where Tim reached for his pocket and found nothing.</p>
+      <p class="stop-meta">📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=53.56323,-114.740033" target="_blank" rel="noopener">Open this stop in Google Maps &rarr;</a> <span class="coords">53.563230, -114.740033</span></p>
+      <div class="stop-gallery">
+        <figure class="photo">
+          <a href="assets/route/stop-10/IMG_5187.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-10/IMG_5187.jpg" alt="Exterior of the white RV Pub &amp; Grill building with green trim, a pergola patio, and two picnic tables on the grass out front." loading="lazy" /></a>
+          <figcaption>The RV Pub &amp; Grill — main building at this stop, picnic tables out front. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5633306,-114.7397694" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-10/IMG_5189.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-10/IMG_5189.jpg" alt="Side entrance of a white building with a green metal roof, showing a covered walkway, benches, an AC unit, and a bulletin board covered in flyers." loading="lazy" /></a>
+          <figcaption>Side entrance and notice board — flyers, benches, and the walkway to the door. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5631833,-114.7400139" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-10/IMG_5190.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-10/IMG_5190.jpg" alt="A yellow A-frame &#x27;Now Open&#x27; sandwich board sign on the gravel lot in front of the building, next to a wooden directional signpost and bench." loading="lazy" /></a>
+          <figcaption>The 'Now Open' sandwich board and signpost at the edge of the gravel lot. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5632083,-114.7400667" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+        <figure class="photo">
+          <a href="assets/route/stop-10/IMG_5193.jpg" target="_blank" rel="noopener"><img src="assets/route/stop-10/IMG_5193.jpg" alt="A green-roofed office building with a covered porch, a parked green side-by-side UTV, adirondack chairs, and a wooden bear cutout sign, with a power pole and trees behind." loading="lazy" /></a>
+          <figcaption>The rental office, with a side-by-side UTV parked out front on the gravel. <a class="photo-map" href="https://www.google.com/maps/search/?api=1&amp;query=53.5631667,-114.7402722" target="_blank" rel="noopener">📍 Map</a></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ===================== FOOTER NOTE ===================== -->
+  <section class="route-footnote">
+    <div class="wrap">
+      <p>58 photos · 10 stops · every photo GPS-tagged — open any photo's <strong>📍 Map</strong> link to stand exactly where the side-by-side stood. The wallet is out there.</p>
+    </div>
+  </section>
+
+  <!-- ===================== CONTACT ===================== -->
+  <section class="found" id="found">
+    <div class="wrap">
+      <h2 class="section-title">📞 Found Something?</h2>
+      <div class="rope"></div>
+      <p class="section-lead">These are personal cell numbers — please treat them with the respect ye'd want for yer own. Found the ID, the cash, the rings, or even a golf ball? Call or text. We're happy to hear from ye.</p>
+      <div class="contact-cards">
+        <a class="contact-card" href="tel:+17809096544">
+          <span class="who">👤 Tim</span>
+          <span class="num">780-909-6544</span>
+          <span class="note">Call or text anytime</span>
+        </a>
+        <a class="contact-card" href="tel:+17807002271">
+          <span class="who">👤 Casey</span>
+          <span class="num">(780) 700-2271</span>
+          <span class="note">Call or text anytime</span>
+        </a>
+      </div>
+      <p class="dropoff">🏠 <strong>ID drop-off:</strong> SebaHub — 162 Second Avenue, Seba Beach, Alberta. No questions asked. Or mail it in. Tim just wants his identity back, sort of thing.</p>
+      <div class="contact-actions">
+        <a class="btn" href="interview.html">🎙️ Read the Interview — the clues are in his answers</a>
+        <a class="btn btn--ghost" href="index.html#official-rules" style="color:var(--ink-900);border-color:var(--ink-900)">📜 The Fine Print</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer" id="footer">
+    <div class="wrap">
+      <img class="badge-mini" src="assets/seba-badge.png" alt="Always Sunny in Seba" />
+      <p>Made with 🏴‍☠️ &amp; ☀️ in Seba Beach, Alberta — on the north shore of Lake Wabamun.</p>
+      <a class="footer-cfcw" href="https://cfcw.com" target="_blank" rel="noopener">
+        <img src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
+        <span>Official Radio Partner — 840 CFCW, serving Central Alberta since 1954</span>
+      </a>
+      <div class="links">
+        <a href="route.html">The Route</a>
+        <a href="interview.html">The Interview</a>
+        <a href="https://sebahub.com" target="_blank" rel="noopener">SebaHub</a>
+        <a href="https://sebastays.com" target="_blank" rel="noopener">SebaStays</a>
+        <a href="https://villagevows.com" target="_blank" rel="noopener">Village Vows</a>
+        <a href="https://www.google.com/maps/search/?api=1&amp;query=Kokanee+Springs+RV+Park+Seba+Beach+Alberta" target="_blank" rel="noopener">Kokanee Springs RV</a>
+        <a href="index.html#sponsor">Become a Sponsor</a>
+        <a href="index.html#official-rules">Official Rules</a>
+      </div>
+      <p class="fine">A SebaHub Production. The treasure is real (and so is the missing ID). Follow the Code, park where yer told, and don't set anything on fire. Map data © OpenStreetMap contributors · Imagery © Esri.</p>
+    </div>
+  </footer>
+
+  <!-- Leaflet JS (vendored locally) -->
+  <script src="js/vendor/leaflet/leaflet.js"></script>
+  <script>
+    /* ---------------- Mobile nav (same pattern as js/site.js, inlined per page) ---------------- */
+    function initNav() {
+      var toggle = document.querySelector(".menu-toggle");
+      var nav = document.getElementById("nav");
+      if (!toggle || !nav) return;
+      toggle.addEventListener("click", function () {
+        var open = nav.classList.toggle("open");
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      nav.addEventListener("click", function (e) {
+        if (e.target.tagName === "A") {
+          nav.classList.remove("open");
+          toggle.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
+
+    /* ---------------- Route data (generated from planning/route-data.json via planning/gen_route_html.py --js) ---------------- */
+var ROUTE_STOPS = [
+  { n: 1, name: "Creek Property \u2014 The Starting Point", hot: false, lat: 53.556236, lng: -114.737043, maps: "https://www.google.com/maps/search/?api=1&query=53.556236,-114.737043" },
+  { n: 2, name: "9th Street Beach (Randy's)", hot: true, lat: 53.552278, lng: -114.735404, maps: "https://www.google.com/maps/search/?api=1&query=53.552278,-114.735404" },
+  { n: 3, name: "The Back Trails (2\u20133 km)", hot: true, lat: 53.560735, lng: -114.7392, maps: "https://www.google.com/maps/search/?api=1&query=53.560735,-114.7392" },
+  { n: 4, name: "The Log Cabin", hot: false, lat: 53.561632, lng: -114.737411, maps: "https://www.google.com/maps/search/?api=1&query=53.561632,-114.737411" },
+  { n: 5, name: "The Secret Road & the Gate", hot: false, lat: 53.559601, lng: -114.73794, maps: "https://www.google.com/maps/search/?api=1&query=53.559601,-114.73794" },
+  { n: 6, name: "Vista Lounge / Cliff Edge Overlook", hot: true, lat: 53.561141, lng: -114.739685, maps: "https://www.google.com/maps/search/?api=1&query=53.561141,-114.739685" },
+  { n: 7, name: "Kokanee / General Store Area", hot: false, lat: 53.562128, lng: -114.73717, maps: "https://www.google.com/maps/search/?api=1&query=53.562128,-114.73717" },
+  { n: 8, name: "Farmers Market Lot", hot: false, lat: 53.563285, lng: -114.739381, maps: "https://www.google.com/maps/search/?api=1&query=53.563285,-114.739381" },
+  { n: 9, name: "Public Pavilion Beach", hot: true, lat: 53.563411, lng: -114.739512, maps: "https://www.google.com/maps/search/?api=1&query=53.563411,-114.739512" },
+  { n: 10, name: "Museum & Back to School (SebaHub)", hot: false, lat: 53.56323, lng: -114.740033, maps: "https://www.google.com/maps/search/?api=1&query=53.56323,-114.740033" },
+];
+
+    /* ---------------- Trail map (Esri imagery, same tile URLs as js/site.js) ---------------- */
+    function stopIcon(n, hot) {
+      return L.divIcon({
+        className: "",
+        html: '<div class="stop-pin' + (hot ? " stop-pin--hot" : "") + '">' + n + "</div>",
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -18]
+      });
+    }
+
+    function initRouteMap() {
+      var mapEl = document.getElementById("map");
+      if (!mapEl || typeof L === "undefined") return;
+
+      var map = L.map("map", { scrollWheelZoom: false });
+
+      // Esri World Imagery — free satellite tiles, no API key.
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        { maxZoom: 19, attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics" }
+      ).addTo(map);
+
+      // Faint place-label overlay, same Esri reference layer as js/site.js.
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+        { maxZoom: 19, opacity: 0.9, attribution: "Labels &copy; Esri" }
+      ).addTo(map);
+
+      var bounds = [];
+      var latlngs = [];
+
+      ROUTE_STOPS.forEach(function (s) {
+        var popup =
+          "<h3>" + s.n + ". " + s.name + "</h3>" +
+          (s.hot ? '<div class="riddle">🔥 High-priority hot zone — last-confirmed-sighting territory</div>' : "") +
+          '<a class="pop-link" href="#stop-' + s.n + '">Jump to photos ↓</a><br/>' +
+          '<a class="pop-link" href="' + s.maps + '" target="_blank" rel="noopener">Open in Google Maps →</a>';
+        L.marker([s.lat, s.lng], { icon: stopIcon(s.n, s.hot), title: s.n + ". " + s.name })
+          .addTo(map)
+          .bindPopup(popup);
+        bounds.push([s.lat, s.lng]);
+        latlngs.push([s.lat, s.lng]);
+      });
+
+      // Gold dashed line connecting the stops in tour order, 1 → 10.
+      L.polyline(latlngs, { color: "#eab63f", weight: 3, dashArray: "8, 10", opacity: 0.85 }).addTo(map);
+
+      if (bounds.length) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      }
+
+      // Only grab the scroll wheel once the user commits to the map.
+      map.on("focus", function () { map.scrollWheelZoom.enable(); });
+      map.on("blur", function () { map.scrollWheelZoom.disable(); });
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      initNav();
+      initRouteMap();
+    });
+  </script>
+</body>
+</html>

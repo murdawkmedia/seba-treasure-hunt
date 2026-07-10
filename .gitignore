@@ -1,5 +1,8 @@
 # tooling / OS cruft — keep the public repo clean
 .claude/
+# internal planning + original media (713 MB) — never publish
+planning/
+source-media/
 .DS_Store
 Thumbs.db
 desktop.ini

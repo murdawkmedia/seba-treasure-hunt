@@ -191,11 +191,11 @@ function renderGallery() {
   if (!grid) return;
   var tiles = [
     { src: "assets/photos/gallery-woods.jpg", label: "The woods, where the loot lies waiting", alt: "A wooden ceremony deck among the aspens at the Forest Lodge" },
-    { icon: "🎥", label: "Tim counts the $5,000 in real cash", video: true },
-    { src: "assets/photos/gallery-ceremony.jpg", label: "Lovers' Lagoon down by the lake", alt: "A lakeside wedding ceremony at the Forest Lodge" },
-    { icon: "🎥", label: "Tim buries the loot from his side-by-side", video: true },
-    { src: "assets/photos/gallery-powwow.jpg", label: "Community days at Skull Rock HQ", alt: "A dancer in regalia at a Seba Beach community gathering" },
-    { icon: "🎥", label: "The big treasure reveal (someday soon!)", video: true }
+    { src: "assets/photos/gallery-kokanee-sign.jpg", label: "Kokanee Springs — the front gate", alt: "The Kokanee Springs campground entrance sign with Adirondack chairs and flags" },
+    { src: "assets/photos/gallery-ceremony.jpg", label: "The lakeside ceremony grounds", alt: "A lakeside wedding ceremony at the Forest Lodge" },
+    { src: "assets/photos/gallery-sebahub-open.jpg", label: "SebaHub is open — return the ID here", alt: "A SEBAHUB IS OPEN banner on a chain-link fence by the ball field" },
+    { src: "assets/photos/gallery-powwow.jpg", label: "Community days at the old school", alt: "A dancer in regalia at a Seba Beach community gathering" },
+    { icon: "🎥", label: "Side-by-side route video — comin' soon", video: true }
   ];
   grid.innerHTML = tiles.map(function (t) {
     if (t.src) {

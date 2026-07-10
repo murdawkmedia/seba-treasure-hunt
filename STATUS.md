@@ -1,60 +1,46 @@
 # STATUS — The Great Seba Beach Treasure Hunt
 
-_Last updated: 2026-07-08_
+_Last updated: 2026-07-10_
 
-## What this is
-A fun/cheesy/pirate-themed promo site for a **REAL $5,000 cash treasure hunt** in the woods of Seba Beach, AB (north shore of Lake Wabamun). Marketing theme: **"Tim lost his wallet in the woods."** Static site, GitHub Pages, `murdawkmedia`, public. **Live: https://murdawkmedia.github.io/seba-treasure-hunt/**
+## What this is (v5 — the Lost Wallet overhaul)
+Public promo site for a **REAL lost-treasure hunt** at Seba Beach, AB: Tim lost his **ID (elastic-band bundle), ~$5,000 cash, and two diamond rings (small baggie)** along a real 10-stop side-by-side tour on **Thu Jul 9, 2026**. **Find it → keep the cash + rings; return the ID** to SebaHub (162 Second Ave) — that's the whole deal. May rise to **$10,000** if not found quickly. Static site, GitHub Pages, `murdawkmedia/seba-treasure-hunt` (public). **Live: https://murdawkmedia.github.io/seba-treasure-hunt/**
 
-## The hunt (public-facing facts baked into the site)
-- **Prize:** $5,000 cash, wrapped in rubber bands, hidden in a plain **coffee can**. Buried **Thu Jul 9, 2026 (afternoon)**; **hunt LAUNCHES Fri Jul 10 (tentative)** — not the moment it's buried.
-- **Weekday double:** found on a **Mon/Tue/Wed → $10,000** (drives weekday visits).
-- **Sweetener:** if unfound after ~2 weeks (~Jul 24), **+$5,000** added; pot may also grow as sponsors join.
-- **Bonus loot:** **two real diamond rings** also hidden as separate finds, just for fun ("find a ring, keep the ring"). In hero, Loot section, and Fine Print.
-- **Hours:** hunt only **9 AM–8 PM daily** (don't wake the campers).
-- **Rules (real):** no cutting trees, no fires, no digging in the driving range. Plus (playful, unattributed): no trucks/excavators/helicopters; park in designated areas; leave it better than you found it.
-- **No complex clues** — just the map (playing field + parking) and the rules. Authentic **real photos/videos, no AI**; proof videos coming (Tim counting cash, burying it on his side-by-side).
-- **CFCW 840 AM = Official Radio Partner** (the ONLY confirmed sponsor — logo vendored at `assets/cfcw-logo.png`, shown in top strip + sponsor section + footer). Prize updates announced Fridays on CFCW.
-- **Festival tie-in:** soft promo for the **"In the Woods" music festival**; the older **golf-balls-for-festival-tickets** idea runs quietly alongside (mentioned in the Festival section).
+v5 replaced the earlier "buried coffee can / weekday-double" campaign per Tim (2026-07-10): the wallet story from the co-worker's asset hub (`sebatreasur-b8njza3s.manus.space` /lost-wallet + /interview) is now THE story. Kept: pirate voice, 9 AM–8 PM hours, Pirate's Code, CFCW partner, sponsors section, Fine Print (all updated to wallet framing).
 
-## Folded in from the co-worker's parallel site (`sebatreasur-b8njza3s.manus.space`, 2026-07-08)
-That site is a *different* concept (multi-week clue trail, sponsor-funded $21,400 pot, app). Per Tim, we kept his guerrilla $5k model and cherry-picked: **CFCW partner + logo**, a **"This Is Just Year One" vision** section (yearly event, grow-the-pot, first-time-now), a **"Become a Sponsor"** section (tiers Gold $5k+/Silver $2.5k/Community $1k/In-Kind; CTA → sebahub.com interim), and a **"The Fine Print" official-rules** section (eligibility AB 18+, no-purchase, prize, **how-to-claim = gov ID + signed declaration**, safety code, disputes, privacy). **Deliberately excluded:** the clue trail, stale live stats, the $21,400 pot, and the other sponsor names (Parkland County/ATB/Seba Beach Marina/Parkland Realty — NOT confirmed, kept off).
+## Site structure (3 pages)
+- **index.html** — hub: Help Tim Find His ID hero → The Deal (cash/rings/ID cards) → **evidence photo** → the Story → route teaser (10 stops, 4 hot) → territory map (4 properties + parking + landmarks) → property cards → Rules + hours → How to Play → **Contact (Tim 780-909-6544, Casey 780-700-2271, personal cells)** → festival/golf-balls → gallery → vision → sponsor → Fine Print.
+- **route.html** — the flagship: Leaflet trail map (10 numbered pins at REAL EXIF centroids + polyline), what-to-look-for, 10 stop sections each with Tim's quote + factual photo description + GPS-tagged gallery (58 photos, per-photo Google Maps links).
+- **interview.html** — full 20-question transcript (verbatim), 11 Hunter's Notes behind a toggle, evidence photo, CTAs.
 
-## Deliberately kept OFF the public site (internal planning context)
-Team friction and names — Ian's property-damage worries, Samantha's logistics/security anxiety, partner **Stephanie / CSCW**, the two-day-notice scramble, and the photo **metadata/GPS-stripping** operational detail. None of this is published. (Ask before adding any of it.)
+## The asset ingest (2026-07-10, "the tub")
+- **Sources:** the 2 manus.space pages (canonical), `planning/In the Woods Execution Blueprint.pdf` (festival execution deck — image-based, rendered + ingested; EXIF-scrub advice deliberately IGNORED per Tim: GPS is part of the game), 169 iPhone files + 15 Pixel files from Downloads.
+- **Originals** now live in `source-media/originals/` (tour/ + cash-evidence/) — **gitignored** (713 MB). `planning/` also gitignored (transcript, social toolkit source, blueprint brief, route-data.json, scripts, marketing kit). Downloads folders to be deleted after final verification.
+- **Manifest pipeline** (`planning/build_manifest.py`): HEIC→JPEG, EXIF GPS/time extraction — **all 166 tour photos GPS-tagged**; real stop centroids computed (page's neat 53.59x/-114.6xx coords were placeholders ~5 km off).
+- **Curation:** Workflow with 10 Sonnet reviewers (one/stop) + Opus finalizer → **58 keepers** of ~150, deduped, captioned, alt-texted. Privacy rejections honored: IMG_5166 (readable licence plate), 5026/5027 (readable business card), 5036/5073 (faces) — verified absent from `assets/route/`.
+- **Production** (`planning/produce_route_assets.py`): 1600px q80 → `assets/route/stop-NN/` (~31 MB), **GPS re-embedded via piexif** (intentional), IMG_5069 top-cropped per curation. `planning/route-data.json` = single source for route.html.
+- **Evidence photo:** IMG_5019 → `assets/photos/evidence-cash.jpg` with the **ID/VISA bundle blurred** (full-res barcodes + card were readable = identity-theft risk; cash/keys/flyer left crisp; caption owns the redaction). NO GPS re-embedded on this one.
+- **Casey contact screenshot** (IMG_5024.PNG): extracted info only (Casey, "Seba SIC Principal", +1 780-700-2271) — raw screenshot NOT published. No email found for Casey.
+- **Route video (IMG_5128.MOV): unusable — 0.1-second fragment.** Placeholder tile on index; needs re-export from Tim's phone.
+- **B-roll:** 2 Pixel shots published (Kokanee entrance sign, SEBAHUB IS OPEN banner) in the index gallery. The "cash-evidence" Pixel folder was actually property B-roll; real cash photos were IMG_5018–5020.
 
-## Site sections (v4)
-CFCW partner strip → Hero (aerial + $5,000 flash + weekday-double + launch date) → **The Loot** ($5k/$10k/+$5k tiers + CFCW Friday line) → The Legend → **The Playing Field** map (4 spots + 3 landmarks + 2 parking) → The Four Spots (cards) → **The Pirate's Code** (rules + 9–8 hours banner) → How to Play + checklist → Festival tie-in → **Proof It's Real** (gallery) → **This Is Just Year One** (vision) → **Become a Sponsor** (tiers + CFCW anchor) → **The Fine Print** (official rules) → footer (CFCW credit).
+## Known data flags (for Tim/Casey to reconcile — not blocking)
+Curation found the co-worker page's IMG→stop mapping doesn't match photo content for some stops: **S5** photos show the SebaHub road/store/playground/dome (not the locked gate); **S9** photos show the Kokanee driving-range grounds (not the pavilion beach); **S10** photos show the RV Pub & Grill (not the museum/school); part of **S3**'s first chunk looked like marina/town shots. Published copy keeps story names + factual photo descriptions (no wrong claims), and every photo's own 📍 map link is ground truth. 19 unassigned photos (incl. a 16:05 Kokanee-area segment 5113–5124) intentionally unpublished.
 
-## Photos (all REAL, GPS-EXIF stripped, ~2.2 MB in `assets/photos/`)
-Pulled from each property's own local project folder, web-optimized (re-encode strips EXIF — audited, **no GPS on any file**):
-- Hero = **`schoolhouse-wide`** aerial of Seba Beach / Hwy 31 / the lake (village-vows repo).
-- Cards: SebaHub = InTheWoods community fair; SebaStays = Seba Beach marina aerial; Village Vows = lakeside wedding arch; Kokanee = camper-among-spruces.
-- Gallery: Forest-Lodge woods deck, lakeside ceremony, community powwow (+ 3 "video coming soon" tiles).
-- **Removed the two SebaStays `sunny-lake` images** — orphaned in `output/zip-assets`, unreferenced by the site, and AI-risk; SebaStays' own design.md mandates "real visuals, no AI." Swapped for confirmed-real shots.
-
-## Map coordinates (corrected per owner; still approximate — "we're pirates, not surveyors")
-| Spot | lat, lng | Confidence |
-|------|----------|-----------|
-| SebaHub (old Seba Beach School) | 53.5603733, -114.7397426 | **HIGH — owner-provided exact coord (2026-07-08).** Village-core side, east of Hwy 31 (the Kokanee/Lodge cluster is across the highway to the west). |
-| Kokanee Springs RV | 53.5645731, -114.7464346 | high (OSM-named, 53118 Hwy 31) |
-| Village Vows (Forest Lodge) | 53.5666, -114.7458 | med — placed just N of Kokanee per owner |
-| SebaStays (Forest Lodge) | 53.567, -114.7451 | med — same lodge, nudged off Village Vows |
-
-Map now framed as the **playing field**, treasure explicitly **not** marked; official boundary + parking pins to be added when cash is hidden Thursday. Landmark markers changed from ❌ to 🪧 (an X wrongly implied "treasure here"). Did **not** touch ResNexus (offered as fallback, but it holds booking data, not the school's GPS — unnecessary).
+## Marketing kit (internal — `planning/marketing/`, gitignored)
+Ready-to-post social copy (FB/IG/X/email/teaser + Friday one-liners), CFCW announcer reads + Tim's live call-in notes, print poster (`poster.html` + QR), 10 clue-board cards with per-stop QRs (`clue-board-cards.html`), launch README with the timeline (teaser Sat Jul 11 1 PM → full release ~Jul 14–15 → CFCW Jul 15–17 → Friday updates; owners Meg/Danny/Brianna/Murphy). **Move 5 (fabricated "someone got close" urgency post) deliberately excluded from ready-to-post copy and banned from the site** — team's call on social.
 
 ## Decisions in force
-- Map = OpenStreetMap/Leaflet (**vendored locally**) + Esri satellite tiles (no API key). Kokanee links to a Google Maps search (no confirmed site).
-- Coffee-can/cash facts, prize amounts, dates, and rules are stated plainly (cheese as garnish only) — these are real stakes.
+- Rings = **diamond** everywhere. Prize mechanics = **escalation** ("may rise to $10,000"), weekday-double retired. Coffee-can story fully retired.
+- Route photos **keep GPS on purpose**; evidence photo does not. Personal cells published per Tim's explicit instruction, with "treat with respect" framing.
+- No fabricated claims on the website, ever (escalation posts are social-side, team's call).
+- Leaflet vendored; Esri tiles; no API keys. Marketing kit + originals never in the public repo.
 
-## Open / next
-1. ~~Confirm SebaHub's exact pin~~ ✅ DONE 2026-07-08 — owner gave exact school + parking coords.
-2. **Playing-field boundary** — still to add (map polygon) when the cash is hidden Thu Jul 9. **Parking: two 🅿️ pins** (SebaHub school lot 53.559917,-114.739583 [owner DMS]; Kokanee lot at the main entrance by the RV Pub & Grill ~53.5633,-114.7400). Owner unsure of other lots / the boundary — add as confirmed.
-3. **Real proof media** — Tim counting the $5k, side-by-side bury video, raw stills (screenshot to strip GPS before upload).
-4. ~~Claim mechanics~~ ✅ addressed in "The Fine Print" (present gov ID + sign a declaration) — confirm the wording works for you.
-5. **Sponsor contact** — "Become a Sponsor" CTA currently points to **sebahub.com** (interim). Provide a dedicated sponsor email/mailto to swap in.
-6. **Official Rules sign-off** — the Fine Print is plain-language, NOT lawyer-vetted. Get Tim's (ideally legal) review before launch; also decide a hard **hunt end date** (currently "until found").
-7. **Optional POIs** — co-worker's lakeside spots (Old Dock, Boathouse, Pavilion, Cedar Trail, Sunset Point) can be added to the map only if confirmed real.
-8. Optional: custom domain; repo/URL rename.
+## Open items
+1. **Route video** — IMG_5128.MOV is a 0.1 s fragment; get the real clip re-exported, then replace the placeholder tile.
+2. Casey's **email** (only phone found); optional hunt@sebahub.com photo-wall address (Move 9).
+3. Stop-mapping flags above — 2-minute review with local knowledge would let us re-caption S5/S9/S10 galleries precisely.
+4. Fine Print legal sign-off; sponsor email (CTA still routes via sebahub.com).
+5. Wallet/ring item close-up photos ("Tim will provide" per source page) if wanted for the what-to-look-for section.
 
 ## Deploy
-Repo root on `main` → GitHub Pages (branch `main`, `/root`). `.nojekyll` present. See README.
+Repo root on `main` → GitHub Pages (branch `main`, `/root`), `.nojekyll`. Verify after push: index/route/interview 200, photo spot-checks, no "coffee can" remnants live.
