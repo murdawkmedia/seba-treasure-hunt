@@ -4,19 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tim Lost Something? · This Year, Tim Lost His ID · Seba Beach Treasure Hunt</title>
-  <meta name="description" content="Tim Lost Something? is the 2026 Seba Beach treasure hunt: find Tim's ID, roughly $5,000 cash and two diamond rings across 12 GPS-mapped waypoints." />
+  <meta name="description" content="Tim Lost Something? is the 2026 Seba Beach treasure hunt: find Tim's ID, roughly $5,000 cash and two diamond rings across 12 named waypoints." />
   <meta name="robots" content="index,follow,max-image-preview:large" />
   <link rel="canonical" href="https://www.timlostsomething.com/" />
   <meta property="og:site_name" content="Tim Lost Something?" />
   <meta property="og:title" content="Tim Lost Something? This Year, Tim Lost His ID" />
-  <meta property="og:description" content="A real Seba Beach treasure hunt: find Tim's ID, keep roughly $5,000 and two diamond rings, and retrace 12 GPS-mapped waypoints." />
+  <meta property="og:description" content="A real Seba Beach treasure hunt: find Tim's ID, keep roughly $5,000 and two diamond rings, and retrace 12 named waypoints." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://www.timlostsomething.com/" />
   <meta property="og:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
   <meta property="og:image:alt" content="The real last-known photo of Tim's cash, blurred ID bundle and keys before they went missing in Seba Beach" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Tim Lost Something? This Year, Tim Lost His ID" />
-  <meta name="twitter:description" content="Search 12 GPS-mapped Seba Beach waypoints. Finders keep roughly $5,000 and two diamond rings; Tim only wants his ID back." />
+  <meta name="twitter:description" content="Search 12 named Seba Beach waypoints. Finders keep roughly $5,000 and two diamond rings; Tim only wants his ID back." />
   <meta name="twitter:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
   <script type="application/ld+json">
   {
@@ -70,7 +70,7 @@
             "name": "When and where can people search?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "The hunt runs from 9:00 AM to 8:00 PM daily until the items are found. The public route covers 12 GPS-mapped waypoints around Seba Beach, Alberta."
+              "text": "The hunt runs from 9:00 AM to 8:00 PM daily until the items are found. The public route covers 12 named waypoints around Seba Beach, Alberta."
             }
           },
           {
@@ -104,7 +104,6 @@
   </script>
 
   <!-- Leaflet (open-source map, no API key needed) — vendored locally, no CDN dependency -->
-  <link rel="stylesheet" href="js/vendor/leaflet/leaflet.css" />
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
@@ -115,27 +114,32 @@
 </head>
 <body>
 
+  <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
+    <span class="case-strip__mark" data-status-mark aria-hidden="true">?</span>
+    <span class="case-strip__copy">
+      <strong class="case-strip__label" data-status-label>Status unavailable</strong>
+      <span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span>
+      <span class="case-strip__next" data-status-next hidden></span>
+    </span>
+    <a class="case-strip__link" href="updates.html">Official updates</a>
+  </section>
+
   <!-- ===================== NAV ===================== -->
   <header class="topbar">
     <div class="wrap">
       <a class="brand" href="index.html"><span aria-hidden="true">💰</span> Tim Lost Something?</a>
       <button class="menu-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
       <nav id="nav">
-        <a href="#deal">The Deal</a>
-        <a href="#legend">The Story</a>
+        <a href="start.html">Start</a>
         <a href="route.html">The Route 🗺️</a>
-        <a href="interview.html">The Interview 🎙️</a>
-        <a href="#rules">The Rules</a>
-        <a href="#official-rules">Fine Print</a>
+        <a href="updates.html">Updates</a>
+        <a href="clue-board.html">Clue Board</a>
+        <a href="report.html">Report</a>
+        <a href="rules.html">Rules</a>
+        <a href="dashboard.html">Dashboard</a>
       </nav>
     </div>
   </header>
-
-  <!-- ===================== CFCW PARTNER STRIP ===================== -->
-  <a class="partner-strip" href="https://cfcw.com" target="_blank" rel="noopener">
-    <img class="partner-strip__logo" src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
-    <span class="partner-strip__text"><strong>Official Radio Partner</strong> · prize &amp; hunt updates every Friday on 840&nbsp;AM</span>
-  </a>
 
   <!-- ===================== HERO ===================== -->
   <section class="hero" id="top">
@@ -152,11 +156,13 @@
       <h1>Help Tim Find His ID</h1>
       <p class="prizeflash">Ye keep the <span class="amt">$5,000</span> — and both diamond rings.</p>
       <p class="sub">Tim drove every Seba Beach property in his side-by-side. Somewhere along the way — the back trails, the cliff edge, the new beach — his ID, <strong>$5,000 in hundred-dollar bills</strong>, and <strong>two diamond rings</strong> slipped away into the woods. Find them, and everything but the ID is yours. He just wants his ID back. That's it. That's the whole deal.</p>
-      <div class="cta-row">
-        <a class="btn" href="route.html">🗺️ See All 12 Waypoints</a>
-        <a class="btn btn--ghost" href="interview.html">🎙️ Read the Interview</a>
+      <div class="cta-row hero-actions" aria-label="Case actions">
+        <a class="btn" href="start.html">🔐 Start / Sign In</a>
+        <a class="btn" href="report.html">📷 Report a Find</a>
+        <a class="btn btn--ghost" href="updates.html">📌 Case Updates</a>
+        <a class="btn btn--ghost" href="rules.html">🧭 Rules &amp; Safety</a>
       </div>
-      <p class="hero-double">🔥 Not found quickly? The pot may rise to <strong>$10,000</strong>. Tick tock, mateys.</p>
+      <p class="hero-secondary"><a href="route.html">See all 12 public waypoints</a> · <a href="interview.html">Read Tim's interview</a></p>
     </div>
     <div class="wave" aria-hidden="true">
       <svg viewBox="0 0 1440 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -199,7 +205,6 @@
       </div>
 
       <p class="prize-real">🏴‍☠️ <strong>Is this for real?</strong> Aye — dead serious. Scroll down for the last photo of the loot, then read <a href="interview.html">the interview</a> where Tim retraces every stop. The clues are in his answers.</p>
-      <p class="prize-cfcw">📻 Hunt updates <strong>Friday mornings on 840 CFCW</strong> — tune in to hear if the pot climbs to $10,000.</p>
     </div>
   </section>
 
@@ -225,8 +230,8 @@
       <p class="campaign-prop__eyebrow">A little pirate theatre</p>
       <h2 id="campaign-prop-title">Tim's ID — Campaign Prop</h2>
       <figure>
-        <img src="assets/photos/tim-lost-id-campaign-prop.webp" width="1587" height="991" loading="lazy" decoding="async" alt="Fictional campaign prop resembling an Alberta driver's licence for Captain Latimer on a dark counter; all details are invented." />
-        <figcaption><strong>Campaign prop / dramatization:</strong> not a real driver's licence and not an exact image of the card hunters are looking for.</figcaption>
+        <img src="assets/photos/tim-lost-id-campaign-prop.webp" width="1009" height="1559" loading="lazy" decoding="async" alt="Fictional Captain Latimer campaign prop styled like an Alberta driver's licence on a dark counter; every detail is invented." />
+        <figcaption><strong>Campaign prop / dramatization:</strong> this is the deliberately fictional ID image—not a real licence and not an exact picture of the missing card.</figcaption>
       </figure>
     </div>
   </aside>
@@ -241,54 +246,44 @@
         <p>Gather 'round, ye barnacle-brained beach bums. Tim set out on a regular day of rounds — him, Ian, Casey, and Bob the entrepreneur, four souls in a side-by-side, touring every property on the Seba Beach spread. Coffee at the school. Randy's freshly opened beach. Then the back trails — two, three kilometres of twisting, bouncing, tree-dodging glory that ye're <em>technically</em> not supposed to take a side-by-side through. (He did anyway. For Bob.)</p>
         <p>In his pocket: his ID wrapped in an elastic band, about <strong>$5,000 in cash</strong> for Randy's crew, and <strong>two diamond rings</strong> in a teeny baggie. They rode along past the log cabin, down the secret road, out to the cliff edge at the Vista Lounge — where Tim stood eighty feet down a narrow path, gesturing at the lake like a man who owns a view — through the deep sand of the brand-new pavilion beach, past the museum, and back to the school.</p>
         <p>He reached for his pocket. <strong>Gone.</strong> All of it. He backtracked every stop and found nothing but tire tracks and regret.</p>
-        <p>So here's the deal he's making with the whole of Alberta: <strong>find it, keep the cash and the rings.</strong> He'd just like his ID back — drop it at SebaHub, 162 Second Avenue, no questions asked. And if it doesn't turn up quickly? The pot may climb to <strong>$10,000</strong>.</p>
-        <p class="sign">— As told to the crew at 840 CFCW 📻</p>
+        <p>So here's the deal he's making with the whole of Alberta: <strong>find it, keep the cash and the rings.</strong> He'd just like his ID back — drop it at SebaHub, 162 Second Avenue, no questions asked. The currently published prize is the cash and two rings described above. Any change will appear as a dated official case update.</p>
+        <p class="sign">— Tim’s account of the day</p>
       </div>
-      <p class="center" style="margin-top:26px"><a class="btn" href="interview.html">🎙️ Read Tim's Full 20-Question Interview</a></p>
+      <p class="center" style="margin-top:26px"><a class="btn" href="interview.html">🎙️ Read Tim's 19-Question Public Interview</a></p>
     </div>
   </section>
 
   <!-- ===================== ROUTE TEASER ===================== -->
   <section class="route-teaser" id="route">
     <div class="wrap">
-      <h2 class="section-title">🗺️ The Route: 12 Waypoints, 61 GPS-Tagged Photos</h2>
-      <p class="section-lead">Tim retraced the whole tour with a camera — over 150 frames shot, the 61 best published, every one GPS-tagged with a Google Maps link so ye know exactly where the side-by-side went, across twelve searchable waypoints. The hot zones are marked.</p>
+      <h2 class="section-title">🗺️ The Route: 12 Waypoints, 61 Public-Safe Photos</h2>
+      <p class="section-lead">Tim retraced the tour with a camera. The 61 strongest field photos and all twelve waypoint names stay public; embedded location metadata has been removed. Sign in free for the precise member map and current area labels.</p>
       <ol class="stop-list">
         <li><span>1</span> The Creek Property — the starting point</li>
         <li><span>2</span> The Public Beach &amp; Farmers' Market Lot</li>
-        <li class="hot"><span>3</span> The Beach (Randy's) — last confirmed cash sighting 🔥</li>
+        <li><span>3</span> The Beach (Randy's)</li>
         <li><span>4</span> In Town — Seniors Centre &amp; Derby's General Store</li>
         <li><span>5</span> The Gated Road &amp; the School Grounds</li>
-        <li class="hot"><span>6</span> The Back Trails — 2-3 km of bounce 🔥</li>
+        <li><span>6</span> The Back Trails</li>
         <li><span>7</span> The Lodge Trails (the Log Cabin)</li>
         <li><span>8</span> The Vista Lands — cabins, domes &amp; the yurt</li>
-        <li class="hot"><span>9</span> The Cliff-Edge Slope — Tim got out here 🔥</li>
+        <li><span>9</span> The Cliff-Edge Slope</li>
         <li><span>10</span> The Driving Range &amp; the Digger Café</li>
         <li><span>11</span> Kokanee Springs RV — the Front Gate</li>
         <li><span>12</span> The Home Stretch — the old Seba Beach School</li>
       </ol>
-      <p class="center"><a class="btn" href="route.html">🧭 Open the Full Route — Map, Photos &amp; Clues</a></p>
+      <p class="center"><a class="btn" href="route.html">🧭 Open the Public Route &amp; Field Photos</a></p>
     </div>
   </section>
 
-  <!-- ===================== TERRITORY MAP ===================== -->
-  <section class="mapsection" id="map-section">
+  <!-- ===================== MEMBER MAP ===================== -->
+  <section class="mapsection member-map-gate" id="map-section">
     <div class="wrap">
-      <h2 class="section-title">The Territory</h2>
-      <p class="section-lead">The lay of the land: the four home-base properties, the village landmarks, and where to park. The stop-by-stop trail map lives on <a href="route.html" style="color:var(--gold-300)">the Route page</a>.</p>
+      <p class="eyebrow">Free hunter account</p>
+      <h2 class="section-title">The Precise Map Lives in Hunter Dashboard</h2>
+      <p class="section-lead">Create a free account to open exact waypoint guidance, see current open or restricted area labels, and save your progress. The public route, photos, rules, and updates remain open to everyone.</p>
+      <p class="center"><a class="btn" href="start.html">🔐 Sign in to learn more</a></p>
     </div>
-    <div class="map-frame">
-      <div id="map"></div>
-    </div>
-    <div class="map-legend">
-      <span><span class="dot">🏴‍☠️</span> SebaHub (the old school)</span>
-      <span><span class="dot">🏕️</span> SebaStays</span>
-      <span><span class="dot">💍</span> Village Vows</span>
-      <span><span class="dot">🚐</span> Kokanee Springs RV</span>
-      <span><span class="dot">🅿️</span> Parking</span>
-      <span><span class="dot">🪧</span> Around town</span>
-    </div>
-    <p class="map-note">🅿️ Park only in <strong>designated areas</strong>: the <strong>SebaHub school lot</strong> and the <strong>Kokanee Springs lot</strong> (by the RV Pub &amp; Grill at the main entrance). And no — the ID bundle is <strong>not</strong> pinned on this map. That'd be a short hunt.</p>
   </section>
 
   <!-- ===================== ISLANDS / SPOTS ===================== -->
@@ -337,7 +332,7 @@
         <div class="step">
           <div class="n">1</div>
           <h3>Read the Clues</h3>
-          <p>Start with <a href="interview.html">the interview</a> — Tim's answers contain the clues. Then study <a href="route.html">the route</a>: 61 GPS-tagged photos across 12 waypoints.</p>
+          <p>Start with <a href="interview.html">the interview</a> — Tim's answers contain the clues. Then study <a href="route.html">the route</a>: 61 public-safe field photos across 12 waypoints.</p>
         </div>
         <div class="step">
           <div class="n">2</div>
@@ -363,7 +358,6 @@
           <li><span class="box"></span> Studied the 12-waypoint route and the hot zones</li>
           <li><span class="box"></span> Brought a friend — two sets of eyes are better than one</li>
           <li><span class="box"></span> Looked for a wee elastic-band bundle and a teeny baggie — not a fat wallet</li>
-          <li><span class="box"></span> Kept an eye out for golf balls (festival tickets, arrr!)</li>
         </ul>
         <p class="firstmate">🧭 <strong>First Mate's Corner:</strong> bring the wee ones, mind yer step by the water and the cliff edge, pack sunscreen and bug spray, and leave every spot nicer than ye found it. Arrr-esponsible pirates only.</p>
       </div>
@@ -375,7 +369,7 @@
     <div class="wrap">
       <h2 class="section-title">📞 Found Something?</h2>
       <div class="rope"></div>
-      <p class="section-lead">Tim's number is his personal cell — please treat it with the respect ye'd want for yer own. Found the ID, the cash, the rings, or even a golf ball? Reach out. We're happy to hear from ye.</p>
+      <p class="section-lead">Tim's number is his personal cell — please treat it with the respect ye'd want for yer own. Found the ID, the cash, the rings, or something that may belong with the case? Reach out. We're happy to hear from ye.</p>
       <div class="contact-cards">
         <div class="contact-card">
           <span class="who">👤 Tim</span>
@@ -390,19 +384,6 @@
         </div>
       </div>
       <p class="dropoff">🏠 <strong>ID drop-off:</strong> SebaHub — 162 Second Avenue, Seba Beach, Alberta. No questions asked. Or mail it in. Tim just wants his identity back, sort of thing.</p>
-    </div>
-  </section>
-
-  <!-- ===================== FESTIVAL TIE-IN ===================== -->
-  <section class="festival" id="festival">
-    <div class="wrap">
-      <div class="festival-card">
-        <div class="festival-emoji">🎸🌲</div>
-        <div>
-          <h2>Bonus quest: golf balls &amp; <span class="gold">"In the Woods"</span></h2>
-          <p>While ye're out there searching for Tim's ID, keep yer eyes peeled for <strong>golf balls hidden across the properties</strong>. Find one and ye win <strong>trips and tickets to the "In the Woods" Music Festival</strong> at Seba Beach. The hunt has layers — come out and see what ye find.</p>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -437,7 +418,7 @@
         <div class="year">
           <span class="year__tag">Year 3 &amp; beyond</span>
           <h3>The Alberta circuit</h3>
-          <p>A hunt that hops town to town across Central Alberta, with CFCW callin' the play-by-play. (This year Tim lost his ID bundle and two rings — next year, who knows what the man'll misplace.)</p>
+          <p>A community hunt that can grow carefully across Central Alberta. This year stays focused on Tim's ID bundle, cash, and two rings.</p>
         </div>
       </div>
       <p class="heart">💛 At the bottom of it all, this be real money for a real person who could use a win. Every dollar out there is a dollar of hope for whoever finds it.</p>
@@ -447,25 +428,9 @@
   <!-- ===================== BECOME A SPONSOR ===================== -->
   <section class="sponsor" id="sponsor">
     <div class="wrap">
-      <h2 class="section-title">Grow the Pot: <span class="gold">Become a Sponsor</span></h2>
-      <p class="section-lead">Every sponsor dollar goes straight into the prize — and puts your brand in front of hunters, CFCW's Central Alberta audience, and the whole Seba Beach community.</p>
-
-      <a class="anchor-sponsor" href="https://cfcw.com" target="_blank" rel="noopener">
-        <img src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
-        <div>
-          <span class="tag">Official Radio Partner</span>
-          <p>840 CFCW — Alberta's Country Legend, serving Central Alberta since 1954. Our founding sponsor and the voice of the hunt.</p>
-        </div>
-      </a>
-
-      <div class="tiers">
-        <div class="tier"><h3>Gold</h3><div class="tier__amt">$5,000+</div><p>Logo on the site &amp; ads · named on-air every Friday on CFCW · featured sponsor card · social shoutout</p></div>
-        <div class="tier"><h3>Silver</h3><div class="tier__amt">$2,500</div><p>Logo on the site · named on CFCW · social feature</p></div>
-        <div class="tier"><h3>Community</h3><div class="tier__amt">$1,000</div><p>Logo on the site · thank-you mention on air</p></div>
-        <div class="tier"><h3>In-Kind</h3><div class="tier__amt">Goods &amp; services</div><p>Donate goods, services, or experiences to the pot. Let's talk.</p></div>
-      </div>
-
-      <p class="sponsor-cta"><a class="btn" href="https://sebahub.com" target="_blank" rel="noopener">📣 Become a Sponsor</a> <span class="sponsor-note">Sponsor inquiries welcome through SebaHub.</span></p>
+      <h2 class="section-title">Support the Hunt</h2>
+      <p class="section-lead">Interested in supporting a future case update or community activation? Send an inquiry through SebaHub. No partnership, prize increase, or broadcast schedule is official until it appears in a dated case update.</p>
+      <p class="sponsor-cta"><a class="btn" href="https://sebahub.com" target="_blank" rel="noopener">📣 Contact SebaHub</a></p>
     </div>
   </section>
 
@@ -519,7 +484,7 @@
         <dt>The find</dt>
         <dd>Lost along the route: Tim's government ID wrapped in an elastic band, roughly <strong>$5,000 in cash</strong>, and <strong>two diamond rings</strong> in a small baggie. They may be together or separate — there may be more than one thing to find.</dd>
         <dt>The deal</dt>
-        <dd><strong>Keep the cash. Keep the rings.</strong> Return the ID to SebaHub (162 Second Avenue, Seba Beach) or by mail — that's the whole ask. If the items aren't found quickly, the reward may rise to <strong>$10,000</strong>; updates announced Fridays on 840 CFCW. Reward is as-found and non-transferable.</dd>
+        <dd><strong>Keep the cash. Keep the rings.</strong> Return the ID to SebaHub (162 Second Avenue, Seba Beach) or by mail — that's the whole ask. Any verified change to the published prize will appear as a dated official case update. Reward is as-found and non-transferable.</dd>
         <dt>Reporting a find</dt>
         <dd>Call or text Tim (780-909-6544), email Tim (tim@businessasaforceforgood.ca), or email Casey (casey@sebahub.com). For everyone's peace of mind, the find will be confirmed with a quick photo of where and what you found before the "found" flag goes up sitewide.</dd>
         <dt>Play fair &amp; safe</dt>
@@ -541,11 +506,12 @@
       </a>
       <p class="campaign-season-footer">This year: Tim lost his ID.</p>
       <p>Made with 🏴‍☠️ &amp; ☀️ in Seba Beach, Alberta — on the north shore of Lake Wabamun.</p>
-      <a class="footer-cfcw" href="https://cfcw.com" target="_blank" rel="noopener">
-        <img src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
-        <span>Official Radio Partner — 840 CFCW, serving Central Alberta since 1954</span>
-      </a>
       <div class="links">
+        <a href="start.html">Start</a>
+        <a href="updates.html">Updates</a>
+        <a href="clue-board.html">Clue Board</a>
+        <a href="report.html">Report</a>
+        <a href="dashboard.html">Dashboard</a>
         <a href="route.html">The Route</a>
         <a href="interview.html">The Interview</a>
         <a href="https://sebahub.com" target="_blank" rel="noopener">SebaHub</a>
@@ -558,9 +524,7 @@
       <p class="fine">A SebaHub Production. The treasure is real (and so is the missing ID). Follow the Code, park where yer told, and don't set anything on fire. Map data © OpenStreetMap contributors · Imagery © Esri.</p>
     </div>
   </footer>
-
-  <!-- Leaflet JS (vendored locally) -->
-  <script src="js/vendor/leaflet/leaflet.js"></script>
   <script src="js/site.js"></script>
+  <script type="module" src="/assets/app/status.js"></script>
 </body>
 </html>

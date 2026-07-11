@@ -1,0 +1,26 @@
+# Source of truth for the existing Cloudflare Pages project.
+name = "seba-treasure-hunt"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-07-11"
+
+[vars]
+AUTHORIZED_PARTY = "https://www.timlostsomething.com,https://seba-treasure-hunt.pages.dev"
+TURNSTILE_ALLOWED_HOSTS = "www.timlostsomething.com,seba-treasure-hunt.pages.dev"
+STAFF_INVITATION_REDIRECT_URL = "https://www.timlostsomething.com/ops"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tim-lost-hunter-platform"
+database_id = "6cd93ca6-7a4b-46eb-bfb3-e71040f405d7"
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "tim-lost-private-media"
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "0f2a1550dd764daa92624aad9f859f57"
+
+[[queues.producers]]
+binding = "MEDIA_QUEUE"
+queue = "tim-lost-media-processing"

@@ -1,0 +1,152 @@
+export type CaseState = "open" | "paused" | "found";
+export type ZoneState = "open" | "restricted" | "hazardous" | "temporarily_closed";
+
+export interface CaseStatus {
+  state: CaseState;
+  hours: {
+    opens: string;
+    closes: string;
+    timezone: string;
+  };
+  updatedAt: string;
+  nextClue: { title: string; releasesAt: string } | null;
+  version: number;
+}
+
+export interface Principal {
+  kind: "hunter" | "staff";
+  subject: string;
+  email: string | null;
+}
+
+export interface Page<T = Record<string, unknown>> {
+  items: T[];
+  nextCursor: string | null;
+}
+
+export interface StoredMedia {
+  id: string;
+  key: string;
+  contentType?: string;
+  size?: number;
+  status: "processing" | "ready" | "quarantined";
+}
+
+export interface DataStore {
+  getStatus(): Promise<CaseStatus>;
+  listUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  getCurrentRules(): Promise<Record<string, unknown> | null>;
+  listZones(): Promise<Record<string, unknown>[]>;
+  listWaypoints(): Promise<Record<string, unknown>[]>;
+  listBoard(waypointId: number | null, options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  getPublicMedia(id: string): Promise<{ key: string; contentType: string } | null>;
+  getReportByIdempotencyKey(idempotencyKey: string): Promise<Record<string, unknown> | null>;
+  createReport(input: Record<string, unknown>, idempotencyKey: string): Promise<{ value: Record<string, unknown>; replayed: boolean }>;
+  getProfile(subject: string): Promise<Record<string, unknown> | null>;
+  upsertProfile(subject: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  getMemberWaypoint(id: number): Promise<Record<string, unknown> | null>;
+  upsertProgress(subject: string, waypointId: number, state: string): Promise<Record<string, unknown>>;
+  getHunterDashboard(subject: string): Promise<Record<string, unknown>>;
+  createFieldNote(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  createReply(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  createFlag(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  isActiveStaff(subject: string, normalizedEmail: string | null): Promise<boolean>;
+  getOpsDashboard(): Promise<Record<string, unknown>>;
+  updateStatus(input: Record<string, unknown>, actorSubject: string): Promise<CaseStatus>;
+  createUpdate(input: Record<string, unknown>, actorSubject: string): Promise<Record<string, unknown>>;
+  listReports(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  updateReport(id: string, input: Record<string, unknown>, actorSubject: string): Promise<Record<string, unknown> | null>;
+  listPendingNotes(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  moderateNote(id: string, decision: string, reason: string | null, actorSubject: string): Promise<Record<string, unknown> | null>;
+  listStaff(): Promise<Record<string, unknown>[]>;
+  listSubscribers(options?: { limit?: number; cursor?: string | null }): Promise<{
+    counts: { totalProfiles: number; huntEmail: number; marketing: number; sms: number };
+    items: Record<string, unknown>[];
+    nextCursor: string | null;
+  }>;
+  listAudit(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  getStaffPrincipal(id: string): Promise<Record<string, unknown> | null>;
+  recordStaffAction(action: string, target: string, actorSubject: string): Promise<Record<string, unknown>>;
+}
+
+export interface IdentityVerifier {
+  authenticateHunter(request: Request): Promise<Principal | null>;
+  authenticateStaff(request: Request): Promise<Principal | null>;
+}
+
+export interface HumanVerifier {
+  verify(token: string | null, action: string, request: Request): Promise<boolean>;
+}
+
+export interface UploadStorage {
+  save(files: File[], context: { kind: "field_note" | "report"; subject: string | null }): Promise<StoredMedia[]>;
+  read(key: string): Promise<{
+    body: ReadableStream;
+    contentType: string;
+    etag: string | null;
+  } | null>;
+}
+
+export interface MediaJob {
+  mediaId: string;
+  key: string;
+  ownerKind: "field_note" | "report";
+}
+
+export interface PublicRuntimeConfig {
+  turnstileSiteKey: string | null;
+  hunterPublishableKey: string | null;
+  hunterAccountPortalUrl: string | null;
+  staffPublishableKey: string | null;
+  staffAccountPortalUrl: string | null;
+}
+
+export interface StaffAccountManager {
+  execute(action: string, target: Record<string, unknown>): Promise<Record<string, unknown>>;
+}
+
+export interface RateLimitInput {
+  scope: string;
+  identifiers: string[];
+  limit: number;
+  windowSeconds: number;
+}
+
+export interface RateLimiter {
+  consume(input: RateLimitInput): Promise<{ allowed: boolean; retryAfter: number }>;
+}
+
+export interface ApiDependencies {
+  store: DataStore;
+  identity: IdentityVerifier;
+  turnstile: HumanVerifier;
+  uploads: UploadStorage;
+  config?: PublicRuntimeConfig;
+  staffAccounts?: StaffAccountManager;
+  rateLimits?: RateLimiter;
+}
+
+export interface PagesEnv {
+  ASSETS: Fetcher;
+  DB?: D1Database;
+  UPLOADS?: R2Bucket;
+  MEDIA_QUEUE?: Queue<MediaJob>;
+  RATE_LIMITS?: KVNamespace;
+  RATE_LIMIT_SALT?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_ALLOWED_HOSTS?: string;
+  HUNTER_AUTH_ISSUER?: string;
+  HUNTER_AUTH_JWKS_URL?: string;
+  HUNTER_CLERK_PUBLISHABLE_KEY?: string;
+  HUNTER_ACCOUNT_PORTAL_URL?: string;
+  STAFF_CLERK_PUBLISHABLE_KEY?: string;
+  STAFF_CLERK_SECRET_KEY?: string;
+  STAFF_ACCOUNT_PORTAL_URL?: string;
+  STAFF_INVITATION_REDIRECT_URL?: string;
+  STAFF_AUTH_ISSUER?: string;
+  STAFF_AUTH_JWKS_URL?: string;
+  AUTHORIZED_PARTY?: string;
+  RESEND_API_KEY?: string;
+  RECOVERY_EMAIL_FROM?: string;
+}

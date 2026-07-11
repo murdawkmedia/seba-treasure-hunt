@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Community Clue Board | Tim Lost Something?</title>
+  <meta name="description" content="Read moderated Field Notes from Seba Beach treasure hunters and share an observation from one of the 12 public waypoints." />
+  <meta name="robots" content="index,follow,max-image-preview:large" />
+  <link rel="canonical" href="https://www.timlostsomething.com/clue-board" />
+  <meta property="og:site_name" content="Tim Lost Something?" />
+  <meta property="og:title" content="Community Clue Board | Tim Lost Something?" />
+  <meta property="og:description" content="Moderated community observations from the 12-waypoint Seba Beach treasure hunt." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://www.timlostsomething.com/clue-board" />
+  <meta property="og:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&amp;family=Pirata+One&amp;family=Special+Elite&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/board.css" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
+</head>
+<body class="board-page">
+  <a class="skip-link" href="#main">Skip to the clue board</a>
+
+  <div class="case-signal" id="case-signal" data-state="unavailable" role="status" aria-live="polite">
+    <span class="case-signal__mark" aria-hidden="true"></span>
+    <strong id="case-signal-label">Checking official case status</strong>
+    <span id="case-signal-detail">Exact directions remain locked until status is confirmed.</span>
+  </div>
+
+  <header class="board-topbar">
+    <a class="board-brand" href="/" aria-label="Tim Lost Something? home">
+      <span class="board-brand__seal" aria-hidden="true">T?</span>
+      <span><strong>Tim Lost Something?</strong><small>The Seba Beach Treasure Hunt</small></span>
+    </a>
+    <nav aria-label="Campaign">
+      <a href="/route">Route</a>
+      <a href="/updates">Updates</a>
+      <a href="/report">Report a find</a>
+      <a class="board-topbar__account" href="/dashboard#sign-in">Hunter sign in</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="board-hero" aria-labelledby="board-title">
+      <div class="board-hero__copy">
+        <p class="board-eyebrow">Case file / community ledger</p>
+        <h1 id="board-title">What did the other hunters notice?</h1>
+        <p class="board-hero__lead">Compare tracks, weather, landmarks and careful observations from all 12 waypoints. Every Field Note is reviewed before it appears here.</p>
+      </div>
+      <aside class="community-notice" aria-label="Important community-content notice">
+        <span class="community-notice__stamp" aria-hidden="true">FIELD NOTE</span>
+        <p><strong>Community observation&mdash;not an official clue.</strong> Official information is always marked and appears in the case update feed.</p>
+      </aside>
+    </section>
+
+    <div class="board-layout">
+      <aside class="board-rail" aria-label="Board controls">
+        <section class="ledger-panel board-filter">
+          <p class="ledger-label">Filter the ledger</p>
+          <label for="waypoint-filter">Waypoint</label>
+          <select id="waypoint-filter" name="waypoint">
+            <option value="all">All 12 waypoints</option>
+            <option value="1">Waypoint 01</option>
+            <option value="2">Waypoint 02</option>
+            <option value="3">Waypoint 03</option>
+            <option value="4">Waypoint 04</option>
+            <option value="5">Waypoint 05</option>
+            <option value="6">Waypoint 06</option>
+            <option value="7">Waypoint 07</option>
+            <option value="8">Waypoint 08</option>
+            <option value="9">Waypoint 09</option>
+            <option value="10">Waypoint 10</option>
+            <option value="11">Waypoint 11</option>
+            <option value="12">Waypoint 12</option>
+          </select>
+          <p class="control-hint">Only moderator-approved notes are public. Reports and private find claims never appear automatically.</p>
+        </section>
+
+        <section class="ledger-panel board-submit" aria-labelledby="submit-note-title">
+          <p class="ledger-label">Add to the case file</p>
+          <h2 id="submit-note-title">Share a Field Note</h2>
+          <div id="board-auth-prompt">
+            <p>Sign in as a hunter to submit a note or reply. Reading the board does not require an account.</p>
+            <a class="field-button" href="/dashboard#sign-in">Sign in to contribute</a>
+          </div>
+
+          <form id="field-note-form" hidden novalidate>
+            <div class="form-error-summary" id="note-error-summary" role="alert" tabindex="-1" hidden></div>
+            <label for="note-waypoint">Waypoint</label>
+            <select id="note-waypoint" name="waypointId" required>
+              <option value="">Choose a waypoint</option>
+              <option value="1">Waypoint 01</option>
+              <option value="2">Waypoint 02</option>
+              <option value="3">Waypoint 03</option>
+              <option value="4">Waypoint 04</option>
+              <option value="5">Waypoint 05</option>
+              <option value="6">Waypoint 06</option>
+              <option value="7">Waypoint 07</option>
+              <option value="8">Waypoint 08</option>
+              <option value="9">Waypoint 09</option>
+              <option value="10">Waypoint 10</option>
+              <option value="11">Waypoint 11</option>
+              <option value="12">Waypoint 12</option>
+            </select>
+
+            <label for="note-body">What did you observe?</label>
+            <textarea id="note-body" name="body" rows="6" maxlength="1200" required aria-describedby="note-body-help"></textarea>
+            <div class="field-meta" id="note-body-help">
+              <span>Avoid names, contact details and exact private coordinates.</span>
+              <span><output id="note-character-count">0</output>/1200</span>
+            </div>
+
+            <label for="note-images">Supporting images <span>(optional)</span></label>
+            <input id="note-images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="note-images-help" />
+            <p class="control-hint" id="note-images-help">Up to 3 images, 10 MiB each. Location metadata is removed before an approved copy can be shown publicly.</p>
+            <ul class="file-ledger" id="note-file-list" aria-live="polite"></ul>
+
+            <div class="turnstile-slot" id="note-turnstile" data-note-turnstile aria-label="Human verification">
+              <span data-note-turnstile-state>Preparing the human check&hellip;</span>
+            </div>
+            <button class="field-button" type="submit" disabled>Send for moderator review</button>
+            <p class="form-result" id="note-form-result" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="ledger-panel board-private-report">
+          <p class="ledger-label">Found something important?</p>
+          <h2>Keep find claims private</h2>
+          <p>Do not post ID details, cash evidence or an exact find location here. Send it directly to the case team.</p>
+          <a class="field-button field-button--quiet" href="/report">Open private report</a>
+        </section>
+      </aside>
+
+      <section class="board-main" aria-labelledby="field-notes-title">
+        <div class="board-heading">
+          <div>
+            <p class="ledger-label">Approved observations</p>
+            <h2 id="field-notes-title">Field Notes</h2>
+          </div>
+          <p id="board-status" role="status" aria-live="polite">Loading the public ledger&hellip;</p>
+        </div>
+        <div id="board-feed" class="board-feed" aria-busy="true">
+          <div class="board-state board-state--loading">
+            <span class="board-state__spinner" aria-hidden="true"></span>
+            <h3>Opening the field ledger</h3>
+            <p>Checking for moderator-approved observations.</p>
+          </div>
+        </div>
+        <button class="field-button field-button--quiet board-more" id="board-more" type="button" hidden>Load older notes</button>
+      </section>
+    </div>
+  </main>
+
+  <dialog class="board-dialog" id="board-flag-dialog" aria-labelledby="flag-dialog-title">
+    <form method="dialog" class="board-dialog__head">
+      <div><p class="ledger-label">Private moderation signal</p><h2 id="flag-dialog-title">Report this item for review</h2></div>
+      <button class="board-dialog__close" value="cancel" aria-label="Close report dialog">&times;</button>
+    </form>
+    <form class="board-dialog__body" id="board-flag-form" novalidate>
+      <p>Moderators will review the item privately. A report does not automatically remove community content.</p>
+      <div class="turnstile-slot" data-flag-turnstile aria-label="Human verification"><span data-flag-turnstile-state>Preparing the human check&hellip;</span></div>
+      <div class="board-dialog__actions"><button class="field-button field-button--quiet" type="button" data-close-flag>Cancel</button><button class="field-button" type="submit" disabled>Send for review</button></div>
+      <p class="form-result" data-flag-result role="status" aria-live="polite"></p>
+    </form>
+  </dialog>
+
+  <footer class="board-footer">
+    <p><a href="/">Tim Lost Something?</a> <span aria-hidden="true">/</span> This year: Tim lost his ID.</p>
+    <nav aria-label="Legal"><a href="/rules">Rules</a><a href="/community-guidelines">Community guidelines</a><a href="/privacy">Privacy</a></nav>
+  </footer>
+
+  <script type="module" src="/assets/app/board.js"></script>
+</body>
+</html>

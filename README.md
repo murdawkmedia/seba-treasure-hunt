@@ -1,89 +1,95 @@
 # Tim Lost Something?
 
-**This year: Tim lost his ID—along with roughly $5,000 in cash and two diamond
-rings.**
+The 2026 Seba Beach Treasure Hunt campaign and hunter platform.
 
-This is the public 2026 Seba Beach Treasure Hunt. Finders may keep the cash and
-rings; Tim only asks that his government ID bundle be returned to SebaHub.
+**This year: Tim lost his ID — along with roughly $5,000 in cash and two diamond rings.** Finders may keep the cash and rings; Tim only asks that his government ID bundle be returned.
 
-## Live addresses
+## Addresses
 
-- Canonical: <https://www.timlostsomething.com/>
+- Canonical production site: <https://www.timlostsomething.com/>
 - Bare-domain redirect: <https://timlostsomething.com/>
-- Cloudflare Pages fallback: <https://seba-treasure-hunt.pages.dev/>
+- Cloudflare Pages project: `seba-treasure-hunt`
+- Current release preview: <https://codex-validation.seba-treasure-hunt.pages.dev/>
 
-The bare hostname permanently redirects to the canonical **www** hostname while
-preserving paths and query strings.
+The bare hostname permanently redirects to the canonical `www` hostname while preserving paths and query strings. Preview deployments are noindexed.
 
-## Pages
+## Product surfaces
 
-| Page | Purpose |
+| Route | Purpose |
 |---|---|
-| index.html | Campaign premise, real evidence, disclosed ID prop, rules, quick answers, contacts and sponsor framing |
-| route.html | Twelve GPS-mapped waypoints, 61 route photos, trail map and the 81-second route video |
-| interview.html | Tim's full 20-question account and 11 optional Hunter's Notes |
+| `/` | Campaign story, case status, primary actions, evidence and quick answers |
+| `/start` | Permanent QR destination, live route/zone ledger and safe starting instructions |
+| `/route` | Public 12-waypoint overview, public-safe photos and route video |
+| `/interview` | Tim's full account and optional Hunter's Notes |
+| `/dashboard` | Hunter identity, profile, progress and authenticated exact guidance |
+| `/updates` | Dated official case-update feed |
+| `/report` | Private find, tip and safety reporting; account optional |
+| `/clue-board` | Moderated public Field Notes, images, replies and abuse reporting |
+| `/rules` | Versioned current rules and safety guidance |
+| `/privacy` | Campaign privacy notice |
+| `/community-guidelines` | Public contribution and moderation rules |
+| `/ops` | Invitation-only staff case room |
 
-## Brand and marketing bridge
+Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](https://www.sebastays.com/guarantee).
+
+## Architecture
+
+- Cloudflare Pages advanced-mode Worker serves the site and versioned API.
+- D1 stores case state, dated updates, rules, zones, waypoints, profiles, progress, reports, moderation and audit events.
+- Private R2 stores report and community-media originals.
+- A Queue delivers uploaded media to a private Worker that validates and re-encodes approved raster formats through Cloudflare Images.
+- Only a D1-authorized, ready derivative can be read publicly; originals and find evidence have no public delivery path.
+- KV provides salted, hashed-identifier rate limits. Turnstile is the second write control.
+- Hunter and staff identity use separate Clerk applications. Staff authorization is repeated in D1.
+
+The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication and an active/open safety check.
+
+## Privacy and campaign artwork
+
+- All published route photographs are re-encoded without EXIF, GPS, XMP or IPTC metadata.
+- `assets/photos/evidence-cash.jpg` is the real last-known evidence image; readable card details are blurred.
+- `assets/photos/tim-lost-id-campaign-prop.webp` is fictional campaign artwork and is visibly disclosed as a dramatization. It is never evidence or social preview artwork.
+- Exact directions, staff allowlists, private reports, originals, secrets and internal runbooks are excluded from the public build.
+- Unapproved future campaign, partner and prize claims are not published.
+
+## Develop and verify
+
+```powershell
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm run dev
+```
+
+The complete suite covers public content contracts, SEO/AEO, canonical redirects, gated waypoint data, auth separation, status transitions, reporting, moderation, rate limits, upload privacy, media re-encoding, UI normalization, metadata removal and the Cloudflare file-size limit.
+
+## Deploy
+
+Cloudflare configuration is in `wrangler.toml`; the queue consumer is in `wrangler.media.toml`. Production database changes are versioned under `migrations/` and must be applied in order.
+
+Never upload the working directory. `npm run build` creates an allowlisted `dist/` and excludes planning, source media, environment files, local Cloudflare state and unconfirmed partner assets.
+
+Do not promote a build until all of these are configured and tested in preview:
+
+1. public Clerk application and allowed identity methods;
+2. separate invitation-only staff Clerk application;
+3. privately seeded staff principals;
+4. hostname-restricted Turnstile widget and secret;
+5. private report upload and queue processing;
+6. hunter and staff sign-in, recovery and authorization;
+7. full public-output privacy scan.
+
+## Decisions in force
 
 - Umbrella brand: **Tim Lost Something?**
 - 2026 sub-brand: **This year: Tim lost his ID.**
 - Descriptor: **The Seba Beach Treasure Hunt**
-- Every **Always Sunny in Seba** badge links to the
-  [SebaStays Sunny Guarantee](https://www.sebastays.com/guarantee).
-
-## Tech
-
-- Plain static HTML, CSS and JavaScript; no application build step.
-- Vendored Leaflet with Esri imagery tiles; no map API key.
-- Route photos are web-optimized and intentionally retain GPS metadata because
-  their locations are part of the hunt.
-- assets/route/route-video.mp4 is a 1,949-frame, 24 fps, 1920×1080 H.264/AAC
-  file with faststart. Its canonical end card displays
-  **www.timlostsomething.com**.
-- Search and answer-engine surfaces include page-specific metadata, canonical
-  URLs, Open Graph/X cards, visible quick answers, JSON-LD, robots.txt and
-  sitemap.xml.
-
-## Evidence and campaign artwork
-
-- assets/photos/evidence-cash.jpg is the real last-known photo. The readable
-  ID/card details are blurred.
-- assets/photos/tim-lost-id-campaign-prop.webp is deliberately fictional
-  campaign artwork. It is visibly disclosed as a dramatization and must never
-  be presented as evidence, an exact likeness of the missing ID, or social
-  preview artwork.
-
-## Test and preview
-
-    node --test tests/*.test.mjs
-    python -m http.server 8080
-
-Open <http://localhost:8080>, /route.html and /interview.html.
-
-The eight contract tests verify the campaign name, canonical domains, four
-Sunny Guarantee links, structured data, crawl files, prop disclosure,
-ID-bundle terminology, apex redirect and static-asset pass-through.
-
-## Deploy
-
-- Cloudflare Pages project: **seba-treasure-hunt**
-- Production source: tracked files from **main**
-- Deployment method: direct Wrangler upload from a clean git archive
-- Canonicalization: Pages advanced-mode worker redirects only the bare hostname
-  and passes all other requests to the static asset binding.
-
-Never deploy the working directory directly. The gitignored planning/,
-source-media/ and .wrangler/ directories are not public assets.
-
-## Decisions in force
-
-- Canonical campaign language says Tim lost his **ID bundle**, not a wallet.
-  Verbatim interview material may still explain that he does not carry a
-  conventional wallet.
-- The 12-waypoint/61-photo route is authoritative.
-- GPS metadata on route photographs is public intentionally.
-- The evidence photo remains the social preview.
-- No fabricated claims or fake urgency on the website.
-- The published MP4 must remain below Cloudflare Pages' 25 MiB per-file limit.
-- _worker.js and canonical-host-worker.mjs are the tested production redirect;
-  do not replace them with an unverified client-side redirect.
+- Canonical item language is **ID bundle**, not lost wallet.
+- The current 12-waypoint route is authoritative.
+- Public media must be metadata-free; exact guidance is account-gated.
+- Public notes and images are premoderated. Private reports never auto-publish.
+- The real evidence photo remains the social preview.
+- No fabricated claims, countdowns or urgency.
+- The route MP4 must remain below Cloudflare Pages' 25 MiB per-file limit.
+- Production stays on the last working release until identity and human verification pass end-to-end.

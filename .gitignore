@@ -1,5 +1,6 @@
 # tooling / OS cruft — keep the public repo clean
 .claude/
+node_modules/
 # internal planning + original media (713 MB) — never publish
 planning/
 source-media/
@@ -8,3 +9,12 @@ Thumbs.db
 desktop.ini
 *.log
 .wrangler/
+dist/
+dist-media/
+.dev.vars
+.env
+.env.*
+!.env.example
+.env.local
+playwright-report/
+test-results/

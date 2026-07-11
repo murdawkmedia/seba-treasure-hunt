@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Report a Find, Tip, or Safety Concern | Tim Lost Something?</title>
+  <meta name="description" content="Privately report a possible find, a treasure-hunt tip, or a safety concern to the Tim Lost Something? campaign team." />
+  <meta name="robots" content="noindex,follow" />
+  <link rel="canonical" href="https://www.timlostsomething.com/report" />
+  <meta property="og:site_name" content="Tim Lost Something?" />
+  <meta property="og:title" content="Report Something | Tim Lost Something?" />
+  <meta property="og:description" content="Send a private find, tip, or safety report for the Seba Beach treasure hunt." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://www.timlostsomething.com/report" />
+  <meta property="og:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Pirata+One&family=Special+Elite&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/hunter.css" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
+</head>
+<body class="hunter-page">
+  <a class="skip-link" href="#main">Skip to report form</a>
+  <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
+    <span class="case-strip__mark" data-status-mark aria-hidden="true">?</span>
+    <span class="case-strip__copy">
+      <strong class="case-strip__label" data-status-label>Status unavailable</strong>
+      <span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span>
+      <span class="case-strip__next" data-status-next hidden></span>
+    </span>
+    <a class="case-strip__link" href="/updates">Official updates</a>
+  </section>
+  <header class="hunter-header">
+    <div class="hunter-header__inner">
+      <a class="hunter-brand" href="/">Tim Lost Something?<span>This year: Tim lost his ID</span></a>
+      <nav class="hunter-nav" aria-label="Campaign">
+        <a href="/start">Start</a>
+        <a href="/route">12-waypoint route</a>
+        <a href="/updates">Updates</a>
+        <a href="/clue-board">Clue board</a>
+        <a href="/report" aria-current="page">Report</a>
+        <a href="/rules">Rules</a>
+        <a href="/dashboard">Dashboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="hunter-hero" aria-labelledby="report-title">
+      <div class="hunter-hero__inner">
+        <p class="hunter-kicker">Private intake · Reviewed by campaign operators</p>
+        <h1 id="report-title">Report Something</h1>
+        <p class="hunter-hero__lead">Send a find claim, useful tip, or safety concern privately. Nothing submitted here goes onto the public clue board automatically.</p>
+      </div>
+    </section>
+
+    <div class="hunter-main">
+      <section class="answer-first" aria-labelledby="report-answer">
+        <p class="field-label">The short answer</p>
+        <h2 id="report-answer">What should I do if I find Tim's ID bundle?</h2>
+        <p>Leave the scene undisturbed when safe, take a clear photograph, note the nearest waypoint, and submit a find report below. A campaign operator will review the evidence and contact you privately.</p>
+      </section>
+
+      <div class="report-grid">
+        <section class="field-panel form-shell" aria-labelledby="report-form-title">
+          <p class="field-label">Private campaign intake</p>
+          <h2 id="report-form-title">Find, tip, or safety report</h2>
+          <div class="system-message" data-report-result role="status" aria-live="polite" tabindex="-1" hidden></div>
+          <div class="system-message" data-report-errors role="alert" tabindex="-1" hidden></div>
+
+          <form data-report-form novalidate enctype="multipart/form-data">
+            <div class="form-grid">
+              <div class="form-field form-field--full">
+                <label for="report-type">What are you reporting? <span class="required-mark" aria-hidden="true">*</span></label>
+                <select id="report-type" name="type" required aria-describedby="report-type-hint report-type-error">
+                  <option value="">Choose one</option>
+                  <option value="find">Possible find</option>
+                  <option value="tip">Tip or observation</option>
+                  <option value="safety">Safety concern</option>
+                </select>
+                <span class="field-hint" id="report-type-hint">Find claims require at least one clear photograph.</span>
+                <span class="field-error" id="report-type-error" data-error-for="type"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-name">Your name <span class="required-mark" aria-hidden="true">*</span></label>
+                <input id="report-name" name="name" type="text" autocomplete="name" maxlength="100" required aria-describedby="report-name-error" />
+                <span class="field-error" id="report-name-error" data-error-for="name"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-email">Email <span class="required-mark" aria-hidden="true">*</span></label>
+                <input id="report-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required aria-describedby="report-email-error" />
+                <span class="field-error" id="report-email-error" data-error-for="email"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-phone">Phone (optional)</label>
+                <input id="report-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="30" aria-describedby="report-phone-error" />
+                <span class="field-error" id="report-phone-error" data-error-for="phone"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-waypoint">Nearest waypoint (optional)</label>
+                <select id="report-waypoint" name="waypointId" aria-describedby="report-waypoint-hint">
+                  <option value="">Between waypoints or not sure</option>
+                </select>
+                <span class="field-hint" id="report-waypoint-hint" data-waypoint-load-state>Loading the public waypoint list…</span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-location">Describe the location <span class="required-mark" aria-hidden="true">*</span></label>
+                <input id="report-location" name="locationDescription" type="text" maxlength="300" required placeholder="Nearby sign, trail feature, or waypoint—do not enter a home address" aria-describedby="report-location-error" />
+                <span class="field-error" id="report-location-error" data-error-for="locationDescription"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <span id="location-sharing-label"><strong>Optional browser location</strong></span>
+                <div class="location-capture" aria-labelledby="location-sharing-label">
+                  <button type="button" data-report-use-location>Use my current location</button>
+                  <span data-report-location-state>Location sharing is optional and starts only when you press the button.</span>
+                </div>
+                <input type="hidden" name="latitude" data-report-latitude />
+                <input type="hidden" name="longitude" data-report-longitude />
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-details">What happened? <span class="required-mark" aria-hidden="true">*</span></label>
+                <textarea id="report-details" name="details" maxlength="3000" required placeholder="Tell the review team what you saw, when you saw it, and what makes it relevant." aria-describedby="report-details-error"></textarea>
+                <span class="field-error" id="report-details-error" data-error-for="details"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-photo">Photographs <span data-photo-required-copy>(required for a find)</span></label>
+                <input id="report-photo" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="report-photo-hint report-photo-error" />
+                <span class="field-hint" id="report-photo-hint">Up to three JPEG, PNG, or WebP images; maximum 10 MiB each. Images are private unless an operator separately approves a metadata-free public derivative.</span>
+                <span class="field-error" id="report-photo-error" data-error-for="photo"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label>Prove you're human <span class="required-mark" aria-hidden="true">*</span></label>
+                <div class="turnstile-shell" data-turnstile aria-describedby="report-turnstile-error">
+                  <span data-turnstile-state>Preparing the human check…</span>
+                </div>
+                <span class="field-error" id="report-turnstile-error" data-error-for="turnstileToken"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-accuracy">
+                  <input id="report-accuracy" name="accuracy" type="checkbox" required aria-describedby="report-accuracy-error" />
+                  I believe this report is accurate and understand the team may contact me to verify it.
+                </label>
+                <span class="field-error" id="report-accuracy-error" data-error-for="accuracy"></span>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="hunter-button" type="submit" data-report-submit>Send private report</button>
+            </div>
+            <p class="field-hint">Submitting creates a private review record. It does not publish your name, contact details, photo, or location.</p>
+          </form>
+        </section>
+
+        <aside class="field-panel report-aside" aria-labelledby="report-next-title">
+          <p class="field-label">What happens next</p>
+          <h2 id="report-next-title">A human reviews it</h2>
+          <ol class="plain-list">
+            <li><strong>Received:</strong> the system stores your report privately.</li>
+            <li><strong>Reviewing:</strong> an operator checks the details and evidence.</li>
+            <li><strong>Contacted or escalated:</strong> the team follows up when needed.</li>
+            <li><strong>Verified, rejected, or resolved:</strong> the review outcome is recorded.</li>
+          </ol>
+          <p>A sanitized official update can be drafted later, but only through a separate operator decision.</p>
+          <p class="field-panel__action"><a href="/privacy">How report data is handled →</a></p>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="hunter-footer">
+    <div class="hunter-footer__inner">
+      <p><strong>Tim Lost Something?</strong><br />The 2026 Seba Beach Treasure Hunt</p>
+      <nav aria-label="Legal and safety">
+        <a href="/privacy">Privacy</a>
+        <a href="/community-guidelines">Community guidelines</a>
+        <a href="/rules">Current rules</a>
+      </nav>
+    </div>
+  </footer>
+  <script type="module" src="/assets/app/status.js"></script>
+  <script type="module" src="/assets/app/report.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.worker.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": [
+    "src/worker.ts",
+    "src/media-worker.ts",
+    "src/server/**/*.ts",
+    "tests/api-*.test.ts",
+    "tests/api-test-kit.ts",
+    "tests/media-worker.test.ts"
+  ]
+}

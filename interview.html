@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tim Lost Something? · The Interview and Hunt Clues</title>
-  <meta name="description" content="Read Tim's 20-question interview about losing his ID, roughly $5,000 and two diamond rings along the 12-waypoint Seba Beach route." />
+  <meta name="description" content="Read Tim's 19-question public interview about losing his ID, roughly $5,000 and two diamond rings along the 12-waypoint Seba Beach route." />
   <meta name="robots" content="index,follow,max-image-preview:large" />
   <link rel="canonical" href="https://www.timlostsomething.com/interview" />
   <meta property="og:site_name" content="Tim Lost Something?" />
@@ -132,27 +132,32 @@
 </head>
 <body>
 
+  <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
+    <span class="case-strip__mark" data-status-mark aria-hidden="true">?</span>
+    <span class="case-strip__copy">
+      <strong class="case-strip__label" data-status-label>Status unavailable</strong>
+      <span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span>
+      <span class="case-strip__next" data-status-next hidden></span>
+    </span>
+    <a class="case-strip__link" href="updates.html">Official updates</a>
+  </section>
+
   <!-- ===================== NAV ===================== -->
   <header class="topbar">
     <div class="wrap">
       <a class="brand" href="index.html"><span aria-hidden="true">💰</span> Tim Lost Something?</a>
       <button class="menu-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
       <nav id="nav">
-        <a href="index.html#deal">The Deal</a>
-        <a href="index.html#legend">The Story</a>
+        <a href="start.html">Start</a>
         <a href="route.html">The Route 🗺️</a>
-        <a href="interview.html">The Interview 🎙️</a>
-        <a href="index.html#rules">The Rules</a>
-        <a href="index.html#official-rules">Fine Print</a>
+        <a href="updates.html">Updates</a>
+        <a href="clue-board.html">Clue Board</a>
+        <a href="report.html">Report</a>
+        <a href="rules.html">Rules</a>
+        <a href="dashboard.html">Dashboard</a>
       </nav>
     </div>
   </header>
-
-  <!-- ===================== CFCW PARTNER STRIP ===================== -->
-  <a class="partner-strip" href="https://cfcw.com" target="_blank" rel="noopener">
-    <img class="partner-strip__logo" src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
-    <span class="partner-strip__text"><strong>Official Radio Partner</strong> · prize &amp; hunt updates every Friday on 840&nbsp;AM</span>
-  </a>
 
   <!-- ===================== HEADER / HERO ===================== -->
   <section class="hero" id="top">
@@ -167,7 +172,7 @@
       <p class="sub">Tim drove every Seba Beach property in his side-by-side, showing a group of potential entrepreneurs around. Somewhere along the route — through the back trails, the cliff edge, the new beach, the forest — his ID, $5,000 in cash, and two <strong>diamond rings</strong> disappeared.</p>
       <p class="sub"><em>His answers contain the clues. Read carefully. The details matter.</em></p>
       <div class="stat-chips">
-        <span class="stat-chip">20 Questions</span>
+        <span class="stat-chip">19 Public Questions</span>
         <span class="stat-chip">12 Waypoints Covered</span>
         <span class="stat-chip">11 Hunter's Clues</span>
       </div>
@@ -470,18 +475,6 @@
         <details class="qa">
           <summary>
             <span class="qa-num">19</span>
-            <span class="qa-title">THE GOLF BALLS</span>
-            <span class="qa-arrow">▶</span>
-          </summary>
-          <div class="qa-body">
-            <p>Ha — yeah, there are golf balls hidden around the properties too. If you find one of those, you win trips and tickets to the Music Festival. So while you're out there looking for my ID, keep your eyes open for golf balls as well.</p>
-            <p>We wanted to make the whole thing a bit of an adventure. Come out, explore the properties, see what Seba Beach is all about. Maybe you find my ID, maybe you find a golf ball, maybe you just have a great afternoon out here. That's kind of the spirit of it.</p>
-          </div>
-        </details>
-
-        <details class="qa">
-          <summary>
-            <span class="qa-num">20</span>
             <span class="qa-title">THE MESSAGE</span>
             <span class="qa-arrow">▶</span>
           </summary>
@@ -532,10 +525,6 @@
       </a>
       <p class="campaign-season-footer">This year: Tim lost his ID.</p>
       <p>Made with 🏴‍☠️ &amp; ☀️ in Seba Beach, Alberta — on the north shore of Lake Wabamun.</p>
-      <a class="footer-cfcw" href="https://cfcw.com" target="_blank" rel="noopener">
-        <img src="assets/cfcw-logo.png" alt="CFCW 840 AM — Alberta's Country Legend" />
-        <span>Official Radio Partner — 840 CFCW, serving Central Alberta since 1954</span>
-      </a>
       <div class="links">
         <a href="https://sebahub.com" target="_blank" rel="noopener">SebaHub</a>
         <a href="https://sebastays.com" target="_blank" rel="noopener">SebaStays</a>
@@ -576,5 +565,6 @@
       }
     })();
   </script>
+  <script type="module" src="/assets/app/status.js"></script>
 </body>
 </html>

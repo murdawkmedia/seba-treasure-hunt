@@ -1,0 +1,1015 @@
+import type { Clerk } from "@clerk/clerk-js";
+import type { SignInResource } from "@clerk/shared/types";
+
+type OpsView = "command" | "updates" | "reports" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit";
+
+export interface OpsDashboard {
+  status: {
+    state: string;
+    updatedAt: string;
+    nextClue: string;
+    version: number | null;
+  } | null;
+  counts: {
+    pendingNotes: number | null;
+    receivedReports: number | null;
+    receivedFlags: number | null;
+    activeHunters: number | null;
+  };
+  killSwitches: {
+    boardVisible: boolean;
+    notesEnabled: boolean;
+    repliesEnabled: boolean;
+  } | null;
+}
+
+interface OpsStaffRecord {
+  subject: string;
+  email: string;
+  displayName: string;
+  status: string;
+  invitedAt: string;
+  lastLoginAt: string;
+  sessionCount: number | null;
+  actions: string[];
+}
+
+interface OpsReportRecord {
+  id: string;
+  createdAt: string;
+  type: string;
+  waypointId: string;
+  mediaCount: number;
+  status: string;
+}
+
+interface OpsModerationRecord {
+  id: string;
+  createdAt: string;
+  authorHandle: string;
+  waypointId: string;
+  mediaCount: number;
+  body: string;
+}
+
+interface OpsAuditRecord {
+  id: string;
+  createdAt: string;
+  actor: string;
+  action: string;
+  target: string;
+  result: string;
+}
+
+export interface OpsSubscriberRecord {
+  verifiedEmail: string;
+  fullName: string;
+  publicHandle: string;
+  phone: string;
+  townArea: string;
+  consents: {
+    huntEmail: boolean;
+    marketing: boolean;
+    sms: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpsSubscriberLedger {
+  counts: { huntEmail: number | null; marketing: number | null; sms: number | null };
+  items: OpsSubscriberRecord[];
+  nextCursor: string | null;
+}
+
+const views: readonly OpsView[] = ["command", "updates", "reports", "moderation", "zones", "rules", "subscribers", "access", "audit"];
+
+let staffClerk: Clerk | null = null;
+let signInAttempt: SignInResource | null = null;
+let latestDashboard: OpsDashboard | null = null;
+let loadedSubscribers: OpsSubscriberRecord[] = [];
+let subscriberNextCursor: string | null = null;
+let subscribersLoaded = false;
+let subscribersLoading = false;
+
+export function escapeOpsHtml(value: unknown): string {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function envelopeData(payload: unknown): unknown {
+  return isRecord(payload) && "data" in payload ? payload.data : payload;
+}
+
+export function formatOpsTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "Time unavailable";
+  return new Intl.DateTimeFormat("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "America/Edmonton",
+  }).format(date);
+}
+
+export function normalizeOpsDashboard(payload: unknown): OpsDashboard {
+  const data = envelopeData(payload);
+  const record = isRecord(data) ? data : {};
+  const statusSource = isRecord(record.status) ? record.status : null;
+  const countSource = isRecord(record.counts) ? record.counts : {};
+  const switchSource = isRecord(record.killSwitches) ? record.killSwitches : null;
+  const state = statusSource ? asString(statusSource.state).toLowerCase() : "";
+  const updatedAt = statusSource ? asString(statusSource.updatedAt) : "";
+  const status = ["open", "paused", "found"].includes(state) && updatedAt
+    ? {
+        state,
+        updatedAt,
+        nextClue: asString(statusSource?.nextClue),
+        version: asNumber(statusSource?.version),
+      }
+    : null;
+  const boardVisible = switchSource ? asBoolean(switchSource.boardVisible) : null;
+  const notesEnabled = switchSource ? asBoolean(switchSource.notesEnabled) : null;
+  const repliesEnabled = switchSource ? asBoolean(switchSource.repliesEnabled) : null;
+  const killSwitches = boardVisible === null || notesEnabled === null || repliesEnabled === null
+    ? null
+    : { boardVisible, notesEnabled, repliesEnabled };
+  return {
+    status,
+    counts: {
+      pendingNotes: asNumber(countSource.pendingNotes),
+      receivedReports: asNumber(countSource.receivedReports),
+      receivedFlags: asNumber(countSource.receivedFlags),
+      activeHunters: asNumber(countSource.activeHunters),
+    },
+    killSwitches,
+  };
+}
+
+export function normalizeOpsStaff(payload: unknown): OpsStaffRecord[] {
+  return asArray(envelopeData(payload)).flatMap((value) => {
+    if (!isRecord(value)) return [];
+    const subject = asString(value.id) || asString(value.subject);
+    const email = asString(value.email);
+    const status = asString(value.status);
+    if (!subject || !email || !["invited", "active", "suspended", "revoked"].includes(status)) return [];
+    const providedActions = asArray(value.actions).filter((action): action is string => typeof action === "string");
+    const defaultActions: Record<string, string[]> = {
+      invited: ["resend-invitation"],
+      active: ["recovery", "revoke-sessions", "suspend"],
+      suspended: ["recovery", "reactivate"],
+      revoked: [],
+    };
+    const actionList = providedActions.length ? providedActions : (defaultActions[status] ?? []);
+    return [{
+      subject,
+      email,
+      displayName: asString(value.displayName) || "Invited operator",
+      status,
+      invitedAt: asString(value.invitedAt),
+      lastLoginAt: asString(value.lastLoginAt),
+      sessionCount: asNumber(value.sessionCount),
+      actions: actionList,
+    }];
+  });
+}
+
+function normalizeReports(payload: unknown): OpsReportRecord[] {
+  const data = envelopeData(payload);
+  const records = Array.isArray(data) ? data : isRecord(data) ? asArray(data.items ?? data.reports) : [];
+  return records.flatMap((value) => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id);
+    const type = asString(value.type);
+    if (!id || !["find", "tip", "safety"].includes(type)) return [];
+    return [{
+      id,
+      createdAt: asString(value.createdAt),
+      type,
+      waypointId: asString(value.waypointId) || "Not specified",
+      mediaCount: asNumber(value.mediaCount) ?? asArray(value.media).length,
+      status: asString(value.status) || "received",
+    }];
+  });
+}
+
+function normalizeModeration(payload: unknown): OpsModerationRecord[] {
+  const data = envelopeData(payload);
+  const records = Array.isArray(data) ? data : isRecord(data) ? asArray(data.items ?? data.notes) : [];
+  return records.flatMap((value) => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id);
+    if (!id) return [];
+    return [{
+      id,
+      createdAt: asString(value.createdAt),
+      authorHandle: asString(value.authorHandle) || "Private hunter",
+      waypointId: asString(value.waypointId) || "Not specified",
+      mediaCount: asNumber(value.mediaCount) ?? asArray(value.media).length,
+      body: asString(value.body),
+    }];
+  });
+}
+
+function normalizeAudit(payload: unknown): OpsAuditRecord[] {
+  const data = envelopeData(payload);
+  const records = Array.isArray(data) ? data : isRecord(data) ? asArray(data.items ?? data.events) : [];
+  return records.flatMap((value) => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id);
+    if (!id) return [];
+    return [{
+      id,
+      createdAt: asString(value.createdAt),
+      actor: asString(value.actor) || "System",
+      action: asString(value.action) || "Unknown action",
+      target: asString(value.target) || "-",
+      result: asString(value.result) || "recorded",
+    }];
+  });
+}
+
+export function normalizeOpsSubscribers(payload: unknown): OpsSubscriberLedger {
+  const outer = isRecord(payload) ? payload : {};
+  const dataValue = envelopeData(payload);
+  const data = isRecord(dataValue) ? dataValue : {};
+  const counts = isRecord(data.counts) ? data.counts : {};
+  const page = isRecord(outer.page) ? outer.page : isRecord(data.page) ? data.page : {};
+  const items = asArray(data.items).flatMap((value): OpsSubscriberRecord[] => {
+    if (!isRecord(value)) return [];
+    const verifiedEmail = asString(value.verifiedEmail).trim();
+    const consents = isRecord(value.consents) ? value.consents : {};
+    const huntEmail = asBoolean(consents.huntEmail);
+    const marketing = asBoolean(consents.marketing);
+    const sms = asBoolean(consents.sms);
+    if (!verifiedEmail || !verifiedEmail.includes("@") || huntEmail === null || marketing === null || sms === null) return [];
+    return [{
+      verifiedEmail,
+      fullName: asString(value.fullName).trim(),
+      publicHandle: asString(value.publicHandle).trim(),
+      phone: asString(value.phone).trim(),
+      townArea: asString(value.townArea).trim(),
+      consents: { huntEmail, marketing, sms },
+      createdAt: asString(value.createdAt),
+      updatedAt: asString(value.updatedAt),
+    }];
+  });
+  const nextCursor = asString(page.nextCursor) || null;
+  return {
+    counts: {
+      huntEmail: asNumber(counts.huntEmail),
+      marketing: asNumber(counts.marketing),
+      sms: asNumber(counts.sms),
+    },
+    items,
+    nextCursor,
+  };
+}
+
+function consentCell(value: boolean): string {
+  const label = value ? "yes" : "no";
+  return `<span class="ops-consent" data-value="${label}">${label}</span>`;
+}
+
+export function renderSubscriberRows(records: readonly OpsSubscriberRecord[]): string {
+  if (records.length === 0) return `<tr><td colspan="8"><span class="ops-table-empty">No subscribers are present in the authorized ledger.</span></td></tr>`;
+  return records.map((record) => `<tr>
+    <td><span class="ops-mono">${escapeOpsHtml(record.verifiedEmail)}</span></td>
+    <td><strong>${escapeOpsHtml(record.fullName || "Name not supplied")}</strong><br /><span class="ops-mono">${escapeOpsHtml(record.publicHandle || "No public handle")}</span></td>
+    <td>${escapeOpsHtml(record.phone || "Not supplied")}</td>
+    <td>${escapeOpsHtml(record.townArea || "Not supplied")}</td>
+    <td>${consentCell(record.consents.huntEmail)}</td>
+    <td>${consentCell(record.consents.marketing)}</td>
+    <td>${consentCell(record.consents.sms)}</td>
+    <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(record.createdAt ? formatOpsTime(record.createdAt) : "Time unavailable")}</time></td>
+  </tr>`).join("");
+}
+
+function safeCsvCell(input: unknown): string {
+  let value = String(input ?? "");
+  if (/^[\u0000-\u0020]*[=+\-@]/.test(value)) value = `'${value}`;
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+export function buildSubscriberCsv(records: readonly OpsSubscriberRecord[]): string {
+  const rows: string[][] = [
+    ["verified_email", "full_name", "public_handle", "phone", "town_area", "hunt_email_consent", "marketing_consent", "sms_consent", "created_at", "updated_at"],
+    ...records.map((record) => [
+      record.verifiedEmail,
+      record.fullName,
+      record.publicHandle,
+      record.phone,
+      record.townArea,
+      record.consents.huntEmail ? "yes" : "no",
+      record.consents.marketing ? "yes" : "no",
+      record.consents.sms ? "yes" : "no",
+      record.createdAt,
+      record.updatedAt,
+    ]),
+  ];
+  return `\uFEFF${rows.map((row) => row.map(safeCsvCell).join(",")).join("\r\n")}\r\n`;
+}
+
+export function renderStaffRows(records: readonly OpsStaffRecord[]): string {
+  if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No staff records are available from the private source.</span></td></tr>`;
+  return records.map((record) => {
+    const action = (name: string, label: string, style = "quiet"): string => record.actions.includes(name)
+      ? `<button class="ops-button ops-button--${style}" type="button" data-staff-action="${escapeOpsHtml(name)}" data-staff-id="${escapeOpsHtml(record.subject)}">${escapeOpsHtml(label)}</button>`
+      : "";
+    const accessAction = record.status === "suspended"
+      ? action("reactivate", "Reactivate access")
+      : action("suspend", "Suspend access", "danger");
+    return `<tr>
+      <td><strong>${escapeOpsHtml(record.displayName)}</strong><br /><span class="ops-mono">${escapeOpsHtml(record.email)}</span></td>
+      <td>${escapeOpsHtml(record.status === "invited" ? "Pending" : "Accepted")}</td>
+      <td><time datetime="${escapeOpsHtml(record.lastLoginAt)}">${escapeOpsHtml(record.lastLoginAt ? formatOpsTime(record.lastLoginAt) : "Never")}</time></td>
+      <td>${record.sessionCount === null ? "--" : escapeOpsHtml(record.sessionCount)}</td>
+      <td><span class="ops-chip">${escapeOpsHtml(record.status)}</span></td>
+      <td><div class="ops-row-actions">${action("resend-invitation", "Resend invitation")}${action("recovery", "Send recovery instructions")}${action("revoke-sessions", "Revoke sessions")}${accessAction}</div></td>
+    </tr>`;
+  }).join("");
+}
+
+export function renderReportRows(records: readonly OpsReportRecord[]): string {
+  if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No private reports are available from the source.</span></td></tr>`;
+  return records.map((record) => `<tr>
+    <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
+    <td><span class="ops-chip">${escapeOpsHtml(record.type)}</span></td>
+    <td>${escapeOpsHtml(record.waypointId)}</td>
+    <td>${escapeOpsHtml(record.mediaCount)} ${record.mediaCount === 1 ? "file" : "files"}</td>
+    <td>${escapeOpsHtml(record.status)}</td>
+    <td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-report-id="${escapeOpsHtml(record.id)}" data-report-action="reviewing">Begin review</button></div></td>
+  </tr>`).join("");
+}
+
+export function renderModerationRows(records: readonly OpsModerationRecord[]): string {
+  if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No Field Notes are awaiting moderation.</span></td></tr>`;
+  return records.map((record) => `<tr>
+    <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
+    <td>${escapeOpsHtml(record.authorHandle)}</td>
+    <td>${escapeOpsHtml(record.waypointId)}</td>
+    <td>${escapeOpsHtml(record.mediaCount)} ${record.mediaCount === 1 ? "image" : "images"}</td>
+    <td>${escapeOpsHtml(record.body.slice(0, 150))}${record.body.length > 150 ? "&hellip;" : ""}</td>
+    <td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="approved">Approve</button><button class="ops-button ops-button--danger" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="rejected">Reject</button></div></td>
+  </tr>`).join("");
+}
+
+export function renderAuditRows(records: readonly OpsAuditRecord[]): string {
+  if (records.length === 0) return `<tr><td colspan="5"><span class="ops-table-empty">No audit events are available from the source.</span></td></tr>`;
+  return records.map((record) => `<tr>
+    <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
+    <td>${escapeOpsHtml(record.actor)}</td><td>${escapeOpsHtml(record.action)}</td><td>${escapeOpsHtml(record.target)}</td><td>${escapeOpsHtml(record.result)}</td>
+  </tr>`).join("");
+}
+
+export function resolveOpsView(value: string): OpsView {
+  const normalized = value.replace(/^#/, "").toLowerCase();
+  return views.includes(normalized as OpsView) ? normalized as OpsView : "command";
+}
+
+export function buildStatusMutation(
+  input: { state: string; reason: string; reportId: string; nextClue: string; nextClueAt: string; hoursOpen: string; hoursClose: string; confirmed: boolean },
+  version: number,
+): Record<string, unknown> {
+  return {
+    state: input.state,
+    version,
+    confirmFound: input.state === "found" && input.confirmed,
+    ...(input.reportId ? { reportId: input.reportId } : {}),
+    ...(input.reason ? { adjudicationReason: input.reason } : {}),
+    ...(input.nextClue ? { nextClueTitle: input.nextClue } : {}),
+    ...(input.nextClueAt ? { nextClueAt: input.nextClueAt } : {}),
+    ...(input.hoursOpen ? { hoursOpen: input.hoursOpen } : {}),
+    ...(input.hoursClose ? { hoursClose: input.hoursClose } : {}),
+  };
+}
+
+export function buildUpdateMutation(input: { title: string; body: string; publishAt: string }): Record<string, unknown> {
+  return {
+    title: input.title,
+    body: input.body,
+    ...(input.publishAt ? { scheduledFor: input.publishAt } : {}),
+  };
+}
+
+function identityError(error: unknown, fallback: string): string {
+  if (isRecord(error) && Array.isArray(error.errors)) {
+    const first = error.errors[0];
+    if (isRecord(first)) return asString(first.longMessage) || asString(first.message) || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+function apiError(payload: unknown, fallback: string): string {
+  if (!isRecord(payload)) return fallback;
+  const error = isRecord(payload.error) ? payload.error : payload;
+  return asString(error.message) || fallback;
+}
+
+async function opsHeaders(base?: HeadersInit): Promise<Headers> {
+  const headers = new Headers(base);
+  const token = await staffClerk?.session?.getToken().catch(() => null);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return headers;
+}
+
+async function opsRequest(url: string, init: RequestInit = {}): Promise<{ response: Response; payload: unknown }> {
+  const headers = await opsHeaders(init.headers);
+  headers.set("Accept", "application/json");
+  const response = await fetch(url, { ...init, headers, credentials: "same-origin", cache: "no-store" });
+  const payload: unknown = await response.json().catch(() => null);
+  return { response, payload };
+}
+
+function setText(selector: string, value: string): void {
+  const element = document.querySelector<HTMLElement>(selector);
+  if (element) element.textContent = value;
+}
+
+function setMetric(selector: string, value: number | null): void {
+  setText(selector, value === null ? "--" : String(value));
+}
+
+function setTable(selector: string, rows: string): void {
+  const body = document.querySelector<HTMLElement>(selector);
+  if (body) body.innerHTML = rows;
+}
+
+function setConnection(state: "checking" | "online" | "offline", message: string): void {
+  const element = document.querySelector<HTMLElement>("#ops-connection");
+  if (!element) return;
+  element.dataset.state = state;
+  element.innerHTML = `<span aria-hidden="true"></span>${escapeOpsHtml(message)}`;
+}
+
+function showPageError(message: string): void {
+  const error = document.querySelector<HTMLElement>("#ops-page-error");
+  if (!error) return;
+  error.textContent = message;
+  error.hidden = !message;
+}
+
+function switchView(view: OpsView, focus = true): void {
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view]")) {
+    const active = button.dataset.view === view;
+    button.classList.toggle("is-active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  }
+  for (const panel of document.querySelectorAll<HTMLElement>("[data-view-panel]")) {
+    const active = panel.dataset.viewPanel === view;
+    panel.hidden = !active;
+    panel.classList.toggle("is-active", active);
+  }
+  document.querySelector("#ops-navigation")?.classList.remove("is-open");
+  document.querySelector("#ops-menu")?.setAttribute("aria-expanded", "false");
+  if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
+  if (focus) document.querySelector<HTMLElement>("#ops-main")?.focus();
+  if (view === "subscribers" && !subscribersLoaded && !subscribersLoading) void loadSubscribers();
+}
+
+function renderDashboard(dashboard: OpsDashboard): void {
+  latestDashboard = dashboard;
+  if (dashboard.status) {
+    const labels: Record<string, string> = { open: "CASE OPEN", paused: "HUNT PAUSED", found: "CASE FOUND" };
+    const label = labels[dashboard.status.state] ?? dashboard.status.state.toUpperCase();
+    setText("#metric-status", label);
+    setText("#metric-status-time", formatOpsTime(dashboard.status.updatedAt));
+    setText("#case-status-chip", label);
+    setText("#command-updated", `Source updated ${formatOpsTime(dashboard.status.updatedAt)}`);
+    const select = document.querySelector<HTMLSelectElement>("#case-status-select");
+    if (select) select.value = dashboard.status.state;
+  } else {
+    setText("#metric-status", "UNAVAILABLE");
+    setText("#metric-status-time", "No verified source");
+    setText("#case-status-chip", "Unavailable");
+    setText("#command-updated", "Awaiting a verified source timestamp");
+  }
+  setMetric("#metric-reports", dashboard.counts.receivedReports);
+  setMetric("#metric-moderation", dashboard.counts.pendingNotes);
+  setMetric("#metric-hunters", dashboard.counts.activeHunters);
+  setMetric("#nav-report-count", dashboard.counts.receivedReports);
+  setMetric("#nav-moderation-count", dashboard.counts.pendingNotes);
+
+  const attention = document.querySelector<HTMLElement>("#command-attention");
+  if (attention) {
+    const pending = (dashboard.counts.receivedReports ?? 0) + (dashboard.counts.pendingNotes ?? 0) + (dashboard.counts.receivedFlags ?? 0);
+    if (dashboard.counts.receivedReports === null && dashboard.counts.pendingNotes === null) {
+      attention.innerHTML = `<strong>Queue totals unavailable</strong><span>No assumption has been made about pending work.</span>`;
+    } else if (pending === 0) {
+      attention.innerHTML = `<strong>No queued decisions</strong><span>The verified source reports no pending notes, reports or flags.</span>`;
+    } else {
+      attention.innerHTML = `<strong>${escapeOpsHtml(pending)} items need attention</strong><span>${escapeOpsHtml(dashboard.counts.receivedReports ?? 0)} private reports, ${escapeOpsHtml(dashboard.counts.pendingNotes ?? 0)} Field Notes and ${escapeOpsHtml(dashboard.counts.receivedFlags ?? 0)} flags.</span>`;
+    }
+  }
+
+  const switches = document.querySelector<HTMLElement>("#kill-switches");
+  if (switches && dashboard.killSwitches) {
+    const entries: Array<[string, boolean, string]> = [
+      ["Board visibility", dashboard.killSwitches.boardVisible, "Public reading"],
+      ["Field Note submissions", dashboard.killSwitches.notesEnabled, "Pre-moderated posts"],
+      ["Replies", dashboard.killSwitches.repliesEnabled, "Immediate constrained replies"],
+    ];
+    switches.innerHTML = entries.map(([label, enabled, detail]) => `<div class="ops-switch"><span><strong>${escapeOpsHtml(label)}</strong><small>${escapeOpsHtml(detail)}</small></span><button class="ops-button ops-button--quiet" type="button" disabled aria-label="${escapeOpsHtml(label)} is ${enabled ? "enabled" : "disabled"}">${enabled ? "Enabled" : "Disabled"}</button></div>`).join("");
+  } else if (switches) {
+    switches.innerHTML = `<div class="ops-empty"><strong>Control state unavailable</strong><span>No switches can be changed until the source confirms their current state.</span></div>`;
+  }
+}
+
+async function loadDashboard(): Promise<void> {
+  setConnection("checking", "Refreshing source");
+  showPageError("");
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/dashboard");
+    if (!response.ok) throw new Error(apiError(payload, "The case-room source is unavailable."));
+    renderDashboard(normalizeOpsDashboard(payload));
+    setConnection("online", "Verified source online");
+  } catch (error) {
+    renderDashboard(normalizeOpsDashboard(null));
+    setConnection("offline", "Source unavailable");
+    showPageError(error instanceof Error ? error.message : "The case-room source is unavailable.");
+  }
+}
+
+async function loadReports(): Promise<void> {
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/reports");
+    if (!response.ok) throw new Error(apiError(payload, "Private reports are unavailable."));
+    setTable("#reports-table", renderReportRows(normalizeReports(payload)));
+  } catch {
+    setTable("#reports-table", `<tr><td colspan="6"><span class="ops-table-empty">Private reports are unavailable from the source.</span></td></tr>`);
+  }
+}
+
+async function loadModeration(): Promise<void> {
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/moderation/notes");
+    if (!response.ok) throw new Error(apiError(payload, "The moderation queue is unavailable."));
+    setTable("#moderation-table", renderModerationRows(normalizeModeration(payload)));
+  } catch {
+    setTable("#moderation-table", `<tr><td colspan="6"><span class="ops-table-empty">The moderation queue is unavailable from the source.</span></td></tr>`);
+  }
+}
+
+async function loadStaff(): Promise<void> {
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/staff");
+    if (!response.ok) throw new Error(apiError(payload, "Staff access records are unavailable."));
+    setTable("#staff-table", renderStaffRows(normalizeOpsStaff(payload)));
+  } catch {
+    setTable("#staff-table", `<tr><td colspan="6"><span class="ops-table-empty">Staff access records are unavailable from the private source.</span></td></tr>`);
+  }
+}
+
+async function loadAudit(): Promise<void> {
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/audit");
+    if (!response.ok) throw new Error(apiError(payload, "The audit trail is unavailable."));
+    setTable("#audit-table", renderAuditRows(normalizeAudit(payload)));
+  } catch {
+    setTable("#audit-table", `<tr><td colspan="5"><span class="ops-table-empty">The audit trail is unavailable from the source.</span></td></tr>`);
+  }
+}
+
+function setSubscriberState(message: string, kind: "normal" | "error" = "normal"): void {
+  const state = document.querySelector<HTMLElement>("#subscribers-state");
+  if (!state) return;
+  state.textContent = message;
+  if (kind === "error") state.dataset.kind = "error";
+  else delete state.dataset.kind;
+}
+
+async function loadSubscribers(append = false): Promise<void> {
+  if (subscribersLoading || (append && !subscriberNextCursor)) return;
+  subscribersLoading = true;
+  const exportButton = document.querySelector<HTMLButtonElement>("#subscriber-export");
+  const loadMore = document.querySelector<HTMLButtonElement>("#subscriber-load-more");
+  const loadedCount = document.querySelector<HTMLElement>("#subscriber-loaded-count");
+  if (loadMore) loadMore.disabled = true;
+  if (!subscribersLoaded) {
+    setSubscriberState("Loading the authorized subscriber ledger...");
+    setTable("#subscribers-table", `<tr><td colspan="8"><span class="ops-table-empty">Loading authorized subscriber records...</span></td></tr>`);
+  } else {
+    setSubscriberState(append ? "Loading more authorized subscriber records..." : "Refreshing the authorized subscriber ledger...");
+  }
+  const cursor = append && subscriberNextCursor ? `&cursor=${encodeURIComponent(subscriberNextCursor)}` : "";
+  try {
+    const { response, payload } = await opsRequest(`/api/v1/ops/subscribers?limit=100${cursor}`);
+    if (!response.ok) throw new Error(apiError(payload, "The subscriber ledger is unavailable."));
+    const ledger = normalizeOpsSubscribers(payload);
+    if (append) {
+      const deduplicated = new Map(loadedSubscribers.map((item) => [item.verifiedEmail.toLowerCase(), item]));
+      for (const item of ledger.items) deduplicated.set(item.verifiedEmail.toLowerCase(), item);
+      loadedSubscribers = [...deduplicated.values()];
+    } else {
+      loadedSubscribers = ledger.items;
+    }
+    subscriberNextCursor = ledger.nextCursor;
+    subscribersLoaded = true;
+    setMetric("#subscriber-hunt", ledger.counts.huntEmail);
+    setMetric("#subscriber-marketing", ledger.counts.marketing);
+    setMetric("#subscriber-sms", ledger.counts.sms);
+    setTable("#subscribers-table", renderSubscriberRows(loadedSubscribers));
+    setSubscriberState(loadedSubscribers.length === 0
+      ? "The authorized ledger loaded successfully and currently contains no subscriber records."
+      : `${loadedSubscribers.length} authorized subscriber ${loadedSubscribers.length === 1 ? "record is" : "records are"} loaded in this browser session.`);
+    if (exportButton) exportButton.disabled = loadedSubscribers.length === 0;
+    if (loadMore) {
+      loadMore.hidden = subscriberNextCursor === null;
+      loadMore.disabled = false;
+    }
+    if (loadedCount) loadedCount.textContent = `${loadedSubscribers.length} loaded${subscriberNextCursor ? "; more available" : "; end of ledger"}`;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "The subscriber ledger is unavailable.";
+    if (subscribersLoaded) {
+      setSubscriberState(`${detail} ${loadedSubscribers.length} previously loaded ${loadedSubscribers.length === 1 ? "record remains" : "records remain"} available; totals may be stale.`, "error");
+      if (exportButton) exportButton.disabled = loadedSubscribers.length === 0;
+      if (loadMore) {
+        loadMore.hidden = subscriberNextCursor === null;
+        loadMore.disabled = false;
+      }
+    } else {
+      loadedSubscribers = [];
+      subscriberNextCursor = null;
+      setMetric("#subscriber-hunt", null);
+      setMetric("#subscriber-marketing", null);
+      setMetric("#subscriber-sms", null);
+      setTable("#subscribers-table", `<tr><td colspan="8"><span class="ops-table-empty">The private subscriber ledger is unavailable from the source.</span></td></tr>`);
+      setSubscriberState(`${detail} No subscriber data was loaded or exported.`, "error");
+      if (exportButton) exportButton.disabled = true;
+      if (loadMore) loadMore.hidden = true;
+      if (loadedCount) loadedCount.textContent = "No subscriber records loaded";
+    }
+  } finally {
+    subscribersLoading = false;
+  }
+}
+
+function exportLoadedSubscribers(): void {
+  if (loadedSubscribers.length === 0) return;
+  const csv = buildSubscriberCsv(loadedSubscribers);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = `tim-lost-something-subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  setSubscriberState(`Exported ${loadedSubscribers.length} loaded subscriber ${loadedSubscribers.length === 1 ? "record" : "records"} to a local CSV.`);
+}
+
+async function activateAttempt(): Promise<boolean> {
+  if (!staffClerk || !signInAttempt || signInAttempt.status !== "complete" || !signInAttempt.createdSessionId) return false;
+  await staffClerk.setActive({ session: signInAttempt.createdSessionId });
+  signInAttempt = null;
+  return true;
+}
+
+function showAuthForm(id: "ops-sign-in-form" | "ops-second-factor-form" | "ops-recovery-form" | "ops-recovery-complete-form"): void {
+  for (const formId of ["ops-sign-in-form", "ops-second-factor-form", "ops-recovery-form", "ops-recovery-complete-form"]) {
+    const form = document.querySelector<HTMLFormElement>(`#${formId}`);
+    if (form) form.hidden = formId !== id;
+  }
+}
+
+function setAuthMessage(message: string, state: "checking" | "ready" | "error"): void {
+  const status = document.querySelector<HTMLElement>("#ops-auth-config");
+  if (!status) return;
+  status.dataset.state = state;
+  status.textContent = message;
+}
+
+async function verifyStaffSession(): Promise<boolean> {
+  const { response, payload } = await opsRequest("/api/v1/ops/session");
+  if (!response.ok) return false;
+  const data = envelopeData(payload);
+  const operator = isRecord(data) && isRecord(data.operator) ? data.operator : isRecord(data) ? data : {};
+  const name = asString(operator.displayName) || asString(operator.email) || "Operator";
+  setText("#ops-operator-name", name);
+  const initials = name.split(/\s+|@/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "OP";
+  setText(".ops-operator__initials", initials);
+  document.querySelector<HTMLElement>("#ops-auth-panel")?.setAttribute("hidden", "");
+  const app = document.querySelector<HTMLElement>("#ops-app");
+  if (app) app.hidden = false;
+  await Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit()]);
+  switchView(resolveOpsView(location.hash), false);
+  return true;
+}
+
+async function initialiseManagedIdentity(): Promise<void> {
+  let publishableKey = document.querySelector<HTMLMetaElement>('meta[name="staff-clerk-publishable-key"]')?.content.trim() ?? "";
+  try {
+    const response = await fetch("/api/v1/config", { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
+    const payload: unknown = response.ok ? await response.json() : null;
+    const data = isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
+    if (isRecord(data)) publishableKey = asString(data.staffPublishableKey) || publishableKey;
+  } catch {
+    // The optional meta value remains a safe preview fallback.
+  }
+  if (!publishableKey) {
+    setAuthMessage("Staff identity is not configured in this build. No password is accepted locally.", "error");
+    document.querySelector<HTMLButtonElement>('#ops-sign-in-form button[type="submit"]')?.setAttribute("disabled", "");
+    return;
+  }
+  try {
+    const { Clerk: ClerkConstructor } = await import("@clerk/clerk-js");
+    staffClerk = new ClerkConstructor(publishableKey);
+    await staffClerk.load();
+    if (staffClerk.user && await verifyStaffSession()) return;
+    setAuthMessage("Managed staff identity is ready. Only invited accounts can continue.", "ready");
+  } catch (error) {
+    setAuthMessage(identityError(error, "Staff identity could not be loaded."), "error");
+  }
+}
+
+function setupAuthForms(): void {
+  const signIn = document.querySelector<HTMLFormElement>("#ops-sign-in-form");
+  const secondFactor = document.querySelector<HTMLFormElement>("#ops-second-factor-form");
+  const recovery = document.querySelector<HTMLFormElement>("#ops-recovery-form");
+  const recoveryComplete = document.querySelector<HTMLFormElement>("#ops-recovery-complete-form");
+  if (!signIn || !secondFactor || !recovery || !recoveryComplete) return;
+
+  document.querySelector("#show-recovery")?.addEventListener("click", () => showAuthForm("ops-recovery-form"));
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-back-to-sign-in]")) {
+    button.addEventListener("click", () => { signInAttempt = null; showAuthForm("ops-sign-in-form"); });
+  }
+
+  signIn.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const client = staffClerk?.client;
+    if (!client) return;
+    const formData = new FormData(signIn);
+    const identifier = asString(formData.get("email")).trim().toLowerCase();
+    const password = asString(formData.get("password"));
+    const error = signIn.querySelector<HTMLElement>(".ops-form__error");
+    if (!identifier || password.length < 14) {
+      if (error) { error.hidden = false; error.textContent = "Enter your invited email and a password of at least 14 characters."; }
+      return;
+    }
+    try {
+      signInAttempt = await client.signIn.create({ strategy: "password", identifier, password });
+      if (await activateAttempt()) {
+        if (!await verifyStaffSession()) throw new Error("This identity is not an active case-room operator.");
+        return;
+      }
+      if (signInAttempt.status === "needs_second_factor") {
+        showAuthForm("ops-second-factor-form");
+        setAuthMessage("Password accepted. Complete your authenticator check.", "ready");
+        return;
+      }
+      throw new Error("Additional identity verification is required. Use the managed recovery flow if you cannot continue.");
+    } catch (caught) {
+      if (error) { error.hidden = false; error.textContent = identityError(caught, "Sign-in failed."); }
+    }
+  });
+
+  secondFactor.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const code = asString(new FormData(secondFactor).get("code")).replace(/\s/g, "");
+    if (!signInAttempt || !/^\d{6}$/.test(code)) {
+      setAuthMessage("Enter the six-digit code from your authenticator app.", "error");
+      return;
+    }
+    try {
+      signInAttempt = await signInAttempt.attemptSecondFactor({ strategy: "totp", code });
+      if (!await activateAttempt() || !await verifyStaffSession()) throw new Error("This identity is not an active case-room operator.");
+    } catch (error) {
+      setAuthMessage(identityError(error, "Authenticator verification failed."), "error");
+    }
+  });
+
+  recovery.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const client = staffClerk?.client;
+    if (!client) return;
+    const identifier = asString(new FormData(recovery).get("email")).trim().toLowerCase();
+    try {
+      signInAttempt = await client.signIn.create({ strategy: "reset_password_email_code", identifier });
+      const factor = signInAttempt.supportedFirstFactors?.find((item) => item.strategy === "reset_password_email_code");
+      if (!factor || factor.strategy !== "reset_password_email_code") throw new Error("Email recovery is not available for this account.");
+      signInAttempt = await signInAttempt.prepareFirstFactor({ strategy: "reset_password_email_code", emailAddressId: factor.emailAddressId });
+      showAuthForm("ops-recovery-complete-form");
+      setAuthMessage("If the invited account exists, its verification code has been sent.", "ready");
+    } catch (error) {
+      setAuthMessage(identityError(error, "Recovery could not be started."), "error");
+    }
+  });
+
+  recoveryComplete.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(recoveryComplete);
+    const code = asString(formData.get("code")).trim();
+    const password = asString(formData.get("newPassword"));
+    const confirmation = asString(formData.get("confirmPassword"));
+    if (!signInAttempt || !code || password.length < 14 || password !== confirmation) {
+      setAuthMessage("Enter the emailed code and matching passwords of at least 14 characters.", "error");
+      return;
+    }
+    try {
+      signInAttempt = await signInAttempt.attemptFirstFactor({ strategy: "reset_password_email_code", code });
+      if (signInAttempt.status === "needs_new_password") {
+        signInAttempt = await signInAttempt.resetPassword({ password, signOutOfOtherSessions: true });
+      }
+      if (!await activateAttempt() || !await verifyStaffSession()) throw new Error("This identity is not an active case-room operator.");
+    } catch (error) {
+      setAuthMessage(identityError(error, "Password recovery failed."), "error");
+    }
+  });
+}
+
+function setupWorkspace(): void {
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view]")) {
+    button.addEventListener("click", () => switchView(resolveOpsView(button.dataset.view ?? "")));
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view-link]")) {
+    button.addEventListener("click", () => switchView(resolveOpsView(button.dataset.viewLink ?? "")));
+  }
+  window.addEventListener("hashchange", () => switchView(resolveOpsView(location.hash), false));
+  document.querySelector("#ops-menu")?.addEventListener("click", (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const sidebar = document.querySelector("#ops-navigation");
+    const open = !sidebar?.classList.contains("is-open");
+    sidebar?.classList.toggle("is-open", open);
+    button.setAttribute("aria-expanded", String(open));
+  });
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit(), ...(subscribersLoaded ? [loadSubscribers()] : [])]));
+  document.querySelector("#refresh-reports")?.addEventListener("click", () => void loadReports());
+  document.querySelector("#subscriber-refresh")?.addEventListener("click", () => void loadSubscribers());
+  document.querySelector("#subscriber-load-more")?.addEventListener("click", () => void loadSubscribers(true));
+  document.querySelector("#subscriber-export")?.addEventListener("click", exportLoadedSubscribers);
+
+  const statusForm = document.querySelector<HTMLFormElement>("#case-status-form");
+  statusForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(statusForm);
+    const state = asString(formData.get("state"));
+    const reason = asString(formData.get("reason")).trim();
+    const reportId = asString(formData.get("reportId")).trim();
+    const nextClue = asString(formData.get("nextClue")).trim();
+    const nextClueAt = asString(formData.get("nextClueAt"));
+    const hoursOpen = asString(formData.get("hoursOpen"));
+    const hoursClose = asString(formData.get("hoursClose"));
+    const confirmed = formData.get("confirmed") === "on";
+    const result = statusForm.querySelector<HTMLElement>(".ops-inline-result");
+    if (!["open", "paused", "found"].includes(state) || !reason || !hoursOpen || !hoursClose || !confirmed) {
+      if (result) result.textContent = "Choose a state, record the reason and hours, then confirm the official change.";
+      return;
+    }
+    if (state === "found" && !reportId && reason.length < 20) {
+      if (result) result.textContent = "FOUND needs a verified report reference or a specific adjudication reason.";
+      return;
+    }
+    if (!window.confirm(`Publish ${state.toUpperCase()} as the official case state?`)) return;
+    try {
+      const version = latestDashboard?.status?.version ?? 0;
+      const mutation = buildStatusMutation({ state, reason, reportId, nextClue, nextClueAt, hoursOpen, hoursClose, confirmed }, version);
+      const { response, payload } = await opsRequest("/api/v1/ops/status", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mutation) });
+      if (!response.ok) throw new Error(apiError(payload, "Status was not changed."));
+      if (result) result.textContent = "Official status published and audited.";
+      statusForm.reset();
+      await loadDashboard();
+    } catch (error) {
+      if (result) result.textContent = error instanceof Error ? error.message : "Status was not changed.";
+    }
+  });
+
+  const updateForm = document.querySelector<HTMLFormElement>("#official-update-form");
+  updateForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(updateForm);
+    const title = asString(formData.get("title")).trim();
+    const body = asString(formData.get("body")).trim();
+    const publishAt = asString(formData.get("publishAt"));
+    const confirmed = formData.get("confirmed") === "on";
+    const result = updateForm.querySelector<HTMLElement>(".ops-inline-result");
+    if (!title || !body || !confirmed) {
+      if (result) result.textContent = "Headline, update copy and privacy confirmation are required.";
+      return;
+    }
+    try {
+      const mutation = buildUpdateMutation({ title, body, publishAt });
+      const { response, payload } = await opsRequest("/api/v1/ops/updates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mutation) });
+      if (!response.ok) throw new Error(apiError(payload, "The official update was not saved."));
+      if (result) result.textContent = publishAt ? "Official update scheduled and audited." : "Official update published and audited.";
+      updateForm.reset();
+    } catch (error) {
+      if (result) result.textContent = error instanceof Error ? error.message : "The official update was not saved.";
+    }
+  });
+
+  document.querySelector("#reports-table")?.addEventListener("click", async (event) => {
+    const button = event.target;
+    if (!(button instanceof HTMLButtonElement) || !button.dataset.reportId || !button.dataset.reportAction) return;
+    button.disabled = true;
+    try {
+      const { response, payload } = await opsRequest(`/api/v1/ops/reports/${encodeURIComponent(button.dataset.reportId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: button.dataset.reportAction }) });
+      if (!response.ok) throw new Error(apiError(payload, "The report state was not changed."));
+      await Promise.all([loadReports(), loadDashboard()]);
+    } catch (error) {
+      button.disabled = false;
+      showPageError(error instanceof Error ? error.message : "The report state was not changed.");
+    }
+  });
+
+  document.querySelector("#moderation-table")?.addEventListener("click", async (event) => {
+    const button = event.target;
+    if (!(button instanceof HTMLButtonElement) || !button.dataset.moderationId || !button.dataset.moderationDecision) return;
+    const decision = button.dataset.moderationDecision;
+    const reason = decision === "rejected" ? window.prompt("Record a private moderation reason:") : "Approved after operator review";
+    if (reason === null || !window.confirm(`${decision === "approved" ? "Approve" : "Reject"} this Field Note?`)) return;
+    button.disabled = true;
+    try {
+      const { response, payload } = await opsRequest(`/api/v1/ops/moderation/notes/${encodeURIComponent(button.dataset.moderationId)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision, reason }) });
+      if (!response.ok) throw new Error(apiError(payload, "The moderation decision was not saved."));
+      await Promise.all([loadModeration(), loadDashboard()]);
+    } catch (error) {
+      button.disabled = false;
+      showPageError(error instanceof Error ? error.message : "The moderation decision was not saved.");
+    }
+  });
+
+  document.querySelector("#staff-table")?.addEventListener("click", async (event) => {
+    const button = event.target;
+    if (!(button instanceof HTMLButtonElement) || !button.dataset.staffId || !button.dataset.staffAction) return;
+    const action = button.dataset.staffAction;
+    if (!window.confirm(`${button.textContent?.trim() ?? "Apply this action"}? This event will be audited.`)) return;
+    button.disabled = true;
+    try {
+      const { response, payload } = await opsRequest(`/api/v1/ops/staff/${encodeURIComponent(button.dataset.staffId)}/${encodeURIComponent(action)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) });
+      if (!response.ok) throw new Error(apiError(payload, "The access action was not completed."));
+      await Promise.all([loadStaff(), loadAudit()]);
+    } catch (error) {
+      button.disabled = false;
+      showPageError(error instanceof Error ? error.message : "The access action was not completed.");
+    }
+  });
+}
+
+function setupAccountDialog(): void {
+  const dialog = document.querySelector<HTMLDialogElement>("#ops-account-dialog");
+  document.querySelector("#ops-account-button")?.addEventListener("click", () => dialog?.showModal());
+  document.querySelector("#manage-mfa")?.addEventListener("click", () => staffClerk?.openUserProfile());
+  document.querySelector("#ops-sign-out")?.addEventListener("click", async () => {
+    await staffClerk?.signOut();
+    location.reload();
+  });
+  const changePassword = document.querySelector<HTMLFormElement>("#change-password-form");
+  changePassword?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(changePassword);
+    const currentPassword = asString(formData.get("currentPassword"));
+    const newPassword = asString(formData.get("newPassword"));
+    const confirmation = asString(formData.get("confirmPassword"));
+    const result = changePassword.querySelector<HTMLElement>(".ops-inline-result");
+    if (newPassword.length < 14 || newPassword !== confirmation) {
+      if (result) result.textContent = "New passwords must match and contain at least 14 characters.";
+      return;
+    }
+    try {
+      if (!staffClerk?.user) throw new Error("Managed identity is unavailable.");
+      await staffClerk.user.updatePassword({ currentPassword, newPassword, signOutOfOtherSessions: true });
+      changePassword.reset();
+      if (result) result.textContent = "Password changed. Other sessions were signed out.";
+    } catch (error) {
+      if (result) result.textContent = identityError(error, "The password was not changed.");
+    }
+  });
+}
+
+async function initialiseOps(): Promise<void> {
+  setupAuthForms();
+  setupWorkspace();
+  setupAccountDialog();
+  await initialiseManagedIdentity();
+}
+
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => void initialiseOps(), { once: true });
+  else void initialiseOps();
+}

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hunter Dashboard | Tim Lost Something?</title>
+  <meta name="description" content="Signed-in treasure hunters can view approved directions, record waypoint progress, follow official updates, and track private reports." />
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="canonical" href="https://www.timlostsomething.com/dashboard" />
+  <meta property="og:site_name" content="Tim Lost Something?" />
+  <meta property="og:title" content="Hunter Dashboard | Tim Lost Something?" />
+  <meta property="og:description" content="Optional member tools for the Seba Beach treasure hunt." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://www.timlostsomething.com/dashboard" />
+  <meta property="og:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Pirata+One&family=Special+Elite&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/hunter.css" />
+</head>
+<body class="hunter-page">
+  <a class="skip-link" href="#main">Skip to Hunter Dashboard</a>
+  <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
+    <span class="case-strip__mark" data-status-mark aria-hidden="true">?</span>
+    <span class="case-strip__copy">
+      <strong class="case-strip__label" data-status-label>Status unavailable</strong>
+      <span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span>
+      <span class="case-strip__next" data-status-next hidden></span>
+    </span>
+    <a class="case-strip__link" href="/updates">Official updates</a>
+  </section>
+  <header class="hunter-header">
+    <div class="hunter-header__inner">
+      <a class="hunter-brand" href="/">Tim Lost Something?<span>This year: Tim lost his ID</span></a>
+      <nav class="hunter-nav" aria-label="Campaign">
+        <a href="/start">Start</a>
+        <a href="/route">12-waypoint route</a>
+        <a href="/updates">Updates</a>
+        <a href="/clue-board">Clue board</a>
+        <a href="/report">Report</a>
+        <a href="/rules">Rules</a>
+        <a href="/dashboard" aria-current="page">Dashboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="hunter-hero" aria-labelledby="dashboard-title">
+      <div class="hunter-hero__inner">
+        <p class="hunter-kicker">Optional member tools</p>
+        <h1 id="dashboard-title">Hunter Dashboard</h1>
+        <p class="hunter-hero__lead">Approved directions, progress, Field Notes, and private report history in one field-ready ledger.</p>
+      </div>
+    </section>
+
+    <div class="hunter-main">
+      <div class="system-message" data-dashboard-message role="status" aria-live="polite">Checking your Hunter Dashboard access…</div>
+
+      <section class="field-panel field-panel--full" data-dashboard-state="signed-out" aria-labelledby="dashboard-access-title" style="margin-top: 22px">
+        <p class="field-label">Member access</p>
+        <h2 id="dashboard-access-title">Sign in to use Hunter Dashboard</h2>
+        <p>Your public route remains available without an account. Sign-in unlocks approved exact map links, progress tracking, Field Notes, and your private report history.</p>
+        <p><strong>Exact directions stay locked</strong> whenever live status is unavailable, the hunt is paused or found, or an area is not approved as open.</p>
+        <div class="action-row">
+          <a class="hunter-button" href="/dashboard" data-dashboard-sign-in aria-disabled="true" tabindex="-1">Sign in</a>
+          <a class="hunter-button hunter-button--quiet" href="/route">Continue with the public route</a>
+        </div>
+      </section>
+
+      <section class="dashboard-grid" data-dashboard-content hidden aria-label="Your Hunter Dashboard" style="margin-top: 22px">
+        <aside class="dashboard-sidebar">
+          <article class="field-panel">
+            <p class="field-label">Hunter profile</p>
+            <div class="identity-card" data-dashboard-profile></div>
+            <p class="field-panel__action"><a href="#profile" data-profile-edit>Edit profile and preferences</a></p>
+          </article>
+          <article class="field-panel">
+            <p class="field-label">Latest official update</p>
+            <div data-dashboard-latest-update>
+              <p>There is no published update in your dashboard yet.</p>
+            </div>
+            <p class="field-panel__action"><a href="/updates">Read all official updates →</a></p>
+          </article>
+        </aside>
+
+        <div class="dashboard-content">
+          <section class="field-panel field-panel--full" aria-labelledby="dashboard-waypoints-title">
+            <p class="field-label">Member route ledger</p>
+            <h2 id="dashboard-waypoints-title">Waypoints and progress</h2>
+            <p>Exact links appear only when the case and waypoint are both approved as open. No fallback coordinates are embedded in this page.</p>
+            <ol class="waypoint-ledger" data-dashboard-waypoints></ol>
+          </section>
+
+          <section class="ledger-grid" style="margin-top: 20px">
+            <article class="field-panel field-panel--wide">
+              <p class="field-label">Private reports</p>
+              <h2>Your report history</h2>
+              <ul class="record-list" data-dashboard-reports></ul>
+              <p class="field-panel__action"><a href="/report">Send a new report →</a></p>
+            </article>
+            <article class="field-panel">
+              <p class="field-label">Community</p>
+              <h2>Your Field Notes</h2>
+              <ul class="record-list" data-dashboard-notes></ul>
+              <p class="field-panel__action"><a href="/clue-board">Visit the clue board →</a></p>
+            </article>
+          </section>
+
+          <section class="field-panel field-panel--full profile-editor" id="profile" aria-labelledby="profile-title" style="margin-top: 20px">
+            <p class="field-label">Private registration</p>
+            <h2 id="profile-title">Hunter profile and contact choices</h2>
+            <p>Complete this once to unlock approved exact directions and community tools. Your verified sign-in email stays private. Each contact purpose is optional and recorded separately.</p>
+            <div class="system-message" data-profile-result role="status" aria-live="polite" tabindex="-1" hidden></div>
+            <div class="system-message" data-profile-errors role="alert" tabindex="-1" hidden></div>
+
+            <form data-profile-form novalidate>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="profile-full-name">Your name <span class="required-mark" aria-hidden="true">*</span></label>
+                  <input id="profile-full-name" name="fullName" type="text" autocomplete="name" maxlength="100" required aria-describedby="profile-full-name-error" />
+                  <span class="field-error" id="profile-full-name-error" data-profile-error-for="fullName"></span>
+                </div>
+
+                <div class="form-field">
+                  <label for="profile-phone">Phone (optional)</label>
+                  <input id="profile-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" aria-describedby="profile-phone-hint profile-phone-error" />
+                  <span class="field-hint" id="profile-phone-hint">Required only if you separately choose SMS updates.</span>
+                  <span class="field-error" id="profile-phone-error" data-profile-error-for="phone"></span>
+                </div>
+
+                <div class="form-field">
+                  <label for="profile-town-area">Town or area (optional)</label>
+                  <input id="profile-town-area" name="townArea" type="text" autocomplete="address-level2" maxlength="100" />
+                </div>
+
+                <div class="form-field">
+                  <label for="profile-age-band">Age band (optional)</label>
+                  <select id="profile-age-band" name="ageBand">
+                    <option value="">Prefer not to say</option>
+                    <option value="18-24">18–24</option>
+                    <option value="25-34">25–34</option>
+                    <option value="35-44">35–44</option>
+                    <option value="45-54">45–54</option>
+                    <option value="55-64">55–64</option>
+                    <option value="65+">65+</option>
+                  </select>
+                </div>
+
+                <fieldset class="form-field form-field--full check-group">
+                  <legend>What brings you here? (optional)</legend>
+                  <label class="check-row"><input name="interests" type="checkbox" value="treasure-hunt" /> Treasure hunt</label>
+                  <label class="check-row"><input name="interests" type="checkbox" value="outdoors" /> Outdoors and trails</label>
+                  <label class="check-row"><input name="interests" type="checkbox" value="community" /> Seba Beach community</label>
+                  <label class="check-row"><input name="interests" type="checkbox" value="sebahub" /> SebaHub events</label>
+                </fieldset>
+
+                <div class="form-field form-field--full">
+                  <label for="profile-discovery-source">How did you hear about the hunt? (optional)</label>
+                  <input id="profile-discovery-source" name="discoverySource" type="text" maxlength="100" placeholder="Friend, poster, Facebook, SebaHub…" />
+                </div>
+
+                <fieldset class="form-field form-field--full check-group">
+                  <legend>Contact choices</legend>
+                  <label class="check-row"><input name="huntEmail" type="checkbox" /> Email me official hunt updates.</label>
+                  <label class="check-row"><input name="marketing" type="checkbox" /> Email me other SebaHub news and offers.</label>
+                  <label class="check-row"><input name="sms" type="checkbox" /> Send me SMS hunt updates at the phone number above.</label>
+                  <span class="field-hint">These choices are separate. You can update them here later.</span>
+                </fieldset>
+
+                <div class="form-field form-field--full">
+                  <label class="check-row" for="profile-adult-attested">
+                    <input id="profile-adult-attested" name="adultAttested" type="checkbox" required aria-describedby="profile-adult-error" />
+                    I confirm I am an adult participant and will follow the current rules and search-area labels.
+                  </label>
+                  <span class="field-error" id="profile-adult-error" data-profile-error-for="adultAttested"></span>
+                </div>
+
+                <div class="form-field form-field--full">
+                  <label>Prove you're human <span class="required-mark" aria-hidden="true">*</span></label>
+                  <div class="turnstile-shell" data-profile-turnstile aria-describedby="profile-turnstile-error">
+                    <span data-profile-turnstile-state>Preparing the human check…</span>
+                  </div>
+                  <span class="field-error" id="profile-turnstile-error" data-profile-error-for="turnstileToken"></span>
+                </div>
+              </div>
+
+              <div class="action-row">
+                <button class="hunter-button" type="submit" data-profile-submit disabled>Save private profile</button>
+              </div>
+              <p class="field-hint">See the <a href="/privacy">privacy notice</a>. Your contact details and consent ledger are visible only to approved operators.</p>
+            </form>
+          </section>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="hunter-footer">
+    <div class="hunter-footer__inner">
+      <p><strong>Tim Lost Something?</strong><br />The 2026 Seba Beach Treasure Hunt</p>
+      <nav aria-label="Legal and safety">
+        <a href="/privacy">Privacy</a>
+        <a href="/community-guidelines">Community guidelines</a>
+        <a href="/rules">Current rules</a>
+      </nav>
+    </div>
+  </footer>
+  <script type="module" src="/assets/app/status.js"></script>
+  <script type="module" src="/assets/app/dashboard.js"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+</body>
+</html>

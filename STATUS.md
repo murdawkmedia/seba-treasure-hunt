@@ -1,97 +1,66 @@
-# STATUS — Tim Lost Something? / The Seba Beach Treasure Hunt
+# STATUS — Tim Lost Something? Hunter Platform
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
 ## Current state
 
-The 2026 public campaign has been rebuilt and locally verified under the
-umbrella brand **Tim Lost Something?**
+The hunter-platform implementation is complete on branch `codex/tim-lost-hunter-platform` and deployed to a noindex Cloudflare Pages preview:
 
-Campaign line: **This year: Tim lost his ID—along with roughly $5,000 in cash
-and two diamond rings.**
+<https://codex-validation.seba-treasure-hunt.pages.dev/>
 
-Finders may keep the cash and rings. Tim only asks that his ID bundle be
-returned to SebaHub. The site is a static three-page Cloudflare Pages project
-with a 12-waypoint route, 61 GPS-tagged photographs and a route video.
+The canonical production site remains on its previous working release. This is deliberate: the new report, community and account flows fail closed until Clerk and Turnstile are activated, so the preview must not replace production yet.
 
-The refresh is live on Cloudflare Pages. Both custom hostnames are active and
-HTTPS-valid. The bare hostname returns a permanent path/query-preserving
-redirect to the canonical www hostname.
+## Implemented
 
-## Public surfaces
+- Rebranded annual campaign hierarchy: **Tim Lost Something?** / **This year: Tim lost his ID.**
+- Live OPEN/PAUSED/FOUND status with absolute and relative update time, hunt hours and optional next-clue state.
+- Above-fold Start, Report, Updates and Rules actions.
+- Permanent `/start` route and reproducible QR asset.
+- Public 12-waypoint overview with EXIF/GPS-free photos; exact navigation is authenticated and safety-gated.
+- Hunter profile, dashboard and progress model using passwordless/social identity.
+- Account-optional private reporting with required photo for find claims, optional geolocation and idempotency.
+- Moderated virtual clue board with premoderated notes/images, constrained replies, flags, Turnstile actions and rate limits.
+- Invitation-only staff case room for status, updates, reports, moderation, zones, rules, subscribers, access and audit.
+- Provider-managed staff recovery, session revocation, suspension/reactivation and optional MFA reset; no peer password visibility or password setting.
+- Versioned rules, public zone labels, privacy notice and community guidelines.
+- SEO/AEO metadata, JSON-LD, sitemap, robots policy, canonical host behavior and SebaStays guarantee links.
+- Fictional ID artwork disclosed as a campaign prop.
+- Route-video end card updated to `www.timlostsomething.com`; unconfirmed radio copy removed; output is 22,467,397 bytes and 81.222 seconds.
+- Edge security policy: CSP, anti-framing, MIME protection, HSTS, referrer policy and limited browser permissions.
 
-- Canonical target: https://www.timlostsomething.com/
-- Bare-domain target: https://timlostsomething.com/ → permanent www redirect
-- Pages fallback: https://seba-treasure-hunt.pages.dev/
-- Pages project: seba-treasure-hunt
-- Pages: home, /route and /interview
-- Verified production deployment: e9a6ca29.seba-treasure-hunt.pages.dev
+## Cloudflare state
 
-## 2026-07-10 campaign refresh
+- The isolated D1, private R2, KV, queue, dead-letter queue and media consumer are provisioned.
+- Production D1 migrations 0001 and 0002 are applied and the idempotent campaign seed is loaded.
+- Seed verification: OPEN; 09:00–20:00 America/Edmonton; 12 published waypoints; one published rules version; two published zones; three explicit community feature flags; zero staff principals.
+- The current noindex preview and private media consumer are deployed successfully.
 
-- Rebranded navigation, titles, social metadata and visible campaign hierarchy
-  to **Tim Lost Something?**
-- Kept **The Seba Beach Treasure Hunt** as the plain-language geographic
-  descriptor.
-- Added factual SEO/AEO: canonical URLs, page-specific descriptions, Open
-  Graph/X cards, visible quick answers, FAQs, JSON-LD, robots.txt and
-  sitemap.xml.
-- Linked all four **Always Sunny in Seba** badges to
-  https://www.sebastays.com/guarantee with accessible new-tab labels and focus
-  states.
-- Preserved the real blurred cash/ID-bundle photograph as evidence and social
-  artwork.
-- Added the approved fictional Captain Latimer ID artwork as a visibly
-  disclosed campaign prop. It is not evidence and not an exact image of the
-  missing card.
-- Updated canonical copy from “wallet” to “ID bundle” except where Tim's
-  verbatim explanation distinguishes the bundle from a conventional wallet.
-- Added a tested Pages advanced-mode worker that redirects only
-  timlostsomething.com to www.timlostsomething.com and passes www/Pages aliases
-  through unchanged to static assets.
+## Verification evidence
 
-## Route video
+- Automated tests: 92/92 passing.
+- TypeScript checks: Worker, client and both test environments passing.
+- Production Pages and media bundles build successfully.
+- Local Pages runtime: home, start, dashboard, clue board, Ops and status API all return 200 with clean routes.
+- Rendered desktop and 360 px mobile QA: no horizontal overflow, no WCAG 2.1 A/AA axe violations and no unexpected console errors on public surfaces.
+- Public edge preview: D1 status, updates, rules, two zones and 12 waypoints return successfully.
+- Preview public waypoint payload contains no exact URLs, map URLs, coordinates or private member content.
+- Source and built-output privacy scan: no private staff allowlist, exact coordinates, local paths, credentials, deferred claims or ignored planning/source files.
+- All 76 source and 76 built raster images contain no EXIF, XMP, IPTC, ICC or GPS markers.
+- Route video is below Cloudflare Pages' 25 MiB per-file limit and its final frame is visually verified.
+- `npm audit --omit=dev --audit-level=high`: no high or critical findings. Twelve moderate findings are in Clerk's optional Solana dependency chain; the available automated fix is a breaking Clerk downgrade and was not applied.
 
-- Canonical source: local Remotion composition **SebaRouteRetraced**.
-- Updated only the final URL to **www.timlostsomething.com**.
-- Published output remains 1,949 frames, 24 fps, 1920×1080 and 81.208 seconds.
-- Frames 0–1840 are decoded-frame identical to the previous published video.
-- Only frames 1841–1948 changed.
-- The AAC soundtrack was copied without re-encoding and its decoded SHA-256
-  remains 30928a5ca8991f5d69db5abf443483dcb800b42d6d64de0da25506d1daa275bb.
-- Output is 20.46 MiB with H.264/AAC and faststart, below the Cloudflare Pages
-  25 MiB per-file limit.
+## Launch blockers
 
-## Decisions in force
+1. Create separate public-hunter and invitation-only staff Clerk applications.
+2. Configure the approved public identity methods and staff password/recovery/MFA policy.
+3. Create a managed Turnstile widget restricted to the canonical and Pages hostnames.
+4. Store identity, Turnstile and recovery-mail values as deployment secrets; never commit them.
+5. Invite approved operators and privately seed their verified identity subjects.
+6. Run preview end-to-end tests for identity, exact waypoint access, private uploads, moderation, recovery and FOUND confirmation.
+7. Promote `dist/` to production and verify both custom hostnames only after step 6 passes.
 
-- The canonical annual brand is **Tim Lost Something?**
-- The 2026 sub-brand is **This year: Tim lost his ID.**
-- The current 12-waypoint/61-photo route is authoritative.
-- Route-photo GPS metadata stays public intentionally.
-- The campaign prop must always carry an explicit dramatization disclosure.
-- The real evidence photo remains the social preview.
-- No fabricated claims or fake urgency on the website.
-- Deploy only from a clean git archive; never publish planning/, source-media/
-  or local Cloudflare state.
-- www is canonical. The apex must preserve path/query strings when redirecting.
+## Operational notes
 
-## Verification
-
-- Campaign and canonical-host contracts: 8 passing tests.
-- JSON-LD parses on all three pages.
-- Git whitespace check passes.
-- Remotion end-card regression test, ESLint and TypeScript pass.
-- Video frame/audio invariants pass.
-- Cloudflare Pages reports both custom hostnames active with active validation.
-- Live apex check: 301 to www with path/query preservation.
-- Live www checks: home, /route, /interview, robots.txt, sitemap.xml, prop image
-  and route MP4 return successfully.
-- Live Sunny Guarantee links: 4, all with accessible new-tab labels.
-- Public-release denylist scan: no tracked-file hits.
-
-## Remaining release work
-
-1. Integrate and push the verified campaign-refresh branch to main.
-2. Obtain final legal/owner sign-off on the official hunt rules and prize
-   language; this remains an operational review item rather than a deployment
-   blocker requested for this technical refresh.
+- Scheduled update records do not auto-promote. Publish them manually at the approved time, or add and test a cron promotion job before relying on scheduling.
+- Future physical activations and campaign chapters remain outside this release.
+- Private launch, identity and incident instructions are maintained outside the public repository.
