@@ -11,6 +11,7 @@ import {
   json,
   responseJson
 } from "./api-test-kit";
+import type { SponsorInquiryInput } from "../src/server/types";
 
 class CountingTurnstile {
   calls = 0;
@@ -20,6 +21,21 @@ class CountingTurnstile {
     this.calls += 1;
     this.actions.push(action);
     return token === "human-token";
+  }
+}
+
+class TrackingSponsorStore extends FakeStore {
+  sponsorLookups = 0;
+  sponsorCreates = 0;
+
+  override async getSponsorInquiryByIdempotencyKey(key: string) {
+    this.sponsorLookups += 1;
+    return super.getSponsorInquiryByIdempotencyKey(key);
+  }
+
+  override async createSponsorInquiry(input: SponsorInquiryInput, key: string) {
+    this.sponsorCreates += 1;
+    return super.createSponsorInquiry(input, key);
   }
 }
 
@@ -37,7 +53,7 @@ const validInquiry = {
 };
 
 const makeApp = () => {
-  const store = new FakeStore();
+  const store = new TrackingSponsorStore();
   const turnstile = new CountingTurnstile();
   const rateLimits = new FakeRateLimits();
   const app = createApi({
@@ -114,6 +130,62 @@ test("replays the same sponsor inquiry before rate limiting or Turnstile", async
   assert.equal(turnstile.calls, 1);
 });
 
+test("requires a strict browser origin before sponsor replay lookup", async () => {
+  const rejectedOrigins: Array<{ name: string; origin?: string }> = [
+    { name: "missing" },
+    { name: "null", origin: "null" },
+    { name: "malformed", origin: "://not-an-origin" },
+    { name: "production http", origin: "http://www.timlostsomething.com" },
+    { name: "production alternate port", origin: "https://www.timlostsomething.com:8443" },
+    { name: "production suffix lookalike", origin: "https://www.timlostsomething.com.evil.example" },
+    { name: "preview suffix lookalike", origin: "https://preview.seba-treasure-hunt.pages.dev.evil.example" },
+    { name: "project-prefix lookalike", origin: "https://evilseba-treasure-hunt.pages.dev" },
+    { name: "unrelated Pages project", origin: "https://other.pages.dev" },
+    { name: "Pages project root", origin: "https://seba-treasure-hunt.pages.dev" }
+  ];
+
+  for (const item of rejectedOrigins) {
+    const { app, store, rateLimits, turnstile } = makeApp();
+    const response = await app.request("https://www.timlostsomething.com/api/v1/sponsors/inquiries", {
+      method: "POST",
+      ...json(validInquiry, {
+        "idempotency-key": `origin-reject-${item.name.replaceAll(" ", "-")}`,
+        ...(item.origin ? { origin: item.origin } : {})
+      })
+    });
+
+    assert.equal(response.status, 403, item.name);
+    assert.equal((await responseJson(response)).error.code, "origin_rejected", item.name);
+    assert.equal(store.sponsorLookups, 0, item.name);
+    assert.equal(store.sponsorCreates, 0, item.name);
+    assert.equal(rateLimits.seen.length, 0, item.name);
+    assert.equal(turnstile.calls, 0, item.name);
+  }
+});
+
+test("accepts canonical, local development, and scoped Pages preview origins", async () => {
+  const allowedOrigins = [
+    "https://www.timlostsomething.com",
+    "http://localhost",
+    "http://localhost:8788",
+    "https://localhost:3000",
+    "http://127.0.0.1:8788",
+    "https://validation.seba-treasure-hunt.pages.dev"
+  ];
+
+  for (const [index, origin] of allowedOrigins.entries()) {
+    const { app } = makeApp();
+    const response = await app.request("https://www.timlostsomething.com/api/v1/sponsors/inquiries", {
+      method: "POST",
+      ...json(validInquiry, {
+        origin,
+        "idempotency-key": `origin-allow-${index}`
+      })
+    });
+    assert.equal(response.status, 201, origin);
+  }
+});
+
 test("rejects invalid sponsor inquiry headers and human-verification", async () => {
   const { app } = makeApp();
   const cases: Array<{ name: string; key?: string; origin?: string; token?: string; status: number; code: string }> = [
@@ -178,4 +250,52 @@ test("rejects multipart sponsor inquiries and file uploads", async () => {
 
   assert.equal(response.status, 415);
   assert.equal((await responseJson(response)).error.code, "unsupported_media_type");
+});
+
+test("accepts only the exact application/json media type with optional parameters", async () => {
+  const { app } = makeApp();
+  const accepted = await app.request("https://www.timlostsomething.com/api/v1/sponsors/inquiries", {
+    method: "POST",
+    headers: {
+      "content-type": "Application/JSON; Charset=UTF-8",
+      origin: "https://www.timlostsomething.com",
+      "idempotency-key": "sponsor-json-params"
+    },
+    body: JSON.stringify(validInquiry)
+  });
+  assert.equal(accepted.status, 201);
+
+  const rejectedTypes: Array<{ name: string; contentType?: string; body: string }> = [
+    { name: "missing", body: JSON.stringify(validInquiry) },
+    {
+      name: "malformed multipart",
+      contentType: "multipart/form-data; boundary=missing-boundary",
+      body: "this body has no multipart boundary"
+    },
+    { name: "JSON Patch", contentType: "application/json-patch+json", body: JSON.stringify(validInquiry) },
+    { name: "text prefix", contentType: "text/application/json", body: JSON.stringify(validInquiry) },
+    { name: "suffix lookalike", contentType: "application/json-evil", body: JSON.stringify(validInquiry) },
+    { name: "substring lookalike", contentType: "x-application/json", body: JSON.stringify(validInquiry) }
+  ];
+
+  for (const [index, item] of rejectedTypes.entries()) {
+    const fixture = makeApp();
+    const response = await fixture.app.request(
+      "https://www.timlostsomething.com/api/v1/sponsors/inquiries",
+      {
+        method: "POST",
+        headers: {
+          origin: "https://www.timlostsomething.com",
+          "idempotency-key": `sponsor-media-${index}`,
+          ...(item.contentType ? { "content-type": item.contentType } : {})
+        },
+        body: item.body
+      }
+    );
+    assert.equal(response.status, 415, item.name);
+    assert.equal((await responseJson(response)).error.code, "unsupported_media_type", item.name);
+    assert.equal(fixture.turnstile.calls, 0, item.name);
+    assert.equal(fixture.store.sponsorCreates, 0, item.name);
+    assert.equal((await fixture.store.listSponsorInquiries()).items.length, 0, item.name);
+  }
 });

@@ -342,6 +342,45 @@ const sameOrigin = (request: Request) => {
   }
 };
 
+const strictSponsorOrigin = (request: Request) => {
+  const raw = request.headers.get("origin")?.trim() ?? "";
+  let origin: URL;
+  try {
+    if (!raw || raw === "null") throw new Error("missing origin");
+    origin = new URL(raw);
+  } catch {
+    throw new ApiError(403, "origin_rejected", "The request origin is not allowed.");
+  }
+
+  const serializedOrigin = origin.origin;
+  const isCanonical = raw === `https://${canonicalHost}`;
+  const isLocalDevelopment =
+    raw === serializedOrigin &&
+    ["localhost", "127.0.0.1"].includes(origin.hostname) &&
+    ["http:", "https:"].includes(origin.protocol);
+  const previewSuffix = `.${pagesFallbackHost}`;
+  const isScopedPagesPreview =
+    raw === serializedOrigin &&
+    origin.protocol === "https:" &&
+    origin.port === "" &&
+    origin.hostname.length > previewSuffix.length &&
+    origin.hostname.endsWith(previewSuffix);
+
+  if (!isCanonical && !isLocalDevelopment && !isScopedPagesPreview) {
+    throw new ApiError(403, "origin_rejected", "The request origin is not allowed.");
+  }
+};
+
+const requireJsonMediaType = (request: Request) => {
+  const mediaType = (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (mediaType !== "application/json") {
+    throw new ApiError(415, "unsupported_media_type", "Sponsor inquiries accept application/json only.");
+  }
+};
+
 const requireHunter = async (deps: ApiDependencies, request: Request) => {
   const principal = await deps.identity.authenticateHunter(request);
   if (!principal) throw new ApiError(401, "hunter_auth_required", "Sign in as a hunter to continue.");
@@ -654,23 +693,14 @@ export const createApi = (deps: ApiDependencies) => {
   });
 
   app.post("/api/v1/sponsors/inquiries", async (c) => {
-    sameOrigin(c.req.raw);
+    strictSponsorOrigin(c.req.raw);
     const key = idempotencyKey(c.req.raw);
     const existing = await deps.store.getSponsorInquiryByIdempotencyKey(key);
     if (existing) return success(c, safeSponsorSubmission(existing, true));
 
     await applyRateLimit(deps, c.req.raw, "sponsor_inquiry", null);
-    const { body, files } = await requestBody(c.req.raw);
-    if (
-      files.length > 0 ||
-      (c.req.raw.headers.get("content-type") ?? "").toLowerCase().includes("multipart/form-data")
-    ) {
-      throw new ApiError(
-        415,
-        "unsupported_media_type",
-        "Sponsor inquiries accept JSON only and do not accept files."
-      );
-    }
+    requireJsonMediaType(c.req.raw);
+    const { body } = await requestBody(c.req.raw);
     await verifyHuman(deps, c.req.raw, body, "sponsor_inquiry");
 
     if (body.acknowledgementAccepted !== true) {
