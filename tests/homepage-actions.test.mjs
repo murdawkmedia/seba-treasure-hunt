@@ -49,3 +49,16 @@ test("homepage navigation reaches the living campaign surfaces", () => {
 
   assert.deepEqual(missing, [], `missing correctly labelled Sponsors links:\n${missing.join("\n")}`);
 });
+
+test("homepage sponsor deep link is a concise path to the qualified inquiry", () => {
+  const section = html.match(/<section\b(?=[^>]*\bid=["']sponsor["'])[^>]*>[\s\S]*?<\/section>/i)?.[0];
+  assert.ok(section, "homepage must retain #sponsor for old deep links");
+  assert.match(section, /Put your name inside the mystery\./i);
+  for (const support of ["cash", "prizes", "services", "practical in-kind"]) {
+    assert.match(section, new RegExp(support, "i"));
+  }
+  assert.match(section, /<a\b[^>]*href=["']sponsors\.html["'][^>]*>[\s\S]*Sponsor/i);
+  assert.match(section, /does not create an agreement/i);
+  assert.match(section, /does not authorize publication/i);
+  assert.doesNotMatch(section, /href=["']https?:\/\/(?:www\.)?sebahub\.com|\$\s*\d|package|tier/i);
+});

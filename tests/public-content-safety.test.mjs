@@ -53,6 +53,24 @@ test("unconfirmed campaign extensions are not published as facts", () => {
   assert.doesNotMatch(publicCss, /CFCW|partner-strip|prize-cfcw|footer-cfcw/i);
 });
 
+test("the sponsor surface publishes no invented reach, partner, or private workflow claim", () => {
+  const sponsorHtml = read("sponsors.html");
+  const sponsorCss = read("css/sponsors.css");
+  const publicSurface = `${sponsorHtml}\n${sponsorCss}`;
+
+  for (const pattern of [
+    /CFCW/i,
+    /radio partner|media partner|official partner/i,
+    /guaranteed reach|exclusive sponsor|impressions/i,
+    /@sebahub\.com|@businessasaforceforgood\.ca/i,
+    /sponsor_inquiries|staff_subject|private note/i,
+  ]) {
+    assert.doesNotMatch(publicSurface, pattern, `sponsor surface matched ${pattern}`);
+  }
+
+  assert.doesNotMatch(sponsorHtml, /"@type"\s*:\s*"(?:Event|Offer|Review)"/i);
+});
+
 test("published route photos contain no embedded location metadata", async () => {
   const routeRoot = path.join(repo, "assets", "route");
   const images = fs

@@ -19,6 +19,7 @@ const staticFiles = [
   "privacy.html",
   "community-guidelines.html",
   "clue-board.html",
+  "sponsors.html",
   "ops.html",
   "favicon.ico",
   "site.webmanifest",
