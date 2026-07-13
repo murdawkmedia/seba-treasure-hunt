@@ -48,6 +48,3 @@ id = "5c32ae59aaeb421f8959f417a4751efd"
 [[env.preview.queues.producers]]
 binding = "MEDIA_QUEUE"
 queue = "tim-lost-media-processing-validation"
-
-[env.preview.images]
-binding = "IMAGES"

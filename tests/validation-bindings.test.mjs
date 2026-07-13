@@ -21,7 +21,7 @@ test("Pages preview overrides every stateful production binding", () => {
   assert.match(preview, /bucket_name\s*=\s*"tim-lost-private-media-validation"/);
   assert.match(preview, /id\s*=\s*"5c32ae59aaeb421f8959f417a4751efd"/);
   assert.match(preview, /queue\s*=\s*"tim-lost-media-processing-validation"/);
-  assert.match(preview, /\[env\.preview\.images\]/);
+  assert.doesNotMatch(pagesConfig, /\[(?:env\.preview\.)?images\]/);
 
   assert.doesNotMatch(
     preview,

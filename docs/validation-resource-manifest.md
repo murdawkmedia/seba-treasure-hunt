@@ -15,4 +15,4 @@ Purpose: Disposable, noindex integration data for the `codex-validation` Pages a
 | Dead-letter queue | `tim-lost-media-dlq-validation` | Resource name is authoritative |
 | Worker | `tim-lost-media-processor-validation` | Worker name is authoritative |
 
-Secrets, private staff principals and provider credentials are intentionally excluded. Preview configuration overrides every non-inheritable Pages binding together so no validation deployment inherits production stateful resources.
+Secrets, private staff principals and provider credentials are intentionally excluded. Preview configuration overrides every supported stateful Pages binding together so no validation deployment inherits production stateful resources. The Images binding belongs only to the separate media worker because Pages configuration does not support it.
