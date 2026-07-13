@@ -6,7 +6,7 @@ Last updated: 2026-07-13
 
 The hunter-account, privacy/media, pending-waiver and Sunny Pirate Mystery Chest favicon implementation is deployed to the noindex validation branch from `codex/tim-lost-hunter-platform`.
 
-The dedicated sponsor-page and persistent-navigation design is owner-approved and recorded in `docs/superpowers/specs/2026-07-13-sponsor-page-and-persistent-navigation-design.md`. Implementation planning is intentionally paused until Murphy reviews that written specification. The approved direction uses a two-row persistent desktop header, a highlighted sitewide Sponsors destination, a qualified public inquiry form, a private Ops Sponsors workflow and validation-only disposable inquiry data.
+The dedicated sponsor-page and persistent-navigation design is owner-approved and recorded in `docs/superpowers/specs/2026-07-13-sponsor-page-and-persistent-navigation-design.md`. Its reviewed implementation plan is recorded in `docs/superpowers/plans/2026-07-13-sponsor-page-and-persistent-navigation.md` and is ready for an execution-mode decision. The approved direction uses a two-row persistent desktop header, a highlighted sitewide Sponsors destination, a qualified public inquiry form, a private Ops Sponsors workflow and validation-only disposable inquiry data.
 
 Validation branch alias:
 
