@@ -50,3 +50,15 @@ test("the second D1 migration adds the current-consent projection index", async 
     /CREATE INDEX IF NOT EXISTS idx_consent_current\s+ON consent_events\(hunter_subject, consent_type, occurred_at DESC, id DESC\)/i
   );
 });
+
+test("the sponsor migration keeps inquiries private and events append-only", async () => {
+  const sql = await readFile(path.resolve("migrations", "0005_sponsor_inquiries.sql"), "utf8");
+  for (const table of ["sponsor_inquiries", "sponsor_inquiry_events"]) {
+    assert.match(sql, new RegExp("CREATE TABLE IF NOT EXISTS " + table + "\\b", "i"));
+  }
+  assert.match(sql, /UNIQUE\s*\(reference_code\)/i);
+  assert.match(sql, /UNIQUE\s*\(idempotency_key\)/i);
+  assert.match(sql, /CHECK\s*\(state IN \('new', 'contacted', 'qualified', 'accepted', 'closed'\)\)/i);
+  assert.match(sql, /FOREIGN KEY\s*\(inquiry_id\).*ON DELETE CASCADE/is);
+  assert.doesNotMatch(sql, /ip_address|fingerprint|turnstile_token/i);
+});
