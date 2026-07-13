@@ -4,11 +4,17 @@ Last updated: 2026-07-13
 
 ## Current state
 
-The hunter-account, privacy/media, pending-waiver and Sunny Pirate Mystery Chest favicon implementation is complete locally on branch `codex/tim-lost-hunter-platform` and ready for validation deployment.
+The hunter-account, privacy/media, pending-waiver and Sunny Pirate Mystery Chest favicon implementation is deployed to the noindex validation branch from `codex/tim-lost-hunter-platform`.
 
-These July 13 account/legal changes have not been deployed. The existing noindex validation deployment remains the previous preview:
+Validation branch alias:
 
 <https://codex-validation.seba-treasure-hunt.pages.dev/>
+
+Unique July 13 deployment:
+
+<https://b9a4d4b7.seba-treasure-hunt.pages.dev/>
+
+Deployed: 2026-07-13 11:46:57 -06:00. The feature branch is pushed to GitHub. No remote D1 migration, production alias, custom-domain, DNS, secret or media-Worker change was made.
 
 The canonical production site remains on its previous working release. This is deliberate: the new report, community and account flows fail closed until Clerk and Turnstile are activated, so the preview must not replace production yet.
 
@@ -40,7 +46,7 @@ The canonical production site remains on its previous working release. This is d
 - The isolated D1, private R2, KV, queue, dead-letter queue and media consumer are provisioned.
 - Production D1 migrations 0001 and 0002 are applied and the idempotent campaign seed is loaded. Migration 0003 was validated against local D1 only and is not applied remotely.
 - Seed verification: OPEN; 09:00–20:00 America/Edmonton; 12 published waypoints; one published rules version; two published zones; three explicit community feature flags; zero staff principals.
-- The current noindex preview and private media consumer are deployed successfully.
+- The current noindex preview and private media consumer are deployed successfully. The July 13 Pages preview is deployment `b9a4d4b7`; production remains on its previous release.
 
 ## Verification evidence
 
@@ -48,6 +54,7 @@ The canonical production site remains on its previous working release. This is d
 - TypeScript checks: Worker, client and both test environments passing.
 - Production Pages and media bundles build successfully.
 - Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.
+- Live validation smoke test: home, Privacy, ICO, SVG, 32-pixel PNG, Apple touch icon and manifest return HTTP 200 with `X-Robots-Tag: noindex`; the deployed SVG byte hash matches the local source and the old money-bag data favicon is absent.
 - Local Pages runtime: home, start, dashboard, clue board, Ops and status API all return 200 with clean routes.
 - Rendered desktop and 390 px mobile QA for Privacy, Dashboard and Ops: no horizontal overflow and no WCAG 2.1 A/AA axe violations.
 - Public edge preview: D1 status, updates, rules, two zones and 12 waypoints return successfully.
