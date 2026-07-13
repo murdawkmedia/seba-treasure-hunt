@@ -33,7 +33,7 @@ preserving paths and query strings.
 
 ## Tech
 
-- Plain static HTML, CSS and JavaScript; no application build step.
+- Plain static HTML, CSS and JavaScript, packaged by a staged public build.
 - Vendored Leaflet with Esri imagery tiles; no map API key.
 - Route photos are web-optimized and intentionally retain GPS metadata because
   their locations are part of the hunt.
@@ -56,24 +56,27 @@ preserving paths and query strings.
 ## Test and preview
 
     node --test tests/*.test.mjs
-    python -m http.server 8080
+    node scripts/build-public.mjs
+    python -m http.server 8080 --directory dist
 
 Open <http://localhost:8080>, /route.html and /interview.html.
 
-The eight contract tests verify the campaign name, canonical domains, four
-Sunny Guarantee links, structured data, crawl files, prop disclosure,
-ID-bundle terminology, apex redirect and static-asset pass-through.
+The 14 contract tests verify the campaign and canonical-host contracts plus the
+public-build allowlist and its prohibited-content safeguards. The staged build
+must succeed before preview or deployment.
 
 ## Deploy
 
 - Cloudflare Pages project: **seba-treasure-hunt**
-- Production source: tracked files from **main**
-- Deployment method: direct Wrangler upload from a clean git archive
+- Production artifact: the generated **dist/** directory
+- Deployment command from **main**:
+  `npx wrangler pages deploy dist --project-name seba-treasure-hunt --branch main`
 - Canonicalization: Pages advanced-mode worker redirects only the bare hostname
   and passes all other requests to the static asset binding.
 
-Never deploy the working directory directly. The gitignored planning/,
-source-media/ and .wrangler/ directories are not public assets.
+Never deploy the repository or working directory directly. `dist/` is an
+explicit allowlist: repository documentation, tests, scripts, planning, source
+media, local state, and removed or unapproved partner assets are not public.
 
 ## Decisions in force
 
