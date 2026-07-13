@@ -12,13 +12,13 @@ Validation branch alias:
 
 Unique July 13 deployment:
 
-<https://b9a4d4b7.seba-treasure-hunt.pages.dev/>
+<https://00b10632.seba-treasure-hunt.pages.dev/>
 
-Deployed: 2026-07-13 11:46:57 -06:00. The feature branch is pushed to GitHub. No remote D1 migration, production alias, custom-domain, DNS, secret or media-Worker change was made.
+Deployed: 2026-07-13. The feature branch is pushed to GitHub. Validation-only D1 and media-worker changes were made; no production alias, custom-domain, DNS, production migration or production secret was changed.
 
 The canonical production site remains on its previous working release. This is deliberate: the new report, community and account flows fail closed until Clerk and Turnstile are activated, so the preview must not replace production yet.
 
-The integration branch now also contains a D1 environment sentinel, fail-closed write guard, preview-only binding overrides and a persistent disposable-data notice. These newest changes are locally verified but are not yet included in the July 13 validation deployment listed above.
+The deployed validation release contains a D1 environment sentinel, fail-closed write guard, preview-only binding overrides, provider-key protections and a persistent disposable-data notice.
 
 ## Implemented
 
@@ -48,10 +48,10 @@ The integration branch now also contains a D1 environment sentinel, fail-closed 
 - Validation-only D1, private R2, KV, processing queue and dead-letter queue are provisioned with explicit `-validation` names. Pages preview configuration overrides every stateful production binding together.
 - Validation D1 migrations 0001 through 0004 are applied and its sentinel is `validation`.
 - Validation seed verification: OPEN; 12 published waypoints; one published rules version; two published zones; three feature flags; zero player accounts, hunter profiles, reports, Field Notes and staff principals.
-- The validation media processor verifies the D1 sentinel before touching R2 and its configuration resolves only validation D1/R2/queue resources in a Wrangler dry run. The updated validation consumer has not yet been deployed.
+- The validation media processor verifies the D1 sentinel before touching R2, resolves only validation D1/R2/queue resources and is deployed as the consumer of `tim-lost-media-processing-validation`.
 - Production D1 migrations 0001 and 0002 are applied and the idempotent campaign seed is loaded. Migration 0003 was validated against local D1 only and is not applied remotely.
 - Seed verification: OPEN; 09:00–20:00 America/Edmonton; 12 published waypoints; one published rules version; two published zones; three explicit community feature flags; zero staff principals.
-- The current noindex preview and private media consumer are deployed successfully. The July 13 Pages preview is deployment `b9a4d4b7`; production remains on its previous release.
+- The current noindex preview and private validation media consumer are deployed successfully. The July 13 Pages preview is deployment `00b10632`; production remains on its previous release.
 
 ## Verification evidence
 
@@ -63,7 +63,9 @@ The integration branch now also contains a D1 environment sentinel, fail-closed 
 - Local Pages runtime: home, start, dashboard, clue board, Ops and status API all return 200 with clean routes.
 - Rendered desktop and 390 px mobile QA for Privacy, Dashboard and Ops: no horizontal overflow and no WCAG 2.1 A/AA axe violations.
 - Public edge preview: D1 status, updates, rules, two zones and 12 waypoints return successfully.
+- Both the stable alias and immutable deployment show the disposable-data notice and `X-Robots-Tag: noindex, nofollow`; production shows neither.
 - Preview public waypoint payload contains no exact URLs, map URLs, coordinates or private member content.
+- Validation write routes fail closed because preview abuse-protection and identity secrets are not configured; the validation database remains at zero personal and staff records.
 - Source and built-output privacy scan: no private staff allowlist, exact coordinates, local paths, credentials, deferred claims or ignored planning/source files.
 - All 76 source and 76 built raster images contain no EXIF, XMP, IPTC, ICC or GPS markers.
 - Route video is below Cloudflare Pages' 25 MiB per-file limit and its final frame is visually verified.
@@ -71,16 +73,17 @@ The integration branch now also contains a D1 environment sentinel, fail-closed 
 
 ## Launch blockers
 
-1. Configure the public Clerk application for verified email/password accounts, 12-character passwords, compromised-password checks and emailed recovery.
-2. Configure its signed lifecycle webhook and store `HUNTER_CLERK_SECRET_KEY` and `CLERK_WEBHOOK_SIGNING_SECRET` as deployment secrets.
-3. Apply migrations 0003 and 0004 to the production campaign D1 only with explicit deployment approval. Both are already applied to isolated validation D1.
-4. Configure the separate invitation-only staff Clerk application and staff password/recovery/MFA policy.
-5. Create a managed Turnstile widget restricted to the canonical and Pages hostnames.
-6. Store identity, Turnstile and recovery-mail values as deployment secrets; never commit them.
-7. Invite approved operators and privately seed their verified identity subjects.
-8. Obtain the authoritative participation waiver, preserve it unchanged, render and hash it, then enable its separate acceptance flow.
-9. Run preview end-to-end tests for signup, verification, password login, recovery, session revocation, legal acceptance, private uploads, moderation and FOUND confirmation.
-10. Promote `dist/` to production and verify both custom hostnames only after step 9 passes.
+1. Refresh the active Cloudflare authorization so it includes Turnstile/challenge-widget write access, then create a managed widget restricted to `codex-validation.seba-treasure-hunt.pages.dev`.
+2. Configure validation-only `RATE_LIMIT_SALT`, Turnstile site/secret values and identity secrets in the Pages preview environment. The existing production salt remains unchanged.
+3. Configure the public Clerk application for verified email/password accounts, 12-character passwords, compromised-password checks and emailed recovery.
+4. Configure its signed lifecycle webhook and store `HUNTER_CLERK_SECRET_KEY` and `CLERK_WEBHOOK_SIGNING_SECRET` as preview secrets.
+5. Apply migrations 0003 and 0004 to the production campaign D1 only with explicit deployment approval. Both are already applied to isolated validation D1.
+6. Configure the separate invitation-only staff Clerk application and staff password/recovery/MFA policy.
+7. Store identity, Turnstile and recovery-mail values as deployment secrets; never commit them.
+8. Invite approved operators and privately seed their verified identity subjects.
+9. Obtain the authoritative participation waiver, preserve it unchanged, render and hash it, then enable its separate acceptance flow.
+10. Run preview end-to-end tests for signup, verification, password login, recovery, session revocation, legal acceptance, private uploads, moderation and FOUND confirmation.
+11. Promote `dist/` to production and verify both custom hostnames only after step 10 passes.
 
 ## Operational notes
 
