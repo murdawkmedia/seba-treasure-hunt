@@ -2,7 +2,7 @@
 
 **Date:** July 13, 2026  
 **Status:** Approved design direction  
-**Approved by:** Murphy
+**Approved by:** Project owner
 
 ## Purpose
 
