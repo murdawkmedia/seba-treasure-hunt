@@ -61,7 +61,7 @@ preserving paths and query strings.
 
 Open <http://localhost:8080>, /route.html and /interview.html.
 
-The 13 contract tests verify the campaign and canonical-host contracts plus the
+The 14 contract tests verify the campaign and canonical-host contracts plus the
 public-build allowlist and its prohibited-content safeguards. The staged build
 must succeed before preview or deployment.
 

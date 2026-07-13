@@ -14,12 +14,10 @@ Finders may keep the cash and rings. Tim only asks that his ID bundle be
 returned to SebaHub. The site is a static three-page Cloudflare Pages project
 with a 12-waypoint route, 61 GPS-tagged photographs and a route video.
 
-The previous refresh is live on Cloudflare Pages. Both custom hostnames are
-active and HTTPS-valid. The bare hostname returns a permanent
-path/query-preserving redirect to the canonical www hostname. The emergency
-unconfirmed-partner hotfix is ready locally but production deployment is still
-pending in this predeployment commit. The old live release remains affected
-until the hotfix is deployed.
+The emergency unconfirmed-partner hotfix is live on Cloudflare Pages. Both
+custom hostnames are active and HTTPS-valid. The bare hostname returns a
+permanent path/query-preserving redirect to the canonical www hostname. The
+separate hunter-platform validation deployment remains unchanged and noindexed.
 
 ## Public surfaces
 
@@ -28,7 +26,7 @@ until the hotfix is deployed.
 - Pages fallback: https://seba-treasure-hunt.pages.dev/
 - Pages project: seba-treasure-hunt
 - Pages: home, /route and /interview
-- Verified production deployment: e9a6ca29.seba-treasure-hunt.pages.dev
+- Verified production deployment: ad89ff2a.seba-treasure-hunt.pages.dev
 
 ## 2026-07-10 campaign refresh
 
@@ -66,11 +64,13 @@ until the hotfix is deployed.
   and removed or unapproved partner assets.
 - Hardened the staged builder to reject prohibited text, prohibited paths and
   symlinks, and to remove deployable output when a build fails.
-- Local full suite passes 13/13.
+- Local full suite passes 14/14.
 - The exact `dist/` inventory is 10 top-level entries and 92 files.
 - The public scan is clean.
-- Production deployment is still pending in this predeployment commit. The old
-  live release remains affected until deployment.
+- Added explicit `404` responses with `Cache-Control: no-store` for the removed
+  logo and repository-only documentation, test and script paths.
+- Production deployment `ad89ff2a` is live and verified on both custom
+  hostnames and the Pages production alias.
 
 ## Route video
 
@@ -100,7 +100,7 @@ until the hotfix is deployed.
 
 ## Verification
 
-- Full local contract suite: 13/13 passing tests.
+- Full local contract suite: 14/14 passing tests.
 - Staged public build succeeds and contains exactly 10 top-level entries and 92
   files.
 - Public scan reports no prohibited text or paths.
@@ -112,14 +112,20 @@ until the hotfix is deployed.
 - Live apex check: 301 to www with path/query preservation.
 - Live www checks: home, /route, /interview, robots.txt, sitemap.xml, prop image
   and route MP4 return successfully.
+- Live home, route, interview and CSS responses contain no unconfirmed-partner
+  material.
+- The former partner logo, repository documentation and repository test URLs
+  return `404` and do not fall through to stale assets.
+- The noindex `codex-validation` hunter-platform deployment remains clean and
+  retains its separate Ops surface.
 - Live Sunny Guarantee links: 4, all with accessible new-tab labels.
 - Public-release denylist scan: no tracked-file hits.
 
 ## Remaining release work
 
-1. Integrate the verified emergency hotfix into main, rebuild `dist/`, and
-   deploy it to production. Until deployment, the old live release remains
-   affected.
+1. Integrate the verified emergency hotfix into main so the repository source
+   of truth matches the live production deployment. Do not redeploy the legacy
+   main branch before this integration.
 2. Obtain final legal/owner sign-off on the official hunt rules and prize
    language; this remains an operational review item rather than a deployment
    blocker requested for this technical refresh.
