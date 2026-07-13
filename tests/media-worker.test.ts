@@ -11,7 +11,11 @@ const bytes = (...values: number[]) =>
     },
   });
 
-function makeEnv(format = "image/jpeg", databaseChanges: number | undefined = undefined) {
+function makeEnv(
+  format = "image/jpeg",
+  databaseChanges: number | undefined = undefined,
+  sentinel = "validation"
+) {
   const puts: Array<{ key: string; options: Record<string, unknown> }> = [];
   const statements: Array<{ sql: string; values: unknown[] }> = [];
   const env = {
@@ -55,10 +59,14 @@ function makeEnv(format = "image/jpeg", databaseChanges: number | undefined = un
             statements.push({ sql, values: statement.values });
             return { success: true, ...(databaseChanges === undefined ? {} : { meta: { changes: databaseChanges } }) };
           },
+          async first() {
+            return { environment: sentinel };
+          },
         };
         return statement;
       },
     },
+    DEPLOYMENT_ENV: "validation",
   };
 
   return { env, puts, statements };
@@ -117,4 +125,14 @@ test("retries when queue delivery wins the race with the D1 owner insert", async
   const { env, puts } = makeEnv("image/jpeg", 0);
   await assert.rejects(processMediaMessage(message, env as never), /record is not ready/i);
   assert.equal(puts.length, 1, "the deterministic derivative can be overwritten safely on retry");
+});
+
+test("rejects media work before R2 access when the D1 sentinel does not match", async () => {
+  const { env, puts, statements } = makeEnv("image/jpeg", undefined, "production");
+  await assert.rejects(
+    processMediaMessage(message, env as never),
+    (error: { code?: string }) => error.code === "environment_mismatch"
+  );
+  assert.equal(puts.length, 0);
+  assert.equal(statements.length, 0);
 });

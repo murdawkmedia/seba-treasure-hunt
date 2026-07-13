@@ -1,3 +1,6 @@
+import { D1EnvironmentGuard } from "./server/environment-guard";
+import type { DeploymentEnvironment } from "./server/types";
+
 export interface MediaMessage {
   mediaId: string;
   key: string;
@@ -8,6 +11,7 @@ export interface MediaEnv {
   UPLOADS: R2Bucket;
   DB: D1Database;
   IMAGES: ImagesBinding;
+  DEPLOYMENT_ENV?: DeploymentEnvironment;
 }
 
 type MediaResult =
@@ -56,6 +60,7 @@ export async function processMediaMessage(
   env: MediaEnv,
 ): Promise<MediaResult> {
   assertMessage(message);
+  await new D1EnvironmentGuard(env.DB, env.DEPLOYMENT_ENV ?? null).assertWritable();
 
   const original = await env.UPLOADS.get(message.key);
   if (!original) throw new Error("Private media object is temporarily unavailable.");

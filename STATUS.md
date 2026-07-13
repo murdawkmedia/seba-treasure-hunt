@@ -48,14 +48,14 @@ The integration branch now also contains a D1 environment sentinel, fail-closed 
 - Validation-only D1, private R2, KV, processing queue and dead-letter queue are provisioned with explicit `-validation` names. Pages preview configuration overrides every stateful production binding together.
 - Validation D1 migrations 0001 through 0004 are applied and its sentinel is `validation`.
 - Validation seed verification: OPEN; 12 published waypoints; one published rules version; two published zones; three feature flags; zero player accounts, hunter profiles, reports, Field Notes and staff principals.
-- The validation media-processor configuration resolves only validation D1/R2/queue resources in a Wrangler dry run. The updated validation consumer has not yet been deployed.
+- The validation media processor verifies the D1 sentinel before touching R2 and its configuration resolves only validation D1/R2/queue resources in a Wrangler dry run. The updated validation consumer has not yet been deployed.
 - Production D1 migrations 0001 and 0002 are applied and the idempotent campaign seed is loaded. Migration 0003 was validated against local D1 only and is not applied remotely.
 - Seed verification: OPEN; 09:00–20:00 America/Edmonton; 12 published waypoints; one published rules version; two published zones; three explicit community feature flags; zero staff principals.
 - The current noindex preview and private media consumer are deployed successfully. The July 13 Pages preview is deployment `b9a4d4b7`; production remains on its previous release.
 
 ## Verification evidence
 
-- Automated tests: 127/127 passing.
+- Automated tests: 128/128 passing.
 - TypeScript checks: Worker, client and both test environments passing.
 - Production Pages and media bundles build successfully.
 - Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.
