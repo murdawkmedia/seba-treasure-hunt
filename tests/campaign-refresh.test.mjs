@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -33,6 +42,12 @@ const canonical = {
 
 const escapeRegExp = (value) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildPublic = () =>
+  execFileSync(process.execPath, ["scripts/build-public.mjs"], {
+    cwd: root,
+    stdio: "pipe",
+  });
 
 test("all pages use the campaign brand and canonical domain", () => {
   for (const page of pages) {
@@ -178,4 +193,99 @@ test("public source contains no unconfirmed partner references", () => {
       ),
     ),
   );
+});
+
+test("public build is allowlisted and contains no unconfirmed partner material", () => {
+  buildPublic();
+
+  assert.deepEqual(readdirSync(path.join(root, "dist")).sort(), [
+    "_worker.js",
+    "assets",
+    "canonical-host-worker.mjs",
+    "css",
+    "index.html",
+    "interview.html",
+    "js",
+    "robots.txt",
+    "route.html",
+    "sitemap.xml",
+  ]);
+
+  assert.ok(existsSync(path.join(root, "dist", "index.html")));
+  assert.ok(
+    existsSync(path.join(root, "dist", "canonical-host-worker.mjs")),
+  );
+  assert.ok(!existsSync(path.join(root, "dist", "docs")));
+  assert.ok(!existsSync(path.join(root, "dist", "tests")));
+  assert.ok(!existsSync(path.join(root, "dist", "scripts")));
+  assert.ok(
+    !existsSync(
+      path.join(
+        root,
+        "dist",
+        "assets",
+        `${prohibitedPartner.toLowerCase()}-logo.png`,
+      ),
+    ),
+  );
+});
+
+test("failed public build removes prior deployable output", () => {
+  const prohibitedSource = path.join(
+    root,
+    "assets",
+    `${prohibitedPartner.toLowerCase()}-temporary.txt`,
+  );
+
+  buildPublic();
+  try {
+    writeFileSync(prohibitedSource, "temporary packaging failure fixture");
+    assert.throws(buildPublic);
+    assert.ok(!existsSync(path.join(root, "dist")));
+  } finally {
+    rmSync(prohibitedSource, { force: true });
+    buildPublic();
+  }
+});
+
+test("public build rejects symbolic links and removes deployable output", (t) => {
+  const externalDirectory = mkdtempSync(
+    path.join(tmpdir(), "campaign-public-build-"),
+  );
+  const externalFile = path.join(externalDirectory, "external.txt");
+  const sourceLink = path.join(root, "assets", "temporary-public-build-link");
+  let linkCreated = false;
+
+  writeFileSync(externalFile, "external packaging fixture");
+  buildPublic();
+  try {
+    try {
+      symlinkSync(
+        externalDirectory,
+        sourceLink,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      linkCreated = true;
+    } catch (error) {
+      t.skip(`symbolic link fixture unavailable: ${error.message}`);
+      return;
+    }
+
+    let buildError;
+    try {
+      buildPublic();
+    } catch (error) {
+      buildError = error;
+    }
+    assert.ok(buildError, "builder should reject the symbolic link");
+    assert.match(
+      `${buildError.message}\n${buildError.stderr?.toString() ?? ""}`,
+      /symbolic link/i,
+    );
+    assert.ok(!existsSync(path.join(root, "dist")));
+  } finally {
+    if (linkCreated) rmSync(sourceLink, { recursive: true, force: true });
+    rmSync(externalDirectory, { recursive: true, force: true });
+    buildPublic();
+  }
 });
