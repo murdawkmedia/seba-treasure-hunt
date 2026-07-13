@@ -9,6 +9,7 @@ import type {
   Principal,
   SponsorContributionRange,
   SponsorInquiryRecord,
+  SponsorInquiryState,
   SponsorSupportType,
   StoredMedia,
   ZoneState
@@ -69,6 +70,13 @@ const validSponsorSupportTypes = new Set<SponsorSupportType>([
   "lead",
   "prize_in_kind",
   "other"
+]);
+const validSponsorStates = new Set<SponsorInquiryState>([
+  "new",
+  "contacted",
+  "qualified",
+  "accepted",
+  "closed"
 ]);
 const validSponsorContributionRanges = new Set<SponsorContributionRange>([
   "not_sure",
@@ -131,6 +139,66 @@ const fail = (c: Context<AppBindings>, error: ApiError) => {
 const queryLimit = (raw: string | undefined) => {
   const parsed = Number(raw ?? 25);
   return Number.isInteger(parsed) ? Math.min(Math.max(parsed, 1), 50) : 25;
+};
+
+const sponsorQueryLimit = (raw: string | undefined) => {
+  if (raw === undefined) return 25;
+  const parsed = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isInteger(parsed) || parsed < 1 || parsed > 50) {
+    throw new ApiError(422, "validation_failed", "Limit must be an integer from 1 to 50.", {
+      field: "limit"
+    });
+  }
+  return parsed;
+};
+
+const optionalSponsorState = (raw: string | undefined): SponsorInquiryState | null => {
+  if (raw === undefined || raw === "") return null;
+  if (!validSponsorStates.has(raw as SponsorInquiryState)) {
+    throw new ApiError(422, "validation_failed", "Choose a valid sponsor state.", {
+      field: "state"
+    });
+  }
+  return raw as SponsorInquiryState;
+};
+
+const optionalSponsorSupportType = (raw: string | undefined): SponsorSupportType | null => {
+  if (raw === undefined || raw === "") return null;
+  if (!validSponsorSupportTypes.has(raw as SponsorSupportType)) {
+    throw new ApiError(422, "validation_failed", "Choose a valid sponsor support type.", {
+      field: "supportType"
+    });
+  }
+  return raw as SponsorSupportType;
+};
+
+const sponsorQuery = (raw: string | undefined) => {
+  if (raw === undefined || raw.trim() === "") return null;
+  const query = raw.trim();
+  if (query.length > 100) {
+    throw new ApiError(422, "validation_failed", "Search must be 100 characters or fewer.", {
+      field: "q"
+    });
+  }
+  return query;
+};
+
+const sponsorCursorQuery = (raw: string | undefined) => {
+  if (raw === undefined || raw === "") return null;
+  try {
+    if (raw.length > 500 || !/^[A-Za-z0-9_-]+$/.test(raw)) throw new Error();
+    const base64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+    const separator = decoded.indexOf("\n");
+    const createdAt = decoded.slice(0, separator);
+    const id = decoded.slice(separator + 1);
+    if (separator < 1 || !/^\d{4}-\d{2}-\d{2}T/.test(createdAt) || !id) throw new Error();
+  } catch {
+    throw new ApiError(422, "validation_failed", "Sponsor inquiry cursor is invalid.", {
+      field: "cursor"
+    });
+  }
+  return raw;
 };
 
 const parseWaypoint = (raw: unknown, required = true): number | null => {
@@ -1045,6 +1113,42 @@ export const createApi = (deps: ApiDependencies) => {
     );
     if (!report) throw new ApiError(404, "report_not_found", "Report not found.");
     return success(c, report);
+  });
+
+  app.get("/api/v1/ops/sponsors", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    const result = await deps.store.listSponsorInquiries({
+      limit: sponsorQueryLimit(c.req.query("limit")),
+      cursor: sponsorCursorQuery(c.req.query("cursor")),
+      state: optionalSponsorState(c.req.query("state")),
+      supportType: optionalSponsorSupportType(c.req.query("supportType")),
+      query: sponsorQuery(c.req.query("q"))
+    });
+    return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.patch("/api/v1/ops/sponsors/:id", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw);
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length) {
+      throw new ApiError(415, "unsupported_media_type", "Sponsor notes cannot include files.");
+    }
+    const state = requiredString(body, "state", { max: 20 }) as SponsorInquiryState;
+    if (!validSponsorStates.has(state)) {
+      throw new ApiError(422, "validation_failed", "Choose a valid sponsor state.", {
+        field: "state"
+      });
+    }
+    const inquiry = await deps.store.updateSponsorInquiry(
+      c.req.param("id"),
+      { state, note: optionalString(body, "note", 2_000) },
+      staff.subject
+    );
+    if (!inquiry) {
+      throw new ApiError(404, "sponsor_inquiry_not_found", "Sponsor inquiry not found.");
+    }
+    return success(c, inquiry);
   });
 
   app.get("/api/v1/ops/moderation/notes", async (c) => {

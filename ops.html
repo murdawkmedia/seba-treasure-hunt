@@ -93,12 +93,13 @@
           <button class="ops-nav-item is-active" type="button" data-view="command"><span aria-hidden="true">01</span>Command Desk</button>
           <button class="ops-nav-item" type="button" data-view="updates"><span aria-hidden="true">02</span>Official Updates</button>
           <button class="ops-nav-item" type="button" data-view="reports"><span aria-hidden="true">03</span>Private Reports <em id="nav-report-count">--</em></button>
-          <button class="ops-nav-item" type="button" data-view="moderation"><span aria-hidden="true">04</span>Moderation Queue <em id="nav-moderation-count">--</em></button>
-          <button class="ops-nav-item" type="button" data-view="zones"><span aria-hidden="true">05</span>Search Zones</button>
-          <button class="ops-nav-item" type="button" data-view="rules"><span aria-hidden="true">06</span>Rules Ledger</button>
-          <button class="ops-nav-item" type="button" data-view="subscribers"><span aria-hidden="true">07</span>Players</button>
-          <button class="ops-nav-item" type="button" data-view="access"><span aria-hidden="true">08</span>Users &amp; Access</button>
-          <button class="ops-nav-item" type="button" data-view="audit"><span aria-hidden="true">09</span>Audit Trail</button>
+          <button class="ops-nav-item" type="button" data-view="sponsors"><span aria-hidden="true">04</span>Sponsors</button>
+          <button class="ops-nav-item" type="button" data-view="moderation"><span aria-hidden="true">05</span>Moderation Queue <em id="nav-moderation-count">--</em></button>
+          <button class="ops-nav-item" type="button" data-view="zones"><span aria-hidden="true">06</span>Search Zones</button>
+          <button class="ops-nav-item" type="button" data-view="rules"><span aria-hidden="true">07</span>Rules Ledger</button>
+          <button class="ops-nav-item" type="button" data-view="subscribers"><span aria-hidden="true">08</span>Players</button>
+          <button class="ops-nav-item" type="button" data-view="access"><span aria-hidden="true">09</span>Users &amp; Access</button>
+          <button class="ops-nav-item" type="button" data-view="audit"><span aria-hidden="true">10</span>Audit Trail</button>
         </nav>
         <div class="ops-sidebar__foot">
           <p>All times</p><strong>America/Edmonton</strong>
@@ -171,6 +172,31 @@
         <section class="ops-view" data-view-panel="reports" aria-labelledby="reports-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Private and never auto-published</p><h1 id="reports-title">Private Reports</h1></div><p>Finds / tips / safety</p></header>
           <section class="ops-panel"><div class="ops-toolbar"><label for="report-filter">Show</label><select id="report-filter"><option value="all">All reports</option><option value="find">Find claims</option><option value="tip">Tips</option><option value="safety">Safety</option></select><button class="ops-button ops-button--quiet" type="button" id="refresh-reports">Refresh</button></div><div class="ops-table-wrap"><table><thead><tr><th>Received</th><th>Type</th><th>Waypoint</th><th>Evidence</th><th>State</th><th><span class="sr-only">Action</span></th></tr></thead><tbody id="reports-table"><tr><td colspan="6"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="ops-view" data-view-panel="sponsors" aria-labelledby="sponsors-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Private partnership pipeline</p><h1 id="sponsors-title">Sponsors</h1></div><p>Inquiry is not an agreement</p></header>
+          <div class="ops-metrics" aria-label="Sponsor inquiry totals">
+            <article><span>New</span><strong id="sponsor-new-count">--</strong><small>Awaiting review</small></article>
+            <article><span>Contacted</span><strong id="sponsor-contacted-count">--</strong><small>Follow-up started</small></article>
+            <article><span>Qualified</span><strong id="sponsor-qualified-count">--</strong><small>Potential fit</small></article>
+            <article><span>Accepted</span><strong id="sponsor-accepted-count">--</strong><small>Internal pipeline state</small></article>
+          </div>
+          <section class="ops-panel">
+            <form class="ops-toolbar ops-sponsor-toolbar" id="sponsor-filters">
+              <label for="sponsor-state-filter">State</label>
+              <select id="sponsor-state-filter"><option value="">All states</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="accepted">Accepted</option><option value="closed">Closed</option></select>
+              <label for="sponsor-support-filter">Support type</label>
+              <select id="sponsor-support-filter"><option value="">All support types</option><option value="community">Community</option><option value="lead">Lead</option><option value="prize_in_kind">Prize / in-kind</option><option value="other">Other</option></select>
+              <label for="sponsor-search">Search</label>
+              <input id="sponsor-search" type="search" maxlength="100" autocomplete="off" />
+              <button class="ops-button ops-button--quiet" type="submit">Apply filters</button>
+              <button class="ops-button ops-button--quiet" id="refresh-sponsors" type="button">Refresh</button>
+            </form>
+            <p class="ops-ledger-state" id="sponsors-state" role="status" aria-live="polite">Open this ledger to load private inquiries.</p>
+            <p class="ops-panel__note">Accepted is an internal pipeline state. It does not publish a sponsor.</p>
+            <div class="ops-table-wrap"><table><thead><tr><th>Received</th><th>Reference</th><th>Organization</th><th>Contact</th><th>Support</th><th>State</th><th>Action</th></tr></thead><tbody id="sponsors-table"><tr><td colspan="7"><span class="ops-table-empty">No sponsor records loaded.</span></td></tr></tbody></table></div>
+          </section>
         </section>
 
         <section class="ops-view" data-view-panel="moderation" aria-labelledby="moderation-title" hidden>

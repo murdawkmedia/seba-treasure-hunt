@@ -62,6 +62,7 @@ test("the case-room console exposes every approved ledger and safe account contr
     "Command Desk",
     "Official Updates",
     "Private Reports",
+    "Sponsors",
     "Moderation Queue",
     "Search Zones",
     "Rules Ledger",
@@ -79,6 +80,15 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.doesNotMatch(html, /name="(?:other|peer)[-_ ]?password"/i);
   assert.match(client, /\/api\/v1\/ops\/session/);
   assert.match(client, /\/api\/v1\/ops\/dashboard/);
+  assert.match(html, /id="sponsors-table"/);
+  assert.match(html, /id="sponsor-state-filter"/);
+  assert.match(html, /id="sponsor-support-filter"/);
+  assert.match(html, /id="sponsor-search"/);
+  assert.match(html, /id="sponsors-state"[^>]*aria-live="polite"/);
+  assert.match(client, /\/api\/v1\/ops\/sponsors/);
+  assert.match(client, /Accepted is an internal pipeline state\. It does not publish a sponsor\./);
+  assert.doesNotMatch(client, /\/api\/v1\/ops\/sponsors\/export/);
+  assert.doesNotMatch(html, /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/);
 });
 
 test("public UI sources contain no real staff address or generic transition-all", () => {

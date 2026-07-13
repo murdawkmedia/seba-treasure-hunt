@@ -284,6 +284,32 @@ test("gives active staff a private dashboard, report queue, and moderation actio
   assert.equal((await responseJson(audit)).data.at(-1).action, "note.moderated");
 });
 
+test("keeps the sponsor operations ledger behind active staff authorization", async () => {
+  const { app, store } = makeApp();
+  const origin = "https://www.timlostsomething.com";
+
+  const anonymous = await app.request(`${origin}/api/v1/ops/sponsors`);
+  assert.equal(anonymous.status, 401);
+
+  const hunter = await app.request(`${origin}/api/v1/ops/sponsors`, { headers: hunterHeaders });
+  assert.equal(hunter.status, 401);
+
+  store.staff.clear();
+  const inactive = await app.request(`${origin}/api/v1/ops/sponsors`, {
+    headers: { authorization: "Bearer staff-token" }
+  });
+  assert.equal(inactive.status, 403);
+
+  const inactiveMutation = await app.request(`${origin}/api/v1/ops/sponsors/unknown`, {
+    method: "PATCH",
+    ...json(
+      { state: "qualified" },
+      { authorization: "Bearer staff-token", origin }
+    )
+  });
+  assert.equal(inactiveMutation.status, 403);
+});
+
 test("lets one active operator send another operator through verified password recovery", async () => {
   const { app, store, staffAccounts } = makeApp();
   const response = await app.request(

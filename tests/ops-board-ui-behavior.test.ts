@@ -8,9 +8,42 @@ import {
 } from "../src/client/board";
 import {
   normalizeOpsDashboard,
+  normalizeOpsSponsors,
+  renderSponsorRows,
   renderStaffRows,
   resolveOpsView,
 } from "../src/client/ops";
+
+test("sponsor operations rows normalize private fields and escape every rendered value", () => {
+  const ledger = normalizeOpsSponsors({
+    data: [{
+      id: "sponsor-1",
+      referenceCode: "SP-AB12CD34",
+      contactName: "<script>alert(1)</script>",
+      organization: "=Example Ltd.",
+      email: "alex@example.test",
+      phone: null,
+      supportType: "lead",
+      contributionRange: "prefer_to_discuss",
+      desiredOutcome: "<img src=x onerror=alert(1)>",
+      acknowledgementVersion: "2026.1",
+      state: "new",
+      createdAt: "2026-07-13T20:00:00.000Z",
+      updatedAt: "2026-07-13T20:00:00.000Z"
+    }],
+    page: { nextCursor: "cursor-2" }
+  });
+  assert.equal(ledger.items.length, 1);
+  assert.equal(ledger.nextCursor, "cursor-2");
+
+  const html = renderSponsorRows(ledger.items);
+  assert.doesNotMatch(html, /<script>|<img/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(html, /SP-AB12CD34/);
+  assert.match(html, /alex@example\.test/);
+  assert.match(html, /data-sponsor-id="sponsor-1"/);
+});
 
 test("board normalizer accepts opaque waypoint IDs ending in a zero-padded number", () => {
   const notes = normalizeBoardPayload({

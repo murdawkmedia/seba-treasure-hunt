@@ -27,6 +27,7 @@ class CountingTurnstile {
 class TrackingSponsorStore extends FakeStore {
   sponsorLookups = 0;
   sponsorCreates = 0;
+  sponsorUpdateActor: string | null = null;
 
   override async getSponsorInquiryByIdempotencyKey(key: string) {
     this.sponsorLookups += 1;
@@ -36,6 +37,15 @@ class TrackingSponsorStore extends FakeStore {
   override async createSponsorInquiry(input: SponsorInquiryInput, key: string) {
     this.sponsorCreates += 1;
     return super.createSponsorInquiry(input, key);
+  }
+
+  override async updateSponsorInquiry(
+    id: string,
+    input: Parameters<FakeStore["updateSponsorInquiry"]>[1],
+    actorSubject: string
+  ) {
+    this.sponsorUpdateActor = actorSubject;
+    return super.updateSponsorInquiry(id, input, actorSubject);
   }
 }
 
@@ -76,6 +86,137 @@ const submit = (app: ReturnType<typeof createApi>, body = validInquiry, key = "s
       "cf-connecting-ip": "203.0.113.20"
     })
   });
+
+test("only active staff can list and transition sponsor inquiries", async () => {
+  const { app, store } = makeApp();
+  await submit(app, validInquiry, "sponsor-ops-1");
+
+  const unauthenticated = await app.request("https://www.timlostsomething.com/api/v1/ops/sponsors");
+  assert.equal(unauthenticated.status, 401);
+
+  const headers = { authorization: "Bearer staff-token" };
+  const list = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/sponsors?state=new&supportType=community&limit=10&q=co-op",
+    { headers }
+  );
+  const listBody = await responseJson(list);
+  assert.equal(list.status, 200);
+  assert.equal(listBody.data.length, 1);
+  assert.equal(listBody.data[0].email, "sponsor@example.test");
+  assert.deepEqual(listBody.page, { nextCursor: null });
+
+  const changed = await app.request(
+    `https://www.timlostsomething.com/api/v1/ops/sponsors/${listBody.data[0].id}`,
+    {
+      method: "PATCH",
+      ...json(
+        { state: "qualified", note: "Good local fit; schedule a call." },
+        { ...headers, origin: "https://www.timlostsomething.com" }
+      )
+    }
+  );
+  assert.equal(changed.status, 200);
+  assert.equal((await responseJson(changed)).data.state, "qualified");
+  assert.equal(store.sponsorUpdateActor, "staff-1");
+});
+
+test("validates private sponsor list filters and sponsor transitions", async () => {
+  const { app } = makeApp();
+  const headers = { authorization: "Bearer staff-token" };
+
+  for (const [query, field] of [
+    ["state=published", "state"],
+    ["supportType=cash", "supportType"],
+    ["limit=0", "limit"],
+    ["limit=not-a-number", "limit"],
+    [`q=${"x".repeat(101)}`, "q"],
+    ["cursor=not-a-valid-cursor", "cursor"]
+  ]) {
+    const response = await app.request(
+      `https://www.timlostsomething.com/api/v1/ops/sponsors?${query}`,
+      { headers }
+    );
+    const body = await responseJson(response);
+    assert.equal(response.status, 422, query);
+    assert.equal(body.error.details.field, field, query);
+  }
+
+  for (const fixture of [
+    { contentType: "text/plain", body: '{"state":"qualified"}', expected: 415 },
+    { contentType: "application/json", body: JSON.stringify({ state: "published" }), expected: 422 },
+    { contentType: "application/json", body: JSON.stringify({ state: "qualified", note: "x".repeat(2001) }), expected: 422 }
+  ]) {
+    const response = await app.request(
+      "https://www.timlostsomething.com/api/v1/ops/sponsors/missing",
+      {
+        method: "PATCH",
+        headers: {
+          ...headers,
+          origin: "https://www.timlostsomething.com",
+          "content-type": fixture.contentType
+        },
+        body: fixture.body
+      }
+    );
+    assert.equal(response.status, fixture.expected);
+  }
+
+  const missing = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/sponsors/missing",
+    {
+      method: "PATCH",
+      ...json(
+        { state: "closed" },
+        { ...headers, origin: "https://www.timlostsomething.com" }
+      )
+    }
+  );
+  assert.equal(missing.status, 404);
+  assert.equal((await responseJson(missing)).error.code, "sponsor_inquiry_not_found");
+});
+
+test("protects sponsor transitions with same-origin JSON and the bounded body reader", async () => {
+  const { app } = makeApp();
+  const headers = { authorization: "Bearer staff-token" };
+
+  const crossOrigin = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/sponsors/missing",
+    {
+      method: "PATCH",
+      ...json({ state: "closed" }, { ...headers, origin: "https://attacker.example" })
+    }
+  );
+  assert.equal(crossOrigin.status, 403);
+  assert.equal((await responseJson(crossOrigin)).error.code, "origin_rejected");
+
+  const multipart = new FormData();
+  multipart.set("state", "qualified");
+  multipart.set("images", new File(["not an image"], "note.txt", { type: "text/plain" }));
+  const fileAttempt = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/sponsors/missing",
+    {
+      method: "PATCH",
+      headers: { ...headers, origin: "https://www.timlostsomething.com" },
+      body: multipart
+    }
+  );
+  assert.equal(fileAttempt.status, 415);
+
+  const oversized = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/sponsors/missing",
+    {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        origin: "https://www.timlostsomething.com",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ state: "qualified", padding: "x".repeat(65 * 1024) })
+    }
+  );
+  assert.equal(oversized.status, 413);
+  assert.equal((await responseJson(oversized)).error.code, "request_too_large");
+});
 
 test("accepts a valid public sponsor inquiry and returns only a safe receipt", async () => {
   const { app, store, turnstile, rateLimits } = makeApp();

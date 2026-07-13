@@ -1,7 +1,10 @@
 import type { Clerk } from "@clerk/clerk-js";
 import type { SignInResource } from "@clerk/shared/types";
 
-type OpsView = "command" | "updates" | "reports" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit";
+type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit";
+
+type OpsSponsorState = "new" | "contacted" | "qualified" | "accepted" | "closed";
+type OpsSponsorSupportType = "community" | "lead" | "prize_in_kind" | "other";
 
 export interface OpsDashboard {
   status: {
@@ -41,6 +44,27 @@ interface OpsReportRecord {
   waypointId: string;
   mediaCount: number;
   status: string;
+}
+
+export interface OpsSponsorRecord {
+  id: string;
+  referenceCode: string;
+  contactName: string;
+  organization: string;
+  email: string;
+  phone: string | null;
+  supportType: OpsSponsorSupportType;
+  contributionRange: string | null;
+  desiredOutcome: string;
+  acknowledgementVersion: string;
+  state: OpsSponsorState;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpsSponsorLedger {
+  items: OpsSponsorRecord[];
+  nextCursor: string | null;
 }
 
 interface OpsModerationRecord {
@@ -92,7 +116,9 @@ export interface OpsSubscriberLedger {
   nextCursor: string | null;
 }
 
-const views: readonly OpsView[] = ["command", "updates", "reports", "moderation", "zones", "rules", "subscribers", "access", "audit"];
+const views: readonly OpsView[] = ["command", "updates", "reports", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit"];
+const sponsorStates: readonly OpsSponsorState[] = ["new", "contacted", "qualified", "accepted", "closed"];
+const sponsorSupportTypes: readonly OpsSponsorSupportType[] = ["community", "lead", "prize_in_kind", "other"];
 
 let staffClerk: Clerk | null = null;
 let signInAttempt: SignInResource | null = null;
@@ -101,6 +127,9 @@ let loadedSubscribers: OpsSubscriberRecord[] = [];
 let subscriberNextCursor: string | null = null;
 let subscribersLoaded = false;
 let subscribersLoading = false;
+let sponsorsLoaded = false;
+let sponsorLoadVersion = 0;
+const sponsorMutations = new Set<string>();
 
 export function escapeOpsHtml(value: unknown): string {
   return String(value ?? "")
@@ -224,6 +253,43 @@ function normalizeReports(payload: unknown): OpsReportRecord[] {
       status: asString(value.status) || "received",
     }];
   });
+}
+
+export function normalizeOpsSponsors(payload: unknown): OpsSponsorLedger {
+  const outer = isRecord(payload) ? payload : {};
+  const data = envelopeData(payload);
+  const records = Array.isArray(data) ? data : isRecord(data) ? asArray(data.items) : [];
+  const page = isRecord(outer.page) ? outer.page : isRecord(data) && isRecord(data.page) ? data.page : {};
+  const items = records.flatMap((value): OpsSponsorRecord[] => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id);
+    const referenceCode = asString(value.referenceCode);
+    const contactName = asString(value.contactName);
+    const organization = asString(value.organization);
+    const email = asString(value.email);
+    const supportType = asString(value.supportType) as OpsSponsorSupportType;
+    const state = asString(value.state) as OpsSponsorState;
+    if (
+      !id || !referenceCode || !contactName || !organization || !email ||
+      !sponsorSupportTypes.includes(supportType) || !sponsorStates.includes(state)
+    ) return [];
+    return [{
+      id,
+      referenceCode,
+      contactName,
+      organization,
+      email,
+      phone: asString(value.phone) || null,
+      supportType,
+      contributionRange: asString(value.contributionRange) || null,
+      desiredOutcome: asString(value.desiredOutcome),
+      acknowledgementVersion: asString(value.acknowledgementVersion),
+      state,
+      createdAt: asString(value.createdAt),
+      updatedAt: asString(value.updatedAt)
+    }];
+  });
+  return { items, nextCursor: asString(page.nextCursor) || null };
 }
 
 function normalizeModeration(payload: unknown): OpsModerationRecord[] {
@@ -387,6 +453,38 @@ export function renderReportRows(records: readonly OpsReportRecord[]): string {
   </tr>`).join("");
 }
 
+const sponsorStateLabel = (state: OpsSponsorState): string => ({
+  new: "New",
+  contacted: "Contacted",
+  qualified: "Qualified",
+  accepted: "Accepted",
+  closed: "Closed"
+})[state];
+
+const sponsorSupportLabel = (supportType: OpsSponsorSupportType): string => ({
+  community: "Community",
+  lead: "Lead",
+  prize_in_kind: "Prize / in-kind",
+  other: "Other"
+})[supportType];
+
+export function renderSponsorRows(records: readonly OpsSponsorRecord[]): string {
+  if (records.length === 0) return `<tr><td colspan="7"><span class="ops-table-empty">No sponsor inquiries match these filters.</span></td></tr>`;
+  return records.map((record) => {
+    const id = escapeOpsHtml(record.id);
+    const options = sponsorStates.map((state) => `<option value="${escapeOpsHtml(state)}"${state === record.state ? " selected" : ""}>${escapeOpsHtml(sponsorStateLabel(state))}</option>`).join("");
+    return `<tr>
+      <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
+      <td><span class="ops-mono">${escapeOpsHtml(record.referenceCode)}</span></td>
+      <td><strong>${escapeOpsHtml(record.organization)}</strong><details class="ops-sponsor-detail"><summary>Inquiry details</summary><p>${escapeOpsHtml(record.desiredOutcome || "No desired outcome supplied")}</p><small>Acknowledgement ${escapeOpsHtml(record.acknowledgementVersion || "not recorded")}</small></details></td>
+      <td><strong>${escapeOpsHtml(record.contactName)}</strong><br /><span class="ops-mono">${escapeOpsHtml(record.email)}</span>${record.phone ? `<br /><span class="ops-mono">${escapeOpsHtml(record.phone)}</span>` : ""}</td>
+      <td>${escapeOpsHtml(sponsorSupportLabel(record.supportType))}<br /><span class="ops-mono">${escapeOpsHtml(record.contributionRange || "Range not supplied")}</span></td>
+      <td><span class="ops-chip ops-sponsor-state" data-state="${escapeOpsHtml(record.state)}">${escapeOpsHtml(sponsorStateLabel(record.state))}</span></td>
+      <td><div class="ops-sponsor-action"><label for="sponsor-state-${id}">Change state</label><select id="sponsor-state-${id}" data-sponsor-next-state="${id}">${options}</select><button class="ops-button ops-button--quiet" type="button" data-sponsor-id="${id}" data-sponsor-current-state="${escapeOpsHtml(record.state)}">Apply state</button></div></td>
+    </tr>`;
+  }).join("");
+}
+
 export function renderModerationRows(records: readonly OpsModerationRecord[]): string {
   if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No Field Notes are awaiting moderation.</span></td></tr>`;
   return records.map((record) => `<tr>
@@ -510,6 +608,7 @@ function switchView(view: OpsView, focus = true): void {
   document.querySelector("#ops-menu")?.setAttribute("aria-expanded", "false");
   if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
   if (focus) document.querySelector<HTMLElement>("#ops-main")?.focus();
+  if (view === "sponsors" && !sponsorsLoaded) void loadSponsors();
   if (view === "subscribers" && !subscribersLoaded && !subscribersLoading) void loadSubscribers();
 }
 
@@ -593,6 +692,55 @@ async function loadModeration(): Promise<void> {
     setTable("#moderation-table", renderModerationRows(normalizeModeration(payload)));
   } catch {
     setTable("#moderation-table", `<tr><td colspan="6"><span class="ops-table-empty">The moderation queue is unavailable from the source.</span></td></tr>`);
+  }
+}
+
+function setSponsorsState(message: string, kind: "normal" | "error" = "normal"): void {
+  const state = document.querySelector<HTMLElement>("#sponsors-state");
+  if (!state) return;
+  state.textContent = message;
+  if (kind === "error") state.dataset.kind = "error";
+  else delete state.dataset.kind;
+}
+
+function sponsorFilters(): URLSearchParams {
+  const params = new URLSearchParams({ limit: "50" });
+  const state = document.querySelector<HTMLSelectElement>("#sponsor-state-filter")?.value ?? "";
+  const supportType = document.querySelector<HTMLSelectElement>("#sponsor-support-filter")?.value ?? "";
+  const query = document.querySelector<HTMLInputElement>("#sponsor-search")?.value.trim() ?? "";
+  if (state) params.set("state", state);
+  if (supportType) params.set("supportType", supportType);
+  if (query) params.set("q", query.slice(0, 100));
+  return params;
+}
+
+async function loadSponsors(): Promise<void> {
+  const version = ++sponsorLoadVersion;
+  const panel = document.querySelector<HTMLElement>('[data-view-panel="sponsors"]');
+  panel?.setAttribute("aria-busy", "true");
+  setSponsorsState(sponsorsLoaded ? "Refreshing private sponsor inquiries..." : "Loading private sponsor inquiries...");
+  if (!sponsorsLoaded) {
+    setTable("#sponsors-table", `<tr><td colspan="7"><span class="ops-table-empty">Loading authorized sponsor inquiries...</span></td></tr>`);
+  }
+  try {
+    const { response, payload } = await opsRequest(`/api/v1/ops/sponsors?${sponsorFilters().toString()}`);
+    if (version !== sponsorLoadVersion) return;
+    if (!response.ok) throw new Error(apiError(payload, "The sponsor ledger is unavailable."));
+    const ledger = normalizeOpsSponsors(payload);
+    sponsorsLoaded = true;
+    setTable("#sponsors-table", renderSponsorRows(ledger.items));
+    for (const state of sponsorStates.slice(0, 4)) {
+      setMetric(`#sponsor-${state}-count`, ledger.items.filter((item) => item.state === state).length);
+    }
+    const pageNote = ledger.nextCursor ? " More matching records are available; narrow the filters to review them." : "";
+    setSponsorsState(`${ledger.items.length} private sponsor ${ledger.items.length === 1 ? "inquiry" : "inquiries"} loaded.${pageNote}`);
+  } catch (error) {
+    if (version !== sponsorLoadVersion) return;
+    setTable("#sponsors-table", `<tr><td colspan="7"><span class="ops-table-empty">The private sponsor ledger is unavailable from the source.</span></td></tr>`);
+    for (const state of sponsorStates.slice(0, 4)) setMetric(`#sponsor-${state}-count`, null);
+    setSponsorsState(error instanceof Error ? error.message : "The sponsor ledger is unavailable.", "error");
+  } finally {
+    if (version === sponsorLoadVersion) panel?.removeAttribute("aria-busy");
   }
 }
 
@@ -882,8 +1030,15 @@ function setupWorkspace(): void {
     sidebar?.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", String(open));
   });
-  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit(), ...(subscribersLoaded ? [loadSubscribers()] : [])]));
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit(), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : [])]));
   document.querySelector("#refresh-reports")?.addEventListener("click", () => void loadReports());
+  document.querySelector("#refresh-sponsors")?.addEventListener("click", () => void loadSponsors());
+  document.querySelector("#sponsor-filters")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void loadSponsors();
+  });
+  document.querySelector("#sponsor-state-filter")?.addEventListener("change", () => void loadSponsors());
+  document.querySelector("#sponsor-support-filter")?.addEventListener("change", () => void loadSponsors());
   document.querySelector("#subscriber-refresh")?.addEventListener("click", () => void loadSubscribers());
   document.querySelector("#subscriber-load-more")?.addEventListener("click", () => void loadSubscribers(true));
   document.querySelector("#subscriber-export")?.addEventListener("click", exportLoadedSubscribers);
@@ -975,6 +1130,44 @@ function setupWorkspace(): void {
     } catch (error) {
       button.disabled = false;
       showPageError(error instanceof Error ? error.message : "The moderation decision was not saved.");
+    }
+  });
+
+  document.querySelector("#sponsors-table")?.addEventListener("click", async (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>("[data-sponsor-id]");
+    const inquiryId = button?.dataset.sponsorId;
+    if (!button || !inquiryId || sponsorMutations.has(inquiryId)) return;
+    const select = document.querySelector<HTMLSelectElement>(`[data-sponsor-next-state="${CSS.escape(inquiryId)}"]`);
+    const nextState = select?.value as OpsSponsorState | undefined;
+    if (!nextState || !sponsorStates.includes(nextState)) return;
+    if (nextState === button.dataset.sponsorCurrentState) {
+      setSponsorsState("Choose a different sponsor state before applying the change.", "error");
+      return;
+    }
+    const note = window.prompt("Add a private note for this sponsor state change (optional, 2,000 characters maximum):", "");
+    if (note === null) return;
+    if (note.length > 2_000) {
+      setSponsorsState("Private notes must be 2,000 characters or fewer.", "error");
+      return;
+    }
+    if (nextState === "accepted" && !window.confirm("Accepted is an internal pipeline state. It does not publish a sponsor.")) return;
+    sponsorMutations.add(inquiryId);
+    button.disabled = true;
+    setSponsorsState(`Saving ${sponsorStateLabel(nextState).toLowerCase()} state...`);
+    try {
+      const { response, payload } = await opsRequest(`/api/v1/ops/sponsors/${encodeURIComponent(inquiryId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: nextState, note: note.trim() || null })
+      });
+      if (!response.ok) throw new Error(apiError(payload, "The sponsor state was not changed."));
+      setSponsorsState("Sponsor state changed and recorded in the private audit history.");
+      await loadSponsors();
+    } catch (error) {
+      setSponsorsState(error instanceof Error ? error.message : "The sponsor state was not changed.", "error");
+    } finally {
+      sponsorMutations.delete(inquiryId);
+      button.disabled = false;
     }
   });
 
