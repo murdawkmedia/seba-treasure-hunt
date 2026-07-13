@@ -5,6 +5,7 @@ import {
   applySponsorErrorTargetState,
   buildSponsorPayload,
   parseSponsorReceipt,
+  presentSponsorErrors,
   sponsorErrorCopy,
   validateSponsorDraft,
   type SponsorDraft,
@@ -74,6 +75,28 @@ test("human-check validation makes the shell programmatically focusable before f
   applySponsorErrorTargetState(shell, "turnstileToken", false);
   assert.equal(shell.attributes.has("aria-invalid"), false);
   assert.equal(shell.attributes.get("tabindex"), "-1", "tabindex remains stable for future error focus");
+});
+
+test("error presentation announces a summary and focuses the first invalid shell", () => {
+  const shell = new MinimalErrorTarget();
+  const summaries: string[][] = [];
+
+  presentSponsorErrors(
+    { turnstileToken: "Complete the human check." },
+    {
+      setFieldError(key, _copy, invalid) {
+        return key === "turnstileToken"
+          ? applySponsorErrorTargetState(shell, key, invalid)
+          : null;
+      },
+      setSummary(messages) {
+        summaries.push([...messages]);
+      },
+    },
+  );
+
+  assert.deepEqual(summaries, [["Complete the human check."]]);
+  assert.deepEqual(shell.events, ["aria-invalid:true", "tabindex:-1", "focus"]);
 });
 
 test("sponsor validation returns only the exact public field error keys", () => {
@@ -202,7 +225,7 @@ test("sponsor response errors map to safe fixed copy", () => {
   assert.match(sponsorErrorCopy(409, "privacy_version_outdated"), /Privacy page/i);
   assert.match(sponsorErrorCopy(413), /too large/i);
   assert.match(sponsorErrorCopy(415), /unsupported/i);
-  assert.match(sponsorErrorCopy(422), /fields/i);
+  assert.equal(sponsorErrorCopy(422), "Review the form fields and try again.");
   assert.match(sponsorErrorCopy(429), /wait/i);
   assert.match(sponsorErrorCopy(503, "environment_mismatch"), /temporarily unavailable/i);
   assert.match(sponsorErrorCopy(0), /not confirmed/i);

@@ -1,3 +1,8 @@
+import {
+  createSponsorSubmissionController,
+  type SponsorSubmissionController,
+} from "./sponsor-submission";
+
 export type SponsorSupportType = "community" | "lead" | "prize_in_kind" | "other";
 export type SponsorContributionRange =
   | ""
@@ -133,6 +138,15 @@ export interface SponsorErrorTarget {
   focus(): void;
 }
 
+export interface SponsorErrorPresenter {
+  setFieldError(
+    key: SponsorErrorKey,
+    copy: string,
+    invalid: boolean,
+  ): SponsorErrorTarget | null;
+  setSummary(messages: readonly string[]): void;
+}
+
 export function applySponsorErrorTargetState<T extends SponsorErrorTarget>(
   target: T | null,
   key: SponsorErrorKey,
@@ -149,6 +163,27 @@ export function applySponsorErrorTargetState<T extends SponsorErrorTarget>(
     target.tabIndex = -1;
   }
   return target;
+}
+
+export function presentSponsorErrors(
+  errors: SponsorErrors,
+  presenter: SponsorErrorPresenter,
+): void {
+  let firstInvalid: SponsorErrorTarget | null = null;
+  for (const key of errorKeys) {
+    const copy = errors[key] ?? "";
+    const sharesAcknowledgementError =
+      (key === "acknowledgementAccepted" && Boolean(errors.acknowledgementVersion)) ||
+      (key === "acknowledgementVersion" && Boolean(errors.acknowledgementAccepted));
+    const target = presenter.setFieldError(
+      key,
+      copy,
+      Boolean(copy) || sharesAcknowledgementError,
+    );
+    if (copy) firstInvalid ??= target;
+  }
+  presenter.setSummary(errorKeys.flatMap((key) => errors[key] ? [errors[key]] : []));
+  firstInvalid?.focus();
 }
 
 export function validateSponsorDraft(draft: SponsorDraft): SponsorErrors {
@@ -223,7 +258,7 @@ export function sponsorErrorCopy(status: number, code?: string): string {
   }
   if (status === 413) return "This form is too large. Shorten your message and try again.";
   if (status === 415) return "This request format is unsupported. Reload the page and try again.";
-  if (status === 422) return "Review the highlighted fields and try again.";
+  if (status === 422) return "Review the form fields and try again.";
   if (status === 429) return "Too many inquiries were attempted. Wait a few minutes and retry.";
   if (status === 503) return "Sponsor inquiries are temporarily unavailable. Keep your details and try again later.";
   return "Your inquiry was not confirmed as received. Retry with the same details; do not assume it was captured.";
@@ -232,11 +267,6 @@ export function sponsorErrorCopy(status: number, code?: string): string {
 interface PublicConfig {
   turnstileSiteKey: string | null;
 }
-
-let turnstileToken = "";
-let turnstileWidgetId: string | undefined;
-let pendingIdempotencyKey: string | undefined;
-let turnstileUnavailable = false;
 
 async function loadPublicConfig(): Promise<PublicConfig> {
   try {
@@ -298,36 +328,25 @@ function setTurnstileError(copy: string): void {
 }
 
 function showErrors(errors: SponsorErrors): void {
-  let firstInvalid: HTMLElement | null = null;
-  for (const key of errorKeys) {
-    const copy = errors[key] ?? "";
-    const error = document.querySelector<HTMLElement>(errorSelectors[key]);
-    if (error) error.textContent = copy;
-    const field = fieldFor(key);
-    const sharesAcknowledgementError =
-      (key === "acknowledgementAccepted" && Boolean(errors.acknowledgementVersion)) ||
-      (key === "acknowledgementVersion" && Boolean(errors.acknowledgementAccepted));
-    const markedTarget = applySponsorErrorTargetState(
-      field,
-      key,
-      Boolean(copy) || sharesAcknowledgementError,
-    );
-    if (copy) firstInvalid ??= markedTarget;
-  }
-
-  const messages = errorKeys.flatMap((key) => errors[key] ? [errors[key]] : []);
-  const summary = document.querySelector<HTMLElement>("[data-sponsor-errors]");
-  if (summary) {
-    summary.setAttribute("role", "alert");
-    summary.hidden = messages.length === 0;
-    summary.textContent = messages.length === 0
-      ? ""
-      : `Fix ${messages.length} ${messages.length === 1 ? "problem" : "problems"}: ${messages.join(" ")}`;
-  }
-  firstInvalid?.focus();
+  presentSponsorErrors(errors, {
+    setFieldError(key, copy, invalid) {
+      const error = document.querySelector<HTMLElement>(errorSelectors[key]);
+      if (error) error.textContent = copy;
+      return applySponsorErrorTargetState(fieldFor(key), key, invalid);
+    },
+    setSummary(messages) {
+      const summary = document.querySelector<HTMLElement>("[data-sponsor-errors]");
+      if (!summary) return;
+      summary.setAttribute("role", "alert");
+      summary.hidden = messages.length === 0;
+      summary.textContent = messages.length === 0
+        ? ""
+        : `Fix ${messages.length} ${messages.length === 1 ? "problem" : "problems"}: ${messages.join(" ")}`;
+    },
+  });
 }
 
-function readDraft(form: HTMLFormElement): SponsorDraft {
+function readDraft(form: HTMLFormElement, turnstileToken: string): SponsorDraft {
   const data = new FormData(form);
   return {
     contactName: String(data.get("contactName") ?? ""),
@@ -348,15 +367,7 @@ function responseErrorCode(envelope: unknown): string | undefined {
   return typeof envelope.error.code === "string" ? envelope.error.code : undefined;
 }
 
-function resetTurnstile(): void {
-  turnstileToken = "";
-  if (window.turnstile && turnstileWidgetId) window.turnstile.reset(turnstileWidgetId);
-}
-
-function disableSponsorSubmission(copy: string): void {
-  turnstileUnavailable = true;
-  const submit = document.querySelector<HTMLButtonElement>("[data-sponsor-submit]");
-  if (submit) submit.disabled = true;
+function showHumanUnavailable(copy: string): void {
   const shell = document.querySelector<HTMLElement>("[data-sponsor-turnstile]");
   if (shell) {
     shell.textContent = copy;
@@ -365,65 +376,59 @@ function disableSponsorSubmission(copy: string): void {
   setTurnstileError(copy);
 }
 
-async function initializeTurnstile(): Promise<void> {
+async function initializeTurnstile(
+  controller: SponsorSubmissionController,
+  widget: { id: string | undefined },
+): Promise<void> {
   const shell = document.querySelector<HTMLElement>("[data-sponsor-turnstile]");
   if (!shell) return;
   try {
     const [config, turnstile] = await Promise.all([loadPublicConfig(), waitForTurnstile()]);
     if (!config.turnstileSiteKey || !turnstile) throw new Error("human verification unavailable");
 
-    turnstileWidgetId = turnstile.render(shell, {
+    widget.id = turnstile.render(shell, {
       sitekey: config.turnstileSiteKey,
       action: "sponsor_inquiry",
       callback: (token) => {
-        turnstileToken = token;
-        turnstileUnavailable = false;
-        const submit = document.querySelector<HTMLButtonElement>("[data-sponsor-submit]");
-        if (submit) submit.disabled = false;
-        clearFieldError("turnstileToken");
+        controller.humanVerified(token);
       },
       "expired-callback": () => {
-        turnstileToken = "";
-        setTurnstileError("The human check expired. Complete it again.");
+        controller.humanExpired("The human check expired. Complete it again.");
       },
       "error-callback": () => {
-        turnstileToken = "";
-        disableSponsorSubmission(
+        controller.humanUnavailableNow(
           "Human verification is unavailable. Reload the page before submitting an inquiry.",
         );
       },
     });
   } catch {
-    disableSponsorSubmission(
+    controller.humanUnavailableNow(
       "Human verification is unavailable. Sponsor inquiries cannot be submitted until it is restored.",
     );
   }
 }
 
-async function submitSponsor(form: HTMLFormElement): Promise<void> {
-  const submit = document.querySelector<HTMLButtonElement>("[data-sponsor-submit]");
-  const originalLabel = submit?.textContent ?? "";
-  const draft = readDraft(form);
+async function submitSponsor(
+  form: HTMLFormElement,
+  controller: SponsorSubmissionController,
+): Promise<void> {
+  const draft = readDraft(form, controller.humanToken());
   const errors = validateSponsorDraft(draft);
   showErrors(errors);
   if (Object.keys(errors).length > 0) return;
 
-  pendingIdempotencyKey ??= crypto.randomUUID();
-  const requestKey = pendingIdempotencyKey;
-  if (submit) {
-    submit.disabled = true;
-    submit.textContent = "Sending private inquiry…";
-  }
+  const attempt = controller.beginAttempt();
+  if (!attempt) return;
   const result = document.querySelector<HTMLElement>("[data-sponsor-result]");
   if (result) result.hidden = true;
 
-  try {
+  await controller.runAttempt(attempt, async () => {
     const response = await fetch("/api/v1/sponsors/inquiries", {
       method: "POST",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "Idempotency-Key": requestKey,
+        "Idempotency-Key": attempt.idempotencyKey,
       },
       body: JSON.stringify(buildSponsorPayload(draft)),
       credentials: "same-origin",
@@ -432,39 +437,61 @@ async function submitSponsor(form: HTMLFormElement): Promise<void> {
     const envelope: unknown = await response.json().catch(() => null);
     const receipt = response.ok ? parseSponsorReceipt(envelope) : null;
     if (!receipt) {
-      resultState(sponsorErrorCopy(response.status, responseErrorCode(envelope)), "error");
-      return;
+      return {
+        kind: "error" as const,
+        copy: sponsorErrorCopy(response.status, responseErrorCode(envelope)),
+      };
     }
-
-    form.reset();
-    pendingIdempotencyKey = undefined;
-    showErrors({});
-    resultState(
-      `Inquiry ${receipt.referenceCode} was received privately. Submission does not create a sponsorship agreement.`,
-      "success",
-    );
-  } catch {
-    resultState(sponsorErrorCopy(0), "error");
-  } finally {
-    resetTurnstile();
-    if (submit) {
-      submit.disabled = turnstileUnavailable;
-      submit.textContent = originalLabel;
-    }
-  }
+    return { kind: "success" as const, referenceCode: receipt.referenceCode };
+  });
 }
 
 function initializeSponsor(): void {
   const form = document.querySelector<HTMLFormElement>("[data-sponsor-form]");
   if (!form) return;
 
-  void initializeTurnstile();
+  const submit = document.querySelector<HTMLButtonElement>("[data-sponsor-submit]");
+  const originalLabel = submit?.textContent ?? "";
+  const widget: { id: string | undefined } = { id: undefined };
+  let controller: SponsorSubmissionController;
+  controller = createSponsorSubmissionController({
+    makeIdempotencyKey: () => crypto.randomUUID(),
+    uncertainCopy: sponsorErrorCopy(0),
+    ui: {
+      setSubmissionState(busy, unavailable) {
+        if (!submit) return;
+        submit.disabled = busy || unavailable;
+        submit.textContent = busy ? "Sending private inquiry…" : originalLabel;
+      },
+      showResult: resultState,
+      resetForm() {
+        form.reset();
+        showErrors({});
+      },
+      resetTurnstile() {
+        try {
+          if (window.turnstile && widget.id) window.turnstile.reset(widget.id);
+        } catch {
+          controller.humanUnavailableNow(
+            "Human verification is unavailable. Reload the page before submitting an inquiry.",
+          );
+        }
+      },
+      showHumanError: setTurnstileError,
+      clearHumanError() {
+        clearFieldError("turnstileToken");
+      },
+      showHumanUnavailable,
+    },
+  });
+
+  void initializeTurnstile(controller, widget);
   form.addEventListener("input", () => {
-    if (pendingIdempotencyKey) pendingIdempotencyKey = undefined;
+    controller.markEdited();
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    void submitSponsor(form);
+    void submitSponsor(form, controller);
   });
 }
 
