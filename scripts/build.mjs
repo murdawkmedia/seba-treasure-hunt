@@ -20,6 +20,8 @@ const staticFiles = [
   "community-guidelines.html",
   "clue-board.html",
   "ops.html",
+  "favicon.ico",
+  "site.webmanifest",
   "robots.txt",
   "sitemap.xml"
 ];
