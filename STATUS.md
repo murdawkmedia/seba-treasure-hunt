@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something? / The Seba Beach Treasure Hunt
 
-Last updated: 2026-07-10
+Last updated: 2026-07-13
 
 ## Current state
 
@@ -14,9 +14,12 @@ Finders may keep the cash and rings. Tim only asks that his ID bundle be
 returned to SebaHub. The site is a static three-page Cloudflare Pages project
 with a 12-waypoint route, 61 GPS-tagged photographs and a route video.
 
-The refresh is live on Cloudflare Pages. Both custom hostnames are active and
-HTTPS-valid. The bare hostname returns a permanent path/query-preserving
-redirect to the canonical www hostname.
+The previous refresh is live on Cloudflare Pages. Both custom hostnames are
+active and HTTPS-valid. The bare hostname returns a permanent
+path/query-preserving redirect to the canonical www hostname. The emergency
+unconfirmed-partner hotfix is ready locally but production deployment is still
+pending in this predeployment commit. The old live release remains affected
+until the hotfix is deployed.
 
 ## Public surfaces
 
@@ -50,6 +53,25 @@ redirect to the canonical www hostname.
   timlostsomething.com to www.timlostsomething.com and passes www/Pages aliases
   through unchanged to static assets.
 
+## 2026-07-13 emergency unconfirmed-partner hotfix
+
+- Removed all visible partner strips, links, logos, broadcast schedules,
+  audience claims, founding-sponsor claims, on-air claims and partner CSS from
+  the legacy production source.
+- Deleted the standalone partner logo.
+- Audited the current validation hunter-platform and media surfaces; both are
+  clean.
+- Replaced repository-wide publishing with an explicit `dist/` allowlist that
+  excludes documentation, tests, scripts, planning, source media, local state,
+  and removed or unapproved partner assets.
+- Hardened the staged builder to reject prohibited text, prohibited paths and
+  symlinks, and to remove deployable output when a build fails.
+- Local full suite passes 13/13.
+- The exact `dist/` inventory is 10 top-level entries and 92 files.
+- The public scan is clean.
+- Production deployment is still pending in this predeployment commit. The old
+  live release remains affected until deployment.
+
 ## Route video
 
 - Canonical source: local Remotion composition **SebaRouteRetraced**.
@@ -71,13 +93,17 @@ redirect to the canonical www hostname.
 - The campaign prop must always carry an explicit dramatization disclosure.
 - The real evidence photo remains the social preview.
 - No fabricated claims or fake urgency on the website.
-- Deploy only from a clean git archive; never publish planning/, source-media/
-  or local Cloudflare state.
+- Deploy only the staged `dist/` allowlist; never publish repository
+  documentation, tests, scripts, planning, source media, local state, or
+  removed or unapproved partner assets.
 - www is canonical. The apex must preserve path/query strings when redirecting.
 
 ## Verification
 
-- Campaign and canonical-host contracts: 8 passing tests.
+- Full local contract suite: 13/13 passing tests.
+- Staged public build succeeds and contains exactly 10 top-level entries and 92
+  files.
+- Public scan reports no prohibited text or paths.
 - JSON-LD parses on all three pages.
 - Git whitespace check passes.
 - Remotion end-card regression test, ESLint and TypeScript pass.
@@ -91,7 +117,9 @@ redirect to the canonical www hostname.
 
 ## Remaining release work
 
-1. Integrate and push the verified campaign-refresh branch to main.
+1. Integrate the verified emergency hotfix into main, rebuild `dist/`, and
+   deploy it to production. Until deployment, the old live release remains
+   affected.
 2. Obtain final legal/owner sign-off on the official hunt rules and prize
    language; this remains an operational review item rather than a deployment
    blocker requested for this technical refresh.
