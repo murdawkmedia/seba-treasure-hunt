@@ -220,10 +220,15 @@ const readLimitedBody = async (request: Request, maximumBytes: number) => {
   return bytes;
 };
 
-const requestBody = async (request: Request) => {
+const mediaTypeEssence = (request: Request) =>
+  (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]
+    ?.trim()
+    .toLowerCase() ?? "";
+
+const requestBody = async (request: Request, mediaType = mediaTypeEssence(request)) => {
   const contentType = request.headers.get("content-type") ?? "";
-  const normalizedContentType = contentType.toLowerCase();
-  if (normalizedContentType.includes("multipart/form-data")) {
+  if (mediaType === "multipart/form-data") {
     let form: FormData;
     try {
       const bytes = await readLimitedBody(request, 32 * 1024 * 1024);
@@ -245,7 +250,7 @@ const requestBody = async (request: Request) => {
       files: form.getAll("images").filter((entry): entry is File => entry instanceof File)
     };
   }
-  if (!normalizedContentType.includes("application/json")) {
+  if (mediaType !== "application/json") {
     throw new ApiError(415, "unsupported_media_type", "Use JSON or multipart form data.");
   }
   try {
@@ -372,13 +377,11 @@ const strictSponsorOrigin = (request: Request) => {
 };
 
 const requireJsonMediaType = (request: Request) => {
-  const mediaType = (request.headers.get("content-type") ?? "")
-    .split(";", 1)[0]
-    ?.trim()
-    .toLowerCase();
+  const mediaType = mediaTypeEssence(request);
   if (mediaType !== "application/json") {
     throw new ApiError(415, "unsupported_media_type", "Sponsor inquiries accept application/json only.");
   }
+  return mediaType;
 };
 
 const requireHunter = async (deps: ApiDependencies, request: Request) => {
@@ -699,8 +702,8 @@ export const createApi = (deps: ApiDependencies) => {
     if (existing) return success(c, safeSponsorSubmission(existing, true));
 
     await applyRateLimit(deps, c.req.raw, "sponsor_inquiry", null);
-    requireJsonMediaType(c.req.raw);
-    const { body } = await requestBody(c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw);
+    const { body } = await requestBody(c.req.raw, mediaType);
     await verifyHuman(deps, c.req.raw, body, "sponsor_inquiry");
 
     if (body.acknowledgementAccepted !== true) {

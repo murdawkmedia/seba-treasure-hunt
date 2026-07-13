@@ -308,7 +308,7 @@ test("requires an image for find reports and stores accepted uploads privately",
   assert.equal(uploads.saved.length, 1, "an idempotent retry must not create an orphan upload");
 });
 
-test("preserves case-sensitive multipart boundaries from browsers", async () => {
+test("dispatches multipart reports by media type essence and preserves case-sensitive boundaries", async () => {
   const { app } = makeApp();
   const boundary = "AaB03xWebKitBoundary";
   const fields = {
@@ -338,6 +338,7 @@ test("preserves case-sensitive multipart boundaries from browsers", async () => 
   });
 
   assert.equal(response.status, 201);
+  assert.equal((await responseJson(response)).data.status, "received");
 });
 
 test("canonicalizes the apex with method-safe redirects and falls through to static assets", async () => {

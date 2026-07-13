@@ -299,3 +299,30 @@ test("accepts only the exact application/json media type with optional parameter
     assert.equal((await fixture.store.listSponsorInquiries()).items.length, 0, item.name);
   }
 });
+
+test("keeps JSON parameters out of body dispatch and enforces the 64 KiB cap", async () => {
+  const fixture = makeApp();
+  const oversizedJson = JSON.stringify({
+    ...validInquiry,
+    padding: "x".repeat(70 * 1024)
+  });
+
+  const response = await fixture.app.request(
+    "https://www.timlostsomething.com/api/v1/sponsors/inquiries",
+    {
+      method: "POST",
+      headers: {
+        "content-type": 'application/json; profile="multipart/form-data"',
+        origin: "https://www.timlostsomething.com",
+        "idempotency-key": "sponsor-json-dispatch"
+      },
+      body: oversizedJson
+    }
+  );
+
+  assert.equal(response.status, 413);
+  assert.equal((await responseJson(response)).error.code, "request_too_large");
+  assert.equal(fixture.turnstile.calls, 0);
+  assert.equal(fixture.store.sponsorCreates, 0);
+  assert.equal((await fixture.store.listSponsorInquiries()).items.length, 0);
+});
