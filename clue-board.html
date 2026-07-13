@@ -32,7 +32,7 @@
   <div class="case-signal" id="case-signal" data-state="unavailable" role="status" aria-live="polite">
     <span class="case-signal__mark" aria-hidden="true"></span>
     <strong id="case-signal-label">Checking official case status</strong>
-    <span id="case-signal-detail">Exact directions remain locked until status is confirmed.</span>
+    <span class="case-signal__detail" id="case-signal-detail">Exact directions remain locked until status is confirmed.</span>
   </div>
 
   <header class="board-topbar">
@@ -40,7 +40,8 @@
       <span class="board-brand__seal" aria-hidden="true">T?</span>
       <span><strong>Tim Lost Something?</strong><small>The Seba Beach Treasure Hunt</small></span>
     </a>
-    <nav aria-label="Campaign">
+    <button class="menu-toggle board-menu-toggle" type="button" aria-label="Toggle campaign menu" aria-expanded="false" aria-controls="nav"><span aria-hidden="true">&#9776;</span></button>
+    <nav class="board-nav" id="nav" aria-label="Campaign">
       <a href="/route">Route</a>
       <a href="/updates">Updates</a>
       <a href="/report">Report a find</a>
@@ -178,6 +179,7 @@
     <nav aria-label="Legal"><a href="/rules">Rules</a><a href="/community-guidelines">Community guidelines</a><a href="/privacy">Privacy</a><a href="/sponsors">Sponsors</a></nav>
   </footer>
 
+  <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/board.js"></script>
 </body>
 </html>

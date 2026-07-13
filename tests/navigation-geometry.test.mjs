@@ -55,22 +55,31 @@ test("390px headers use measured compact stacked geometry and an operable menu",
 
   try {
     const page = await context.newPage();
-    for (const [file, headerSelector] of [["index.html", ".topbar"], ["privacy.html", ".hunter-header"]]) {
+    for (const [file, stripSelector, headerSelector] of [
+      ["index.html", ".case-strip", ".topbar"],
+      ["privacy.html", ".case-strip", ".hunter-header"],
+      ["clue-board.html", ".case-signal", ".board-topbar"],
+    ]) {
       await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
-      const geometry = await page.evaluate((selector) => {
-        const strip = document.querySelector(".case-strip");
-        const header = document.querySelector(selector);
+      const geometry = await page.evaluate(([stripSelector, headerSelector]) => {
+        const strip = document.querySelector(stripSelector);
+        const header = document.querySelector(headerSelector);
         if (!(strip instanceof HTMLElement) || !(header instanceof HTMLElement)) return null;
         const stripHeight = strip.getBoundingClientRect().height;
-        const styles = getComputedStyle(header);
+        const stripStyles = getComputedStyle(strip);
+        const headerStyles = getComputedStyle(header);
         return {
           stripHeight,
-          headerPosition: styles.position,
-          headerTop: Number.parseFloat(styles.top),
+          stripPosition: stripStyles.position,
+          stripTop: Number.parseFloat(stripStyles.top),
+          headerPosition: headerStyles.position,
+          headerTop: Number.parseFloat(headerStyles.top),
         };
-      }, headerSelector);
+      }, [stripSelector, headerSelector]);
       assert.ok(geometry, `${file} exposes both stacked rows`);
       assert.ok(geometry.stripHeight <= 76, `${file} case strip is ${geometry.stripHeight}px high`);
+      assert.equal(geometry.stripPosition, "sticky", `${file} case strip is sticky`);
+      assert.equal(geometry.stripTop, 0, `${file} case strip starts at the viewport top`);
       assert.equal(geometry.headerPosition, "sticky", `${file} campaign header is sticky`);
       assert.ok(Math.abs(geometry.headerTop - geometry.stripHeight) <= 1, `${file} header top ${geometry.headerTop}px matches strip ${geometry.stripHeight}px`);
     }
@@ -87,6 +96,23 @@ test("390px headers use measured compact stacked geometry and an operable menu",
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
     assert.equal(await nav.evaluate((element) => getComputedStyle(element).display), "none");
     assert.equal(await toggle.evaluate((element) => document.activeElement === element), true);
+
+    await page.goto(`${origin}/clue-board.html`, { waitUntil: "domcontentloaded" });
+    const boardToggle = page.locator(".menu-toggle");
+    const boardNav = page.locator("#nav");
+    assert.equal(await boardToggle.count(), 1);
+    assert.equal(await boardNav.evaluate((element) => getComputedStyle(element).display), "none");
+    await boardToggle.click();
+    assert.equal(await boardToggle.getAttribute("aria-expanded"), "true");
+    assert.equal(await boardNav.evaluate((element) => getComputedStyle(element).display), "flex");
+    const sponsors = boardNav.locator('a[href="/sponsors"]');
+    const signIn = boardNav.locator('a[href="/dashboard#sign-in"]');
+    assert.equal(await sponsors.isVisible(), true);
+    assert.equal(await signIn.isVisible(), true);
+    await page.keyboard.press("Escape");
+    assert.equal(await boardToggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await boardNav.evaluate((element) => getComputedStyle(element).display), "none");
+    assert.equal(await boardToggle.evaluate((element) => document.activeElement === element), true);
   } finally {
     await browser.close();
   }

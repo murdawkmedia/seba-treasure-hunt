@@ -186,6 +186,31 @@ test("hunter page menus expose one labelled toggle and retain campaign destinati
   }
 });
 
+test("the clue board keeps its distinct shell without becoming a navigation exception", () => {
+  const html = read("clue-board.html");
+  const board = read("css/board.css");
+
+  assert.equal((html.match(/\bid="nav"/g) ?? []).length, 1, "clue-board.html has one nav id");
+  assert.equal((html.match(/\bclass="[^"]*\bmenu-toggle\b[^"]*"/g) ?? []).length, 1, "clue-board.html has one menu toggle");
+  assert.match(html, /<button\b(?=[^>]*class="[^"]*\bmenu-toggle\b[^"]*")(?=[^>]*type="button")(?=[^>]*aria-label="Toggle campaign menu")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="nav")[^>]*>/);
+  assert.match(html, /<nav\b(?=[^>]*id="nav")(?=[^>]*aria-label="Campaign")[^>]*>/);
+  for (const href of ["/route", "/updates", "/report", "/sponsors", "/dashboard#sign-in"]) {
+    assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `clue-board.html retains ${href}`);
+  }
+  assert.match(html, /<script src="\/js\/site\.js"><\/script>/);
+  assert.match(html, /<div\b(?=[^>]*class="case-signal")(?=[^>]*role="status")(?=[^>]*aria-live="polite")[^>]*>/);
+  assert.doesNotMatch(html, /class="case-signal"[^>]*aria-hidden="true"/);
+
+  assert.match(board, /\.case-signal\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1200[^}]*top:\s*0[^}]*height:\s*var\(--case-strip-height\)/s);
+  assert.match(board, /\.board-topbar\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1100[^}]*top:\s*var\(--case-strip-height\)[^}]*min-height:\s*var\(--campaign-nav-height\)/s);
+  assert.match(board, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
+  assert.match(board, /\.board-dialog\s*\{[^}]*z-index:\s*3000/s);
+  assert.match(board, /@media\s*\(max-width:\s*940px\)[\s\S]*\.board-topbar nav\s*\{[^}]*display:\s*none/s);
+  assert.match(board, /\.board-topbar nav\.open\s*\{[^}]*display:\s*flex/s);
+  assert.match(board, /@media\s*\(max-width:\s*940px\)[\s\S]*\.board-menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
+  assert.doesNotMatch(board, /nav a:not\(\.board-topbar__account\)\s*\{[^}]*display:\s*none/s);
+});
+
 test("shared menu behavior closes consistently without trapping focus", () => {
   const site = read("js/site.js");
   assert.match(site, /function closeNav\(toggle, nav\)/);
