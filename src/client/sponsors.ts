@@ -21,7 +21,7 @@ export interface SponsorDraft {
   turnstileToken: string;
 }
 
-type SponsorErrorKey =
+export type SponsorErrorKey =
   | "contactName"
   | "organization"
   | "email"
@@ -124,6 +124,32 @@ const errorSelectors: Record<SponsorErrorKey, string> = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+export interface SponsorErrorTarget {
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+  hasAttribute(name: string): boolean;
+  tabIndex: number;
+  focus(): void;
+}
+
+export function applySponsorErrorTargetState<T extends SponsorErrorTarget>(
+  target: T | null,
+  key: SponsorErrorKey,
+  invalid: boolean,
+): T | null {
+  if (!target) return null;
+  if (!invalid) {
+    target.removeAttribute("aria-invalid");
+    // Keep tabindex on the Turnstile shell so repeated errors have a stable focus target.
+    return null;
+  }
+  target.setAttribute("aria-invalid", "true");
+  if (key === "turnstileToken" && !target.hasAttribute("tabindex")) {
+    target.tabIndex = -1;
+  }
+  return target;
+}
 
 export function validateSponsorDraft(draft: SponsorDraft): SponsorErrors {
   const errors: SponsorErrors = {};
@@ -261,17 +287,14 @@ function fieldFor(key: SponsorErrorKey): HTMLElement | null {
 function clearFieldError(key: SponsorErrorKey): void {
   const error = document.querySelector<HTMLElement>(errorSelectors[key]);
   if (error) error.textContent = "";
-  fieldFor(key)?.removeAttribute("aria-invalid");
+  applySponsorErrorTargetState(fieldFor(key), key, false);
 }
 
 function setTurnstileError(copy: string): void {
   const shell = fieldFor("turnstileToken");
   const error = document.querySelector<HTMLElement>(errorSelectors.turnstileToken);
   if (error) error.textContent = copy;
-  if (shell) {
-    shell.setAttribute("aria-invalid", "true");
-    if (!shell.hasAttribute("tabindex")) shell.tabIndex = -1;
-  }
+  applySponsorErrorTargetState(shell, "turnstileToken", true);
 }
 
 function showErrors(errors: SponsorErrors): void {
@@ -281,15 +304,15 @@ function showErrors(errors: SponsorErrors): void {
     const error = document.querySelector<HTMLElement>(errorSelectors[key]);
     if (error) error.textContent = copy;
     const field = fieldFor(key);
-    if (copy) {
-      field?.setAttribute("aria-invalid", "true");
-      firstInvalid ??= field;
-    } else if (
-      !(key === "acknowledgementAccepted" && errors.acknowledgementVersion) &&
-      !(key === "acknowledgementVersion" && errors.acknowledgementAccepted)
-    ) {
-      field?.removeAttribute("aria-invalid");
-    }
+    const sharesAcknowledgementError =
+      (key === "acknowledgementAccepted" && Boolean(errors.acknowledgementVersion)) ||
+      (key === "acknowledgementVersion" && Boolean(errors.acknowledgementAccepted));
+    const markedTarget = applySponsorErrorTargetState(
+      field,
+      key,
+      Boolean(copy) || sharesAcknowledgementError,
+    );
+    if (copy) firstInvalid ??= markedTarget;
   }
 
   const messages = errorKeys.flatMap((key) => errors[key] ? [errors[key]] : []);
