@@ -55,7 +55,7 @@ The integration branch now also contains a D1 environment sentinel, fail-closed 
 
 ## Verification evidence
 
-- Automated tests: 124/124 passing.
+- Automated tests: 127/127 passing.
 - TypeScript checks: Worker, client and both test environments passing.
 - Production Pages and media bundles build successfully.
 - Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.

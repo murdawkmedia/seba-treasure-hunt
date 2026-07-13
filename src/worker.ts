@@ -10,6 +10,7 @@ import type { DataStore, PagesEnv } from "./server/types";
 import { R2UploadStorage } from "./server/uploads";
 import { KvRateLimiter } from "./server/rate-limit";
 import { D1EnvironmentGuard } from "./server/environment-guard";
+import { providerKeyForEnvironment } from "./server/provider-environment";
 
 const canonicalOrigin = "https://www.timlostsomething.com";
 const defaultTurnstileHosts = ["www.timlostsomething.com", "seba-treasure-hunt.pages.dev"];
@@ -74,6 +75,22 @@ const application = (env: PagesEnv) => {
     .split(",")
     .map((host) => host.trim())
     .filter(Boolean);
+  const hunterPublishableKey = providerKeyForEnvironment(
+    env.HUNTER_CLERK_PUBLISHABLE_KEY,
+    env.DEPLOYMENT_ENV
+  );
+  const hunterSecretKey = providerKeyForEnvironment(
+    env.HUNTER_CLERK_SECRET_KEY,
+    env.DEPLOYMENT_ENV
+  );
+  const staffPublishableKey = providerKeyForEnvironment(
+    env.STAFF_CLERK_PUBLISHABLE_KEY,
+    env.DEPLOYMENT_ENV
+  );
+  const staffSecretKey = providerKeyForEnvironment(
+    env.STAFF_CLERK_SECRET_KEY,
+    env.DEPLOYMENT_ENV
+  );
   const app = createApi({
     store: env.DB ? new D1DataStore(env.DB) : unavailableStore,
     identity: new ManagedIdentityVerifier({
@@ -88,12 +105,12 @@ const application = (env: PagesEnv) => {
     rateLimits: new KvRateLimiter(env.RATE_LIMITS ?? null, env.RATE_LIMIT_SALT ?? null),
     environment: new D1EnvironmentGuard(env.DB ?? null, env.DEPLOYMENT_ENV ?? null),
     webhooks: new ClerkWebhookVerifier(env.CLERK_WEBHOOK_SIGNING_SECRET ?? null),
-    playerAccounts: new ManagedPlayerAccounts(env.HUNTER_CLERK_SECRET_KEY ?? null, {
+    playerAccounts: new ManagedPlayerAccounts(hunterSecretKey, {
       dashboardUrl: `${canonicalOrigin}/dashboard`,
       resendApiKey: env.RESEND_API_KEY ?? null,
       recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
     }),
-    staffAccounts: new ManagedStaffAccounts(env.STAFF_CLERK_SECRET_KEY ?? null, {
+    staffAccounts: new ManagedStaffAccounts(staffSecretKey, {
       accountPortalUrl: env.STAFF_ACCOUNT_PORTAL_URL ?? null,
       invitationRedirectUrl: env.STAFF_INVITATION_REDIRECT_URL ?? null,
       resendApiKey: env.RESEND_API_KEY ?? null,
@@ -102,9 +119,9 @@ const application = (env: PagesEnv) => {
     config: {
       deploymentEnvironment: env.DEPLOYMENT_ENV ?? null,
       turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
-      hunterPublishableKey: env.HUNTER_CLERK_PUBLISHABLE_KEY ?? null,
+      hunterPublishableKey,
       hunterAccountPortalUrl: env.HUNTER_ACCOUNT_PORTAL_URL ?? null,
-      staffPublishableKey: env.STAFF_CLERK_PUBLISHABLE_KEY ?? null,
+      staffPublishableKey,
       staffAccountPortalUrl: env.STAFF_ACCOUNT_PORTAL_URL ?? null
     }
   });
