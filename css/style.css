@@ -26,11 +26,25 @@
 
   --shadow-card: 0 10px 30px rgba(20, 38, 28, 0.28);
   --max: 1120px;
+  --case-strip-height: 54px;
+  --campaign-nav-height: 66px;
+  --stacked-header-height: calc(var(--case-strip-height) + var(--campaign-nav-height));
 }
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: var(--stacked-header-height);
+}
+
+:where(main, section, article, aside, div)[id] {
+  scroll-margin-top: var(--stacked-header-height);
+}
+
+.skip-link {
+  z-index: 2000;
+}
 
 body {
   margin: 0;
@@ -89,7 +103,7 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px 18px;
-  min-height: 54px;
+  min-height: var(--case-strip-height);
   padding: 8px max(18px, calc((100vw - 1120px) / 2 + 22px));
   color: var(--cream-100);
   background: repeating-linear-gradient(135deg, rgba(255,255,255,.025) 0 8px, transparent 8px 16px), var(--green-900);
@@ -97,7 +111,11 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   box-shadow: 0 8px 24px rgba(2,16,14,.32);
   font-family: var(--font-mono);
 }
-.case-strip + .topbar { position: relative; top: auto; }
+.case-strip + .topbar {
+  position: sticky;
+  z-index: 1100;
+  top: var(--case-strip-height);
+}
 .case-strip[data-status="open"] { border-bottom-color: #69c58d; }
 .case-strip[data-status="paused"] { border-bottom-color: var(--gold-400); }
 .case-strip[data-status="found"] { border-bottom-color: #8db8dc; }
@@ -146,12 +164,21 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   border-bottom: 3px solid var(--gold-500);
   backdrop-filter: blur(4px);
 }
-.topbar .wrap { display: flex; align-items: center; gap: 16px; min-height: 62px; padding-top: 6px; padding-bottom: 6px; }
+.topbar .wrap { display: flex; align-items: center; gap: 16px; min-height: var(--campaign-nav-height); padding-top: 6px; padding-bottom: 6px; }
 .topbar .brand { font-family: var(--font-pirate); color: var(--gold-300); font-size: 1.5rem; text-decoration: none; white-space: nowrap; }
 .topbar nav { margin-left: auto; display: flex; gap: 15px; flex-wrap: wrap; }
 .topbar nav a { color: var(--cream-100); text-decoration: none; font-size: 1rem; letter-spacing: .2px; white-space: nowrap; }
 .topbar nav a:hover { color: var(--gold-300); }
 .topbar .menu-toggle { display: none; }
+.nav-sponsors {
+  padding: 8px 12px;
+  color: var(--ink-900) !important;
+  background: var(--gold-400);
+  border: 1px solid var(--gold-300);
+  border-radius: 8px;
+  font-weight: 700;
+}
+.nav-sponsors[aria-current="page"] { box-shadow: inset 0 0 0 2px var(--ink-900); }
 
 /* ---------- hero ---------- */
 .hero {
@@ -553,8 +580,8 @@ section { padding: 70px 0; position: relative; }
 
 /* ---------- validation environment ---------- */
 .validation-environment-notice {
-  position: sticky;
-  top: 0;
+  position: relative;
+  top: auto;
   z-index: 10000;
   display: flex;
   justify-content: center;
@@ -574,14 +601,20 @@ section { padding: 70px 0; position: relative; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
+  :root {
+    --case-strip-height: 76px;
+    --campaign-nav-height: 58px;
+  }
   .validation-environment-notice { position: relative; flex-direction: column; gap: 2px; }
   body { font-size: 1.05rem; }
-  .case-strip { grid-template-columns: auto minmax(0, 1fr); gap: 9px 12px; }
+  .case-strip { grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; padding-block: 4px; }
+  .case-strip__detail { display: none; }
   .case-strip__link { grid-column: 2; }
-  .topbar nav { display: none; position: absolute; top: 62px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--green-950); border-bottom: 3px solid var(--gold-500); }
+  .topbar nav { display: none; position: absolute; top: var(--campaign-nav-height); left: 0; right: 0; flex-direction: column; gap: 0; background: var(--green-950); border-bottom: 3px solid var(--gold-500); }
   .topbar nav.open { display: flex; }
   .topbar nav a { padding: 14px 22px; border-top: 1px solid rgba(234,182,63,0.2); }
   .topbar .menu-toggle { display: inline-block; margin-left: auto; background: transparent; border: 2px solid var(--gold-400); color: var(--gold-300); font-size: 1.3rem; border-radius: 8px; padding: 2px 12px; cursor: pointer; }
+  .nav-sponsors { border-radius: 0; }
   #map { height: 420px; }
   .scroll { padding: 24px 22px; }
   .faq-grid { grid-template-columns: 1fr; }

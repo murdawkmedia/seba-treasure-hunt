@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
 const sponsorLink = /<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?\bSponsors\b[\s\S]*?<\/a>/i;
+const sponsorAnchor = (html) => html.match(/<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?\bSponsors\b[\s\S]*?<\/a>/i)?.[0] ?? "";
 
 const extractRegion = (html, tag, context) => {
   const match = html.match(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, "i"));
@@ -56,7 +57,7 @@ test("the sponsor page shell preserves status, navigation, accessibility, and cl
   const header = extractRegion(html, "header", "sponsors.html");
   assert.match(header, /class="[^"]*\bhunter-brand\b[^"]*"/);
   assert.match(header, /<nav\b(?=[^>]*\bclass="hunter-nav")(?=[^>]*\baria-label="Campaign")[^>]*>/);
-  assert.match(header, /<a href="\/sponsors" aria-current="page">Sponsors<\/a>/);
+  assert.match(header, /<a\b(?=[^>]*class="[^"]*\bnav-sponsors\b[^"]*")(?=[^>]*href="\/sponsors")(?=[^>]*aria-current="page")[^>]*>Sponsors<\/a>/);
   const footer = extractRegion(html, "footer", "sponsors.html");
   for (const destination of ["/sponsors", "/privacy", "/rules", "/sponsors#inquiry"]) {
     assert.match(footer, new RegExp(`href=["']${destination.replaceAll("/", "\\/")}["']`));
@@ -207,6 +208,34 @@ test("the build allowlist includes the sponsor page", () => {
   assert.match(read("scripts/build.mjs"), /["']sponsors\.html["']/);
 });
 
+test("desktop uses the approved stacked sticky header and mobile menus remain explicit", () => {
+  const style = read("css/style.css");
+  const hunter = read("css/hunter.css");
+
+  for (const css of [style, hunter]) {
+    assert.match(css, /--case-strip-height:\s*54px/);
+    assert.match(css, /--campaign-nav-height:\s*66px/);
+    assert.match(css, /--stacked-header-height:\s*calc\(var\(--case-strip-height\) \+ var\(--campaign-nav-height\)\)/);
+    assert.match(css, /scroll-padding-top:\s*var\(--stacked-header-height\)/);
+    assert.match(css, /\[id\][^{]*\{[^}]*scroll-margin-top:\s*var\(--stacked-header-height\)/s);
+  }
+
+  assert.match(style, /\.case-strip\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*var\(--case-strip-height\)/s);
+  assert.match(style, /\.case-strip\s*\+\s*\.topbar\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)/s);
+  assert.match(hunter, /\.hunter-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)/s);
+  assert.match(style, /\.validation-environment-notice\s*\{[^}]*position:\s*relative/s);
+  assert.match(style, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
+
+  for (const css of [style, hunter]) {
+    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--case-strip-height:\s*76px/);
+    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--campaign-nav-height:\s*58px/);
+    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*\.case-strip__detail\s*\{[^}]*display:\s*none/s);
+  }
+  assert.match(hunter, /@media\s*\(max-width:\s*720px\)[\s\S]*\.hunter-nav\s*\{[^}]*display:\s*none/s);
+  assert.match(hunter, /\.hunter-nav\.open\s*\{[^}]*display:\s*flex/s);
+  assert.match(hunter, /@media\s*\(max-width:\s*720px\)[\s\S]*\.menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
+});
+
 test("every public page reaches Sponsors from navigation and footer", () => {
   const missing = [];
 
@@ -227,6 +256,25 @@ test("every public page reaches Sponsors from navigation and footer", () => {
 
     if (!sponsorLink.test(navigation)) missing.push(`${name}: campaign navigation`);
     if (!sponsorLink.test(footer)) missing.push(`${name}: footer`);
+
+    const headerSponsor = sponsorAnchor(navigation);
+    const footerSponsor = sponsorAnchor(footer);
+    const expectedHref = ["index.html", "route.html", "interview.html"].includes(name) ? "sponsors.html" : "/sponsors";
+    if (!new RegExp(`href=["']${expectedHref.replaceAll("/", "\\/").replace(".", "\\.")}["']`, "i").test(headerSponsor)) {
+      missing.push(`${name}: correct Sponsors header destination`);
+    }
+    if (!/class=["'][^"']*\bnav-sponsors\b[^"']*["']/i.test(headerSponsor)) {
+      missing.push(`${name}: gold Sponsors navigation class`);
+    }
+    if (!new RegExp(`href=["']${expectedHref.replaceAll("/", "\\/").replace(".", "\\.")}["']`, "i").test(footerSponsor)) {
+      missing.push(`${name}: correct Sponsors footer destination`);
+    }
+    if (name === "sponsors.html") {
+      if (!/aria-current=["']page["']/i.test(headerSponsor)) missing.push(`${name}: active Sponsors state`);
+    } else if (/aria-current=["']page["']/i.test(headerSponsor)) {
+      missing.push(`${name}: incorrect active Sponsors state`);
+    }
+    if (/href=["'][^"']*#sponsor["']/i.test(footer)) missing.push(`${name}: legacy teaser used as primary footer link`);
   }
 
   assert.deepEqual(missing, [], `missing correctly labelled Sponsors links:\n${missing.join("\n")}`);

@@ -15,6 +15,9 @@
   --hunter-ink-dark: #241b0f;
   --hunter-rule: rgba(248, 240, 213, 0.2);
   --hunter-shadow: 0 22px 55px rgba(2, 16, 14, 0.32);
+  --case-strip-height: 54px;
+  --campaign-nav-height: 66px;
+  --stacked-header-height: calc(var(--case-strip-height) + var(--campaign-nav-height));
 }
 
 * {
@@ -23,6 +26,11 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: var(--stacked-header-height);
+}
+
+:where(main, section, article, aside, div)[id] {
+  scroll-margin-top: var(--stacked-header-height);
 }
 
 body.hunter-page {
@@ -79,7 +87,7 @@ body.hunter-page {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px 18px;
-  min-height: 52px;
+  min-height: var(--case-strip-height);
   padding: 8px max(18px, calc((100vw - 1120px) / 2 + 22px));
   color: var(--hunter-ink);
   background:
@@ -158,8 +166,9 @@ body.hunter-page {
 }
 
 .hunter-header {
-  position: relative;
-  z-index: 10;
+  position: sticky;
+  z-index: 1100;
+  top: var(--case-strip-height);
   border-bottom: 1px solid rgba(241, 182, 43, 0.42);
   background: rgba(7, 31, 28, 0.92);
 }
@@ -170,7 +179,7 @@ body.hunter-page {
   justify-content: space-between;
   gap: 18px;
   max-width: 1120px;
-  min-height: 72px;
+  min-height: var(--campaign-nav-height);
   margin: 0 auto;
   padding: 10px 22px;
 }
@@ -211,6 +220,21 @@ body.hunter-page {
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 5px;
+}
+
+.hunter-header .menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 44px;
+  padding: 7px 11px;
+  color: var(--hunter-gold);
+  background: transparent;
+  border: 2px solid var(--hunter-gold);
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
 }
 
 .hunter-hero {
@@ -634,7 +658,7 @@ button.hunter-button {
 }
 
 .profile-editor {
-  scroll-margin-top: 110px;
+  scroll-margin-top: var(--stacked-header-height);
 }
 
 .form-field input:focus,
@@ -784,8 +808,19 @@ button.hunter-button {
 }
 
 @media (max-width: 720px) {
+  :root {
+    --case-strip-height: 76px;
+    --campaign-nav-height: 58px;
+  }
+
   .case-strip {
     grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 12px;
+    padding-block: 4px;
+  }
+
+  .case-strip__detail {
+    display: none;
   }
 
   .case-strip__link {
@@ -793,12 +828,28 @@ button.hunter-button {
   }
 
   .hunter-header__inner {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-flow: row wrap;
+    min-height: var(--campaign-nav-height);
   }
 
   .hunter-nav {
+    display: none;
+    flex-basis: 100%;
     justify-content: flex-start;
+  }
+
+  .hunter-nav.open {
+    display: flex;
+  }
+
+  .hunter-header .menu-toggle {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .nav-sponsors {
+    border-radius: 0;
   }
 
   .hunter-hero {
@@ -832,8 +883,8 @@ button.hunter-button {
 
 @media (max-width: 430px) {
   .case-strip {
-    gap: 8px 11px;
-    padding: 8px 12px;
+    gap: 4px 11px;
+    padding: 4px 12px;
   }
 
   .case-strip__label {

@@ -39,7 +39,8 @@
   <header class="hunter-header">
     <div class="hunter-header__inner">
       <a class="hunter-brand" href="/">Tim Lost Something?<span>This year: Tim lost his ID</span></a>
-      <nav class="hunter-nav" aria-label="Campaign">
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav"><span class="sr-only">Toggle campaign menu</span><span aria-hidden="true">&#9776;</span></button>
+      <nav class="hunter-nav" id="nav" aria-label="Campaign">
         <a href="/start">Start</a>
         <a href="/route">12-waypoint route</a>
         <a href="/updates">Updates</a>
@@ -47,6 +48,7 @@
         <a href="/report">Report</a>
         <a href="/rules">Rules</a>
         <a href="/dashboard" aria-current="page">Dashboard</a>
+        <a class="nav-sponsors" href="/sponsors">Sponsors</a>
       </nav>
     </div>
   </header>
@@ -236,9 +238,11 @@
         <a href="/privacy">Privacy</a>
         <a href="/community-guidelines">Community guidelines</a>
         <a href="/rules">Current rules</a>
+        <a href="/sponsors">Sponsors</a>
       </nav>
     </div>
   </footer>
+  <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
   <script type="module" src="/assets/app/dashboard.js"></script>
 </body>

@@ -150,7 +150,7 @@
   <header class="topbar">
     <div class="wrap">
       <a class="brand" href="index.html"><span aria-hidden="true">💰</span> Tim Lost Something?</a>
-      <button class="menu-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
+      <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="nav">☰</button>
       <nav id="nav">
         <a href="start.html">Start</a>
         <a href="route.html">The Route 🗺️</a>
@@ -159,6 +159,7 @@
         <a href="report.html">Report</a>
         <a href="rules.html">Rules</a>
         <a href="dashboard.html">Dashboard</a>
+        <a class="nav-sponsors" href="sponsors.html">Sponsors</a>
       </nav>
     </div>
   </header>
@@ -534,31 +535,17 @@
         <a href="https://sebastays.com" target="_blank" rel="noopener">SebaStays</a>
         <a href="https://villagevows.com" target="_blank" rel="noopener">Village Vows</a>
         <a href="https://www.google.com/maps/search/?api=1&amp;query=Kokanee+Springs+RV+Park+Seba+Beach+Alberta" target="_blank" rel="noopener">Kokanee Springs RV</a>
-        <a href="index.html#sponsor">Become a Sponsor</a>
+        <a href="sponsors.html">Sponsors</a>
         <a href="index.html#official-rules">Official Rules</a>
       </div>
       <p class="fine">A SebaHub Production. The treasure is real (and so is the missing ID). Follow the Code, park where yer told, and don't set anything on fire. Map data © OpenStreetMap contributors · Imagery © Esri.</p>
     </div>
   </footer>
 
-  <!-- Inline scripts: mobile nav toggle + Hunter's Notes toggle (no site.js on this page) -->
+  <script src="js/site.js"></script>
+  <!-- Page-specific Hunter's Notes toggle. Shared navigation lives in site.js. -->
   <script>
     (function () {
-      var toggle = document.querySelector(".menu-toggle");
-      var nav = document.getElementById("nav");
-      if (toggle && nav) {
-        toggle.addEventListener("click", function () {
-          var open = nav.classList.toggle("open");
-          toggle.setAttribute("aria-expanded", open ? "true" : "false");
-        });
-        nav.addEventListener("click", function (e) {
-          if (e.target.tagName === "A") {
-            nav.classList.remove("open");
-            toggle.setAttribute("aria-expanded", "false");
-          }
-        });
-      }
-
       var notesBtn = document.getElementById("notesToggle");
       if (notesBtn) {
         notesBtn.addEventListener("click", function () {

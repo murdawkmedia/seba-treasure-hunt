@@ -18,6 +18,17 @@ const pages = {
   },
 };
 
+const hunterMenuPages = [
+  "start.html",
+  "dashboard.html",
+  "updates.html",
+  "report.html",
+  "rules.html",
+  "privacy.html",
+  "community-guidelines.html",
+  "sponsors.html",
+];
+
 test("hunter pages expose campaign navigation, truthful live status, and canonical metadata", () => {
   assert.equal(existsSync(new URL("../css/hunter.css", import.meta.url)), true);
 
@@ -158,4 +169,32 @@ test("public hunter UI contains no staff allowlist or deferred campaign claims",
   ]) {
     assert.doesNotMatch(html, unsafe);
   }
+});
+
+test("hunter page menus expose one labelled toggle and retain campaign destinations", () => {
+  for (const file of hunterMenuPages) {
+    const html = read(file);
+    assert.equal((html.match(/\bid="nav"/g) ?? []).length, 1, `${file} has one nav id`);
+    assert.equal((html.match(/class="menu-toggle"/g) ?? []).length, 1, `${file} has one menu toggle`);
+    assert.match(html, /<button\b(?=[^>]*class="menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="nav")[^>]*>/, `${file} toggle semantics`);
+    assert.match(html, /<span class="sr-only">Toggle campaign menu<\/span>/, `${file} toggle label`);
+    assert.match(html, /<nav\b(?=[^>]*class="hunter-nav")(?=[^>]*id="nav")(?=[^>]*aria-label="Campaign")[^>]*>/, `${file} campaign nav`);
+    for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard", "/sponsors"]) {
+      assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `${file} retains ${href}`);
+    }
+    assert.match(html, /<script src="\/js\/site\.js"><\/script>/, `${file} loads shared menu behavior`);
+  }
+});
+
+test("shared menu behavior closes consistently without trapping focus", () => {
+  const site = read("js/site.js");
+  assert.match(site, /function closeNav\(toggle, nav\)/);
+  assert.match(site, /if \(!toggle \|\| !nav\) return/);
+  assert.match(site, /toggle\.setAttribute\("aria-expanded", "false"\)/);
+  assert.match(site, /event\.target instanceof HTMLAnchorElement/);
+  assert.match(site, /document\.addEventListener\("keydown"/);
+  assert.match(site, /event\.key === "Escape"/);
+  assert.match(site, /nav\.classList\.contains\("open"\)/);
+  assert.match(site, /toggle\.focus\(\)/);
+  assert.doesNotMatch(site, /preventDefault\(\)[\s\S]{0,120}(?:Tab|event\.key === "Tab")|focusableElements|focus trap/i);
 });

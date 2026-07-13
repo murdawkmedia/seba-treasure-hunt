@@ -45,8 +45,9 @@
   <header class="hunter-header">
     <div class="hunter-header__inner">
       <a class="hunter-brand" href="/">Tim Lost Something?<span>This year: Tim lost his ID</span></a>
-      <nav class="hunter-nav" aria-label="Campaign">
-        <a href="/start">Start</a><a href="/route">12-waypoint route</a><a href="/updates">Updates</a><a href="/clue-board">Clue board</a><a href="/report">Report</a><a href="/rules">Rules</a><a href="/dashboard">Dashboard</a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav"><span class="sr-only">Toggle campaign menu</span><span aria-hidden="true">&#9776;</span></button>
+      <nav class="hunter-nav" id="nav" aria-label="Campaign">
+        <a href="/start">Start</a><a href="/route">12-waypoint route</a><a href="/updates">Updates</a><a href="/clue-board">Clue board</a><a href="/report">Report</a><a href="/rules">Rules</a><a href="/dashboard">Dashboard</a><a class="nav-sponsors" href="/sponsors">Sponsors</a>
       </nav>
     </div>
   </header>
@@ -148,7 +149,8 @@
     </div>
   </main>
 
-  <footer class="hunter-footer"><div class="hunter-footer__inner"><p><strong>Tim Lost Something?</strong><br />The 2026 Seba Beach Treasure Hunt</p><nav aria-label="Legal and safety"><a href="/privacy" aria-current="page">Privacy</a><a href="/community-guidelines">Community guidelines</a><a href="/rules">Current rules</a></nav></div></footer>
+  <footer class="hunter-footer"><div class="hunter-footer__inner"><p><strong>Tim Lost Something?</strong><br />The 2026 Seba Beach Treasure Hunt</p><nav aria-label="Legal and safety"><a href="/privacy" aria-current="page">Privacy</a><a href="/community-guidelines">Community guidelines</a><a href="/rules">Current rules</a><a href="/sponsors">Sponsors</a></nav></div></footer>
+  <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
 </body>
 </html>

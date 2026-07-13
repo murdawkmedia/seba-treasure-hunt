@@ -114,6 +114,11 @@ function renderGallery() {
 }
 
 /* ---------------- Mobile nav ---------------- */
+function closeNav(toggle, nav) {
+  nav.classList.remove("open");
+  toggle.setAttribute("aria-expanded", "false");
+}
+
 function initNav() {
   var toggle = document.querySelector(".menu-toggle");
   var nav = document.getElementById("nav");
@@ -122,10 +127,13 @@ function initNav() {
     var open = nav.classList.toggle("open");
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
   });
-  nav.addEventListener("click", function (e) {
-    if (e.target.tagName === "A") {
-      nav.classList.remove("open");
-      toggle.setAttribute("aria-expanded", "false");
+  nav.addEventListener("click", function (event) {
+    if (event.target instanceof HTMLAnchorElement) closeNav(toggle, nav);
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && nav.classList.contains("open")) {
+      closeNav(toggle, nav);
+      toggle.focus();
     }
   });
 }
