@@ -201,8 +201,9 @@ test("the clue board keeps its distinct shell without becoming a navigation exce
   assert.match(html, /<div\b(?=[^>]*class="case-signal")(?=[^>]*role="status")(?=[^>]*aria-live="polite")[^>]*>/);
   assert.doesNotMatch(html, /class="case-signal"[^>]*aria-hidden="true"/);
 
-  assert.match(board, /\.case-signal\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1200[^}]*top:\s*0[^}]*height:\s*var\(--case-strip-height\)/s);
-  assert.match(board, /\.board-topbar\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1100[^}]*top:\s*var\(--case-strip-height\)[^}]*min-height:\s*var\(--campaign-nav-height\)/s);
+  assert.match(board, /\.case-signal\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1200[^}]*top:\s*0[^}]*min-height:\s*var\(--case-strip-min-height\)/s);
+  assert.doesNotMatch(board, /\.case-signal\s*\{[^}]*height:\s*var\(--case-strip-height\)/s);
+  assert.match(board, /\.board-topbar\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1100[^}]*top:\s*var\(--case-strip-height\)[^}]*min-height:\s*var\(--campaign-nav-min-height\)/s);
   assert.match(board, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
   assert.match(board, /\.board-dialog\s*\{[^}]*z-index:\s*3000/s);
   assert.match(board, /@media\s*\(max-width:\s*940px\)[\s\S]*\.board-topbar nav\s*\{[^}]*display:\s*none/s);
@@ -216,10 +217,26 @@ test("shared menu behavior closes consistently without trapping focus", () => {
   assert.match(site, /function closeNav\(toggle, nav\)/);
   assert.match(site, /if \(!toggle \|\| !nav\) return/);
   assert.match(site, /toggle\.setAttribute\("aria-expanded", "false"\)/);
-  assert.match(site, /event\.target instanceof HTMLAnchorElement/);
+  assert.match(site, /event\.target instanceof Element/);
+  assert.match(site, /event\.target\.closest\("a"\)/);
   assert.match(site, /document\.addEventListener\("keydown"/);
   assert.match(site, /event\.key === "Escape"/);
   assert.match(site, /nav\.classList\.contains\("open"\)/);
   assert.match(site, /toggle\.focus\(\)/);
   assert.doesNotMatch(site, /preventDefault\(\)[\s\S]{0,120}(?:Tab|event\.key === "Tab")|focusableElements|focus trap/i);
+});
+
+test("shared header geometry observes real row sizes with a safe fallback", () => {
+  const site = read("js/site.js");
+  assert.match(site, /function initStackedHeaderGeometry\(\)/);
+  assert.match(site, /\.case-strip, \.case-signal/);
+  assert.match(site, /\.topbar, \.hunter-header, \.board-topbar/);
+  assert.match(site, /getBoundingClientRect\(\)\.height/);
+  assert.match(site, /--case-strip-height/);
+  assert.match(site, /--campaign-nav-height/);
+  assert.match(site, /--stacked-header-height/);
+  assert.match(site, /requestAnimationFrame/);
+  assert.match(site, /typeof window\.ResizeObserver === "function"/);
+  assert.match(site, /typeof window\.MutationObserver === "function"/);
+  assert.match(site, /window\.addEventListener\("resize"/);
 });

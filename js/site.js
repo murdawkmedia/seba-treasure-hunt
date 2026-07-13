@@ -119,6 +119,46 @@ function closeNav(toggle, nav) {
   toggle.setAttribute("aria-expanded", "false");
 }
 
+function initStackedHeaderGeometry() {
+  var firstRow = document.querySelector(".case-strip, .case-signal");
+  if (!(firstRow instanceof HTMLElement)) return;
+  var secondRow = firstRow.nextElementSibling;
+  if (!(secondRow instanceof HTMLElement) || !secondRow.matches(".topbar, .hunter-header, .board-topbar")) return;
+
+  var root = document.documentElement;
+  var frame = 0;
+
+  function writeGeometry() {
+    frame = 0;
+    var firstHeight = firstRow.getBoundingClientRect().height;
+    var secondHeight = secondRow.getBoundingClientRect().height;
+    if (!firstHeight || !secondHeight) return;
+    root.style.setProperty("--case-strip-height", firstHeight + "px");
+    root.style.setProperty("--campaign-nav-height", secondHeight + "px");
+    root.style.setProperty("--stacked-header-height", firstHeight + secondHeight + "px");
+  }
+
+  function scheduleGeometry() {
+    if (frame) return;
+    frame = window.requestAnimationFrame(writeGeometry);
+  }
+
+  writeGeometry();
+  window.addEventListener("resize", scheduleGeometry);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleGeometry);
+
+  if (typeof window.ResizeObserver === "function") {
+    var resizeObserver = new window.ResizeObserver(scheduleGeometry);
+    resizeObserver.observe(firstRow);
+    resizeObserver.observe(secondRow);
+  } else if (typeof window.MutationObserver === "function") {
+    var mutationObserver = new window.MutationObserver(scheduleGeometry);
+    var mutationOptions = { attributes: true, childList: true, characterData: true, subtree: true };
+    mutationObserver.observe(firstRow, mutationOptions);
+    mutationObserver.observe(secondRow, mutationOptions);
+  }
+}
+
 function initNav() {
   var toggle = document.querySelector(".menu-toggle");
   var nav = document.getElementById("nav");
@@ -128,7 +168,7 @@ function initNav() {
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
   });
   nav.addEventListener("click", function (event) {
-    if (event.target instanceof HTMLAnchorElement) closeNav(toggle, nav);
+    if (event.target instanceof Element && event.target.closest("a")) closeNav(toggle, nav);
   });
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && nav.classList.contains("open")) {
@@ -141,5 +181,6 @@ function initNav() {
 document.addEventListener("DOMContentLoaded", function () {
   renderCards();
   renderGallery();
+  initStackedHeaderGeometry();
   initNav();
 });

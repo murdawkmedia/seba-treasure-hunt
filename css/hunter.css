@@ -15,8 +15,10 @@
   --hunter-ink-dark: #241b0f;
   --hunter-rule: rgba(248, 240, 213, 0.2);
   --hunter-shadow: 0 22px 55px rgba(2, 16, 14, 0.32);
-  --case-strip-height: 54px;
-  --campaign-nav-height: 66px;
+  --case-strip-min-height: 54px;
+  --campaign-nav-min-height: 66px;
+  --case-strip-height: var(--case-strip-min-height);
+  --campaign-nav-height: var(--campaign-nav-min-height);
   --stacked-header-height: calc(var(--case-strip-height) + var(--campaign-nav-height));
 }
 
@@ -87,7 +89,7 @@ body.hunter-page {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px 18px;
-  min-height: var(--case-strip-height);
+  min-height: var(--case-strip-min-height);
   padding: 8px max(18px, calc((100vw - 1120px) / 2 + 22px));
   color: var(--hunter-ink);
   background:
@@ -179,7 +181,7 @@ body.hunter-page {
   justify-content: space-between;
   gap: 18px;
   max-width: 1120px;
-  min-height: var(--campaign-nav-height);
+  min-height: var(--campaign-nav-min-height);
   margin: 0 auto;
   padding: 10px 22px;
 }
@@ -809,8 +811,8 @@ button.hunter-button {
 
 @media (max-width: 720px) {
   :root {
-    --case-strip-height: 76px;
-    --campaign-nav-height: 58px;
+    --case-strip-min-height: 76px;
+    --campaign-nav-min-height: 58px;
   }
 
   .case-strip {
@@ -830,7 +832,7 @@ button.hunter-button {
   .hunter-header__inner {
     align-items: center;
     flex-flow: row wrap;
-    min-height: var(--campaign-nav-height);
+    min-height: var(--campaign-nav-min-height);
   }
 
   .hunter-nav {

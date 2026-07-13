@@ -26,8 +26,10 @@
 
   --shadow-card: 0 10px 30px rgba(20, 38, 28, 0.28);
   --max: 1120px;
-  --case-strip-height: 54px;
-  --campaign-nav-height: 66px;
+  --case-strip-min-height: 54px;
+  --campaign-nav-min-height: 66px;
+  --case-strip-height: var(--case-strip-min-height);
+  --campaign-nav-height: var(--campaign-nav-min-height);
   --stacked-header-height: calc(var(--case-strip-height) + var(--campaign-nav-height));
 }
 
@@ -103,7 +105,7 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px 18px;
-  min-height: var(--case-strip-height);
+  min-height: var(--case-strip-min-height);
   padding: 8px max(18px, calc((100vw - 1120px) / 2 + 22px));
   color: var(--cream-100);
   background: repeating-linear-gradient(135deg, rgba(255,255,255,.025) 0 8px, transparent 8px 16px), var(--green-900);
@@ -164,7 +166,7 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   border-bottom: 3px solid var(--gold-500);
   backdrop-filter: blur(4px);
 }
-.topbar .wrap { display: flex; align-items: center; gap: 16px; min-height: var(--campaign-nav-height); padding-top: 6px; padding-bottom: 6px; }
+.topbar .wrap { display: flex; align-items: center; gap: 16px; min-height: var(--campaign-nav-min-height); padding-top: 6px; padding-bottom: 6px; }
 .topbar .brand { font-family: var(--font-pirate); color: var(--gold-300); font-size: 1.5rem; text-decoration: none; white-space: nowrap; }
 .topbar nav { margin-left: auto; display: flex; gap: 15px; flex-wrap: wrap; }
 .topbar nav a { color: var(--cream-100); text-decoration: none; font-size: 1rem; letter-spacing: .2px; white-space: nowrap; }
@@ -602,8 +604,8 @@ section { padding: 70px 0; position: relative; }
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
   :root {
-    --case-strip-height: 76px;
-    --campaign-nav-height: 58px;
+    --case-strip-min-height: 76px;
+    --campaign-nav-min-height: 58px;
   }
   .validation-environment-notice { position: relative; flex-direction: column; gap: 2px; }
   body { font-size: 1.05rem; }

@@ -213,22 +213,24 @@ test("desktop uses the approved stacked sticky header and mobile menus remain ex
   const hunter = read("css/hunter.css");
 
   for (const css of [style, hunter]) {
-    assert.match(css, /--case-strip-height:\s*54px/);
-    assert.match(css, /--campaign-nav-height:\s*66px/);
+    assert.match(css, /--case-strip-min-height:\s*54px/);
+    assert.match(css, /--campaign-nav-min-height:\s*66px/);
+    assert.match(css, /--case-strip-height:\s*var\(--case-strip-min-height\)/);
+    assert.match(css, /--campaign-nav-height:\s*var\(--campaign-nav-min-height\)/);
     assert.match(css, /--stacked-header-height:\s*calc\(var\(--case-strip-height\) \+ var\(--campaign-nav-height\)\)/);
     assert.match(css, /scroll-padding-top:\s*var\(--stacked-header-height\)/);
     assert.match(css, /\[id\][^{]*\{[^}]*scroll-margin-top:\s*var\(--stacked-header-height\)/s);
   }
 
-  assert.match(style, /\.case-strip\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*var\(--case-strip-height\)/s);
+  assert.match(style, /\.case-strip\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*var\(--case-strip-min-height\)/s);
   assert.match(style, /\.case-strip\s*\+\s*\.topbar\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)/s);
   assert.match(hunter, /\.hunter-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)/s);
   assert.match(style, /\.validation-environment-notice\s*\{[^}]*position:\s*relative/s);
   assert.match(style, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
 
   for (const css of [style, hunter]) {
-    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--case-strip-height:\s*76px/);
-    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--campaign-nav-height:\s*58px/);
+    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--case-strip-min-height:\s*76px/);
+    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--campaign-nav-min-height:\s*58px/);
     assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*\.case-strip__detail\s*\{[^}]*display:\s*none/s);
   }
   assert.match(hunter, /@media\s*\(max-width:\s*720px\)[\s\S]*\.hunter-nav\s*\{[^}]*display:\s*none/s);
