@@ -18,6 +18,9 @@ class Statement {
   }
 
   async first<T>() {
+    if (this.database.firstResults.length > 0) {
+      return this.database.firstResults.shift() as T | null;
+    }
     if (this.sql.includes("FROM hunter_profiles WHERE subject")) return null;
     if (this.sql.includes("SELECT p.*")) return this.database.profile as T;
     if (this.sql.includes("COUNT(*) AS total_profiles")) return this.database.counts as T;
@@ -25,6 +28,9 @@ class Statement {
   }
 
   async all<T>() {
+    if (this.database.allResults.length > 0) {
+      return { results: this.database.allResults.shift() as T[] };
+    }
     if (this.sql.includes("ORDER BY p.updated_at DESC")) {
       return { results: this.database.subscribers as T[] };
     }
@@ -34,6 +40,10 @@ class Statement {
 
 class ScriptedD1 {
   statements: Statement[] = [];
+  firstResults: Array<Row | null> = [];
+  allResults: Row[][] = [];
+  batchCalls: Statement[][] = [];
+  batchError: Error | null = null;
   profile: Row = {
     subject: "hunter-1",
     verified_email: "hunter@example.test",
@@ -67,7 +77,41 @@ class ScriptedD1 {
     this.statements.push(statement);
     return statement;
   }
+
+  async batch(statements: Statement[]) {
+    this.batchCalls.push(statements);
+    if (this.batchError) throw this.batchError;
+    return statements.map(() => ({ results: [], success: true }));
+  }
 }
+
+const sponsorRow = (overrides: Row = {}): Row => ({
+  id: "sponsor-1",
+  reference_code: "SP-AB12CD34",
+  contact_name: "Alex Sponsor",
+  organization: "Example Ltd.",
+  email: "alex@example.test",
+  phone: null,
+  support_type: "lead",
+  contribution_range: "prefer_to_discuss",
+  desired_outcome: "Discuss a useful local activation.",
+  acknowledgement_version: "2026.1",
+  state: "new",
+  created_at: "2026-07-13T20:00:00.000Z",
+  updated_at: "2026-07-13T20:00:00.000Z",
+  ...overrides
+});
+
+const sponsorInput = {
+  contactName: "Alex Sponsor",
+  organization: "Example Ltd.",
+  email: "alex@example.test",
+  phone: null,
+  supportType: "lead" as const,
+  contributionRange: "prefer_to_discuss" as const,
+  desiredOutcome: "Discuss a useful local activation.",
+  acknowledgementVersion: "2026.1"
+};
 
 test("D1 profile projection returns the latest consent booleans", async () => {
   const database = new ScriptedD1();
@@ -100,4 +144,217 @@ test("D1 subscriber ledger maps current consent and contact projections", async 
     marketing: false
   });
   assert.match(database.statements.find((entry) => entry.sql.includes("ORDER BY p.updated_at DESC"))?.sql ?? "", /ROW_NUMBER\(\) OVER/);
+});
+
+test("D1 sponsor projection maps private rows to the exact domain record", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(sponsorRow());
+  const store = new D1DataStore(database as never);
+
+  const inquiry = await store.getSponsorInquiryByIdempotencyKey("sponsor-key-1");
+
+  assert.deepEqual(inquiry, {
+    id: "sponsor-1",
+    referenceCode: "SP-AB12CD34",
+    contactName: "Alex Sponsor",
+    organization: "Example Ltd.",
+    email: "alex@example.test",
+    phone: null,
+    supportType: "lead",
+    contributionRange: "prefer_to_discuss",
+    desiredOutcome: "Discuss a useful local activation.",
+    acknowledgementVersion: "2026.1",
+    state: "new",
+    createdAt: "2026-07-13T20:00:00.000Z",
+    updatedAt: "2026-07-13T20:00:00.000Z"
+  });
+  assert.deepEqual(database.statements[0]?.bindings, ["sponsor-key-1"]);
+});
+
+test("D1 sponsor creation checks idempotency and batches the inquiry with its submitted event", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(null, sponsorRow());
+  const store = new D1DataStore(database as never);
+
+  const created = await store.createSponsorInquiry(sponsorInput, "sponsor-key-1");
+
+  assert.equal(created.replayed, false);
+  assert.equal(created.value.referenceCode, "SP-AB12CD34");
+  assert.match(database.statements[0]?.sql ?? "", /WHERE idempotency_key = \?/i);
+  assert.equal(database.batchCalls.length, 1);
+  const [inquiryInsert, eventInsert] = database.batchCalls[0] ?? [];
+  assert.match(inquiryInsert?.sql ?? "", /INSERT INTO sponsor_inquiries/i);
+  assert.ok(inquiryInsert?.bindings.includes("sponsor-key-1"));
+  assert.match(eventInsert?.sql ?? "", /INSERT INTO sponsor_inquiry_events[\s\S]*'submitted'/i);
+  assert.equal(eventInsert?.bindings[1], inquiryInsert?.bindings[0]);
+  assert.match(database.statements.at(-1)?.sql ?? "", /WHERE id = \?/i);
+});
+
+test("D1 sponsor creation replays an existing idempotency key without writing", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(sponsorRow());
+  const store = new D1DataStore(database as never);
+
+  const replay = await store.createSponsorInquiry(sponsorInput, "sponsor-key-1");
+
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.value.id, "sponsor-1");
+  assert.equal(database.batchCalls.length, 0);
+  assert.equal(database.statements.length, 1);
+});
+
+test("D1 sponsor creation resolves only an idempotency-key unique race as replay", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(null, sponsorRow());
+  database.batchError = new Error(
+    "D1_ERROR: UNIQUE constraint failed: sponsor_inquiries.idempotency_key"
+  );
+  const store = new D1DataStore(database as never);
+
+  const replay = await store.createSponsorInquiry(sponsorInput, "sponsor-key-1");
+
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.value.referenceCode, "SP-AB12CD34");
+  assert.equal(database.batchCalls.length, 1);
+
+  const otherDatabase = new ScriptedD1();
+  otherDatabase.firstResults.push(null);
+  otherDatabase.batchError = new Error("D1_ERROR: disk unavailable");
+  const otherStore = new D1DataStore(otherDatabase as never);
+  await assert.rejects(
+    otherStore.createSponsorInquiry(sponsorInput, "sponsor-key-2"),
+    /disk unavailable/
+  );
+});
+
+test("D1 sponsor listing parameterizes filters, escapes LIKE wildcards, and pages by an opaque tuple cursor", async () => {
+  const database = new ScriptedD1();
+  const rows = Array.from({ length: 51 }, (_, index) =>
+    sponsorRow({
+      id: `sponsor-${String(100 - index).padStart(3, "0")}`,
+      created_at: "2026-07-13T20:00:00.000Z"
+    })
+  );
+  database.allResults.push(rows, []);
+  const store = new D1DataStore(database as never);
+  const options = {
+    limit: 100,
+    state: "qualified" as const,
+    supportType: "lead" as const,
+    query: "%_\\Acme"
+  };
+
+  const page = await store.listSponsorInquiries(options);
+
+  assert.equal(page.items.length, 50);
+  assert.ok(page.nextCursor);
+  assert.doesNotMatch(page.nextCursor, /2026|sponsor/i);
+  const firstStatement = database.statements[0];
+  assert.match(firstStatement?.sql ?? "", /state = \?/i);
+  assert.match(firstStatement?.sql ?? "", /support_type = \?/i);
+  assert.match(firstStatement?.sql ?? "", /contact_name LIKE \?/i);
+  assert.match(firstStatement?.sql ?? "", /organization LIKE \?/i);
+  assert.match(firstStatement?.sql ?? "", /email LIKE \?/i);
+  assert.equal((firstStatement?.sql.split("ESCAPE '\\'").length ?? 1) - 1, 3);
+  assert.match(firstStatement?.sql ?? "", /ORDER BY created_at DESC, id DESC LIMIT \?/i);
+  assert.doesNotMatch(firstStatement?.sql ?? "", /Acme/);
+  assert.deepEqual(firstStatement?.bindings, [
+    "qualified",
+    "lead",
+    "%\\%\\_\\\\Acme%",
+    "%\\%\\_\\\\Acme%",
+    "%\\%\\_\\\\Acme%",
+    51
+  ]);
+
+  await store.listSponsorInquiries({ ...options, cursor: page.nextCursor });
+  const cursorStatement = database.statements[1];
+  assert.match(
+    cursorStatement?.sql ?? "",
+    /created_at < \? OR \(created_at = \? AND id < \?\)/i
+  );
+  assert.deepEqual(cursorStatement?.bindings.slice(-4), [
+    "2026-07-13T20:00:00.000Z",
+    "2026-07-13T20:00:00.000Z",
+    "sponsor-051",
+    51
+  ]);
+});
+
+test("D1 sponsor update batches the transition event and skips unknown or empty changes", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(
+    sponsorRow(),
+    sponsorRow({ state: "qualified", updated_at: "2026-07-13T21:00:00.000Z" })
+  );
+  const store = new D1DataStore(database as never);
+
+  const updated = await store.updateSponsorInquiry(
+    "sponsor-1",
+    { state: "qualified", note: "Call scheduled." },
+    "staff-1"
+  );
+
+  assert.equal(updated?.state, "qualified");
+  assert.equal(database.batchCalls.length, 1);
+  const [updateStatement, eventStatement] = database.batchCalls[0] ?? [];
+  assert.match(updateStatement?.sql ?? "", /UPDATE sponsor_inquiries/i);
+  assert.equal(updateStatement?.bindings[0], "qualified");
+  assert.equal(updateStatement?.bindings.at(-1), "sponsor-1");
+  assert.match(eventStatement?.sql ?? "", /INSERT INTO sponsor_inquiry_events/i);
+  for (const expected of [
+    "sponsor-1",
+    "staff-1",
+    "state_changed",
+    "new",
+    "qualified",
+    "Call scheduled."
+  ]) {
+    assert.ok(eventStatement?.bindings.includes(expected), `${expected} event binding`);
+  }
+
+  const unknownDatabase = new ScriptedD1();
+  unknownDatabase.firstResults.push(null);
+  const unknownStore = new D1DataStore(unknownDatabase as never);
+  assert.equal(
+    await unknownStore.updateSponsorInquiry(
+      "missing",
+      { state: "closed", note: "Not found." },
+      "staff-1"
+    ),
+    null
+  );
+  assert.equal(unknownDatabase.batchCalls.length, 0);
+
+  const noChangeDatabase = new ScriptedD1();
+  noChangeDatabase.firstResults.push(sponsorRow());
+  const noChangeStore = new D1DataStore(noChangeDatabase as never);
+  assert.equal(
+    (await noChangeStore.updateSponsorInquiry(
+      "sponsor-1",
+      { state: "new", note: "   " },
+      "staff-1"
+    ))?.id,
+    "sponsor-1"
+  );
+  assert.equal(noChangeDatabase.batchCalls.length, 0);
+});
+
+test("D1 sponsor update records a note-only event without changing state", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(sponsorRow(), sponsorRow());
+  const store = new D1DataStore(database as never);
+
+  await store.updateSponsorInquiry(
+    "sponsor-1",
+    { state: "new", note: "Requested a follow-up." },
+    "staff-1"
+  );
+
+  const eventStatement = database.batchCalls[0]?.[1];
+  assert.ok(eventStatement?.bindings.includes("note_added"));
+  assert.deepEqual(
+    eventStatement?.bindings.filter((item) => item === "new"),
+    ["new", "new"]
+  );
 });

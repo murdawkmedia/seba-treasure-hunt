@@ -6,6 +6,11 @@ import type {
   IdentityLifecycleEvent,
   Page,
   PlayerAccessState,
+  SponsorContributionRange,
+  SponsorInquiryInput,
+  SponsorInquiryRecord,
+  SponsorInquiryState,
+  SponsorSupportType,
   StoredMedia,
   ZoneState
 } from "./types";
@@ -46,6 +51,57 @@ const statusFromRow = (row: Row): CaseStatus => ({
       : null,
   version: Number(row.version)
 });
+
+const sponsorFromRow = (row: Row): SponsorInquiryRecord => ({
+  id: value(row.id),
+  referenceCode: value(row.reference_code),
+  contactName: value(row.contact_name),
+  organization: value(row.organization),
+  email: value(row.email),
+  phone: nullable(row.phone),
+  supportType: row.support_type as SponsorSupportType,
+  contributionRange: nullable(row.contribution_range) as SponsorContributionRange | null,
+  desiredOutcome: value(row.desired_outcome),
+  acknowledgementVersion: value(row.acknowledgement_version),
+  state: row.state as SponsorInquiryState,
+  createdAt: value(row.created_at),
+  updatedAt: value(row.updated_at)
+});
+
+const sponsorReference = () =>
+  `SP-${crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase()}`;
+
+const sponsorCursor = (row: Row) =>
+  btoa(`${value(row.created_at)}\n${value(row.id)}`)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+const parseSponsorCursor = (cursor: string | null | undefined) => {
+  if (!cursor) return null;
+  try {
+    const base64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+    const separator = decoded.indexOf("\n");
+    const createdAt = decoded.slice(0, separator);
+    const sponsorId = decoded.slice(separator + 1);
+    if (separator < 1 || !/^\d{4}-\d{2}-\d{2}T/.test(createdAt) || !sponsorId) throw new Error();
+    return { createdAt, sponsorId };
+  } catch {
+    throw new ApiError(400, "invalid_cursor", "The sponsor inquiry cursor is invalid.");
+  }
+};
+
+const escapeLike = (input: string) =>
+  input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+const sponsorColumns = `id, reference_code, contact_name, organization, email, phone,
+  support_type, contribution_range, desired_outcome, acknowledgement_version,
+  state, created_at, updated_at`;
+
+const isSponsorIdempotencyConflict = (error: unknown) =>
+  error instanceof Error &&
+  /UNIQUE constraint failed:\s*sponsor_inquiries\.idempotency_key/i.test(error.message);
 
 const mediaFromInput = (input: unknown): StoredMedia[] =>
   Array.isArray(input)
@@ -369,6 +425,168 @@ export class D1DataStore implements DataStore {
     }
     const created = await this.reportById(reportId);
     return { value: created!, replayed: false };
+  }
+
+  async getSponsorInquiryByIdempotencyKey(key: string): Promise<SponsorInquiryRecord | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT ${sponsorColumns}
+         FROM sponsor_inquiries WHERE idempotency_key = ? LIMIT 1`
+      )
+      .bind(key)
+      .first<Row>();
+    return row ? sponsorFromRow(row) : null;
+  }
+
+  async createSponsorInquiry(
+    input: SponsorInquiryInput,
+    key: string
+  ): Promise<{ value: SponsorInquiryRecord; replayed: boolean }> {
+    const existing = await this.getSponsorInquiryByIdempotencyKey(key);
+    if (existing) return { value: existing, replayed: true };
+
+    const inquiryId = id();
+    const referenceCode = sponsorReference();
+    const createdAt = now();
+    const statements = [
+      this.db
+        .prepare(
+          `INSERT INTO sponsor_inquiries
+           (id, reference_code, idempotency_key, contact_name, organization, email, phone,
+            support_type, contribution_range, desired_outcome, acknowledgement_version,
+            acknowledged_at, state, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`
+        )
+        .bind(
+          inquiryId,
+          referenceCode,
+          key,
+          input.contactName,
+          input.organization,
+          input.email,
+          input.phone,
+          input.supportType,
+          input.contributionRange,
+          input.desiredOutcome,
+          input.acknowledgementVersion,
+          createdAt,
+          createdAt,
+          createdAt
+        ),
+      this.db
+        .prepare(
+          `INSERT INTO sponsor_inquiry_events
+           (id, inquiry_id, actor_subject, event_type, from_state, to_state, note, created_at)
+           VALUES (?, ?, NULL, 'submitted', NULL, 'new', NULL, ?)`
+        )
+        .bind(id(), inquiryId, createdAt)
+    ];
+
+    try {
+      await this.db.batch(statements);
+    } catch (error) {
+      if (!isSponsorIdempotencyConflict(error)) throw error;
+      const replay = await this.getSponsorInquiryByIdempotencyKey(key);
+      if (replay) return { value: replay, replayed: true };
+      throw error;
+    }
+
+    const created = await this.sponsorById(inquiryId);
+    if (!created) throw new Error("The sponsor inquiry was not available after creation.");
+    return { value: created, replayed: false };
+  }
+
+  async listSponsorInquiries(
+    options: {
+      limit?: number;
+      cursor?: string | null;
+      state?: SponsorInquiryState | null;
+      supportType?: SponsorSupportType | null;
+      query?: string | null;
+    } = {}
+  ): Promise<Page<SponsorInquiryRecord>> {
+    const limit = pageLimit(options.limit);
+    const conditions: string[] = [];
+    const bindings: unknown[] = [];
+
+    if (options.state) {
+      conditions.push("state = ?");
+      bindings.push(options.state);
+    }
+    if (options.supportType) {
+      conditions.push("support_type = ?");
+      bindings.push(options.supportType);
+    }
+    const query = options.query?.trim();
+    if (query) {
+      const pattern = `%${escapeLike(query)}%`;
+      conditions.push(
+        "(contact_name LIKE ? ESCAPE '\\' OR organization LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')"
+      );
+      bindings.push(pattern, pattern, pattern);
+    }
+    const cursor = parseSponsorCursor(options.cursor);
+    if (cursor) {
+      conditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      bindings.push(cursor.createdAt, cursor.createdAt, cursor.sponsorId);
+    }
+    bindings.push(limit + 1);
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const result = await this.db
+      .prepare(
+        `SELECT ${sponsorColumns}
+         FROM sponsor_inquiries
+         ${where}
+         ORDER BY created_at DESC, id DESC LIMIT ?`
+      )
+      .bind(...bindings)
+      .all<Row>();
+    const rows = result.results;
+    const hasMore = rows.length > limit;
+    const selected = rows.slice(0, limit);
+    return {
+      items: selected.map(sponsorFromRow),
+      nextCursor: hasMore && selected.length > 0 ? sponsorCursor(selected[selected.length - 1]!) : null
+    };
+  }
+
+  async updateSponsorInquiry(
+    sponsorId: string,
+    input: { state: SponsorInquiryState; note: string | null },
+    actorSubject: string
+  ): Promise<SponsorInquiryRecord | null> {
+    const current = await this.sponsorById(sponsorId);
+    if (!current) return null;
+
+    const note = input.note && input.note.trim().length > 0 ? input.note : null;
+    const stateChanged = input.state !== current.state;
+    if (!stateChanged && !note) return current;
+
+    const updatedAt = now();
+    const eventType = stateChanged ? "state_changed" : "note_added";
+    await this.db.batch([
+      this.db
+        .prepare("UPDATE sponsor_inquiries SET state = ?, updated_at = ? WHERE id = ?")
+        .bind(input.state, updatedAt, sponsorId),
+      this.db
+        .prepare(
+          `INSERT INTO sponsor_inquiry_events
+           (id, inquiry_id, actor_subject, event_type, from_state, to_state, note, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          id(),
+          sponsorId,
+          actorSubject,
+          eventType,
+          current.state,
+          input.state,
+          note,
+          updatedAt
+        )
+    ]);
+    return this.sponsorById(sponsorId);
   }
 
   async getPlayerAccount(subject: string): Promise<Record<string, unknown> | null> {
@@ -1290,6 +1508,14 @@ export class D1DataStore implements DataStore {
     }
     await this.audit(actorSubject, `player.${action}.requested`, "player_account", target, {});
     return { action, target, status: "queued" };
+  }
+
+  private async sponsorById(sponsorId: string): Promise<SponsorInquiryRecord | null> {
+    const row = await this.db
+      .prepare(`SELECT ${sponsorColumns} FROM sponsor_inquiries WHERE id = ? LIMIT 1`)
+      .bind(sponsorId)
+      .first<Row>();
+    return row ? sponsorFromRow(row) : null;
   }
 
   private async reportById(reportId: string): Promise<Record<string, unknown> | null> {

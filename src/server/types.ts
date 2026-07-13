@@ -41,6 +41,35 @@ export interface Page<T = Record<string, unknown>> {
   nextCursor: string | null;
 }
 
+export type SponsorSupportType = "community" | "lead" | "prize_in_kind" | "other";
+export type SponsorContributionRange =
+  | "not_sure"
+  | "under_1000"
+  | "1000_2499"
+  | "2500_4999"
+  | "5000_plus"
+  | "prefer_to_discuss";
+export type SponsorInquiryState = "new" | "contacted" | "qualified" | "accepted" | "closed";
+
+export interface SponsorInquiryInput {
+  contactName: string;
+  organization: string;
+  email: string;
+  phone: string | null;
+  supportType: SponsorSupportType;
+  contributionRange: SponsorContributionRange | null;
+  desiredOutcome: string;
+  acknowledgementVersion: string;
+}
+
+export interface SponsorInquiryRecord extends SponsorInquiryInput {
+  id: string;
+  referenceCode: string;
+  state: SponsorInquiryState;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StoredMedia {
   id: string;
   key: string;
@@ -59,6 +88,23 @@ export interface DataStore {
   getPublicMedia(id: string): Promise<{ key: string; contentType: string } | null>;
   getReportByIdempotencyKey(idempotencyKey: string): Promise<Record<string, unknown> | null>;
   createReport(input: Record<string, unknown>, idempotencyKey: string): Promise<{ value: Record<string, unknown>; replayed: boolean }>;
+  getSponsorInquiryByIdempotencyKey(key: string): Promise<SponsorInquiryRecord | null>;
+  createSponsorInquiry(
+    input: SponsorInquiryInput,
+    key: string
+  ): Promise<{ value: SponsorInquiryRecord; replayed: boolean }>;
+  listSponsorInquiries(options?: {
+    limit?: number;
+    cursor?: string | null;
+    state?: SponsorInquiryState | null;
+    supportType?: SponsorSupportType | null;
+    query?: string | null;
+  }): Promise<Page<SponsorInquiryRecord>>;
+  updateSponsorInquiry(
+    id: string,
+    input: { state: SponsorInquiryState; note: string | null },
+    actorSubject: string
+  ): Promise<SponsorInquiryRecord | null>;
   getProfile(subject: string): Promise<Record<string, unknown> | null>;
   getPlayerAccount(subject: string): Promise<Record<string, unknown> | null>;
   upsertPlayerAccount(subject: string, verifiedEmail: string): Promise<Record<string, unknown>>;

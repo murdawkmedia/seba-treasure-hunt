@@ -1,4 +1,13 @@
-import type { CaseStatus, IdentityLifecycleEvent, PlayerAccessState, StoredMedia } from "../src/server/types";
+import type {
+  CaseStatus,
+  IdentityLifecycleEvent,
+  PlayerAccessState,
+  SponsorInquiryInput,
+  SponsorInquiryRecord,
+  SponsorInquiryState,
+  SponsorSupportType,
+  StoredMedia
+} from "../src/server/types";
 
 export type Principal = {
   kind: "hunter" | "staff";
@@ -16,6 +25,23 @@ export const openStatus: CaseStatus = {
   updatedAt: "2026-07-11T16:00:00.000Z",
   nextClue: null,
   version: 1
+};
+
+const sponsorCursor = (record: SponsorInquiryRecord) =>
+  btoa(`${record.createdAt}\n${record.id}`)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+const parseSponsorCursor = (cursor: string | null | undefined) => {
+  if (!cursor) return null;
+  const base64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
+  const decoded = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+  const separator = decoded.indexOf("\n");
+  return {
+    createdAt: decoded.slice(0, separator),
+    id: decoded.slice(separator + 1)
+  };
 };
 
 export class FakeStore {
@@ -72,6 +98,9 @@ export class FakeStore {
   invitedStaffEmails = new Set<string>();
   audits: Array<Record<string, unknown>> = [];
   private privateReportIds = new Map<string, string>();
+  private sponsorInquiries = new Map<string, SponsorInquiryRecord>();
+  private sponsorInquiryIds = new Map<string, string>();
+  private sponsorInquirySequence = 0;
   publicMedia = new Map<string, { key: string; contentType: string }>();
   subscribers = [
     {
@@ -142,6 +171,93 @@ export class FakeStore {
     this.reports.push(value);
     this.privateReportIds.set(idempotencyKey, String(value.id));
     return { value, replayed: false };
+  }
+
+  async getSponsorInquiryByIdempotencyKey(key: string): Promise<SponsorInquiryRecord | null> {
+    const inquiryId = this.sponsorInquiryIds.get(key);
+    return inquiryId ? this.sponsorInquiries.get(inquiryId) ?? null : null;
+  }
+
+  async createSponsorInquiry(
+    input: SponsorInquiryInput,
+    key: string
+  ): Promise<{ value: SponsorInquiryRecord; replayed: boolean }> {
+    const existing = await this.getSponsorInquiryByIdempotencyKey(key);
+    if (existing) return { value: existing, replayed: true };
+
+    this.sponsorInquirySequence += 1;
+    const sequence = this.sponsorInquirySequence;
+    const id = `sponsor-${sequence}`;
+    const createdAt = new Date(Date.UTC(2026, 6, 13, 20, 0, sequence)).toISOString();
+    const record: SponsorInquiryRecord = {
+      ...input,
+      id,
+      referenceCode: `SP-${String(sequence).padStart(8, "0")}`,
+      state: "new",
+      createdAt,
+      updatedAt: createdAt
+    };
+    this.sponsorInquiries.set(id, record);
+    this.sponsorInquiryIds.set(key, id);
+    return { value: record, replayed: false };
+  }
+
+  async listSponsorInquiries(
+    options: {
+      limit?: number;
+      cursor?: string | null;
+      state?: SponsorInquiryState | null;
+      supportType?: SponsorSupportType | null;
+      query?: string | null;
+    } = {}
+  ) {
+    const limit = Math.min(Math.max(options.limit ?? 25, 1), 50);
+    const query = options.query?.trim().toLocaleLowerCase();
+    const cursor = parseSponsorCursor(options.cursor);
+    const records = [...this.sponsorInquiries.values()]
+      .filter((record) => !options.state || record.state === options.state)
+      .filter((record) => !options.supportType || record.supportType === options.supportType)
+      .filter(
+        (record) =>
+          !query ||
+          record.contactName.toLocaleLowerCase().includes(query) ||
+          record.organization.toLocaleLowerCase().includes(query) ||
+          record.email.toLocaleLowerCase().includes(query)
+      )
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
+      )
+      .filter(
+        (record) =>
+          !cursor ||
+          record.createdAt < cursor.createdAt ||
+          (record.createdAt === cursor.createdAt && record.id < cursor.id)
+      );
+    const hasMore = records.length > limit;
+    const items = records.slice(0, limit);
+    return {
+      items,
+      nextCursor: hasMore && items.length > 0 ? sponsorCursor(items[items.length - 1]!) : null
+    };
+  }
+
+  async updateSponsorInquiry(
+    id: string,
+    input: { state: SponsorInquiryState; note: string | null },
+    _actorSubject: string
+  ): Promise<SponsorInquiryRecord | null> {
+    const current = this.sponsorInquiries.get(id);
+    if (!current) return null;
+    if (input.state === current.state && !input.note?.trim()) return current;
+
+    const updated: SponsorInquiryRecord = {
+      ...current,
+      state: input.state,
+      updatedAt: new Date(Date.parse(current.updatedAt) + 1_000).toISOString()
+    };
+    this.sponsorInquiries.set(id, updated);
+    return updated;
   }
 
   async getProfile(subject: string) {
