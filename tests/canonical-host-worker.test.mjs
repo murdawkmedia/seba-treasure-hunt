@@ -52,3 +52,34 @@ test("the canonical hostname and Pages aliases pass through to static assets", a
     "https://seba-treasure-hunt.pages.dev/route",
   ]);
 });
+
+test("removed partner and repository paths return 404 before asset fallback", async () => {
+  const { default: worker } = await import(workerPath);
+  const seen = [];
+  const env = {
+    ASSETS: {
+      fetch(request) {
+        seen.push(request.url);
+        return new Response("stale asset", { status: 200 });
+      },
+    },
+  };
+  const removedPartner = String.fromCharCode(67, 70, 67, 87).toLowerCase();
+  const blockedPaths = [
+    `/assets/${removedPartner}-logo.png`,
+    "/docs/internal-note.md",
+    "/tests/public-contract.test.mjs",
+    "/scripts/build-public.mjs",
+  ];
+
+  for (const pathname of blockedPaths) {
+    const response = await worker.fetch(
+      new Request(`https://www.timlostsomething.com${pathname}`),
+      env,
+    );
+    assert.equal(response.status, 404, pathname);
+    assert.equal(response.headers.get("cache-control"), "no-store", pathname);
+  }
+
+  assert.deepEqual(seen, []);
+});
