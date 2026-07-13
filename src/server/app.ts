@@ -7,6 +7,9 @@ import type {
   CaseState,
   PagesEnv,
   Principal,
+  SponsorContributionRange,
+  SponsorInquiryRecord,
+  SponsorSupportType,
   StoredMedia,
   ZoneState
 } from "./types";
@@ -42,6 +45,7 @@ const cleanRoutes = new Map([
   ["/dashboard", "/dashboard.html"],
   ["/updates", "/updates.html"],
   ["/report", "/report.html"],
+  ["/sponsors", "/sponsors.html"],
   ["/rules", "/rules.html"],
   ["/privacy", "/privacy.html"],
   ["/community-guidelines", "/community-guidelines.html"],
@@ -60,8 +64,23 @@ const validReportStates = new Set([
   "resolved"
 ]);
 const validImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const validSponsorSupportTypes = new Set<SponsorSupportType>([
+  "community",
+  "lead",
+  "prize_in_kind",
+  "other"
+]);
+const validSponsorContributionRanges = new Set<SponsorContributionRange>([
+  "not_sure",
+  "under_1000",
+  "1000_2499",
+  "2500_4999",
+  "5000_plus",
+  "prefer_to_discuss"
+]);
 const rateLimitRules = {
   report: { limit: 5, windowSeconds: 600 },
+  sponsor_inquiry: { limit: 3, windowSeconds: 600 },
   profile: { limit: 10, windowSeconds: 600 },
   progress: { limit: 60, windowSeconds: 600 },
   field_note: { limit: 5, windowSeconds: 600 },
@@ -287,6 +306,13 @@ const safeSubmission = (record: Record<string, unknown>, replayed?: boolean) => 
   createdAt: record.createdAt,
   media: publicMedia(record.media),
   ...(replayed === undefined ? {} : { replayed })
+});
+
+const safeSponsorSubmission = (record: SponsorInquiryRecord, replayed: boolean) => ({
+  referenceCode: record.referenceCode,
+  state: "received" as const,
+  createdAt: record.createdAt,
+  replayed
 });
 
 const idempotencyKey = (request: Request) => {
@@ -625,6 +651,87 @@ export const createApi = (deps: ApiDependencies) => {
     const response = safeSubmission(capture.value, capture.replayed);
     if (publicMedia(capture.value.media).length === 0 && media.length > 0) response.media = publicMedia(media);
     return success(c, response, capture.replayed ? 200 : 201);
+  });
+
+  app.post("/api/v1/sponsors/inquiries", async (c) => {
+    sameOrigin(c.req.raw);
+    const key = idempotencyKey(c.req.raw);
+    const existing = await deps.store.getSponsorInquiryByIdempotencyKey(key);
+    if (existing) return success(c, safeSponsorSubmission(existing, true));
+
+    await applyRateLimit(deps, c.req.raw, "sponsor_inquiry", null);
+    const { body, files } = await requestBody(c.req.raw);
+    if (
+      files.length > 0 ||
+      (c.req.raw.headers.get("content-type") ?? "").toLowerCase().includes("multipart/form-data")
+    ) {
+      throw new ApiError(
+        415,
+        "unsupported_media_type",
+        "Sponsor inquiries accept JSON only and do not accept files."
+      );
+    }
+    await verifyHuman(deps, c.req.raw, body, "sponsor_inquiry");
+
+    if (body.acknowledgementAccepted !== true) {
+      throw new ApiError(
+        422,
+        "acknowledgement_required",
+        "Accept the current privacy acknowledgement to continue.",
+        { field: "acknowledgementAccepted" }
+      );
+    }
+    if (body.acknowledgementVersion !== privacyMediaDocument.version) {
+      throw new ApiError(
+        409,
+        "privacy_version_outdated",
+        "The privacy acknowledgement has changed. Review and accept the current version.",
+        { field: "acknowledgementVersion" }
+      );
+    }
+
+    const supportType = requiredString(body, "supportType", {
+      max: 32,
+      label: "Support type"
+    });
+    if (!validSponsorSupportTypes.has(supportType as SponsorSupportType)) {
+      throw new ApiError(422, "validation_failed", "Select a valid support type.", {
+        field: "supportType"
+      });
+    }
+
+    const contributionRange = optionalString(body, "contributionRange", 32);
+    if (
+      contributionRange !== null &&
+      !validSponsorContributionRanges.has(contributionRange as SponsorContributionRange)
+    ) {
+      throw new ApiError(422, "validation_failed", "Select a valid contribution range.", {
+        field: "contributionRange"
+      });
+    }
+
+    const capture = await deps.store.createSponsorInquiry(
+      {
+        contactName: requiredString(body, "contactName", { max: 100, label: "Contact name" }),
+        organization: requiredString(body, "organization", { max: 160, label: "Organization" }),
+        email: email(body, "email"),
+        phone: optionalString(body, "phone", 40),
+        supportType: supportType as SponsorSupportType,
+        contributionRange: contributionRange as SponsorContributionRange | null,
+        desiredOutcome: requiredString(body, "desiredOutcome", {
+          min: 10,
+          max: 3_000,
+          label: "Desired outcome"
+        }),
+        acknowledgementVersion: privacyMediaDocument.version
+      },
+      key
+    );
+    return success(
+      c,
+      safeSponsorSubmission(capture.value, capture.replayed),
+      capture.replayed ? 200 : 201
+    );
   });
 
   app.get("/api/v1/me", async (c) => {

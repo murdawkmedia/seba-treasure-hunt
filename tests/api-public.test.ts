@@ -378,6 +378,17 @@ test("canonicalizes the apex with method-safe redirects and falls through to sta
   assert.equal(requestedPaths.at(-1), "/start");
   await app.request("https://www.timlostsomething.com/ops", {}, env as never);
   assert.equal(requestedPaths.at(-1), "/ops");
+
+  const sponsorsResponse = await app.request("https://www.timlostsomething.com/sponsors", {}, env as never);
+  assert.equal(sponsorsResponse.status, 200);
+  assert.equal(requestedPaths.at(-1), "/sponsors");
+
+  const fallbackResponse = await app.request("https://seba-treasure-hunt.pages.dev/sponsors?from=pages");
+  assert.equal(fallbackResponse.status, 301);
+  assert.equal(
+    fallbackResponse.headers.get("location"),
+    "https://www.timlostsomething.com/sponsors?from=pages"
+  );
 });
 
 test("unknown routes and removed assets cannot become soft-200 homepages", async () => {
