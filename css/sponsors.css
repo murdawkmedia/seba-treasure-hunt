@@ -18,14 +18,14 @@
 .sponsor-topbar {
   position: sticky;
   z-index: 1100;
-  top: 52px;
+  top: var(--case-strip-height);
   border-bottom-color: rgba(224, 160, 30, 0.75);
   background: rgba(7, 31, 28, 0.96);
 }
 
 #opportunities,
 #inquiry {
-  scroll-margin-top: 138px;
+  scroll-margin-top: var(--stacked-header-height);
 }
 
 .sponsor-topbar .hunter-header__inner {
@@ -335,7 +335,7 @@
 
 .inquiry__brief {
   position: sticky;
-  top: 90px;
+  top: calc(var(--stacked-header-height) + 20px);
 }
 
 .inquiry__brief > p { color: var(--hunter-muted); }
@@ -417,7 +417,6 @@
 @media (max-width: 760px) {
   .sponsor-shell { width: min(100% - 32px, 1120px); }
   .sponsor-topbar .hunter-header__inner { align-items: center; flex-direction: row; }
-  .sponsor-topbar { top: 82px; }
   .sponsor-topbar .hunter-brand span { display: none; }
   .sponsor-topbar .hunter-nav { justify-content: flex-start; }
   .sponsor-topbar .hunter-nav a[aria-current="page"] { border-radius: 0; transform: none; }

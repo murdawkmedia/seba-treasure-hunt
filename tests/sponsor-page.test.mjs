@@ -238,6 +238,15 @@ test("desktop uses the approved stacked sticky header and mobile menus remain ex
   assert.match(hunter, /@media\s*\(max-width:\s*720px\)[\s\S]*\.menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
 });
 
+test("sponsor sticky and anchor offsets derive from live stacked geometry", () => {
+  const sponsor = read("css/sponsors.css");
+  assert.match(sponsor, /\.sponsor-topbar\s*\{[^}]*top:\s*var\(--case-strip-height\)/s);
+  assert.doesNotMatch(sponsor, /\.sponsor-topbar\s*\{[^}]*top:\s*(?:52|82)px/s);
+  assert.match(sponsor, /#opportunities,\s*#inquiry\s*\{[^}]*scroll-margin-top:\s*var\(--stacked-header-height\)/s);
+  assert.doesNotMatch(sponsor, /scroll-margin(?:-top)?:\s*138px/);
+  assert.match(sponsor, /\.inquiry__brief\s*\{[^}]*top:\s*calc\(var\(--stacked-header-height\) \+ 20px\)/s);
+});
+
 test("every public page reaches Sponsors from navigation and footer", () => {
   const missing = [];
 

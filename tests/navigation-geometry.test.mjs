@@ -114,6 +114,7 @@ test("390px headers use measured compact stacked geometry and an operable menu",
       ["index.html", ".case-strip", ".topbar"],
       ["privacy.html", ".case-strip", ".hunter-header"],
       ["clue-board.html", ".case-signal", ".board-topbar"],
+      ["sponsors.html", ".case-strip", ".sponsor-topbar"],
     ]) {
       await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
       const geometry = await waitForSyncedGeometry(page, stripSelector, headerSelector);
@@ -150,6 +151,49 @@ test("390px headers use measured compact stacked geometry and an operable menu",
       const restored = await waitForSyncedGeometry(page, stripSelector, headerSelector);
       assert.ok(restored.stripHeight < grown.stripHeight, `${file} measured first-row variable shrinks after content restoration`);
     }
+
+    await page.goto(`${origin}/sponsors.html`, { waitUntil: "domcontentloaded" });
+    const readSponsorAnchors = () => page.evaluate(() => {
+      const rootStyles = getComputedStyle(document.documentElement);
+      const opportunities = document.querySelector("#opportunities");
+      const inquiry = document.querySelector("#inquiry");
+      if (!(opportunities instanceof HTMLElement) || !(inquiry instanceof HTMLElement)) return null;
+      return {
+        stackedHeight: Number.parseFloat(rootStyles.getPropertyValue("--stacked-header-height")),
+        opportunitiesMargin: Number.parseFloat(getComputedStyle(opportunities).scrollMarginTop),
+        inquiryMargin: Number.parseFloat(getComputedStyle(inquiry).scrollMarginTop),
+      };
+    });
+    const normalSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".sponsor-topbar");
+    const normalSponsorAnchors = await readSponsorAnchors();
+    assert.ok(normalSponsorAnchors);
+    assert.ok(Math.abs(normalSponsorAnchors.opportunitiesMargin - normalSponsorAnchors.stackedHeight) <= 1);
+    assert.ok(Math.abs(normalSponsorAnchors.inquiryMargin - normalSponsorAnchors.stackedHeight) <= 1);
+    await page.locator(".case-strip__label").evaluate((label) => {
+      label.dataset.originalText = label.textContent ?? "";
+      label.style.fontSize = "28px";
+      label.textContent = "Sponsor case status has expanded into a deliberately long wrapped update so both primary conversion anchors must clear the complete live header stack.";
+    });
+    const grownSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".sponsor-topbar", 76);
+    const grownSponsorAnchors = await readSponsorAnchors();
+    assert.ok(grownSponsorGeometry.stackedVariable > normalSponsorGeometry.stackedVariable);
+    assert.ok(Math.abs(grownSponsorAnchors.opportunitiesMargin - grownSponsorAnchors.stackedHeight) <= 1);
+    assert.ok(Math.abs(grownSponsorAnchors.inquiryMargin - grownSponsorAnchors.stackedHeight) <= 1);
+    await page.locator(".case-strip__label").evaluate((label) => {
+      label.textContent = label.dataset.originalText ?? "";
+      label.style.removeProperty("font-size");
+      delete label.dataset.originalText;
+    });
+    await page.waitForFunction((grownHeight) => {
+      const value = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stacked-header-height"));
+      return Number.isFinite(value) && value < grownHeight - 1;
+    }, grownSponsorGeometry.stackedVariable);
+    const restoredSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".sponsor-topbar");
+    const restoredSponsorAnchors = await readSponsorAnchors();
+    assert.ok(restoredSponsorGeometry.stackedVariable < grownSponsorGeometry.stackedVariable);
+    assert.ok(restoredSponsorAnchors.opportunitiesMargin < grownSponsorAnchors.opportunitiesMargin);
+    assert.ok(Math.abs(restoredSponsorAnchors.opportunitiesMargin - restoredSponsorAnchors.stackedHeight) <= 1);
+    assert.ok(Math.abs(restoredSponsorAnchors.inquiryMargin - restoredSponsorAnchors.stackedHeight) <= 1);
 
     await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
     const toggle = page.locator(".menu-toggle");
