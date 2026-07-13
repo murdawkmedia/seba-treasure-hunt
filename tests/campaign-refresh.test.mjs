@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  cwd: path.dirname(fileURLToPath(import.meta.url)),
+  encoding: "utf8",
+}).trim();
+const prohibitedPartner = String.fromCharCode(67, 70, 67, 87);
+const prohibitedPattern = new RegExp(prohibitedPartner, "i");
+const publicSourceFiles = [
+  "index.html",
+  "route.html",
+  "interview.html",
+  "css/style.css",
+  "js/site.js",
+  "robots.txt",
+  "sitemap.xml",
+];
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -124,4 +143,26 @@ test("canonical campaign copy calls the lost item an ID bundle", () => {
   for (const phrase of stalePhrases) {
     assert.doesNotMatch(publicCopy, new RegExp(escapeRegExp(phrase), "i"));
   }
+});
+
+test("public source contains no unconfirmed partner references", () => {
+  const publicSource = publicSourceFiles
+    .map((file) => readFileSync(path.join(root, file), "utf8"))
+    .join("\n");
+
+  assert.doesNotMatch(publicSource, prohibitedPattern);
+  assert.doesNotMatch(publicSource, /official radio partner/i);
+  assert.doesNotMatch(
+    publicSource,
+    /partner-strip|prize-cfcw|footer-cfcw/i,
+  );
+  assert.ok(
+    !existsSync(
+      path.join(
+        root,
+        "assets",
+        `${prohibitedPartner.toLowerCase()}-logo.png`,
+      ),
+    ),
+  );
 });
