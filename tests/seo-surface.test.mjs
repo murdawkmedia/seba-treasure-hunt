@@ -18,6 +18,7 @@ test("sitemap exposes every indexable answer surface and no private tool", () =>
     "/privacy",
     "/community-guidelines",
     "/clue-board",
+    "/sponsors",
   ]) {
     assert.match(sitemap, new RegExp(`<loc>https://www\\.timlostsomething\\.com${route.replaceAll("/", "\\/")}</loc>`));
   }

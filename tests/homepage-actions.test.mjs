@@ -27,7 +27,8 @@ test("homepage navigation reaches the living campaign surfaces", () => {
     "updates.html",
     "report.html",
     "clue-board.html",
-    "rules.html"
+    "rules.html",
+    "sponsors.html"
   ]) {
     assert.match(html, new RegExp(`href=["']${target.replace(".", "\\.")}["']`, "i"));
   }
