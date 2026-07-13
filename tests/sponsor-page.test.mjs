@@ -2,9 +2,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const root = path.resolve(".");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+const sponsorLink = /<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?\bSponsors\b[\s\S]*?<\/a>/i;
+
+const extractRegion = (html, tag, context) => {
+  const match = html.match(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, "i"));
+  assert.ok(match, `${context} must contain a <${tag}> region`);
+  return match[0];
+};
 
 test("the sponsor page is a canonical, indexable conversion surface", () => {
   const html = read("sponsors.html");
@@ -22,15 +30,28 @@ test("the sponsor page is a canonical, indexable conversion surface", () => {
 });
 
 test("every public page reaches Sponsors from navigation and footer", () => {
+  const missing = [];
+
   for (const name of [
     "index.html", "route.html", "interview.html", "start.html", "dashboard.html",
     "updates.html", "report.html", "rules.html", "privacy.html",
     "community-guidelines.html", "clue-board.html", "sponsors.html"
   ]) {
+    if (!fs.existsSync(path.join(root, name))) {
+      missing.push(`${name}: page`);
+      continue;
+    }
+
     const html = read(name);
-    assert.match(html, /href=["'](?:\/sponsors|sponsors\.html)["']/i, name + " sponsor link");
-    assert.match(html, /Sponsors/i, name + " sponsor label");
+    const header = extractRegion(html, "header", name);
+    const navigation = extractRegion(header, "nav", `${name} header`);
+    const footer = extractRegion(html, "footer", name);
+
+    if (!sponsorLink.test(navigation)) missing.push(`${name}: campaign navigation`);
+    if (!sponsorLink.test(footer)) missing.push(`${name}: footer`);
   }
+
+  assert.deepEqual(missing, [], `missing correctly labelled Sponsors links:\n${missing.join("\n")}`);
 });
 
 test("the sponsor page contains no public lead data or invented partner claim", () => {
