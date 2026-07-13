@@ -70,6 +70,8 @@ The complete suite covers public content contracts, SEO/AEO, canonical redirects
 
 Cloudflare configuration is in `wrangler.toml`; the queue consumer is in `wrangler.media.toml`. Production database changes are versioned under `migrations/` and must be applied in order.
 
+All Pages preview deployments use disposable validation-suffixed D1, R2, KV and Queue bindings. The stable authenticated test URL is `codex-validation.seba-treasure-hunt.pages.dev`; immutable deployment URLs are for unauthenticated smoke tests only. Validation records are never promoted to production.
+
 Never upload the working directory. `npm run build` creates an allowlisted `dist/` and excludes planning, source media, environment files, local Cloudflare state and unconfirmed partner assets.
 
 Do not promote a build until all of these are configured and tested in preview:

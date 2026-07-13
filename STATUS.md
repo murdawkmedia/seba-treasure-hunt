@@ -18,6 +18,8 @@ Deployed: 2026-07-13 11:46:57 -06:00. The feature branch is pushed to GitHub. No
 
 The canonical production site remains on its previous working release. This is deliberate: the new report, community and account flows fail closed until Clerk and Turnstile are activated, so the preview must not replace production yet.
 
+The integration branch now also contains a D1 environment sentinel, fail-closed write guard, preview-only binding overrides and a persistent disposable-data notice. These newest changes are locally verified but are not yet included in the July 13 validation deployment listed above.
+
 ## Implemented
 
 - Rebranded annual campaign hierarchy: **Tim Lost Something?** / **This year: Tim lost his ID.**
@@ -43,14 +45,17 @@ The canonical production site remains on its previous working release. This is d
 
 ## Cloudflare state
 
-- The isolated D1, private R2, KV, queue, dead-letter queue and media consumer are provisioned.
+- Validation-only D1, private R2, KV, processing queue and dead-letter queue are provisioned with explicit `-validation` names. Pages preview configuration overrides every stateful production binding together.
+- Validation D1 migrations 0001 through 0004 are applied and its sentinel is `validation`.
+- Validation seed verification: OPEN; 12 published waypoints; one published rules version; two published zones; three feature flags; zero player accounts, hunter profiles, reports, Field Notes and staff principals.
+- The validation media-processor configuration resolves only validation D1/R2/queue resources in a Wrangler dry run. The updated validation consumer has not yet been deployed.
 - Production D1 migrations 0001 and 0002 are applied and the idempotent campaign seed is loaded. Migration 0003 was validated against local D1 only and is not applied remotely.
 - Seed verification: OPEN; 09:00–20:00 America/Edmonton; 12 published waypoints; one published rules version; two published zones; three explicit community feature flags; zero staff principals.
 - The current noindex preview and private media consumer are deployed successfully. The July 13 Pages preview is deployment `b9a4d4b7`; production remains on its previous release.
 
 ## Verification evidence
 
-- Automated tests: 110/110 passing.
+- Automated tests: 124/124 passing.
 - TypeScript checks: Worker, client and both test environments passing.
 - Production Pages and media bundles build successfully.
 - Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.
@@ -68,7 +73,7 @@ The canonical production site remains on its previous working release. This is d
 
 1. Configure the public Clerk application for verified email/password accounts, 12-character passwords, compromised-password checks and emailed recovery.
 2. Configure its signed lifecycle webhook and store `HUNTER_CLERK_SECRET_KEY` and `CLERK_WEBHOOK_SIGNING_SECRET` as deployment secrets.
-3. Apply migration 0003 to the remote campaign D1 only with explicit deployment approval.
+3. Apply migrations 0003 and 0004 to the production campaign D1 only with explicit deployment approval. Both are already applied to isolated validation D1.
 4. Configure the separate invitation-only staff Clerk application and staff password/recovery/MFA policy.
 5. Create a managed Turnstile widget restricted to the canonical and Pages hostnames.
 6. Store identity, Turnstile and recovery-mail values as deployment secrets; never commit them.
