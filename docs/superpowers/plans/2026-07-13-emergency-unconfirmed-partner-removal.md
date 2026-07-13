@@ -180,6 +180,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
 const allowlist = [
   "_worker.js",
+  "canonical-host-worker.mjs",
   "index.html",
   "route.html",
   "interview.html",
@@ -257,7 +258,7 @@ node --test tests/*.test.mjs
 node scripts/build-public.mjs
 ```
 
-Expected: 10 tests PASS and `dist/` contains only allowlisted public files.
+Expected: 11 tests PASS and `dist/` contains only allowlisted public files.
 
 - [ ] **Step 5: Commit the build boundary**
 

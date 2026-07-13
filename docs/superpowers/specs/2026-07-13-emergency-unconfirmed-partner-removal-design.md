@@ -57,6 +57,7 @@ No replacement partner, sponsor, station, agreement or future media commitment w
 Add a dependency-free Node build script that recreates `dist/` from an explicit allowlist:
 
 - `_worker.js`;
+- `canonical-host-worker.mjs`, which is imported by `_worker.js`;
 - the three public HTML pages;
 - `robots.txt` and `sitemap.xml`;
 - `assets/`, excluding prohibited or removed files;
