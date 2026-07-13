@@ -112,7 +112,8 @@ test("the inquiry form exposes only the approved fields, values, notices, and er
   assert.match(form, /data-sponsor-errors[^>]*role="alert"[^>]*hidden/);
   assert.match(form, /data-sponsor-result[^>]*role="status"[^>]*tabindex="-1"[^>]*hidden/);
   assert.match(form, /data-sponsor-submit/);
-  assert.match(form, /data-sponsor-turnstile[^>]*tabindex="-1"/);
+  assert.match(form, /<span class="human-check__label" id="sponsor-turnstile-label">Human check/);
+  assert.match(form, /<div\b(?=[^>]*\bdata-sponsor-turnstile)(?=[^>]*\btabindex="-1")(?=[^>]*\brole="group")(?=[^>]*\baria-labelledby="sponsor-turnstile-label")(?=[^>]*\baria-describedby="sponsor-turnstile-hint sponsor-turnstile-error")[^>]*>/);
   assert.match(form, /data-sponsor-turnstile-state/);
   assert.match(form, /name="acknowledgementVersion" value="2026\.1"/);
 
@@ -162,9 +163,20 @@ test("visible sponsor FAQ answers exactly match FAQPage structured data", () => 
   const visible = [...faq.matchAll(/<details\b[^>]*>\s*<summary>([^<]+)<\/summary>\s*<p>([^<]+)<\/p>\s*<\/details>/gi)]
     .map((match) => ({ question: match[1].trim(), answer: match[2].trim() }));
   assert.equal(visible.length, 5);
-  for (const phrase of ["cash or in-kind", "flexible", "publication", "follow up", "does not create an agreement"]) {
+  for (const phrase of ["products or services", "flexible", "publication", "follow up", "separate agreement"]) {
     assert.match(visible.map(({ question, answer }) => `${question} ${answer}`).join("\n"), new RegExp(phrase, "i"));
   }
+
+  const approvedSchemaFaq = [
+    {
+      question: "Can we contribute products or services instead of cash?",
+      answer: "Yes. Useful prizes, printing, services, and practical campaign support can be proposed through the inquiry form.",
+    },
+    {
+      question: "Does submitting an inquiry create a sponsorship agreement?",
+      answer: "No. The campaign team reviews each inquiry privately. Recognition, deliverables, and publication require a separate agreement.",
+    },
+  ];
 
   const scripts = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)]
     .map((match) => JSON.parse(match[1]));
@@ -174,7 +186,13 @@ test("visible sponsor FAQ answers exactly match FAQPage structured data", () => 
     question: entry.name,
     answer: entry.acceptedAnswer.text,
   }));
-  assert.deepEqual(structured, visible);
+  assert.deepEqual(structured, approvedSchemaFaq);
+  for (const entity of structured) {
+    assert.ok(
+      visible.some(({ question, answer }) => question === entity.question && answer === entity.answer),
+      `schema FAQ must be rendered verbatim: ${entity.question}`,
+    );
+  }
   assert.doesNotMatch(JSON.stringify(scripts), /"@type"\s*:\s*"(?:Event|Offer|Review)"|partner|sponsor_inquiries|email|telephone/i);
 });
 
