@@ -242,7 +242,7 @@ test("the sponsor migration keeps inquiries private and events append-only", asy
 
 - [ ] **Step 2: Run the schema test to verify it fails**
 
-Run: `tsx --test tests/api-schema.test.ts`  
+Run: `tsx --test tests/api-schema.test.ts`
 Expected: FAIL with `ENOENT` for migration 0005.
 
 - [ ] **Step 3: Create the migration**
@@ -301,7 +301,7 @@ CREATE INDEX IF NOT EXISTS idx_sponsor_inquiry_events_ledger
 
 - [ ] **Step 4: Run the schema test**
 
-Run: `tsx --test tests/api-schema.test.ts`  
+Run: `tsx --test tests/api-schema.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Validate the migration against a disposable local D1**
@@ -378,7 +378,7 @@ Also add a test proving `updateSponsorInquiry` writes a state-change event in th
 
 - [ ] **Step 2: Run the store test to verify it fails**
 
-Run: `tsx --test tests/api-store.test.ts`  
+Run: `tsx --test tests/api-store.test.ts`
 Expected: FAIL because sponsor DataStore methods do not exist.
 
 - [ ] **Step 3: Add sponsor types and DataStore methods**
@@ -572,7 +572,7 @@ test("sponsor intake rejects missing acknowledgement, invalid enums, and failed 
 
 - [ ] **Step 2: Run the API test to verify it fails**
 
-Run: `tsx --test tests/sponsor-api.test.ts`  
+Run: `tsx --test tests/sponsor-api.test.ts`
 Expected: FAIL with 404 for the new route.
 
 - [ ] **Step 3: Add the rate-limit policy and clean route**
@@ -763,7 +763,7 @@ test("the sponsor payload trims text and omits an empty phone", () => {
 
 - [ ] **Step 2: Run the unit test to verify it fails**
 
-Run: `tsx --test tests/sponsor-client.test.ts`  
+Run: `tsx --test tests/sponsor-client.test.ts`
 Expected: FAIL because `src/client/sponsors.ts` does not exist.
 
 - [ ] **Step 3: Implement the pure client contract**
@@ -1143,7 +1143,7 @@ test("desktop uses the approved stacked sticky header and mobile menus remain ex
 
 - [ ] **Step 2: Run the contract to verify it fails**
 
-Run: `node --test tests/sponsor-page.test.mjs tests/hunter-ui-pages.test.mjs`  
+Run: `node --test tests/sponsor-page.test.mjs tests/hunter-ui-pages.test.mjs`
 Expected: FAIL because the second row is not sticky and hunter-page menus are not collapsible.
 
 - [ ] **Step 3: Apply the desktop sticky geometry**
@@ -1330,7 +1330,7 @@ test("only active staff can list and transition sponsor inquiries", async () => 
 
 - [ ] **Step 2: Run the staff API test to verify it fails**
 
-Run: `tsx --test tests/sponsor-api.test.ts tests/api-auth.test.ts`  
+Run: `tsx --test tests/sponsor-api.test.ts tests/api-auth.test.ts`
 Expected: FAIL with 404 for the Ops sponsors route.
 
 - [ ] **Step 3: Add staff-only list and transition routes**
@@ -1499,7 +1499,7 @@ test("sponsor inquiry handling is disclosed but private records never enter publ
 
 - [ ] **Step 2: Run the contract to verify it fails**
 
-Run: `node --test tests/public-content-safety.test.mjs`  
+Run: `node --test tests/public-content-safety.test.mjs`
 Expected: FAIL because sponsor inquiry handling is not yet disclosed.
 
 - [ ] **Step 3: Add a narrow privacy disclosure**
