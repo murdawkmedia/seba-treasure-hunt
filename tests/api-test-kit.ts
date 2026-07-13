@@ -8,6 +8,7 @@ import type {
   SponsorSupportType,
   StoredMedia
 } from "../src/server/types";
+import { ApiError } from "../src/server/errors";
 
 export type Principal = {
   kind: "hunter" | "staff";
@@ -35,13 +36,17 @@ const sponsorCursor = (record: SponsorInquiryRecord) =>
 
 const parseSponsorCursor = (cursor: string | null | undefined) => {
   if (!cursor) return null;
-  const base64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
-  const decoded = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
-  const separator = decoded.indexOf("\n");
-  return {
-    createdAt: decoded.slice(0, separator),
-    id: decoded.slice(separator + 1)
-  };
+  try {
+    const base64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+    const separator = decoded.indexOf("\n");
+    const createdAt = decoded.slice(0, separator);
+    const id = decoded.slice(separator + 1);
+    if (separator < 1 || !/^\d{4}-\d{2}-\d{2}T/.test(createdAt) || !id) throw new Error();
+    return { createdAt, id };
+  } catch {
+    throw new ApiError(400, "invalid_cursor", "The sponsor inquiry cursor is invalid.");
+  }
 };
 
 export class FakeStore {

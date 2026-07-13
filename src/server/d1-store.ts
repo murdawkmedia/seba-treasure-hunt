@@ -565,27 +565,35 @@ export class D1DataStore implements DataStore {
 
     const updatedAt = now();
     const eventType = stateChanged ? "state_changed" : "note_added";
-    await this.db.batch([
-      this.db
-        .prepare("UPDATE sponsor_inquiries SET state = ?, updated_at = ? WHERE id = ?")
-        .bind(input.state, updatedAt, sponsorId),
+    const [eventResult, updateResult] = await this.db.batch([
       this.db
         .prepare(
           `INSERT INTO sponsor_inquiry_events
            (id, inquiry_id, actor_subject, event_type, from_state, to_state, note, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           SELECT ?, id, ?, ?, ?, ?, ?, ?
+           FROM sponsor_inquiries WHERE id = ? AND state = ?`
         )
         .bind(
           id(),
-          sponsorId,
           actorSubject,
           eventType,
           current.state,
           input.state,
           note,
-          updatedAt
+          updatedAt,
+          sponsorId,
+          current.state
+        ),
+      this.db
+        .prepare(
+          `UPDATE sponsor_inquiries SET state = ?, updated_at = ?
+           WHERE id = ? AND state = ?`
         )
+        .bind(input.state, updatedAt, sponsorId, current.state)
     ]);
+    if (Number(eventResult?.meta.changes) !== 1 || Number(updateResult?.meta.changes) !== 1) {
+      throw new ConflictError("This sponsor inquiry changed. Refresh and try again.");
+    }
     return this.sponsorById(sponsorId);
   }
 

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { D1DataStore } from "../src/server/d1-store";
+import { ApiError } from "../src/server/errors";
+import { FakeStore } from "./api-test-kit";
 
 type Row = Record<string, unknown>;
 
@@ -43,6 +45,7 @@ class ScriptedD1 {
   firstResults: Array<Row | null> = [];
   allResults: Row[][] = [];
   batchCalls: Statement[][] = [];
+  batchChanges: number[][] = [];
   batchError: Error | null = null;
   profile: Row = {
     subject: "hunter-1",
@@ -81,7 +84,12 @@ class ScriptedD1 {
   async batch(statements: Statement[]) {
     this.batchCalls.push(statements);
     if (this.batchError) throw this.batchError;
-    return statements.map(() => ({ results: [], success: true }));
+    const changes = this.batchChanges.shift() ?? statements.map(() => 1);
+    return statements.map((_statement, index) => ({
+      results: [],
+      success: true,
+      meta: { changes: changes[index] ?? 0 }
+    }));
   }
 }
 
@@ -297,11 +305,16 @@ test("D1 sponsor update batches the transition event and skips unknown or empty 
 
   assert.equal(updated?.state, "qualified");
   assert.equal(database.batchCalls.length, 1);
-  const [updateStatement, eventStatement] = database.batchCalls[0] ?? [];
+  const [eventStatement, updateStatement] = database.batchCalls[0] ?? [];
+  assert.match(
+    eventStatement?.sql ?? "",
+    /INSERT INTO sponsor_inquiry_events[\s\S]*SELECT[\s\S]*FROM sponsor_inquiries[\s\S]*WHERE id = \? AND state = \?/i
+  );
+  assert.deepEqual(eventStatement?.bindings.slice(-2), ["sponsor-1", "new"]);
   assert.match(updateStatement?.sql ?? "", /UPDATE sponsor_inquiries/i);
+  assert.match(updateStatement?.sql ?? "", /WHERE id = \? AND state = \?/i);
   assert.equal(updateStatement?.bindings[0], "qualified");
-  assert.equal(updateStatement?.bindings.at(-1), "sponsor-1");
-  assert.match(eventStatement?.sql ?? "", /INSERT INTO sponsor_inquiry_events/i);
+  assert.deepEqual(updateStatement?.bindings.slice(-2), ["sponsor-1", "new"]);
   for (const expected of [
     "sponsor-1",
     "staff-1",
@@ -351,10 +364,43 @@ test("D1 sponsor update records a note-only event without changing state", async
     "staff-1"
   );
 
-  const eventStatement = database.batchCalls[0]?.[1];
-  assert.ok(eventStatement?.bindings.includes("note_added"));
+  const updateStatement = database.batchCalls[0]?.[1];
+  assert.match(updateStatement?.sql ?? "", /UPDATE sponsor_inquiries/i);
+  const noteEventStatement = database.batchCalls[0]?.[0];
+  assert.ok(noteEventStatement?.bindings.includes("note_added"));
   assert.deepEqual(
-    eventStatement?.bindings.filter((item) => item === "new"),
-    ["new", "new"]
+    noteEventStatement?.bindings.filter((item) => item === "new"),
+    ["new", "new", "new"]
   );
+});
+
+test("D1 sponsor update throws a version conflict when its state guard loses a race", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(sponsorRow());
+  database.batchChanges.push([0, 0]);
+  const store = new D1DataStore(database as never);
+
+  await assert.rejects(
+    store.updateSponsorInquiry(
+      "sponsor-1",
+      { state: "qualified", note: "Call scheduled." },
+      "staff-1"
+    ),
+    (error: unknown) =>
+      error instanceof ApiError &&
+      error.code === "version_conflict" &&
+      /sponsor inquiry.*refresh.*try again/i.test(error.message)
+  );
+  assert.equal(database.batchCalls.length, 1);
+});
+
+test("FakeStore rejects malformed sponsor cursors with the production API error", async () => {
+  const store = new FakeStore();
+  for (const cursor of [btoa("missing separator"), "%%%not-base64%%%"]) {
+    await assert.rejects(
+      store.listSponsorInquiries({ cursor }),
+      (error: unknown) =>
+        error instanceof ApiError && error.status === 400 && error.code === "invalid_cursor"
+    );
+  }
 });
