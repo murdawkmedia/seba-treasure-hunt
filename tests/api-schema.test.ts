@@ -58,7 +58,33 @@ test("the sponsor migration keeps inquiries private and events append-only", asy
   }
   assert.match(sql, /UNIQUE\s*\(reference_code\)/i);
   assert.match(sql, /UNIQUE\s*\(idempotency_key\)/i);
+  assert.match(sql, /CHECK\s*\(support_type IN \('community', 'lead', 'prize_in_kind', 'other'\)\)/i);
+  assert.match(
+    sql,
+    /CHECK\s*\(\s*contribution_range IS NULL OR contribution_range IN \(\s*'not_sure', 'under_1000', '1000_2499', '2500_4999', '5000_plus', 'prefer_to_discuss'\s*\)\s*\)/i
+  );
   assert.match(sql, /CHECK\s*\(state IN \('new', 'contacted', 'qualified', 'accepted', 'closed'\)\)/i);
+  assert.match(sql, /CHECK\s*\(event_type IN \('submitted', 'state_changed', 'note_added'\)\)/i);
+  assert.match(
+    sql,
+    /from_state\s+TEXT\s+CHECK\s*\(from_state IS NULL OR from_state IN \('new', 'contacted', 'qualified', 'accepted', 'closed'\)\)/i
+  );
+  assert.match(
+    sql,
+    /to_state\s+TEXT\s+CHECK\s*\(to_state IS NULL OR to_state IN \('new', 'contacted', 'qualified', 'accepted', 'closed'\)\)/i
+  );
+  assert.match(
+    sql,
+    /CREATE INDEX IF NOT EXISTS idx_sponsor_inquiries_queue\s+ON sponsor_inquiries\(state, created_at DESC, id DESC\)/i
+  );
+  assert.match(
+    sql,
+    /CREATE INDEX IF NOT EXISTS idx_sponsor_inquiries_organization\s+ON sponsor_inquiries\(organization COLLATE NOCASE, created_at DESC\)/i
+  );
+  assert.match(
+    sql,
+    /CREATE INDEX IF NOT EXISTS idx_sponsor_inquiry_events_ledger\s+ON sponsor_inquiry_events\(inquiry_id, created_at DESC, id DESC\)/i
+  );
   assert.match(sql, /FOREIGN KEY\s*\(inquiry_id\).*ON DELETE CASCADE/is);
   assert.doesNotMatch(sql, /ip_address|fingerprint|turnstile_token/i);
 });

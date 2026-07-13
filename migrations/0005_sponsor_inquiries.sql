@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS sponsor_inquiry_events (
   inquiry_id TEXT NOT NULL,
   actor_subject TEXT,
   event_type TEXT NOT NULL CHECK (event_type IN ('submitted', 'state_changed', 'note_added')),
-  from_state TEXT,
-  to_state TEXT,
+  from_state TEXT CHECK (from_state IS NULL OR from_state IN ('new', 'contacted', 'qualified', 'accepted', 'closed')),
+  to_state TEXT CHECK (to_state IS NULL OR to_state IN ('new', 'contacted', 'qualified', 'accepted', 'closed')),
   note TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (inquiry_id) REFERENCES sponsor_inquiries(id) ON DELETE CASCADE
