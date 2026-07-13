@@ -81,10 +81,14 @@ test("privacy page adapts the SebaHub media notice to the hunt without importing
   assert.doesNotMatch(html, /Meta Pixel|reservation details|payment information|mailing address/i);
 });
 
-test("the active legal document hash matches the exact published privacy page", () => {
+test("the active legal document hash ignores decorative head assets and matches the published policy", () => {
   const html = read("privacy.html");
   const legal = read("src/server/legal-documents.ts");
-  const hash = createHash("sha256").update(html).digest("hex");
+  const canonicalPolicy = html.replace(
+    /^.*(?:\/favicon\.ico|\/assets\/favicon(?:-32x32)?\.(?:svg|png)|\/assets\/apple-touch-icon\.png|\/site\.webmanifest).*\r?\n/gm,
+    "",
+  );
+  const hash = createHash("sha256").update(canonicalPolicy).digest("hex");
   assert.match(legal, new RegExp(`hash:\\s*"${hash}"`));
 });
 
