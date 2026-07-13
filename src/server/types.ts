@@ -125,6 +125,7 @@ export interface MediaJob {
 }
 
 export interface PublicRuntimeConfig {
+  deploymentEnvironment: DeploymentEnvironment | null;
   turnstileSiteKey: string | null;
   hunterPublishableKey: string | null;
   hunterAccountPortalUrl: string | null;

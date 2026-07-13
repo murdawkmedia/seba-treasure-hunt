@@ -100,6 +100,7 @@ const application = (env: PagesEnv) => {
       recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
     }),
     config: {
+      deploymentEnvironment: env.DEPLOYMENT_ENV ?? null,
       turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
       hunterPublishableKey: env.HUNTER_CLERK_PUBLISHABLE_KEY ?? null,
       hunterAccountPortalUrl: env.HUNTER_ACCOUNT_PORTAL_URL ?? null,

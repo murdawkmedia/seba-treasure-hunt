@@ -67,3 +67,49 @@ test("production worker keeps method-safe apex canonicalization", async () => {
     "https://www.timlostsomething.com/api/v1/reports?source=qr"
   );
 });
+
+test("validation HTML carries a persistent disposable-data notice and noindex header", async () => {
+  const env = {
+    DEPLOYMENT_ENV: "validation",
+    ASSETS: {
+      fetch: async () => new Response(
+        "<!doctype html><html><head><title>Test</title></head><body><main>Campaign</main></body></html>",
+        { headers: { "content-type": "text/html; charset=utf-8" } }
+      )
+    }
+  };
+
+  const response = await worker.fetch(
+    new Request("https://codex-validation.seba-treasure-hunt.pages.dev/start"),
+    env as never,
+    context
+  );
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("x-robots-tag") ?? "", /noindex/i);
+  assert.match(html, /Validation environment/i);
+  assert.match(html, /test accounts and submissions will be deleted before launch/i);
+  assert.match(html, /role="status"/i);
+});
+
+test("production HTML never renders the validation notice", async () => {
+  const env = {
+    DEPLOYMENT_ENV: "production",
+    ASSETS: {
+      fetch: async () => new Response(
+        "<!doctype html><html><body><main>Campaign</main></body></html>",
+        { headers: { "content-type": "text/html; charset=utf-8" } }
+      )
+    }
+  };
+
+  const response = await worker.fetch(
+    new Request("https://www.timlostsomething.com/start"),
+    env as never,
+    context
+  );
+
+  assert.doesNotMatch(await response.text(), /Validation environment/i);
+  assert.equal(response.headers.get("x-robots-tag"), null);
+});

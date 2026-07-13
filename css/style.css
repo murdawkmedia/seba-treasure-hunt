@@ -551,8 +551,30 @@ section { padding: 70px 0; position: relative; }
 /* ---------- little floating doodads ---------- */
 .doodad { position: absolute; opacity: .18; font-size: 3rem; pointer-events: none; user-select: none; }
 
+/* ---------- validation environment ---------- */
+.validation-environment-notice {
+  position: sticky;
+  top: 0;
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  border-bottom: 2px solid var(--gold-500);
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  line-height: 1.35;
+  text-align: center;
+}
+.validation-environment-notice strong { color: var(--gold-300); }
+
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
+  .validation-environment-notice { position: relative; flex-direction: column; gap: 2px; }
   body { font-size: 1.05rem; }
   .case-strip { grid-template-columns: auto minmax(0, 1fr); gap: 9px 12px; }
   .case-strip__link { grid-column: 2; }

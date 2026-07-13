@@ -68,6 +68,16 @@ const rateLimitRules = {
   reply: { limit: 20, windowSeconds: 600 },
   flag: { limit: 10, windowSeconds: 600 }
 } as const;
+const validationNotice = `<aside class="validation-environment-notice" role="status" aria-label="Validation environment notice"><strong>Validation environment</strong><span>Test accounts and submissions will be deleted before launch.</span></aside>`;
+
+const decorateValidationHtml = async (response: Response) => {
+  const html = await response.text();
+  const decorated = html.replace(/<body([^>]*)>/i, `<body$1>${validationNotice}`);
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.set("x-robots-tag", "noindex, nofollow");
+  return new Response(decorated, { status: response.status, statusText: response.statusText, headers });
+};
 
 const success = (
   c: Context<AppBindings>,
@@ -473,6 +483,9 @@ export const createApi = (deps: ApiDependencies) => {
     if (url.protocol === "https:") {
       c.header("Strict-Transport-Security", "max-age=31536000");
     }
+    if (deps.config?.deploymentEnvironment === "validation") {
+      c.header("X-Robots-Tag", "noindex, nofollow");
+    }
   });
 
   app.use("/api/v1/*", async (c, next) => {
@@ -486,6 +499,7 @@ export const createApi = (deps: ApiDependencies) => {
     success(
       c,
       deps.config ?? {
+        deploymentEnvironment: null,
         turnstileSiteKey: null,
         hunterPublishableKey: null,
         hunterAccountPortalUrl: null,
@@ -1025,6 +1039,13 @@ export const createApi = (deps: ApiDependencies) => {
         status: 404,
         headers: { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" }
       });
+    }
+    if (
+      response.ok &&
+      contentType.startsWith("text/html") &&
+      deps.config?.deploymentEnvironment === "validation"
+    ) {
+      return decorateValidationHtml(response);
     }
     return response;
   });

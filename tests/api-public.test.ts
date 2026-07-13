@@ -58,6 +58,7 @@ test("exposes only browser-safe runtime configuration", async () => {
     rateLimits: new FakeRateLimits(),
     environment: new FakeEnvironment(),
     config: {
+      deploymentEnvironment: "validation",
       turnstileSiteKey: "0x-public",
       hunterPublishableKey: "pk_test_public",
       hunterAccountPortalUrl: "https://accounts.example.test",
@@ -71,6 +72,7 @@ test("exposes only browser-safe runtime configuration", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(body.data, {
+    deploymentEnvironment: "validation",
     turnstileSiteKey: "0x-public",
     hunterPublishableKey: "pk_test_public",
     hunterAccountPortalUrl: "https://accounts.example.test",
