@@ -16,7 +16,9 @@ import {
 
 test("sponsor operations rows normalize private fields and escape every rendered value", () => {
   const ledger = normalizeOpsSponsors({
-    data: [{
+    data: {
+      counts: { new: 61, contacted: 4, qualified: 3, accepted: 2, closed: 9 },
+      items: [{
       id: "sponsor-1",
       referenceCode: "SP-AB12CD34",
       contactName: "<script>alert(1)</script>",
@@ -30,11 +32,13 @@ test("sponsor operations rows normalize private fields and escape every rendered
       state: "new",
       createdAt: "2026-07-13T20:00:00.000Z",
       updatedAt: "2026-07-13T20:00:00.000Z"
-    }],
+      }]
+    },
     page: { nextCursor: "cursor-2" }
   });
   assert.equal(ledger.items.length, 1);
   assert.equal(ledger.nextCursor, "cursor-2");
+  assert.deepEqual(ledger.counts, { new: 61, contacted: 4, qualified: 3, accepted: 2, closed: 9 });
 
   const html = renderSponsorRows(ledger.items);
   assert.doesNotMatch(html, /<script>|<img/);
@@ -43,6 +47,54 @@ test("sponsor operations rows normalize private fields and escape every rendered
   assert.match(html, /SP-AB12CD34/);
   assert.match(html, /alex@example\.test/);
   assert.match(html, /data-sponsor-id="sponsor-1"/);
+});
+
+test("sponsor workflow totals fail closed when aggregate metadata is malformed", () => {
+  const ledger = normalizeOpsSponsors({
+    data: {
+      counts: { new: -1, contacted: "4", qualified: 3.5, accepted: null },
+      items: []
+    },
+    page: { nextCursor: null }
+  });
+
+  assert.deepEqual(ledger.counts, {
+    new: null,
+    contacted: null,
+    qualified: null,
+    accepted: null,
+    closed: null
+  });
+});
+
+test("visible sponsor metrics select workflow totals instead of current table rows", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const metricValues = opsModule.sponsorMetricValues;
+  assert.equal(typeof metricValues, "function");
+  if (typeof metricValues !== "function") return;
+
+  const ledger = normalizeOpsSponsors({
+    data: {
+      counts: { new: 80, contacted: 12, qualified: 7, accepted: 4, closed: 20 },
+      items: [{
+        id: "only-filtered-row",
+        referenceCode: "SP-FILTER01",
+        contactName: "Filtered Contact",
+        organization: "Filtered Partner",
+        email: "filtered@example.test",
+        phone: null,
+        supportType: "lead",
+        contributionRange: null,
+        desiredOutcome: "A filtered table result.",
+        acknowledgementVersion: "2026.1",
+        state: "qualified",
+        createdAt: "2026-07-13T20:00:00.000Z",
+        updatedAt: "2026-07-13T20:00:00.000Z"
+      }]
+    }
+  });
+
+  assert.deepEqual((metricValues as (value: unknown) => unknown)(ledger), [80, 12, 7, 4]);
 });
 
 test("board normalizer accepts opaque waypoint IDs ending in a zero-padded number", () => {

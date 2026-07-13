@@ -289,6 +289,31 @@ test("D1 sponsor listing parameterizes filters, escapes LIKE wildcards, and page
   ]);
 });
 
+test("D1 sponsor state totals use one parameter-free aggregate and zero-fill missing states", async () => {
+  const database = new ScriptedD1();
+  database.allResults.push([
+    { state: "new", count: 62 },
+    { state: "qualified", count: 3 },
+    { state: "closed", count: 1 }
+  ]);
+  const store = new D1DataStore(database as never);
+
+  const counts = await store.countSponsorInquiriesByState();
+
+  assert.deepEqual(counts, {
+    new: 62,
+    contacted: 0,
+    qualified: 3,
+    accepted: 0,
+    closed: 1
+  });
+  assert.equal(database.statements.length, 1);
+  const statement = database.statements[0];
+  assert.match(statement?.sql ?? "", /SELECT state, COUNT\(\*\) AS count[\s\S]*FROM sponsor_inquiries[\s\S]*GROUP BY state/i);
+  assert.doesNotMatch(statement?.sql ?? "", /WHERE|LIMIT|contact_name|organization|email/i);
+  assert.deepEqual(statement?.bindings, []);
+});
+
 test("D1 sponsor update batches the transition event and skips unknown or empty changes", async () => {
   const database = new ScriptedD1();
   database.firstResults.push(

@@ -101,12 +101,19 @@ test("only active staff can list and transition sponsor inquiries", async () => 
   );
   const listBody = await responseJson(list);
   assert.equal(list.status, 200);
-  assert.equal(listBody.data.length, 1);
-  assert.equal(listBody.data[0].email, "sponsor@example.test");
+  assert.equal(listBody.data.items.length, 1);
+  assert.equal(listBody.data.items[0].email, "sponsor@example.test");
+  assert.deepEqual(listBody.data.counts, {
+    new: 1,
+    contacted: 0,
+    qualified: 0,
+    accepted: 0,
+    closed: 0
+  });
   assert.deepEqual(listBody.page, { nextCursor: null });
 
   const changed = await app.request(
-    `https://www.timlostsomething.com/api/v1/ops/sponsors/${listBody.data[0].id}`,
+    `https://www.timlostsomething.com/api/v1/ops/sponsors/${listBody.data.items[0].id}`,
     {
       method: "PATCH",
       ...json(
@@ -118,6 +125,56 @@ test("only active staff can list and transition sponsor inquiries", async () => 
   assert.equal(changed.status, 200);
   assert.equal((await responseJson(changed)).data.state, "qualified");
   assert.equal(store.sponsorUpdateActor, "staff-1");
+});
+
+test("sponsor workflow totals ignore table filters, cursors, and the page limit", async () => {
+  const { app, store } = makeApp();
+  const created = [];
+  for (let index = 0; index < 55; index += 1) {
+    created.push((await store.createSponsorInquiry(
+      {
+        contactName: `Contact ${index}`,
+        organization: index < 3 ? `Needle Partner ${index}` : `Community Partner ${index}`,
+        email: `sponsor-${index}@example.test`,
+        phone: null,
+        supportType: index < 3 ? "lead" : "community",
+        contributionRange: null,
+        desiredOutcome: "Support a safe and welcoming local treasure hunt.",
+        acknowledgementVersion: privacyMediaDocument.version
+      },
+      `aggregate-key-${index}`
+    )).value);
+  }
+  for (const inquiry of created.slice(0, 3)) {
+    await store.updateSponsorInquiry(inquiry.id, { state: "qualified", note: null }, "staff-1");
+  }
+  await store.updateSponsorInquiry(created[3]!.id, { state: "contacted", note: null }, "staff-1");
+  await store.updateSponsorInquiry(created[4]!.id, { state: "accepted", note: null }, "staff-1");
+  await store.updateSponsorInquiry(created[5]!.id, { state: "closed", note: null }, "staff-1");
+
+  const headers = { authorization: "Bearer staff-token" };
+  const first = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/sponsors?state=qualified&supportType=lead&q=needle&limit=1",
+    { headers }
+  );
+  const firstBody = await responseJson(first);
+  assert.equal(firstBody.data.items.length, 1);
+  assert.ok(firstBody.page.nextCursor);
+  assert.deepEqual(firstBody.data.counts, {
+    new: 49,
+    contacted: 1,
+    qualified: 3,
+    accepted: 1,
+    closed: 1
+  });
+
+  const next = await app.request(
+    `https://www.timlostsomething.com/api/v1/ops/sponsors?state=qualified&supportType=lead&q=needle&limit=1&cursor=${encodeURIComponent(firstBody.page.nextCursor)}`,
+    { headers }
+  );
+  const nextBody = await responseJson(next);
+  assert.equal(nextBody.data.items.length, 1);
+  assert.deepEqual(nextBody.data.counts, firstBody.data.counts);
 });
 
 test("validates private sponsor list filters and sponsor transitions", async () => {

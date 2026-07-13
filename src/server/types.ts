@@ -51,6 +51,14 @@ export type SponsorContributionRange =
   | "prefer_to_discuss";
 export type SponsorInquiryState = "new" | "contacted" | "qualified" | "accepted" | "closed";
 
+export interface SponsorInquiryCounts {
+  new: number;
+  contacted: number;
+  qualified: number;
+  accepted: number;
+  closed: number;
+}
+
 export interface SponsorInquiryInput {
   contactName: string;
   organization: string;
@@ -100,6 +108,7 @@ export interface DataStore {
     supportType?: SponsorSupportType | null;
     query?: string | null;
   }): Promise<Page<SponsorInquiryRecord>>;
+  countSponsorInquiriesByState(): Promise<SponsorInquiryCounts>;
   updateSponsorInquiry(
     id: string,
     input: { state: SponsorInquiryState; note: string | null },

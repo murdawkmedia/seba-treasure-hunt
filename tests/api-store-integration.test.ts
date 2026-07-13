@@ -31,7 +31,8 @@ const sponsorInput = (
 const inquiryInsert = (
   db: D1Database,
   id: string,
-  createdAt = "2026-07-13T20:00:00.000Z"
+  createdAt = "2026-07-13T20:00:00.000Z",
+  state = "new"
 ) =>
   db
     .prepare(
@@ -39,7 +40,7 @@ const inquiryInsert = (
        (id, reference_code, idempotency_key, contact_name, organization, email, phone,
         support_type, contribution_range, desired_outcome, acknowledgement_version,
         acknowledged_at, state, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, 'lead', 'prefer_to_discuss', ?, '2026.1', ?, 'new', ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, NULL, 'lead', 'prefer_to_discuss', ?, '2026.1', ?, ?, ?, ?)`
     )
     .bind(
       id,
@@ -50,6 +51,7 @@ const inquiryInsert = (
       `${id}@example.test`,
       "Discuss a useful local activation.",
       createdAt,
+      state,
       createdAt,
       createdAt
     );
@@ -130,6 +132,24 @@ test("real D1 preserves sponsor inquiry atomicity, search, pagination, and histo
 
     assert.deepEqual(seen, ["page-5", "page-4", "page-3", "page-2", "page-1"]);
     assert.equal(new Set(seen).size, 5);
+  });
+
+  await t.test("the aggregate maps grouped workflow totals and zero-fills absent states", async () => {
+    await reset();
+    await db.batch([
+      inquiryInsert(db, "new00001"),
+      inquiryInsert(db, "new00002"),
+      inquiryInsert(db, "qual0001", undefined, "qualified"),
+      inquiryInsert(db, "close001", undefined, "closed")
+    ]);
+
+    assert.deepEqual(await store.countSponsorInquiriesByState(), {
+      new: 2,
+      contacted: 0,
+      qualified: 1,
+      accepted: 0,
+      closed: 1
+    });
   });
 
   await t.test("a real update persists its matching actor and state transition event", async () => {

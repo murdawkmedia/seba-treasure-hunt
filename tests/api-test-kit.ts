@@ -2,6 +2,7 @@ import type {
   CaseStatus,
   IdentityLifecycleEvent,
   PlayerAccessState,
+  SponsorInquiryCounts,
   SponsorInquiryInput,
   SponsorInquiryRecord,
   SponsorInquiryState,
@@ -245,6 +246,18 @@ export class FakeStore {
       items,
       nextCursor: hasMore && items.length > 0 ? sponsorCursor(items[items.length - 1]!) : null
     };
+  }
+
+  async countSponsorInquiriesByState(): Promise<SponsorInquiryCounts> {
+    const counts: SponsorInquiryCounts = {
+      new: 0,
+      contacted: 0,
+      qualified: 0,
+      accepted: 0,
+      closed: 0
+    };
+    for (const inquiry of this.sponsorInquiries.values()) counts[inquiry.state] += 1;
+    return counts;
   }
 
   async updateSponsorInquiry(

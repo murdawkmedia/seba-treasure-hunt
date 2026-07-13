@@ -1117,14 +1117,17 @@ export const createApi = (deps: ApiDependencies) => {
 
   app.get("/api/v1/ops/sponsors", async (c) => {
     await requireStaff(deps, c.req.raw);
-    const result = await deps.store.listSponsorInquiries({
-      limit: sponsorQueryLimit(c.req.query("limit")),
-      cursor: sponsorCursorQuery(c.req.query("cursor")),
-      state: optionalSponsorState(c.req.query("state")),
-      supportType: optionalSponsorSupportType(c.req.query("supportType")),
-      query: sponsorQuery(c.req.query("q"))
-    });
-    return success(c, result.items, 200, { nextCursor: result.nextCursor });
+    const [result, counts] = await Promise.all([
+      deps.store.listSponsorInquiries({
+        limit: sponsorQueryLimit(c.req.query("limit")),
+        cursor: sponsorCursorQuery(c.req.query("cursor")),
+        state: optionalSponsorState(c.req.query("state")),
+        supportType: optionalSponsorSupportType(c.req.query("supportType")),
+        query: sponsorQuery(c.req.query("q"))
+      }),
+      deps.store.countSponsorInquiriesByState()
+    ]);
+    return success(c, { counts, items: result.items }, 200, { nextCursor: result.nextCursor });
   });
   app.patch("/api/v1/ops/sponsors/:id", async (c) => {
     sameOrigin(c.req.raw);

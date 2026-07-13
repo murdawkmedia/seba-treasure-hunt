@@ -63,6 +63,7 @@ export interface OpsSponsorRecord {
 }
 
 export interface OpsSponsorLedger {
+  counts: Record<OpsSponsorState, number | null>;
   items: OpsSponsorRecord[];
   nextCursor: string | null;
 }
@@ -118,6 +119,7 @@ export interface OpsSubscriberLedger {
 
 const views: readonly OpsView[] = ["command", "updates", "reports", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit"];
 const sponsorStates: readonly OpsSponsorState[] = ["new", "contacted", "qualified", "accepted", "closed"];
+const visibleSponsorMetricStates = ["new", "contacted", "qualified", "accepted"] as const;
 const sponsorSupportTypes: readonly OpsSponsorSupportType[] = ["community", "lead", "prize_in_kind", "other"];
 
 let staffClerk: Clerk | null = null;
@@ -259,6 +261,7 @@ export function normalizeOpsSponsors(payload: unknown): OpsSponsorLedger {
   const outer = isRecord(payload) ? payload : {};
   const data = envelopeData(payload);
   const records = Array.isArray(data) ? data : isRecord(data) ? asArray(data.items) : [];
+  const countSource = isRecord(data) && isRecord(data.counts) ? data.counts : {};
   const page = isRecord(outer.page) ? outer.page : isRecord(data) && isRecord(data.page) ? data.page : {};
   const items = records.flatMap((value): OpsSponsorRecord[] => {
     if (!isRecord(value)) return [];
@@ -289,7 +292,19 @@ export function normalizeOpsSponsors(payload: unknown): OpsSponsorLedger {
       updatedAt: asString(value.updatedAt)
     }];
   });
-  return { items, nextCursor: asString(page.nextCursor) || null };
+  const parsedCounts = sponsorStates.map((state) => {
+    const count = countSource[state];
+    return typeof count === "number" && Number.isSafeInteger(count) && count >= 0 ? count : null;
+  });
+  const countsValid = parsedCounts.every((count): count is number => count !== null);
+  const counts = Object.fromEntries(
+    sponsorStates.map((state, index) => [state, countsValid ? parsedCounts[index]! : null])
+  ) as Record<OpsSponsorState, number | null>;
+  return { counts, items, nextCursor: asString(page.nextCursor) || null };
+}
+
+export function sponsorMetricValues(ledger: OpsSponsorLedger): Array<number | null> {
+  return visibleSponsorMetricStates.map((state) => ledger.counts[state]);
 }
 
 function normalizeModeration(payload: unknown): OpsModerationRecord[] {
@@ -729,15 +744,19 @@ async function loadSponsors(): Promise<void> {
     const ledger = normalizeOpsSponsors(payload);
     sponsorsLoaded = true;
     setTable("#sponsors-table", renderSponsorRows(ledger.items));
-    for (const state of sponsorStates.slice(0, 4)) {
-      setMetric(`#sponsor-${state}-count`, ledger.items.filter((item) => item.state === state).length);
-    }
+    sponsorMetricValues(ledger).forEach((count, index) => {
+      setMetric(`#sponsor-${visibleSponsorMetricStates[index]}-count`, count);
+    });
     const pageNote = ledger.nextCursor ? " More matching records are available; narrow the filters to review them." : "";
-    setSponsorsState(`${ledger.items.length} private sponsor ${ledger.items.length === 1 ? "inquiry" : "inquiries"} loaded.${pageNote}`);
+    const totalsAvailable = sponsorStates.every((state) => ledger.counts[state] !== null);
+    setSponsorsState(
+      `${ledger.items.length} private sponsor ${ledger.items.length === 1 ? "inquiry" : "inquiries"} loaded.${pageNote}${totalsAvailable ? "" : " Workflow totals are unavailable."}`,
+      totalsAvailable ? "normal" : "error"
+    );
   } catch (error) {
     if (version !== sponsorLoadVersion) return;
     setTable("#sponsors-table", `<tr><td colspan="7"><span class="ops-table-empty">The private sponsor ledger is unavailable from the source.</span></td></tr>`);
-    for (const state of sponsorStates.slice(0, 4)) setMetric(`#sponsor-${state}-count`, null);
+    for (const state of visibleSponsorMetricStates) setMetric(`#sponsor-${state}-count`, null);
     setSponsorsState(error instanceof Error ? error.message : "The sponsor ledger is unavailable.", "error");
   } finally {
     if (version === sponsorLoadVersion) panel?.removeAttribute("aria-busy");

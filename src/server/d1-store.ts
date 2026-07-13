@@ -7,6 +7,7 @@ import type {
   Page,
   PlayerAccessState,
   SponsorContributionRange,
+  SponsorInquiryCounts,
   SponsorInquiryInput,
   SponsorInquiryRecord,
   SponsorInquiryState,
@@ -67,6 +68,22 @@ const sponsorFromRow = (row: Row): SponsorInquiryRecord => ({
   createdAt: value(row.created_at),
   updatedAt: value(row.updated_at)
 });
+
+const emptySponsorInquiryCounts = (): SponsorInquiryCounts => ({
+  new: 0,
+  contacted: 0,
+  qualified: 0,
+  accepted: 0,
+  closed: 0
+});
+
+const sponsorInquiryStates = new Set<SponsorInquiryState>([
+  "new",
+  "contacted",
+  "qualified",
+  "accepted",
+  "closed"
+]);
 
 const sponsorReference = () =>
   `SP-${crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase()}`;
@@ -549,6 +566,25 @@ export class D1DataStore implements DataStore {
       items: selected.map(sponsorFromRow),
       nextCursor: hasMore && selected.length > 0 ? sponsorCursor(selected[selected.length - 1]!) : null
     };
+  }
+
+  async countSponsorInquiriesByState(): Promise<SponsorInquiryCounts> {
+    const result = await this.db
+      .prepare(
+        `SELECT state, COUNT(*) AS count
+         FROM sponsor_inquiries
+         GROUP BY state`
+      )
+      .all<Row>();
+    const counts = emptySponsorInquiryCounts();
+    for (const row of result.results) {
+      const state = value(row.state) as SponsorInquiryState;
+      const count = Number(row.count);
+      if (sponsorInquiryStates.has(state) && Number.isSafeInteger(count) && count >= 0) {
+        counts[state] = count;
+      }
+    }
+    return counts;
   }
 
   async updateSponsorInquiry(
