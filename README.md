@@ -26,7 +26,7 @@ The bare hostname permanently redirects to the canonical `www` hostname while pr
 | `/report` | Private find, tip and safety reporting; account optional |
 | `/clue-board` | Moderated public Field Notes, images, replies and abuse reporting |
 | `/rules` | Versioned current rules and safety guidance |
-| `/privacy` | Campaign privacy notice |
+| `/privacy` | Versioned Privacy Policy & Media Notice |
 | `/community-guidelines` | Public contribution and moderation rules |
 | `/ops` | Invitation-only staff case room |
 
@@ -35,14 +35,14 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 ## Architecture
 
 - Cloudflare Pages advanced-mode Worker serves the site and versioned API.
-- D1 stores case state, dated updates, rules, zones, waypoints, profiles, progress, reports, moderation and audit events.
+- D1 stores case state, dated updates, rules, zones, waypoints, player accounts, profiles, progress, communication permissions, append-only legal acceptances, reports, moderation and audit events. It never stores passwords or reset codes.
 - Private R2 stores report and community-media originals.
 - A Queue delivers uploaded media to a private Worker that validates and re-encodes approved raster formats through Cloudflare Images.
 - Only a D1-authorized, ready derivative can be read publicly; originals and find evidence have no public delivery path.
 - KV provides salted, hashed-identifier rate limits. Turnstile is the second write control.
-- Hunter and staff identity use separate Clerk applications. Staff authorization is repeated in D1.
+- Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
 
-The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication and an active/open safety check.
+The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication, completed legal requirements and an active/open safety check. While the approved participation waiver is pending, exact directions, progress writes and community participation stay locked.
 
 ## Privacy and campaign artwork
 
@@ -72,13 +72,15 @@ Never upload the working directory. `npm run build` creates an allowlisted `dist
 
 Do not promote a build until all of these are configured and tested in preview:
 
-1. public Clerk application and allowed identity methods;
+1. public Clerk application with verified email/password, password recovery and compromised-password protection;
 2. separate invitation-only staff Clerk application;
-3. privately seeded staff principals;
-4. hostname-restricted Turnstile widget and secret;
-5. private report upload and queue processing;
-6. hunter and staff sign-in, recovery and authorization;
-7. full public-output privacy scan.
+3. signed Clerk lifecycle webhook and deployment secret;
+4. D1 migration `0003_player_accounts_and_legal_acceptance.sql`;
+5. privately seeded staff principals;
+6. hostname-restricted Turnstile widget and secret;
+7. private report upload and queue processing;
+8. hunter and staff sign-in, recovery and authorization;
+9. full public-output privacy scan.
 
 ## Decisions in force
 
@@ -89,6 +91,7 @@ Do not promote a build until all of these are configured and tested in preview:
 - The current 12-waypoint route is authoritative.
 - Public media must be metadata-free; exact guidance is account-gated.
 - Public notes and images are premoderated. Private reports never auto-publish.
+- Privacy/media acceptance and the forthcoming participation waiver are separate versioned records. No waiver language is invented; participation remains locked until the approved document is supplied.
 - The real evidence photo remains the social preview.
 - No fabricated claims, countdowns or urgency.
 - The route MP4 must remain below Cloudflare Pages' 25 MiB per-file limit.

@@ -22,6 +22,7 @@ const makeApp = (store = new FakeStore()) => {
       turnstile: new FakeTurnstile(),
       uploads: new FakeUploads(),
       staffAccounts,
+      playerAccounts: staffAccounts,
       rateLimits
     }),
     store,
@@ -55,6 +56,10 @@ test("keeps exact waypoint directions behind hunter auth and fail-closed safety 
     email: "hunter@example.test",
     publicHandle: "Hunter A7F3"
   });
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  store.legalEvents.push({ subject: "hunter-1", documentType: "privacy_media" });
+  store.waiverStatus = "accepted";
+  store.participationUnlocked = true;
 
   const allowed = await app.request(
     "https://www.timlostsomething.com/api/v1/member/waypoints/1",
@@ -80,17 +85,18 @@ test("keeps exact waypoint directions behind hunter auth and fail-closed safety 
   assert.equal(restricted.status, 423);
 });
 
-test("updates a hunter profile and waypoint progress only after authentication and Turnstile", async () => {
+test("updates a hunter profile after legal acceptance and gates progress on the waiver", async () => {
   const { app, store, rateLimits } = makeApp();
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
   const profile = {
     fullName: "A Hunter",
-    phone: null,
     townArea: "Seba Beach",
-    ageBand: "18-24",
     interests: ["treasure-hunt"],
     discoverySource: "friend",
     adultAttested: true,
-    consents: { huntEmail: true, marketing: false, sms: false }
+    privacyMediaAccepted: true,
+    privacyMediaVersion: "2026.1",
+    consents: { huntEmail: true, marketing: false }
   };
 
   const response = await app.request(
@@ -102,10 +108,11 @@ test("updates a hunter profile and waypoint progress only after authentication a
   assert.equal(profileResponse.data.subject, "hunter-1");
   assert.deepEqual(profileResponse.data.consents, {
     huntEmail: true,
-    marketing: false,
-    sms: false
+    marketing: false
   });
   assert.equal(store.profiles.size, 1);
+  store.waiverStatus = "accepted";
+  store.participationUnlocked = true;
 
   const progress = await app.request(
     "https://www.timlostsomething.com/api/v1/progress/1",
@@ -118,8 +125,7 @@ test("updates a hunter profile and waypoint progress only after authentication a
   });
   assert.deepEqual((await responseJson(dashboard)).data.profile.consents, {
     huntEmail: true,
-    marketing: false,
-    sms: false
+    marketing: false
   });
   assert.deepEqual(rateLimits.seen.map((entry) => entry.scope), ["profile", "progress"]);
 });
@@ -131,6 +137,10 @@ test("pre-moderates field notes, constrains replies, and accepts private abuse f
     email: "hunter@example.test",
     publicHandle: "Hunter A7F3"
   });
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  store.legalEvents.push({ subject: "hunter-1", documentType: "privacy_media" });
+  store.waiverStatus = "accepted";
+  store.participationUnlocked = true;
 
   const note = await app.request(
     "https://www.timlostsomething.com/api/v1/board/notes",
@@ -306,17 +316,32 @@ test("exposes the consent-aware subscriber ledger only to active staff", async (
   assert.deepEqual(body.data.counts, {
     totalProfiles: 1,
     huntEmail: 1,
-    marketing: 0,
-    sms: 1
+    marketing: 0
   });
   assert.equal(body.data.items[0].verifiedEmail, "hunter@example.test");
   assert.deepEqual(body.data.items[0].consents, {
     huntEmail: true,
-    marketing: false,
-    sms: true
+    marketing: false
   });
   assert.deepEqual(body.page, { nextCursor: null });
 
   const publicAlias = await app.request("https://www.timlostsomething.com/api/v1/subscribers");
   assert.equal(publicAlias.status, 404);
+});
+
+test("lets active staff send player recovery instructions or revoke player sessions", async () => {
+  const { app, store, staffAccounts } = makeApp();
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  const headers = { authorization: "Bearer staff-token" };
+
+  for (const action of ["recovery", "revoke-sessions"]) {
+    const response = await app.request(
+      `https://www.timlostsomething.com/api/v1/ops/players/hunter-1/${action}`,
+      { method: "POST", headers }
+    );
+    assert.equal(response.status, 202);
+  }
+  assert.deepEqual(staffAccounts.actions.map((item) => item.action), ["recovery", "revoke-sessions"]);
+  assert.equal(staffAccounts.actions[0]?.target.verifiedEmail, "hunter@example.test");
+  assert.equal(store.audits.at(-1)?.action, "player.revoke-sessions.requested");
 });

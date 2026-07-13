@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { ApiError, StatusUnavailableError } from "./errors";
+import { privacyMediaDocument } from "./legal-documents";
 import type {
   ApiDependencies,
   CaseState,
@@ -58,7 +59,6 @@ const validReportStates = new Set([
   "rejected",
   "resolved"
 ]);
-const validAgeBands = new Set(["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]);
 const validImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const rateLimitRules = {
   report: { limit: 5, windowSeconds: 600 },
@@ -390,6 +390,34 @@ const requireHunterProfile = async (deps: ApiDependencies, principal: Principal)
   return profile;
 };
 
+const requireParticipationAccess = async (deps: ApiDependencies, principal: Principal) => {
+  const access = await deps.store.getPlayerAccess(principal.subject);
+  if (!access.profileComplete) {
+    throw new ApiError(409, "profile_required", "Complete your hunter profile to unlock member tools.");
+  }
+  if (access.accountState !== "active") {
+    throw new ApiError(403, "player_account_inactive", "Your player account is not active.");
+  }
+  if (access.privacyMediaRequired) {
+    throw new ApiError(
+      428,
+      "privacy_media_acceptance_required",
+      "Accept the current Privacy Policy & Media Notice to continue."
+    );
+  }
+  if (access.waiverStatus === "pending") {
+    throw new ApiError(
+      423,
+      "participation_waiver_pending",
+      "Exact directions and participation tools will unlock after the approved participation waiver is published and accepted."
+    );
+  }
+  if (!access.participationUnlocked) {
+    throw new ApiError(423, "participation_locked", "Participation tools are currently locked.");
+  }
+  return access;
+};
+
 const ensureFeature = async (
   deps: ApiDependencies,
   feature: "boardVisible" | "notesEnabled" | "repliesEnabled"
@@ -459,6 +487,18 @@ export const createApi = (deps: ApiDependencies) => {
       }
     )
   );
+
+  app.post("/api/v1/webhooks/clerk", async (c) => {
+    if (!deps.webhooks) {
+      throw new ApiError(503, "webhook_unavailable", "The identity webhook is not configured.");
+    }
+    const event = await deps.webhooks.verify(c.req.raw);
+    if (!event) {
+      throw new ApiError(400, "invalid_webhook_signature", "The identity webhook could not be verified.");
+    }
+    const result = await deps.store.applyIdentityEvent(event);
+    return success(c, { status: result.replayed ? "replayed" : "processed" }, result.replayed ? 200 : 202);
+  });
 
   app.get("/api/v1/status", async (c) => {
     try {
@@ -574,6 +614,20 @@ export const createApi = (deps: ApiDependencies) => {
     const hunter = await requireHunter(deps, c.req.raw);
     return success(c, await deps.store.getHunterDashboard(hunter.subject));
   });
+  app.post("/api/v1/me/bootstrap", async (c) => {
+    sameOrigin(c.req.raw);
+    const hunter = await requireHunter(deps, c.req.raw);
+    const account = await deps.store.getPlayerAccount(hunter.subject);
+    if (!account || account.accountState !== "active" || !account.verifiedEmail) {
+      throw new ApiError(
+        409,
+        "identity_sync_pending",
+        "Your verified email is still being synchronized. Try again in a moment."
+      );
+    }
+    const access = await deps.store.getPlayerAccess(hunter.subject);
+    return success(c, { ...account, ...access });
+  });
   app.get("/api/v1/me/profile", async (c) => {
     const hunter = await requireHunter(deps, c.req.raw);
     return success(c, await deps.store.getProfile(hunter.subject));
@@ -584,35 +638,53 @@ export const createApi = (deps: ApiDependencies) => {
     await applyRateLimit(deps, c.req.raw, "profile", hunter);
     const { body, files } = await requestBody(c.req.raw);
     if (files.length) throw new ApiError(415, "unsupported_media_type", "Profile images are not supported.");
-    await verifyHuman(deps, c.req.raw, body, "profile");
-    if (!hunter.email) {
+    const account = await deps.store.getPlayerAccount(hunter.subject);
+    const verifiedEmail = account?.accountState === "active" && typeof account.verifiedEmail === "string"
+      ? account.verifiedEmail
+      : null;
+    if (!verifiedEmail) {
       throw new ApiError(422, "verified_email_required", "A verified email is required to complete a profile.");
     }
     if (body.adultAttested !== true) {
       throw new ApiError(422, "adult_attestation_required", "An adult participant must accept the eligibility attestation.");
     }
-    const ageBand = optionalString(body, "ageBand", 20);
-    if (ageBand && !validAgeBands.has(ageBand)) {
-      throw new ApiError(422, "validation_failed", "Choose a valid age band.", { field: "ageBand" });
+    if (body.privacyMediaAccepted !== true) {
+      throw new ApiError(
+        422,
+        "privacy_media_acceptance_required",
+        "Accept the Privacy Policy & Media Notice to complete your profile."
+      );
+    }
+    if (body.privacyMediaVersion !== privacyMediaDocument.version) {
+      throw new ApiError(
+        409,
+        "privacy_media_version_outdated",
+        "The Privacy Policy & Media Notice changed. Review and accept the current version."
+      );
     }
     const interests = Array.isArray(body.interests)
       ? body.interests.filter((item): item is string => typeof item === "string").slice(0, 10)
       : [];
-    const consents = body.consents && typeof body.consents === "object" ? body.consents : {};
-    return success(
-      c,
-      await deps.store.upsertProfile(hunter.subject, {
-        verifiedEmail: hunter.email,
+    const submittedConsents = body.consents && typeof body.consents === "object"
+      ? (body.consents as Record<string, unknown>)
+      : {};
+    const profile = await deps.store.upsertProfile(hunter.subject, {
+        verifiedEmail,
         fullName: requiredString(body, "fullName", { max: 100, label: "Full name" }),
-        phone: optionalString(body, "phone", 40),
         townArea: optionalString(body, "townArea", 100),
-        ageBand,
         interests,
         discoverySource: optionalString(body, "discoverySource", 100),
-        consents,
-        policyVersion: "2026.1"
-      })
-    );
+        consents: {
+          huntEmail: submittedConsents.huntEmail === true,
+          marketing: submittedConsents.marketing === true
+        },
+        adultAttested: true,
+        privacyMediaAccepted: true,
+        privacyMediaVersion: privacyMediaDocument.version,
+        privacyMediaHash: privacyMediaDocument.hash,
+        policyVersion: privacyMediaDocument.version
+      });
+    return success(c, { ...profile, ...(await deps.store.getPlayerAccess(hunter.subject)) });
   });
 
   app.get("/api/v1/member/waypoints", async (c) => {
@@ -622,7 +694,7 @@ export const createApi = (deps: ApiDependencies) => {
   });
   app.get("/api/v1/member/waypoints/:id", async (c) => {
     const hunter = await requireHunter(deps, c.req.raw);
-    await requireHunterProfile(deps, hunter);
+    await requireParticipationAccess(deps, hunter);
     let status;
     try {
       status = await deps.store.getStatus();
@@ -641,10 +713,9 @@ export const createApi = (deps: ApiDependencies) => {
     sameOrigin(c.req.raw);
     const hunter = await requireHunter(deps, c.req.raw);
     await applyRateLimit(deps, c.req.raw, "progress", hunter);
-    await requireHunterProfile(deps, hunter);
+    await requireParticipationAccess(deps, hunter);
     await ensureOpenForWrites(deps);
     const { body } = await requestBody(c.req.raw);
-    await verifyHuman(deps, c.req.raw, body, "progress");
     const state = requiredString(body, "state", { max: 10 });
     if (!["saved", "visited", "searched"].includes(state)) {
       throw new ApiError(422, "validation_failed", "Progress state is invalid.", { field: "state" });
@@ -658,9 +729,7 @@ export const createApi = (deps: ApiDependencies) => {
     await applyRateLimit(deps, c.req.raw, "field_note", hunter);
     await ensureOpenForWrites(deps);
     await ensureFeature(deps, "notesEnabled");
-    if (!(await deps.store.getProfile(hunter.subject))) {
-      throw new ApiError(409, "profile_required", "Complete your hunter profile before posting.");
-    }
+    await requireParticipationAccess(deps, hunter);
     const { body, files } = await requestBody(c.req.raw);
     await verifyHuman(deps, c.req.raw, body, "field_note");
     await validateImages(files);
@@ -680,9 +749,7 @@ export const createApi = (deps: ApiDependencies) => {
     await applyRateLimit(deps, c.req.raw, "reply", hunter);
     await ensureOpenForWrites(deps);
     await ensureFeature(deps, "repliesEnabled");
-    if (!(await deps.store.getProfile(hunter.subject))) {
-      throw new ApiError(409, "profile_required", "Complete your hunter profile before replying.");
-    }
+    await requireParticipationAccess(deps, hunter);
     const { body, files } = await requestBody(c.req.raw);
     if (files.length) throw new ApiError(415, "unsupported_media_type", "Replies cannot include images.");
     await verifyHuman(deps, c.req.raw, body, "reply");
@@ -864,6 +931,16 @@ export const createApi = (deps: ApiDependencies) => {
       { nextCursor: result.nextCursor }
     );
   });
+  app.get("/api/v1/ops/players", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    const result = await deps.store.listPlayers({
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, { counts: result.counts, items: result.items }, 200, {
+      nextCursor: result.nextCursor
+    });
+  });
   app.get("/api/v1/ops/audit", async (c) => {
     await requireStaff(deps, c.req.raw);
     const result = await deps.store.listAudit({
@@ -871,6 +948,24 @@ export const createApi = (deps: ApiDependencies) => {
       cursor: c.req.query("cursor") ?? null
     });
     return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.post("/api/v1/ops/players/:id/:action", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const action = c.req.param("action");
+    if (!new Set(["recovery", "revoke-sessions"]).has(action)) {
+      throw new ApiError(404, "player_action_not_found", "Player account action not found.");
+    }
+    if (!deps.playerAccounts) {
+      throw new ApiError(503, "provider_action_unavailable", "Player account recovery is not configured.");
+    }
+    const target = await deps.store.getPlayerAccount(c.req.param("id"));
+    if (!target || target.accountState !== "active") {
+      throw new ApiError(404, "player_not_found", "Active player account not found.");
+    }
+    const result = await deps.playerAccounts.execute(action, target);
+    await deps.store.recordPlayerAction(action, c.req.param("id"), staff.subject);
+    return success(c, result, 202);
   });
   app.post("/api/v1/ops/staff/:id/:action", async (c) => {
     sameOrigin(c.req.raw);

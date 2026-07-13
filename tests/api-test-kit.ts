@@ -1,4 +1,4 @@
-import type { CaseStatus, StoredMedia } from "../src/server/types";
+import type { CaseStatus, IdentityLifecycleEvent, PlayerAccessState, StoredMedia } from "../src/server/types";
 
 export type Principal = {
   kind: "hunter" | "staff";
@@ -58,6 +58,11 @@ export class FakeStore {
   ];
   board: Array<Record<string, unknown>> = [];
   profiles = new Map<string, Record<string, unknown>>();
+  accounts = new Map<string, Record<string, unknown>>();
+  legalEvents: Array<Record<string, unknown>> = [];
+  identityEvents = new Set<string>();
+  waiverStatus: "pending" | "accepted" = "pending";
+  participationUnlocked = false;
   progress: Array<Record<string, unknown>> = [];
   reports: Array<Record<string, unknown>> = [];
   notes: Array<Record<string, unknown>> = [];
@@ -74,10 +79,8 @@ export class FakeStore {
       verifiedEmail: "hunter@example.test",
       fullName: "A Hunter",
       publicHandle: "Hunter A7F3",
-      phone: "+1 555 0100",
       townArea: "Seba Beach",
-      consents: { huntEmail: true, marketing: false, sms: true },
-      smsReachable: true,
+      consents: { huntEmail: true, marketing: false },
       createdAt: "2026-07-11T16:00:00.000Z",
       updatedAt: "2026-07-11T17:00:00.000Z"
     }
@@ -145,7 +148,46 @@ export class FakeStore {
     return this.profiles.get(subject) ?? null;
   }
 
+  async getPlayerAccount(subject: string) {
+    return this.accounts.get(subject) ?? null;
+  }
+
+  async upsertPlayerAccount(subject: string, verifiedEmail: string): Promise<Record<string, unknown>> {
+    const account = {
+      subject,
+      verifiedEmail,
+      accountState: "active",
+      createdAt: "2026-07-11T16:00:00.000Z",
+      updatedAt: "2026-07-11T17:00:00.000Z"
+    };
+    this.accounts.set(subject, account);
+    return account;
+  }
+
+  async getPlayerAccess(subject: string): Promise<PlayerAccessState> {
+    const privacyAccepted = this.legalEvents.some(
+      (event) => event.subject === subject && event.documentType === "privacy_media"
+    );
+    return {
+      accountState: this.accounts.has(subject) ? "active" : "missing",
+      profileComplete: this.profiles.has(subject),
+      privacyMediaRequired: !privacyAccepted,
+      privacyMediaVersion: privacyAccepted ? "2026.1" : null,
+      waiverStatus: this.waiverStatus,
+      waiverVersion: this.waiverStatus === "accepted" ? "test-waiver" : null,
+      participationUnlocked: this.participationUnlocked
+    };
+  }
+
   async upsertProfile(subject: string, input: Record<string, unknown>) {
+    if (input.privacyMediaAccepted === true) {
+      this.legalEvents.push({
+        subject,
+        documentType: "privacy_media",
+        version: input.privacyMediaVersion,
+        documentHash: input.privacyMediaHash
+      });
+    }
     const profile = { subject, ...input, updatedAt: "2026-07-11T17:00:00.000Z" };
     this.profiles.set(subject, profile);
     return profile;
@@ -283,8 +325,31 @@ export class FakeStore {
 
   async listSubscribers() {
     return {
-      counts: { totalProfiles: 1, huntEmail: 1, marketing: 0, sms: 1 },
+      counts: { totalProfiles: 1, huntEmail: 1, marketing: 0 },
       items: this.subscribers,
+      nextCursor: null
+    };
+  }
+
+  async applyIdentityEvent(event: IdentityLifecycleEvent) {
+    const id = String(event.id);
+    if (this.identityEvents.has(id)) return { replayed: true };
+    this.identityEvents.add(id);
+    const data = event.data as Record<string, unknown>;
+    if (event.type === "user.deleted") this.accounts.delete(String(data.subject));
+    else await this.upsertPlayerAccount(String(data.subject), String(data.verifiedEmail));
+    return { replayed: false };
+  }
+
+  async listPlayers() {
+    return {
+      counts: {
+        verifiedAccounts: this.accounts.size,
+        completedProfiles: this.profiles.size,
+        huntEmail: 1,
+        marketing: 0
+      },
+      items: [...this.accounts.values()],
       nextCursor: null
     };
   }
@@ -316,6 +381,12 @@ export class FakeStore {
   async recordStaffAction(action: string, target: string, actorSubject: string) {
     const result = { action, target, status: "queued" };
     this.audits.push({ ...result, action: `staff.${action}.requested`, actorSubject });
+    return result;
+  }
+
+  async recordPlayerAction(action: string, target: string, actorSubject: string) {
+    const result = { action, target, status: "queued" };
+    this.audits.push({ ...result, action: `player.${action}.requested`, actorSubject });
     return result;
   }
 }

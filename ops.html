@@ -91,7 +91,7 @@
           <button class="ops-nav-item" type="button" data-view="moderation"><span aria-hidden="true">04</span>Moderation Queue <em id="nav-moderation-count">--</em></button>
           <button class="ops-nav-item" type="button" data-view="zones"><span aria-hidden="true">05</span>Search Zones</button>
           <button class="ops-nav-item" type="button" data-view="rules"><span aria-hidden="true">06</span>Rules Ledger</button>
-          <button class="ops-nav-item" type="button" data-view="subscribers"><span aria-hidden="true">07</span>Subscribers</button>
+          <button class="ops-nav-item" type="button" data-view="subscribers"><span aria-hidden="true">07</span>Players</button>
           <button class="ops-nav-item" type="button" data-view="access"><span aria-hidden="true">08</span>Users &amp; Access</button>
           <button class="ops-nav-item" type="button" data-view="audit"><span aria-hidden="true">09</span>Audit Trail</button>
         </nav>
@@ -184,13 +184,13 @@
         </section>
 
         <section class="ops-view" data-view-panel="subscribers" aria-labelledby="subscribers-title" hidden>
-          <header class="ops-view__header"><div><p class="ops-kicker">Consent-aware contacts</p><h1 id="subscribers-title">Subscribers</h1></div><p>Separate hunt / marketing / SMS consent</p></header>
-          <div class="ops-metrics ops-metrics--three"><article><span>Hunter updates</span><strong id="subscriber-hunt">--</strong><small>Explicit consent</small></article><article><span>SebaHub marketing</span><strong id="subscriber-marketing">--</strong><small>Separate consent</small></article><article><span>SMS</span><strong id="subscriber-sms">--</strong><small>Phone + consent</small></article></div>
+          <header class="ops-view__header"><div><p class="ops-kicker">Private participation ledger</p><h1 id="subscribers-title">Players</h1></div><p>Account stage, legal versions and separate email permissions</p></header>
+          <div class="ops-metrics"><article><span>Verified accounts</span><strong id="subscriber-accounts">--</strong><small>Provider-verified email</small></article><article><span>Profiles complete</span><strong id="subscriber-profiles">--</strong><small>Onboarding complete</small></article><article><span>Hunter updates</span><strong id="subscriber-hunt">--</strong><small>Explicit consent</small></article><article><span>SebaHub marketing</span><strong id="subscriber-marketing">--</strong><small>Separate consent</small></article></div>
           <section class="ops-panel">
             <header class="ops-panel__header"><div><p class="ops-kicker">Authorized private data</p><h2>Subscriber ledger</h2></div><div class="ops-row-actions"><button class="ops-button ops-button--quiet" id="subscriber-refresh" type="button">Refresh</button><button class="ops-button ops-button--quiet" id="subscriber-export" type="button" disabled>Export loaded CSV</button></div></header>
             <p class="ops-ledger-state" id="subscribers-state" role="status" aria-live="polite">Source not loaded. Counts and export remain unavailable until this private ledger is opened.</p>
-            <div class="ops-table-wrap"><table><thead><tr><th>Verified email</th><th>Hunter</th><th>Phone</th><th>Town / area</th><th>Hunt email</th><th>Marketing</th><th>SMS</th><th>Joined</th></tr></thead><tbody id="subscribers-table"><tr><td colspan="8"><span class="ops-table-empty">Open this ledger to load authorized subscriber records.</span></td></tr></tbody></table></div>
-            <div class="ops-ledger-actions"><button class="ops-button ops-button--quiet" id="subscriber-load-more" type="button" hidden>Load more subscribers</button><span id="subscriber-loaded-count">No subscriber records loaded</span></div>
+            <div class="ops-table-wrap"><table><thead><tr><th>Verified email</th><th>Hunter</th><th>Town / area</th><th>Funnel stage</th><th>Privacy/media</th><th>Waiver</th><th>Hunt email</th><th>Marketing</th><th>Account actions</th></tr></thead><tbody id="subscribers-table"><tr><td colspan="9"><span class="ops-table-empty">Open this ledger to load authorized player records.</span></td></tr></tbody></table></div>
+            <div class="ops-ledger-actions"><button class="ops-button ops-button--quiet" id="subscriber-load-more" type="button" hidden>Load more players</button><span id="subscriber-loaded-count">No player records loaded</span></div>
           </section>
         </section>
 

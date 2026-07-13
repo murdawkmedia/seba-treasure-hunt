@@ -48,20 +48,17 @@ class ScriptedD1 {
     created_at: "2026-07-11T15:00:00.000Z",
     updated_at: "2026-07-11T17:00:00.000Z",
     hunt_email_consent: 1,
-    marketing_consent: 0,
-    sms_consent: 0
+    marketing_consent: 0
   };
   counts: Row = {
     total_profiles: 2,
     hunt_email_count: 2,
-    marketing_count: 1,
-    sms_count: 1
+    marketing_count: 1
   };
   subscribers: Row[] = [
     {
       ...this.profile,
-      phone: "+1 555 0100",
-      sms_consent: 1
+      phone: null
     }
   ];
 
@@ -80,8 +77,7 @@ test("D1 profile projection returns the latest consent booleans", async () => {
 
   assert.deepEqual(profile?.consents, {
     huntEmail: true,
-    marketing: false,
-    sms: false
+    marketing: false
   });
   assert.match(database.statements[0]?.sql ?? "", /consent_type = 'hunt_email'/);
   assert.match(database.statements[0]?.sql ?? "", /ORDER BY occurred_at DESC, id DESC/);
@@ -96,15 +92,12 @@ test("D1 subscriber ledger maps current consent and contact projections", async 
   assert.deepEqual(ledger.counts, {
     totalProfiles: 2,
     huntEmail: 2,
-    marketing: 1,
-    sms: 1
+    marketing: 1
   });
   assert.equal(ledger.items[0]?.verifiedEmail, "hunter@example.test");
-  assert.equal(ledger.items[0]?.smsReachable, true);
   assert.deepEqual(ledger.items[0]?.consents, {
     huntEmail: true,
-    marketing: false,
-    sms: true
+    marketing: false
   });
   assert.match(database.statements.find((entry) => entry.sql.includes("ORDER BY p.updated_at DESC"))?.sql ?? "", /ROW_NUMBER\(\) OVER/);
 });

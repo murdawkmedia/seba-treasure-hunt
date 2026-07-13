@@ -87,9 +87,9 @@ test("start and dashboard explain the member tool without pretending historical 
   assert.match(dashboard, /id="profile-full-name"/);
   assert.match(dashboard, /name="huntEmail"/);
   assert.match(dashboard, /name="marketing"/);
-  assert.match(dashboard, /name="sms"/);
-  assert.match(dashboard, /data-profile-turnstile/);
-  assert.match(dashboard, /challenges\.cloudflare\.com\/turnstile/);
+  assert.match(dashboard, /name="privacyMediaAccepted"/);
+  assert.match(dashboard, /name="participationWaiver"[^>]*disabled/);
+  assert.doesNotMatch(dashboard, /name="sms"|data-profile-turnstile/);
   assert.doesNotMatch(dashboard, /53\.\d+|-114\.\d+/);
 });
 
@@ -100,7 +100,8 @@ test("dashboard bootstraps managed hunter identity from runtime-safe public conf
   assert.match(client, /getToken/);
   assert.match(client, /\/api\/v1\/config/);
   assert.match(client, /\/api\/v1\/me\/profile/);
-  assert.match(client, /action:\s*"profile"/);
+  assert.match(client, /privacyMediaVersion:\s*"2026\.1"/);
+  assert.match(client, /reset_password_email_code/);
   assert.doesNotMatch(client, /pk_(?:test|live)_/);
 });
 
@@ -145,9 +146,10 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
 
 test("public hunter UI contains no staff allowlist or deferred campaign claims", () => {
   const html = Object.keys(pages).map(read).join("\n");
+  const sebaHubEmails = [...html.matchAll(/[\w.+-]+@sebahub\.com/gi)].map((match) => match[0].toLowerCase());
+  assert.ok(sebaHubEmails.every((email) => email === "info@sebahub.com"));
   for (const unsafe of [
-    /@sebahub\.com/i,
-    /@businessasaforceforgood\.ca/i,
+    /[\w.+-]+@businessasaforceforgood\.ca/i,
     /official radio partner/i,
     /CFCW/i,
     /golf ball/i,

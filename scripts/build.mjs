@@ -64,6 +64,9 @@ await build({
   entryPoints: [path.join(root, "src", "worker.ts")],
   outfile: path.join(dist, "_worker.js"),
   platform: "neutral",
+  // Clerk's standards-based webhook verifier depends on a CommonJS package that
+  // exposes only `main`; neutral builds do not consult it unless requested.
+  mainFields: ["module", "main"],
   conditions: ["worker", "browser"]
 });
 

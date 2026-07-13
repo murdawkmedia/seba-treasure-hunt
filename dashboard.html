@@ -63,10 +63,38 @@
         <h2 id="dashboard-access-title">Sign in to use Hunter Dashboard</h2>
         <p>Your public route remains available without an account. Sign-in unlocks approved exact map links, progress tracking, Field Notes, and your private report history.</p>
         <p><strong>Exact directions stay locked</strong> whenever live status is unavailable, the hunt is paused or found, or an area is not approved as open.</p>
-        <div class="action-row">
-          <a class="hunter-button" href="/dashboard" data-dashboard-sign-in aria-disabled="true" tabindex="-1">Sign in</a>
-          <a class="hunter-button hunter-button--quiet" href="/route">Continue with the public route</a>
-        </div>
+        <div class="system-message" data-auth-message role="status" aria-live="polite">Preparing secure account access&hellip;</div>
+        <form id="hunter-sign-in-form" class="auth-form" novalidate>
+          <div class="form-grid">
+            <div class="form-field"><label for="hunter-sign-in-email">Email</label><input id="hunter-sign-in-email" name="email" type="email" autocomplete="email" required /></div>
+            <div class="form-field"><label for="hunter-sign-in-password">Password</label><input id="hunter-sign-in-password" name="password" type="password" autocomplete="current-password" minlength="12" required /></div>
+          </div>
+          <div class="action-row"><button class="hunter-button" type="submit">Sign in</button><button class="hunter-button hunter-button--quiet" type="button" data-show-auth="hunter-sign-up-form">Create account</button><button class="hunter-button hunter-button--quiet" type="button" data-show-auth="hunter-recovery-form">Forgot password?</button></div>
+        </form>
+        <form id="hunter-sign-up-form" class="auth-form" novalidate hidden>
+          <div class="form-grid">
+            <div class="form-field"><label for="hunter-sign-up-email">Email</label><input id="hunter-sign-up-email" name="email" type="email" autocomplete="email" required /></div>
+            <div class="form-field"><label for="hunter-sign-up-password">Create password</label><input id="hunter-sign-up-password" name="password" type="password" autocomplete="new-password" minlength="12" required /><span class="field-hint">Use at least 12 characters. Passwords and recovery codes are managed by our identity provider, not this website.</span></div>
+          </div>
+          <div class="action-row"><button class="hunter-button" type="submit">Create account</button><button class="hunter-button hunter-button--quiet" type="button" data-show-auth="hunter-sign-in-form">Back to sign in</button></div>
+        </form>
+        <form id="hunter-verify-form" class="auth-form" novalidate hidden>
+          <div class="form-field"><label for="hunter-verification-code">Email verification code</label><input id="hunter-verification-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required /></div>
+          <div class="action-row"><button class="hunter-button" type="submit">Verify email</button></div>
+        </form>
+        <form id="hunter-recovery-form" class="auth-form" novalidate hidden>
+          <div class="form-field"><label for="hunter-recovery-email">Account email</label><input id="hunter-recovery-email" name="email" type="email" autocomplete="email" required /></div>
+          <div class="action-row"><button class="hunter-button" type="submit">Email recovery code</button><button class="hunter-button hunter-button--quiet" type="button" data-show-auth="hunter-sign-in-form">Back to sign in</button></div>
+        </form>
+        <form id="hunter-reset-form" class="auth-form" novalidate hidden>
+          <div class="form-grid">
+            <div class="form-field"><label for="hunter-reset-code">Recovery code</label><input id="hunter-reset-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required /></div>
+            <div class="form-field"><label for="hunter-reset-password">New password</label><input id="hunter-reset-password" name="newPassword" type="password" autocomplete="new-password" minlength="12" required /></div>
+            <div class="form-field"><label for="hunter-reset-confirm">Confirm new password</label><input id="hunter-reset-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></div>
+          </div>
+          <div class="action-row"><button class="hunter-button" type="submit">Reset password</button></div>
+        </form>
+        <p><a href="/route">Continue with the public route</a></p>
       </section>
 
       <section class="dashboard-grid" data-dashboard-content hidden aria-label="Your Hunter Dashboard" style="margin-top: 22px">
@@ -124,28 +152,8 @@
                 </div>
 
                 <div class="form-field">
-                  <label for="profile-phone">Phone (optional)</label>
-                  <input id="profile-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" aria-describedby="profile-phone-hint profile-phone-error" />
-                  <span class="field-hint" id="profile-phone-hint">Required only if you separately choose SMS updates.</span>
-                  <span class="field-error" id="profile-phone-error" data-profile-error-for="phone"></span>
-                </div>
-
-                <div class="form-field">
                   <label for="profile-town-area">Town or area (optional)</label>
                   <input id="profile-town-area" name="townArea" type="text" autocomplete="address-level2" maxlength="100" />
-                </div>
-
-                <div class="form-field">
-                  <label for="profile-age-band">Age band (optional)</label>
-                  <select id="profile-age-band" name="ageBand">
-                    <option value="">Prefer not to say</option>
-                    <option value="18-24">18–24</option>
-                    <option value="25-34">25–34</option>
-                    <option value="35-44">35–44</option>
-                    <option value="45-54">45–54</option>
-                    <option value="55-64">55–64</option>
-                    <option value="65+">65+</option>
-                  </select>
                 </div>
 
                 <fieldset class="form-field form-field--full check-group">
@@ -165,7 +173,6 @@
                   <legend>Contact choices</legend>
                   <label class="check-row"><input name="huntEmail" type="checkbox" /> Email me official hunt updates.</label>
                   <label class="check-row"><input name="marketing" type="checkbox" /> Email me other SebaHub news and offers.</label>
-                  <label class="check-row"><input name="sms" type="checkbox" /> Send me SMS hunt updates at the phone number above.</label>
                   <span class="field-hint">These choices are separate. You can update them here later.</span>
                 </fieldset>
 
@@ -178,18 +185,38 @@
                 </div>
 
                 <div class="form-field form-field--full">
-                  <label>Prove you're human <span class="required-mark" aria-hidden="true">*</span></label>
-                  <div class="turnstile-shell" data-profile-turnstile aria-describedby="profile-turnstile-error">
-                    <span data-profile-turnstile-state>Preparing the human check…</span>
-                  </div>
-                  <span class="field-error" id="profile-turnstile-error" data-profile-error-for="turnstileToken"></span>
+                  <label class="check-row" for="profile-privacy-media">
+                    <input id="profile-privacy-media" name="privacyMediaAccepted" type="checkbox" required aria-describedby="profile-privacy-media-error" />
+                    I have read and agree to the <a href="/privacy#media-notice" target="_blank" rel="noopener">Privacy Policy &amp; Media Notice</a>, including the collection and use of my account information and the described use of media I submit or participate in.
+                  </label>
+                  <span class="field-error" id="profile-privacy-media-error" data-profile-error-for="privacyMediaAccepted"></span>
+                </div>
+
+                <div class="form-field form-field--full">
+                  <label class="check-row"><input name="participationWaiver" type="checkbox" disabled /> Participation waiver &mdash; coming soon.</label>
+                  <span class="field-hint">You may create an account now. Exact directions and participation-only tools remain locked until the approved waiver is published and accepted separately.</span>
                 </div>
               </div>
 
               <div class="action-row">
-                <button class="hunter-button" type="submit" data-profile-submit disabled>Save private profile</button>
+                <button class="hunter-button" type="submit" data-profile-submit>Save private profile</button>
               </div>
               <p class="field-hint">See the <a href="/privacy">privacy notice</a>. Your contact details and consent ledger are visible only to approved operators.</p>
+            </form>
+          </section>
+
+          <section class="field-panel field-panel--full" aria-labelledby="password-title" style="margin-top: 20px">
+            <p class="field-label">Account security</p>
+            <h2 id="password-title">Change password</h2>
+            <p>Your identity provider stores and checks your password. Campaign operators cannot view or choose it.</p>
+            <form id="hunter-change-password-form" novalidate>
+              <div class="form-grid">
+                <div class="form-field"><label for="hunter-current-password">Current password</label><input id="hunter-current-password" name="currentPassword" type="password" autocomplete="current-password" minlength="12" required /></div>
+                <div class="form-field"><label for="hunter-new-password">New password</label><input id="hunter-new-password" name="newPassword" type="password" autocomplete="new-password" minlength="12" required /></div>
+                <div class="form-field"><label for="hunter-confirm-password">Confirm new password</label><input id="hunter-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></div>
+              </div>
+              <div class="action-row"><button class="hunter-button" type="submit">Change password and revoke other sessions</button><button class="hunter-button hunter-button--quiet" type="button" data-hunter-sign-out>Sign out</button></div>
+              <p class="field-hint" data-password-result role="status" aria-live="polite"></p>
             </form>
           </section>
         </div>
@@ -209,6 +236,5 @@
   </footer>
   <script type="module" src="/assets/app/status.js"></script>
   <script type="module" src="/assets/app/dashboard.js"></script>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </body>
 </html>

@@ -19,6 +19,22 @@ export interface Principal {
   email: string | null;
 }
 
+export interface PlayerAccessState {
+  accountState: "missing" | "active" | "deleted";
+  profileComplete: boolean;
+  privacyMediaRequired: boolean;
+  privacyMediaVersion: string | null;
+  waiverStatus: "pending" | "required" | "accepted";
+  waiverVersion: string | null;
+  participationUnlocked: boolean;
+}
+
+export interface IdentityLifecycleEvent {
+  id: string;
+  type: "user.created" | "user.updated" | "user.deleted";
+  data: { subject: string; verifiedEmail: string | null };
+}
+
 export interface Page<T = Record<string, unknown>> {
   items: T[];
   nextCursor: string | null;
@@ -43,6 +59,10 @@ export interface DataStore {
   getReportByIdempotencyKey(idempotencyKey: string): Promise<Record<string, unknown> | null>;
   createReport(input: Record<string, unknown>, idempotencyKey: string): Promise<{ value: Record<string, unknown>; replayed: boolean }>;
   getProfile(subject: string): Promise<Record<string, unknown> | null>;
+  getPlayerAccount(subject: string): Promise<Record<string, unknown> | null>;
+  upsertPlayerAccount(subject: string, verifiedEmail: string): Promise<Record<string, unknown>>;
+  getPlayerAccess(subject: string): Promise<PlayerAccessState>;
+  applyIdentityEvent(event: IdentityLifecycleEvent): Promise<{ replayed: boolean }>;
   upsertProfile(subject: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getMemberWaypoint(id: number): Promise<Record<string, unknown> | null>;
   upsertProgress(subject: string, waypointId: number, state: string): Promise<Record<string, unknown>>;
@@ -60,13 +80,19 @@ export interface DataStore {
   moderateNote(id: string, decision: string, reason: string | null, actorSubject: string): Promise<Record<string, unknown> | null>;
   listStaff(): Promise<Record<string, unknown>[]>;
   listSubscribers(options?: { limit?: number; cursor?: string | null }): Promise<{
-    counts: { totalProfiles: number; huntEmail: number; marketing: number; sms: number };
+    counts: { totalProfiles: number; huntEmail: number; marketing: number };
+    items: Record<string, unknown>[];
+    nextCursor: string | null;
+  }>;
+  listPlayers(options?: { limit?: number; cursor?: string | null }): Promise<{
+    counts: { verifiedAccounts: number; completedProfiles: number; huntEmail: number; marketing: number };
     items: Record<string, unknown>[];
     nextCursor: string | null;
   }>;
   listAudit(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   getStaffPrincipal(id: string): Promise<Record<string, unknown> | null>;
   recordStaffAction(action: string, target: string, actorSubject: string): Promise<Record<string, unknown>>;
+  recordPlayerAction(action: string, target: string, actorSubject: string): Promise<Record<string, unknown>>;
 }
 
 export interface IdentityVerifier {
@@ -76,6 +102,10 @@ export interface IdentityVerifier {
 
 export interface HumanVerifier {
   verify(token: string | null, action: string, request: Request): Promise<boolean>;
+}
+
+export interface WebhookVerifier {
+  verify(request: Request): Promise<IdentityLifecycleEvent | null>;
 }
 
 export interface UploadStorage {
@@ -123,7 +153,9 @@ export interface ApiDependencies {
   uploads: UploadStorage;
   config?: PublicRuntimeConfig;
   staffAccounts?: StaffAccountManager;
+  playerAccounts?: StaffAccountManager;
   rateLimits?: RateLimiter;
+  webhooks?: WebhookVerifier;
 }
 
 export interface PagesEnv {
@@ -139,7 +171,9 @@ export interface PagesEnv {
   HUNTER_AUTH_ISSUER?: string;
   HUNTER_AUTH_JWKS_URL?: string;
   HUNTER_CLERK_PUBLISHABLE_KEY?: string;
+  HUNTER_CLERK_SECRET_KEY?: string;
   HUNTER_ACCOUNT_PORTAL_URL?: string;
+  CLERK_WEBHOOK_SIGNING_SECRET?: string;
   STAFF_CLERK_PUBLISHABLE_KEY?: string;
   STAFF_CLERK_SECRET_KEY?: string;
   STAFF_ACCOUNT_PORTAL_URL?: string;

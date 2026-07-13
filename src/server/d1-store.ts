@@ -1,5 +1,14 @@
 import { ApiError, ConflictError, StatusUnavailableError } from "./errors";
-import type { CaseStatus, DataStore, Page, StoredMedia, ZoneState } from "./types";
+import { privacyMediaDocument } from "./legal-documents";
+import type {
+  CaseStatus,
+  DataStore,
+  IdentityLifecycleEvent,
+  Page,
+  PlayerAccessState,
+  StoredMedia,
+  ZoneState
+} from "./types";
 
 type Row = Record<string, unknown>;
 
@@ -62,8 +71,7 @@ export const featureSwitches = (rows: Row[]) => {
 
 const consentProjection = (row: Row) => ({
   huntEmail: row.hunt_email_consent === 1,
-  marketing: row.marketing_consent === 1,
-  sms: row.sms_consent === 1
+  marketing: row.marketing_consent === 1
 });
 
 const subscriberCursor = (row: Row) =>
@@ -363,6 +371,143 @@ export class D1DataStore implements DataStore {
     return { value: created!, replayed: false };
   }
 
+  async getPlayerAccount(subject: string): Promise<Record<string, unknown> | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT subject, verified_email, account_state, created_at, updated_at,
+                last_seen_at, profile_completed_at, deleted_at
+         FROM player_accounts WHERE subject = ?`
+      )
+      .bind(subject)
+      .first<Row>();
+    return row ? {
+      subject: row?.subject,
+      verifiedEmail: row?.verified_email,
+      accountState: row?.account_state,
+      createdAt: row?.created_at,
+      updatedAt: row?.updated_at,
+      lastSeenAt: row?.last_seen_at,
+      profileCompletedAt: row?.profile_completed_at,
+      deletedAt: row?.deleted_at
+    } : null;
+  }
+
+  async upsertPlayerAccount(subject: string, verifiedEmail: string): Promise<Record<string, unknown>> {
+    const timestamp = now();
+    await this.db
+      .prepare(
+        `INSERT INTO player_accounts
+         (subject, verified_email, account_state, created_at, updated_at, last_seen_at)
+         VALUES (?, ?, 'active', ?, ?, ?)
+         ON CONFLICT(subject) DO UPDATE SET
+           verified_email = excluded.verified_email, account_state = 'active',
+           updated_at = excluded.updated_at, last_seen_at = excluded.last_seen_at,
+           deleted_at = NULL`
+      )
+      .bind(subject, verifiedEmail.trim().toLowerCase(), timestamp, timestamp, timestamp)
+      .run();
+    return (await this.getPlayerAccount(subject))!;
+  }
+
+  async getPlayerAccess(subject: string): Promise<PlayerAccessState> {
+    const row = await this.db
+      .prepare(
+        `SELECT a.account_state, p.subject AS profile_subject,
+          (SELECT action FROM legal_acceptance_events l
+           WHERE l.hunter_subject = a.subject AND l.document_type = 'privacy_media'
+             AND l.document_version = ? AND l.document_hash = ?
+           ORDER BY l.accepted_at DESC, l.id DESC LIMIT 1) AS privacy_action,
+          (SELECT document_version FROM legal_acceptance_events l
+           WHERE l.hunter_subject = a.subject AND l.document_type = 'privacy_media'
+             AND l.action = 'accepted'
+           ORDER BY l.accepted_at DESC, l.id DESC LIMIT 1) AS privacy_version
+         FROM player_accounts a LEFT JOIN hunter_profiles p ON p.subject = a.subject
+         WHERE a.subject = ?`
+      )
+      .bind(privacyMediaDocument.version, privacyMediaDocument.hash, subject)
+      .first<Row>();
+    if (!row) {
+      return {
+        accountState: "missing",
+        profileComplete: false,
+        privacyMediaRequired: true,
+        privacyMediaVersion: null,
+        waiverStatus: "pending",
+        waiverVersion: null,
+        participationUnlocked: false
+      };
+    }
+    const privacyAccepted = row.privacy_action === "accepted";
+    return {
+      accountState: row.account_state as PlayerAccessState["accountState"],
+      profileComplete: Boolean(row.profile_subject),
+      privacyMediaRequired: !privacyAccepted,
+      privacyMediaVersion: privacyAccepted ? value(row.privacy_version) : null,
+      waiverStatus: "pending",
+      waiverVersion: null,
+      participationUnlocked: false
+    };
+  }
+
+  async applyIdentityEvent(event: IdentityLifecycleEvent): Promise<{ replayed: boolean }> {
+    const existing = await this.db
+      .prepare("SELECT event_id FROM webhook_events WHERE provider = 'clerk' AND event_id = ?")
+      .bind(event.id)
+      .first<Row>();
+    if (existing) return { replayed: true };
+
+    const timestamp = now();
+    const statements = [
+      this.db
+        .prepare(
+          `INSERT INTO webhook_events (provider, event_id, received_at, processed_at)
+           VALUES ('clerk', ?, ?, ?)`
+        )
+        .bind(event.id, timestamp, timestamp)
+    ];
+    if (event.type === "user.deleted") {
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE player_accounts SET verified_email = NULL, account_state = 'deleted',
+              updated_at = ?, last_seen_at = ?, deleted_at = ? WHERE subject = ?`
+          )
+          .bind(timestamp, timestamp, timestamp, event.data.subject),
+        this.db
+          .prepare(
+            `UPDATE hunter_profiles SET verified_email = '', full_name = 'Deleted player',
+              phone = NULL, town_area = NULL, age_band = NULL, interests_json = '[]',
+              discovery_source = NULL, updated_at = ? WHERE subject = ?`
+          )
+          .bind(timestamp, event.data.subject),
+        this.db
+          .prepare("UPDATE private_reports SET hunter_subject = NULL WHERE hunter_subject = ?")
+          .bind(event.data.subject)
+      );
+    } else if (event.data.verifiedEmail) {
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO player_accounts
+             (subject, verified_email, account_state, created_at, updated_at, last_seen_at)
+             VALUES (?, ?, 'active', ?, ?, ?)
+             ON CONFLICT(subject) DO UPDATE SET verified_email = excluded.verified_email,
+               account_state = 'active', updated_at = excluded.updated_at,
+               last_seen_at = excluded.last_seen_at, deleted_at = NULL`
+          )
+          .bind(
+            event.data.subject,
+            event.data.verifiedEmail.trim().toLowerCase(),
+            timestamp,
+            timestamp,
+            timestamp
+          )
+      );
+    }
+    await this.db.batch(statements);
+    return { replayed: false };
+  }
+
   async getProfile(subject: string): Promise<Record<string, unknown> | null> {
     const row = await this.db
       .prepare(
@@ -372,10 +517,7 @@ export class D1DataStore implements DataStore {
              ORDER BY occurred_at DESC, id DESC LIMIT 1), 0) AS hunt_email_consent,
            COALESCE((SELECT granted FROM consent_events c
              WHERE c.hunter_subject = p.subject AND c.consent_type = 'marketing'
-             ORDER BY occurred_at DESC, id DESC LIMIT 1), 0) AS marketing_consent,
-           COALESCE((SELECT granted FROM consent_events c
-             WHERE c.hunter_subject = p.subject AND c.consent_type = 'sms'
-             ORDER BY occurred_at DESC, id DESC LIMIT 1), 0) AS sms_consent
+             ORDER BY occurred_at DESC, id DESC LIMIT 1), 0) AS marketing_consent
          FROM hunter_profiles p WHERE p.subject = ?`
       )
       .bind(subject)
@@ -384,14 +526,15 @@ export class D1DataStore implements DataStore {
   }
 
   async upsertProfile(subject: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+    await this.upsertPlayerAccount(subject, value(input.verifiedEmail));
     const existing = await this.db
       .prepare("SELECT public_handle, created_at FROM hunter_profiles WHERE subject = ?")
       .bind(subject)
       .first<Row>();
     const timestamp = now();
     const publicHandle = existing?.public_handle ?? `Hunter ${id().slice(0, 4).toUpperCase()}`;
-    await this.db
-      .prepare(
+    const statements = [
+      this.db.prepare(
         `INSERT INTO hunter_profiles
          (subject, verified_email, full_name, public_handle, phone, town_area, age_band,
           interests_json, discovery_source, adult_attested_at, created_at, updated_at)
@@ -407,24 +550,23 @@ export class D1DataStore implements DataStore {
         input.verifiedEmail,
         input.fullName,
         publicHandle,
-        input.phone ?? null,
+        null,
         input.townArea ?? null,
-        input.ageBand ?? null,
+        null,
         json(input.interests ?? []),
         input.discoverySource ?? null,
         timestamp,
         existing?.created_at ?? timestamp,
         timestamp
       )
-      .run();
+    ];
 
     const consents = (input.consents ?? {}) as Record<string, unknown>;
     const policyVersion = value(input.policyVersion) || "2026.1";
-    await this.db.batch(
-      [
+    statements.push(
+      ...[
         ["hunt_email", consents.huntEmail],
-        ["marketing", consents.marketing],
-        ["sms", consents.sms]
+        ["marketing", consents.marketing]
       ].map(([type, granted]) =>
         this.db
           .prepare(
@@ -433,8 +575,37 @@ export class D1DataStore implements DataStore {
              VALUES (?, ?, ?, ?, ?, ?)`
           )
           .bind(id(), subject, type, granted === true ? 1 : 0, policyVersion, timestamp)
-      )
+      ),
+      this.db
+        .prepare(
+          `INSERT INTO legal_acceptance_events
+           (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
+           SELECT ?, ?, 'privacy_media', ?, ?, 'accepted', ?
+           WHERE COALESCE((
+             SELECT action FROM legal_acceptance_events
+             WHERE hunter_subject = ? AND document_type = 'privacy_media'
+               AND document_version = ? AND document_hash = ?
+             ORDER BY accepted_at DESC, id DESC LIMIT 1
+           ), '') <> 'accepted'`
+        )
+        .bind(
+          id(),
+          subject,
+          value(input.privacyMediaVersion),
+          value(input.privacyMediaHash),
+          timestamp,
+          subject,
+          value(input.privacyMediaVersion),
+          value(input.privacyMediaHash)
+        ),
+      this.db
+        .prepare(
+          `UPDATE player_accounts SET profile_completed_at = COALESCE(profile_completed_at, ?),
+             updated_at = ?, last_seen_at = ? WHERE subject = ?`
+        )
+        .bind(timestamp, timestamp, timestamp, subject)
     );
+    await this.db.batch(statements);
     return (await this.getProfile(subject))!;
   }
 
@@ -475,8 +646,9 @@ export class D1DataStore implements DataStore {
   }
 
   async getHunterDashboard(subject: string): Promise<Record<string, unknown>> {
-    const [profile, status, updates, waypointResult, progressResult, reportResult, noteResult] = await Promise.all([
+    const [profile, access, status, updates, waypointResult, progressResult, reportResult, noteResult] = await Promise.all([
       this.getProfile(subject),
+      this.getPlayerAccess(subject),
       this.getStatus(),
       this.listUpdates({ limit: 1 }),
       this.db
@@ -501,7 +673,7 @@ export class D1DataStore implements DataStore {
         .all<Row>()
     ]);
     const waypoints = waypointResult.results.map((row) => {
-      const safe = Boolean(profile) && status.state === "open" && row.zone_state === "open";
+      const safe = access.participationUnlocked && status.state === "open" && row.zone_state === "open";
       return {
         id: Number(row.id),
         name: row.name,
@@ -513,6 +685,7 @@ export class D1DataStore implements DataStore {
     });
     return {
       profile,
+      ...access,
       status,
       latestUpdate: updates.items[0] ?? null,
       waypoints,
@@ -892,8 +1065,7 @@ export class D1DataStore implements DataStore {
       ), current_consents AS (
         SELECT hunter_subject,
           MAX(CASE WHEN consent_type = 'hunt_email' AND consent_rank = 1 THEN granted ELSE 0 END) AS hunt_email_consent,
-          MAX(CASE WHEN consent_type = 'marketing' AND consent_rank = 1 THEN granted ELSE 0 END) AS marketing_consent,
-          MAX(CASE WHEN consent_type = 'sms' AND consent_rank = 1 THEN granted ELSE 0 END) AS sms_consent
+          MAX(CASE WHEN consent_type = 'marketing' AND consent_rank = 1 THEN granted ELSE 0 END) AS marketing_consent
         FROM ranked_consents WHERE consent_rank = 1 GROUP BY hunter_subject
       )`;
     const cursorWhere = cursor
@@ -901,11 +1073,10 @@ export class D1DataStore implements DataStore {
       : "";
     let itemStatement = this.db.prepare(
       `${rankedConsentCte}
-       SELECT p.subject, p.verified_email, p.full_name, p.public_handle, p.phone,
+       SELECT p.subject, p.verified_email, p.full_name, p.public_handle,
               p.town_area, p.created_at, p.updated_at,
               COALESCE(c.hunt_email_consent, 0) AS hunt_email_consent,
-              COALESCE(c.marketing_consent, 0) AS marketing_consent,
-              COALESCE(c.sms_consent, 0) AS sms_consent
+              COALESCE(c.marketing_consent, 0) AS marketing_consent
        FROM hunter_profiles p LEFT JOIN current_consents c ON c.hunter_subject = p.subject
        ${cursorWhere}
        ORDER BY p.updated_at DESC, p.subject DESC LIMIT ?`
@@ -920,9 +1091,7 @@ export class D1DataStore implements DataStore {
           `${rankedConsentCte}
            SELECT COUNT(*) AS total_profiles,
              COALESCE(SUM(CASE WHEN c.hunt_email_consent = 1 THEN 1 ELSE 0 END), 0) AS hunt_email_count,
-             COALESCE(SUM(CASE WHEN c.marketing_consent = 1 THEN 1 ELSE 0 END), 0) AS marketing_count,
-             COALESCE(SUM(CASE WHEN c.sms_consent = 1 AND p.phone IS NOT NULL
-               AND TRIM(p.phone) <> '' THEN 1 ELSE 0 END), 0) AS sms_count
+             COALESCE(SUM(CASE WHEN c.marketing_consent = 1 THEN 1 ELSE 0 END), 0) AS marketing_count
            FROM hunter_profiles p LEFT JOIN current_consents c ON c.hunter_subject = p.subject`
         )
         .first<Row>(),
@@ -930,30 +1099,122 @@ export class D1DataStore implements DataStore {
     ]);
     const rows = itemResult.results;
     const selected = rows.slice(0, limit);
-    const items = selected.map((row) => {
-      const consents = consentProjection(row);
-      const phone = nullable(row.phone);
-      return {
+    const items = selected.map((row) => ({
         id: row.subject,
         verifiedEmail: row.verified_email,
         fullName: row.full_name,
         publicHandle: row.public_handle,
-        phone,
         townArea: row.town_area,
-        consents,
-        smsReachable: consents.sms && phone !== null,
+        consents: consentProjection(row),
         createdAt: row.created_at,
         updatedAt: row.updated_at
-      };
-    });
+      }));
     return {
       counts: {
         totalProfiles: Number(countRow?.total_profiles ?? 0),
         huntEmail: Number(countRow?.hunt_email_count ?? 0),
-        marketing: Number(countRow?.marketing_count ?? 0),
-        sms: Number(countRow?.sms_count ?? 0)
+        marketing: Number(countRow?.marketing_count ?? 0)
       },
       items,
+      nextCursor: rows.length > limit && selected.length > 0 ? subscriberCursor(selected.at(-1)!) : null
+    };
+  }
+
+  async listPlayers(options: { limit?: number; cursor?: string | null } = {}) {
+    const limit = pageLimit(options.limit);
+    const cursor = parseSubscriberCursor(options.cursor);
+    const ledgerCte = `
+      WITH ranked_consents AS (
+        SELECT hunter_subject, consent_type, granted,
+          ROW_NUMBER() OVER (PARTITION BY hunter_subject, consent_type ORDER BY occurred_at DESC, id DESC) AS rank
+        FROM consent_events
+      ), current_consents AS (
+        SELECT hunter_subject,
+          MAX(CASE WHEN consent_type = 'hunt_email' AND rank = 1 THEN granted ELSE 0 END) AS hunt_email_consent,
+          MAX(CASE WHEN consent_type = 'marketing' AND rank = 1 THEN granted ELSE 0 END) AS marketing_consent
+        FROM ranked_consents WHERE rank = 1 GROUP BY hunter_subject
+      ), ranked_legal AS (
+        SELECT hunter_subject, document_type, document_version, document_hash, action,
+          ROW_NUMBER() OVER (PARTITION BY hunter_subject, document_type ORDER BY accepted_at DESC, id DESC) AS rank
+        FROM legal_acceptance_events
+      ), current_legal AS (
+        SELECT hunter_subject,
+          MAX(CASE WHEN document_type = 'privacy_media' AND rank = 1 THEN document_version END) AS privacy_version,
+          MAX(CASE WHEN document_type = 'privacy_media' AND rank = 1 THEN document_hash END) AS privacy_hash,
+          MAX(CASE WHEN document_type = 'privacy_media' AND rank = 1 THEN action END) AS privacy_action,
+          MAX(CASE WHEN document_type = 'participation_waiver' AND rank = 1 THEN document_version END) AS waiver_version,
+          MAX(CASE WHEN document_type = 'participation_waiver' AND rank = 1 THEN action END) AS waiver_action
+        FROM ranked_legal WHERE rank = 1 GROUP BY hunter_subject
+      )`;
+    const cursorWhere = cursor
+      ? "AND (a.updated_at < ? OR (a.updated_at = ? AND a.subject < ?))"
+      : "";
+    let itemStatement = this.db.prepare(
+      `${ledgerCte}
+       SELECT a.subject, a.verified_email, a.account_state, a.created_at, a.updated_at,
+              a.last_seen_at, a.profile_completed_at,
+              p.full_name, p.public_handle, p.town_area,
+              COALESCE(c.hunt_email_consent, 0) AS hunt_email_consent,
+              COALESCE(c.marketing_consent, 0) AS marketing_consent,
+              l.privacy_version, l.privacy_hash, l.privacy_action, l.waiver_version, l.waiver_action
+       FROM player_accounts a
+       LEFT JOIN hunter_profiles p ON p.subject = a.subject
+       LEFT JOIN current_consents c ON c.hunter_subject = a.subject
+       LEFT JOIN current_legal l ON l.hunter_subject = a.subject
+       WHERE a.account_state = 'active' ${cursorWhere}
+       ORDER BY a.updated_at DESC, a.subject DESC LIMIT ?`
+    );
+    itemStatement = cursor
+      ? itemStatement.bind(cursor.updatedAt, cursor.updatedAt, cursor.subject, limit + 1)
+      : itemStatement.bind(limit + 1);
+    const [countRow, itemResult] = await Promise.all([
+      this.db
+        .prepare(
+          `${ledgerCte}
+           SELECT COUNT(*) AS verified_accounts,
+             COALESCE(SUM(CASE WHEN p.subject IS NOT NULL THEN 1 ELSE 0 END), 0) AS completed_profiles,
+             COALESCE(SUM(CASE WHEN c.hunt_email_consent = 1 THEN 1 ELSE 0 END), 0) AS hunt_email_count,
+             COALESCE(SUM(CASE WHEN c.marketing_consent = 1 THEN 1 ELSE 0 END), 0) AS marketing_count
+           FROM player_accounts a
+           LEFT JOIN hunter_profiles p ON p.subject = a.subject
+           LEFT JOIN current_consents c ON c.hunter_subject = a.subject
+           WHERE a.account_state = 'active'`
+        )
+        .first<Row>(),
+      itemStatement.all<Row>()
+    ]);
+    const rows = itemResult.results;
+    const selected = rows.slice(0, limit);
+    return {
+      counts: {
+        verifiedAccounts: Number(countRow?.verified_accounts ?? 0),
+        completedProfiles: Number(countRow?.completed_profiles ?? 0),
+        huntEmail: Number(countRow?.hunt_email_count ?? 0),
+        marketing: Number(countRow?.marketing_count ?? 0)
+      },
+      items: selected.map((row) => {
+        const privacyAccepted =
+          row.privacy_action === "accepted" &&
+          row.privacy_version === privacyMediaDocument.version &&
+          row.privacy_hash === privacyMediaDocument.hash;
+        return {
+          id: row.subject,
+          verifiedEmail: row.verified_email,
+          accountState: row.account_state,
+          profileComplete: Boolean(row.profile_completed_at),
+          fullName: row.full_name,
+          publicHandle: row.public_handle,
+          townArea: row.town_area,
+          privacyMediaVersion: privacyAccepted ? row.privacy_version : null,
+          waiverStatus: "pending",
+          waiverVersion: null,
+          participationUnlocked: false,
+          consents: consentProjection(row),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          lastSeenAt: row.last_seen_at
+        };
+      }),
       nextCursor: rows.length > limit && selected.length > 0 ? subscriberCursor(selected.at(-1)!) : null
     };
   }
@@ -1019,6 +1280,18 @@ export class D1DataStore implements DataStore {
     return { action, target, status: "queued" };
   }
 
+  async recordPlayerAction(
+    action: string,
+    target: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown>> {
+    if (!new Set(["recovery", "revoke-sessions"]).has(action)) {
+      throw new ConflictError("Unsupported player action.");
+    }
+    await this.audit(actorSubject, `player.${action}.requested`, "player_account", target, {});
+    return { action, target, status: "queued" };
+  }
+
   private async reportById(reportId: string): Promise<Record<string, unknown> | null> {
     const row = await this.db
       .prepare("SELECT * FROM private_reports WHERE id = ?")
@@ -1070,9 +1343,7 @@ export class D1DataStore implements DataStore {
       email: row.verified_email,
       fullName: row.full_name,
       publicHandle: row.public_handle,
-      phone: row.phone,
       townArea: row.town_area,
-      ageBand: row.age_band,
       interests: parseJson(row.interests_json, []),
       discoverySource: row.discovery_source,
       consents: consentProjection(row),

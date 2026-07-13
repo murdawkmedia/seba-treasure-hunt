@@ -104,49 +104,41 @@ test("report validation catches missing contact, context, and human proof", () =
 
 const baseProfile: HunterProfileDraft = {
   fullName: "A Hunter",
-  phone: "",
   townArea: "Seba Beach",
-  ageBand: "35-44",
   interests: ["community", "outdoors"],
   discoverySource: "friend",
   adultAttested: true,
+  privacyMediaAccepted: true,
   huntEmail: true,
   marketing: false,
-  sms: false,
-  turnstileToken: "verified-token",
 };
 
-test("hunter profile requires an adult, a name, and human verification", () => {
+test("hunter profile requires an adult, a name, and the current privacy-media notice", () => {
   assert.deepEqual(validateProfileDraft(baseProfile), {});
   assert.deepEqual(
     validateProfileDraft({
       ...baseProfile,
       fullName: " ",
       adultAttested: false,
-      turnstileToken: "",
+      privacyMediaAccepted: false,
     }),
     {
       fullName: "Enter your name.",
       adultAttested: "An adult participant must accept the eligibility statement.",
-      turnstileToken: "Complete the human check.",
+      privacyMediaAccepted: "Read and accept the current Privacy Policy & Media Notice.",
     },
   );
 });
 
-test("SMS consent requires a phone and profile payload keeps consent purposes separate", () => {
-  assert.equal(
-    validateProfileDraft({ ...baseProfile, sms: true }).phone,
-    "Add a phone number before choosing SMS updates.",
-  );
+test("profile payload keeps hunt and marketing permissions separate", () => {
   assert.deepEqual(buildProfilePayload(baseProfile), {
     fullName: "A Hunter",
-    phone: null,
     townArea: "Seba Beach",
-    ageBand: "35-44",
     interests: ["community", "outdoors"],
     discoverySource: "friend",
     adultAttested: true,
-    consents: { huntEmail: true, marketing: false, sms: false },
-    cfTurnstileResponse: "verified-token",
+    privacyMediaAccepted: true,
+    privacyMediaVersion: "2026.1",
+    consents: { huntEmail: true, marketing: false },
   });
 });

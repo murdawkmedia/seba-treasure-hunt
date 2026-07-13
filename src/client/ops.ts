@@ -62,22 +62,32 @@ interface OpsAuditRecord {
 }
 
 export interface OpsSubscriberRecord {
+  id: string;
   verifiedEmail: string;
+  accountState: string;
+  profileComplete: boolean;
   fullName: string;
   publicHandle: string;
-  phone: string;
   townArea: string;
+  privacyMediaVersion: string;
+  waiverStatus: string;
+  waiverVersion: string;
+  participationUnlocked: boolean;
   consents: {
     huntEmail: boolean;
     marketing: boolean;
-    sms: boolean;
   };
   createdAt: string;
   updatedAt: string;
 }
 
 export interface OpsSubscriberLedger {
-  counts: { huntEmail: number | null; marketing: number | null; sms: number | null };
+  counts: {
+    verifiedAccounts: number | null;
+    completedProfiles: number | null;
+    huntEmail: number | null;
+    marketing: number | null;
+  };
   items: OpsSubscriberRecord[];
   nextCursor: string | null;
 }
@@ -264,15 +274,22 @@ export function normalizeOpsSubscribers(payload: unknown): OpsSubscriberLedger {
     const consents = isRecord(value.consents) ? value.consents : {};
     const huntEmail = asBoolean(consents.huntEmail);
     const marketing = asBoolean(consents.marketing);
-    const sms = asBoolean(consents.sms);
-    if (!verifiedEmail || !verifiedEmail.includes("@") || huntEmail === null || marketing === null || sms === null) return [];
+    const profileComplete = asBoolean(value.profileComplete);
+    const participationUnlocked = asBoolean(value.participationUnlocked);
+    if (!verifiedEmail || !verifiedEmail.includes("@") || huntEmail === null || marketing === null || profileComplete === null || participationUnlocked === null) return [];
     return [{
+      id: asString(value.id),
       verifiedEmail,
+      accountState: asString(value.accountState) || "active",
+      profileComplete,
       fullName: asString(value.fullName).trim(),
       publicHandle: asString(value.publicHandle).trim(),
-      phone: asString(value.phone).trim(),
       townArea: asString(value.townArea).trim(),
-      consents: { huntEmail, marketing, sms },
+      privacyMediaVersion: asString(value.privacyMediaVersion),
+      waiverStatus: asString(value.waiverStatus) || "pending",
+      waiverVersion: asString(value.waiverVersion),
+      participationUnlocked,
+      consents: { huntEmail, marketing },
       createdAt: asString(value.createdAt),
       updatedAt: asString(value.updatedAt),
     }];
@@ -280,9 +297,10 @@ export function normalizeOpsSubscribers(payload: unknown): OpsSubscriberLedger {
   const nextCursor = asString(page.nextCursor) || null;
   return {
     counts: {
+      verifiedAccounts: asNumber(counts.verifiedAccounts),
+      completedProfiles: asNumber(counts.completedProfiles),
       huntEmail: asNumber(counts.huntEmail),
       marketing: asNumber(counts.marketing),
-      sms: asNumber(counts.sms),
     },
     items,
     nextCursor,
@@ -295,16 +313,17 @@ function consentCell(value: boolean): string {
 }
 
 export function renderSubscriberRows(records: readonly OpsSubscriberRecord[]): string {
-  if (records.length === 0) return `<tr><td colspan="8"><span class="ops-table-empty">No subscribers are present in the authorized ledger.</span></td></tr>`;
+  if (records.length === 0) return `<tr><td colspan="9"><span class="ops-table-empty">No players are present in the authorized ledger.</span></td></tr>`;
   return records.map((record) => `<tr>
     <td><span class="ops-mono">${escapeOpsHtml(record.verifiedEmail)}</span></td>
     <td><strong>${escapeOpsHtml(record.fullName || "Name not supplied")}</strong><br /><span class="ops-mono">${escapeOpsHtml(record.publicHandle || "No public handle")}</span></td>
-    <td>${escapeOpsHtml(record.phone || "Not supplied")}</td>
     <td>${escapeOpsHtml(record.townArea || "Not supplied")}</td>
+    <td>${record.profileComplete ? "Complete" : "Onboarding"}</td>
+    <td>${escapeOpsHtml(record.privacyMediaVersion || "Required")}</td>
+    <td>${escapeOpsHtml(record.waiverVersion || record.waiverStatus)}</td>
     <td>${consentCell(record.consents.huntEmail)}</td>
     <td>${consentCell(record.consents.marketing)}</td>
-    <td>${consentCell(record.consents.sms)}</td>
-    <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(record.createdAt ? formatOpsTime(record.createdAt) : "Time unavailable")}</time></td>
+    <td><div class="ops-actions"><button class="ops-button ops-button--quiet" type="button" data-player-action="recovery" data-player-id="${escapeOpsHtml(record.id)}">Send recovery instructions</button><button class="ops-button ops-button--quiet" type="button" data-player-action="revoke-sessions" data-player-id="${escapeOpsHtml(record.id)}">Revoke sessions</button></div></td>
   </tr>`).join("");
 }
 
@@ -316,16 +335,19 @@ function safeCsvCell(input: unknown): string {
 
 export function buildSubscriberCsv(records: readonly OpsSubscriberRecord[]): string {
   const rows: string[][] = [
-    ["verified_email", "full_name", "public_handle", "phone", "town_area", "hunt_email_consent", "marketing_consent", "sms_consent", "created_at", "updated_at"],
+    ["verified_email", "full_name", "public_handle", "town_area", "profile_complete", "privacy_media_version", "waiver_status", "waiver_version", "participation_unlocked", "hunt_email_consent", "marketing_consent", "created_at", "updated_at"],
     ...records.map((record) => [
       record.verifiedEmail,
       record.fullName,
       record.publicHandle,
-      record.phone,
       record.townArea,
+      record.profileComplete ? "yes" : "no",
+      record.privacyMediaVersion,
+      record.waiverStatus,
+      record.waiverVersion,
+      record.participationUnlocked ? "yes" : "no",
       record.consents.huntEmail ? "yes" : "no",
       record.consents.marketing ? "yes" : "no",
-      record.consents.sms ? "yes" : "no",
       record.createdAt,
       record.updatedAt,
     ]),
@@ -610,15 +632,15 @@ async function loadSubscribers(append = false): Promise<void> {
   const loadedCount = document.querySelector<HTMLElement>("#subscriber-loaded-count");
   if (loadMore) loadMore.disabled = true;
   if (!subscribersLoaded) {
-    setSubscriberState("Loading the authorized subscriber ledger...");
-    setTable("#subscribers-table", `<tr><td colspan="8"><span class="ops-table-empty">Loading authorized subscriber records...</span></td></tr>`);
+    setSubscriberState("Loading the authorized player ledger...");
+    setTable("#subscribers-table", `<tr><td colspan="9"><span class="ops-table-empty">Loading authorized player records...</span></td></tr>`);
   } else {
-    setSubscriberState(append ? "Loading more authorized subscriber records..." : "Refreshing the authorized subscriber ledger...");
+    setSubscriberState(append ? "Loading more authorized player records..." : "Refreshing the authorized player ledger...");
   }
   const cursor = append && subscriberNextCursor ? `&cursor=${encodeURIComponent(subscriberNextCursor)}` : "";
   try {
-    const { response, payload } = await opsRequest(`/api/v1/ops/subscribers?limit=100${cursor}`);
-    if (!response.ok) throw new Error(apiError(payload, "The subscriber ledger is unavailable."));
+    const { response, payload } = await opsRequest(`/api/v1/ops/players?limit=100${cursor}`);
+    if (!response.ok) throw new Error(apiError(payload, "The player ledger is unavailable."));
     const ledger = normalizeOpsSubscribers(payload);
     if (append) {
       const deduplicated = new Map(loadedSubscribers.map((item) => [item.verifiedEmail.toLowerCase(), item]));
@@ -629,13 +651,14 @@ async function loadSubscribers(append = false): Promise<void> {
     }
     subscriberNextCursor = ledger.nextCursor;
     subscribersLoaded = true;
+    setMetric("#subscriber-accounts", ledger.counts.verifiedAccounts);
+    setMetric("#subscriber-profiles", ledger.counts.completedProfiles);
     setMetric("#subscriber-hunt", ledger.counts.huntEmail);
     setMetric("#subscriber-marketing", ledger.counts.marketing);
-    setMetric("#subscriber-sms", ledger.counts.sms);
     setTable("#subscribers-table", renderSubscriberRows(loadedSubscribers));
     setSubscriberState(loadedSubscribers.length === 0
-      ? "The authorized ledger loaded successfully and currently contains no subscriber records."
-      : `${loadedSubscribers.length} authorized subscriber ${loadedSubscribers.length === 1 ? "record is" : "records are"} loaded in this browser session.`);
+      ? "The authorized ledger loaded successfully and currently contains no player records."
+      : `${loadedSubscribers.length} authorized player ${loadedSubscribers.length === 1 ? "record is" : "records are"} loaded in this browser session.`);
     if (exportButton) exportButton.disabled = loadedSubscribers.length === 0;
     if (loadMore) {
       loadMore.hidden = subscriberNextCursor === null;
@@ -643,7 +666,7 @@ async function loadSubscribers(append = false): Promise<void> {
     }
     if (loadedCount) loadedCount.textContent = `${loadedSubscribers.length} loaded${subscriberNextCursor ? "; more available" : "; end of ledger"}`;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "The subscriber ledger is unavailable.";
+    const detail = error instanceof Error ? error.message : "The player ledger is unavailable.";
     if (subscribersLoaded) {
       setSubscriberState(`${detail} ${loadedSubscribers.length} previously loaded ${loadedSubscribers.length === 1 ? "record remains" : "records remain"} available; totals may be stale.`, "error");
       if (exportButton) exportButton.disabled = loadedSubscribers.length === 0;
@@ -654,14 +677,15 @@ async function loadSubscribers(append = false): Promise<void> {
     } else {
       loadedSubscribers = [];
       subscriberNextCursor = null;
+      setMetric("#subscriber-accounts", null);
+      setMetric("#subscriber-profiles", null);
       setMetric("#subscriber-hunt", null);
       setMetric("#subscriber-marketing", null);
-      setMetric("#subscriber-sms", null);
-      setTable("#subscribers-table", `<tr><td colspan="8"><span class="ops-table-empty">The private subscriber ledger is unavailable from the source.</span></td></tr>`);
-      setSubscriberState(`${detail} No subscriber data was loaded or exported.`, "error");
+      setTable("#subscribers-table", `<tr><td colspan="9"><span class="ops-table-empty">The private player ledger is unavailable from the source.</span></td></tr>`);
+      setSubscriberState(`${detail} No player data was loaded or exported.`, "error");
       if (exportButton) exportButton.disabled = true;
       if (loadMore) loadMore.hidden = true;
-      if (loadedCount) loadedCount.textContent = "No subscriber records loaded";
+      if (loadedCount) loadedCount.textContent = "No player records loaded";
     }
   } finally {
     subscribersLoading = false;
@@ -675,7 +699,7 @@ function exportLoadedSubscribers(): void {
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
-  link.download = `tim-lost-something-subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `tim-lost-something-players-${new Date().toISOString().slice(0, 10)}.csv`;
   link.hidden = true;
   document.body.append(link);
   link.click();
@@ -967,6 +991,23 @@ function setupWorkspace(): void {
     } catch (error) {
       button.disabled = false;
       showPageError(error instanceof Error ? error.message : "The access action was not completed.");
+    }
+  });
+
+  document.querySelector("#subscribers-table")?.addEventListener("click", async (event) => {
+    const button = event.target;
+    if (!(button instanceof HTMLButtonElement) || !button.dataset.playerId || !button.dataset.playerAction) return;
+    const action = button.dataset.playerAction;
+    if (!window.confirm(`${button.textContent?.trim() ?? "Apply this action"}? This event will be audited.`)) return;
+    button.disabled = true;
+    try {
+      const { response, payload } = await opsRequest(`/api/v1/ops/players/${encodeURIComponent(button.dataset.playerId)}/${encodeURIComponent(action)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) });
+      if (!response.ok) throw new Error(apiError(payload, "The player account action was not completed."));
+      await loadAudit();
+      button.disabled = false;
+    } catch (error) {
+      button.disabled = false;
+      showPageError(error instanceof Error ? error.message : "The player account action was not completed.");
     }
   });
 }

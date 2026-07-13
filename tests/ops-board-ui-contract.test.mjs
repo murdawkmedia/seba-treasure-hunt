@@ -65,7 +65,7 @@ test("the case-room console exposes every approved ledger and safe account contr
     "Moderation Queue",
     "Search Zones",
     "Rules Ledger",
-    "Subscribers",
+    "Players",
     "Users & Access",
     "Audit Trail",
   ]) {
@@ -108,13 +108,13 @@ test("small case-room ledger labels use the accessible muted-ink token", () => {
   assert.match(css, /\.ops-sidebar__foot\s*\{[^}]*color:\s*var\(--ops-muted\)/s);
 });
 
-test("the private subscriber ledger loads authorized rows and exports only in the client", () => {
+test("the private player ledger loads authorized rows and exports only in the client", () => {
   const html = read("ops.html");
   const client = read("src/client/ops.ts");
   assert.match(html, /id="subscribers-table"/);
   assert.match(html, /id="subscribers-state"[^>]*aria-live="polite"/);
   assert.match(html, /id="subscriber-load-more"/);
-  assert.match(client, /\/api\/v1\/ops\/subscribers/);
+  assert.match(client, /\/api\/v1\/ops\/players/);
   assert.match(client, /new Blob\(/);
-  assert.doesNotMatch(client, /\/api\/v1\/ops\/subscribers\/export/);
+  assert.doesNotMatch(client, /\/api\/v1\/ops\/players\/export/);
 });

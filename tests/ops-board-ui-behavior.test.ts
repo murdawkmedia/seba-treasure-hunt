@@ -166,15 +166,21 @@ test("subscriber payloads preserve separate consents and reject invalid rows", a
   if (typeof normalize !== "function") return;
   const ledger = (normalize as (payload: unknown) => Record<string, unknown>)({
     data: {
-      counts: { huntEmail: 8, marketing: 3, sms: 1 },
+      counts: { verifiedAccounts: 12, completedProfiles: 8, huntEmail: 8, marketing: 3 },
       items: [
         {
           verifiedEmail: "hunter@example.test",
+          id: "hunter-1",
+          accountState: "active",
+          profileComplete: true,
           fullName: "Example Hunter",
           publicHandle: "Hunter A1B2",
-          phone: "",
           townArea: "Parkland County",
-          consents: { huntEmail: true, marketing: false, sms: false },
+          privacyMediaVersion: "2026.1",
+          waiverStatus: "pending",
+          waiverVersion: null,
+          participationUnlocked: false,
+          consents: { huntEmail: true, marketing: false },
           createdAt: "2026-07-11T18:00:00.000Z",
           updatedAt: "2026-07-11T18:05:00.000Z",
         },
@@ -183,7 +189,7 @@ test("subscriber payloads preserve separate consents and reject invalid rows", a
     },
     page: { nextCursor: "cursor-2" },
   });
-  assert.deepEqual(ledger.counts, { huntEmail: 8, marketing: 3, sms: 1 });
+  assert.deepEqual(ledger.counts, { verifiedAccounts: 12, completedProfiles: 8, huntEmail: 8, marketing: 3 });
   assert.equal((ledger.items as unknown[]).length, 1);
   assert.equal((ledger.items as Array<Record<string, unknown>>)[0]?.publicHandle, "Hunter A1B2");
   assert.equal(ledger.nextCursor, "cursor-2");
@@ -196,11 +202,17 @@ test("subscriber CSV neutralizes spreadsheet formulas and quotes private values"
   if (typeof buildCsv !== "function") return;
   const csv = (buildCsv as (items: unknown[]) => string)([{
     verifiedEmail: "=formula@example.test",
+    id: "hunter-1",
+    accountState: "active",
+    profileComplete: true,
     fullName: 'Hunter "Quoted"',
     publicHandle: "+SUM(A1:A2)",
-    phone: "",
     townArea: "Parkland County",
-    consents: { huntEmail: true, marketing: false, sms: false },
+    privacyMediaVersion: "2026.1",
+    waiverStatus: "pending",
+    waiverVersion: "",
+    participationUnlocked: false,
+    consents: { huntEmail: true, marketing: false },
     createdAt: "2026-07-11T18:00:00.000Z",
     updatedAt: "2026-07-11T18:05:00.000Z",
   }]);
@@ -208,5 +220,5 @@ test("subscriber CSV neutralizes spreadsheet formulas and quotes private values"
   assert.match(csv, /"'=formula@example\.test"/);
   assert.match(csv, /"Hunter ""Quoted"""/);
   assert.match(csv, /"'\+SUM\(A1:A2\)"/);
-  assert.match(csv, /"yes","no","no"/);
+  assert.match(csv, /"yes","2026\.1","pending","","no","yes","no"/);
 });

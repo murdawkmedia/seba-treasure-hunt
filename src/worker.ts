@@ -4,6 +4,8 @@ import { D1DataStore } from "./server/d1-store";
 import { ApiError } from "./server/errors";
 import { TurnstileVerifier } from "./server/turnstile";
 import { ManagedStaffAccounts } from "./server/staff-accounts";
+import { ClerkWebhookVerifier } from "./server/clerk-webhooks";
+import { ManagedPlayerAccounts } from "./server/player-accounts";
 import type { DataStore, PagesEnv } from "./server/types";
 import { R2UploadStorage } from "./server/uploads";
 import { KvRateLimiter } from "./server/rate-limit";
@@ -41,6 +43,8 @@ const application = (env: PagesEnv) => {
     env.HUNTER_AUTH_ISSUER ?? null,
     env.HUNTER_AUTH_JWKS_URL ?? null,
     env.HUNTER_CLERK_PUBLISHABLE_KEY ?? null,
+    env.HUNTER_CLERK_SECRET_KEY ?? null,
+    env.CLERK_WEBHOOK_SIGNING_SECRET ?? null,
     env.HUNTER_ACCOUNT_PORTAL_URL ?? null,
     env.STAFF_CLERK_PUBLISHABLE_KEY ?? null,
     env.STAFF_CLERK_SECRET_KEY ?? null,
@@ -80,6 +84,12 @@ const application = (env: PagesEnv) => {
     turnstile: new TurnstileVerifier(env.TURNSTILE_SECRET_KEY ?? null, allowedHosts),
     uploads: new R2UploadStorage(env.UPLOADS ?? null, env.MEDIA_QUEUE ?? null),
     rateLimits: new KvRateLimiter(env.RATE_LIMITS ?? null, env.RATE_LIMIT_SALT ?? null),
+    webhooks: new ClerkWebhookVerifier(env.CLERK_WEBHOOK_SIGNING_SECRET ?? null),
+    playerAccounts: new ManagedPlayerAccounts(env.HUNTER_CLERK_SECRET_KEY ?? null, {
+      dashboardUrl: `${canonicalOrigin}/dashboard`,
+      resendApiKey: env.RESEND_API_KEY ?? null,
+      recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
+    }),
     staffAccounts: new ManagedStaffAccounts(env.STAFF_CLERK_SECRET_KEY ?? null, {
       accountPortalUrl: env.STAFF_ACCOUNT_PORTAL_URL ?? null,
       invitationRedirectUrl: env.STAFF_INVITATION_REDIRECT_URL ?? null,
