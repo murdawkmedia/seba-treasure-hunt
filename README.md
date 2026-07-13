@@ -41,6 +41,7 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 - Only a D1-authorized, ready derivative can be read publicly; originals and find evidence have no public delivery path.
 - KV provides salted, hashed-identifier rate limits. Turnstile is the second write control.
 - Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
+- `assets/favicon.svg` is the canonical Sunny Pirate Mystery Chest favicon. `npm run assets:favicons` deterministically regenerates its PNG and multi-resolution ICO variants.
 
 The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication, completed legal requirements and an active/open safety check. While the approved participation waiver is pending, exact directions, progress writes and community participation stay locked.
 
@@ -56,6 +57,7 @@ The browser receives waypoint names, descriptions and safety states only. Exact 
 
 ```powershell
 npm ci
+npm run assets:favicons
 npm test
 npm run typecheck
 npm run build

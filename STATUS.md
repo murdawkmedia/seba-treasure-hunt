@@ -4,7 +4,7 @@ Last updated: 2026-07-13
 
 ## Current state
 
-The hunter-account, privacy/media and pending-waiver implementation is complete locally on branch `codex/tim-lost-hunter-platform`.
+The hunter-account, privacy/media, pending-waiver and Sunny Pirate Mystery Chest favicon implementation is complete locally on branch `codex/tim-lost-hunter-platform` and ready for validation deployment.
 
 These July 13 account/legal changes have not been deployed. The existing noindex validation deployment remains the previous preview:
 
@@ -21,7 +21,7 @@ The canonical production site remains on its previous working release. This is d
 - Public 12-waypoint overview with EXIF/GPS-free photos; exact navigation is authenticated and safety-gated.
 - Hunter email/password accounts with verified-email lifecycle intake, 12-character minimum passwords, provider-managed compromised-password checks, sessions and emailed recovery.
 - D1 player lifecycle ledger, separate communication permissions and append-only privacy/media legal-acceptance events; passwords and reset codes remain provider-only.
-- Required Privacy Policy & Media Notice version `2026.1`; its stored SHA-256 matches the exact published page.
+- Required Privacy Policy & Media Notice version `2026.1`; its stored SHA-256 matches the published policy while excluding decorative favicon and manifest links so non-legal head changes do not trigger reacceptance.
 - Separate disabled participation-waiver placeholder. Account creation is allowed, while exact directions, progress and community participation remain locked until approved waiver language is supplied and accepted.
 - Staff may send provider-managed player recovery instructions or revoke player sessions; they cannot view or choose player passwords.
 - Account-optional private reporting with required photo for find claims, optional geolocation and idempotency.
@@ -32,6 +32,7 @@ The canonical production site remains on its previous working release. This is d
 - SEO/AEO metadata, JSON-LD, sitemap, robots policy, canonical host behavior and SebaStays guarantee links.
 - Fictional ID artwork disclosed as a campaign prop.
 - Route-video end card updated to `www.timlostsomething.com`; unconfirmed radio copy removed; output is 22,467,397 bytes and 81.222 seconds.
+- Sitewide Sunny Pirate Mystery Chest favicon with canonical SVG, 32/180/192/512-pixel PNGs, multi-resolution ICO and minimal browser manifest.
 - Edge security policy: CSP, anti-framing, MIME protection, HSTS, referrer policy and limited browser permissions.
 
 ## Cloudflare state
@@ -43,9 +44,10 @@ The canonical production site remains on its previous working release. This is d
 
 ## Verification evidence
 
-- Automated tests: 106/106 passing.
+- Automated tests: 110/110 passing.
 - TypeScript checks: Worker, client and both test environments passing.
 - Production Pages and media bundles build successfully.
+- Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.
 - Local Pages runtime: home, start, dashboard, clue board, Ops and status API all return 200 with clean routes.
 - Rendered desktop and 390 px mobile QA for Privacy, Dashboard and Ops: no horizontal overflow and no WCAG 2.1 A/AA axe violations.
 - Public edge preview: D1 status, updates, rules, two zones and 12 waypoints return successfully.
