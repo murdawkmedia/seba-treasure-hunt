@@ -107,6 +107,19 @@ test("the campaign prop is disclosed and never replaces evidence", () => {
   );
 });
 
+test("the Hunt FAQ says where prize updates are published", () => {
+  const html = read("index.html");
+  const huntFaq = html.match(
+    /<section\b[^>]*\bid="hunt-faq"[^>]*>[\s\S]*?<\/section>/,
+  );
+
+  assert.ok(huntFaq, "index.html should contain the complete Hunt FAQ section");
+  assert.match(
+    huntFaq[0],
+    /Any prize updates will be published on this website\./,
+  );
+});
+
 test("crawl files use only the canonical hostname", () => {
   assert.ok(
     existsSync(new URL("../robots.txt", import.meta.url)),
