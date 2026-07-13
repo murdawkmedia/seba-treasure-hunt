@@ -9,6 +9,7 @@ import { ManagedPlayerAccounts } from "./server/player-accounts";
 import type { DataStore, PagesEnv } from "./server/types";
 import { R2UploadStorage } from "./server/uploads";
 import { KvRateLimiter } from "./server/rate-limit";
+import { D1EnvironmentGuard } from "./server/environment-guard";
 
 const canonicalOrigin = "https://www.timlostsomething.com";
 const defaultTurnstileHosts = ["www.timlostsomething.com", "seba-treasure-hunt.pages.dev"];
@@ -55,7 +56,8 @@ const application = (env: PagesEnv) => {
     env.AUTHORIZED_PARTY ?? null,
     env.RESEND_API_KEY ?? null,
     env.RECOVERY_EMAIL_FROM ?? null,
-    env.RATE_LIMIT_SALT ?? null
+    env.RATE_LIMIT_SALT ?? null,
+    env.DEPLOYMENT_ENV ?? null
   ]);
   if (
     cache &&
@@ -84,6 +86,7 @@ const application = (env: PagesEnv) => {
     turnstile: new TurnstileVerifier(env.TURNSTILE_SECRET_KEY ?? null, allowedHosts),
     uploads: new R2UploadStorage(env.UPLOADS ?? null, env.MEDIA_QUEUE ?? null),
     rateLimits: new KvRateLimiter(env.RATE_LIMITS ?? null, env.RATE_LIMIT_SALT ?? null),
+    environment: new D1EnvironmentGuard(env.DB ?? null, env.DEPLOYMENT_ENV ?? null),
     webhooks: new ClerkWebhookVerifier(env.CLERK_WEBHOOK_SIGNING_SECRET ?? null),
     playerAccounts: new ManagedPlayerAccounts(env.HUNTER_CLERK_SECRET_KEY ?? null, {
       dashboardUrl: `${canonicalOrigin}/dashboard`,

@@ -3,6 +3,7 @@ import test from "node:test";
 import { createApi } from "../src/server/app";
 import {
   FakeIdentity,
+  FakeEnvironment,
   FakeRateLimits,
   FakeStaffAccounts,
   FakeStore,
@@ -23,7 +24,8 @@ const makeApp = (store = new FakeStore()) => {
       uploads: new FakeUploads(),
       staffAccounts,
       playerAccounts: staffAccounts,
-      rateLimits
+      rateLimits,
+      environment: new FakeEnvironment()
     }),
     store,
     staffAccounts,

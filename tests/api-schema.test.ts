@@ -35,6 +35,14 @@ test("the first D1 migration covers public, hunter, moderation, report, and staf
   assert.doesNotMatch(sql, /INSERT\s+INTO\s+case_status/i, "status must be operator seeded");
 });
 
+test("the environment metadata migration defines one constrained deployment sentinel", async () => {
+  const sql = await readFile(path.resolve("migrations", "0004_environment_metadata.sql"), "utf8");
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS environment_metadata/i);
+  assert.match(sql, /CHECK\s*\(environment IN \('validation', 'production'\)\)/i);
+  assert.match(sql, /CHECK\s*\(id = 1\)/i);
+});
+
 test("the second D1 migration adds the current-consent projection index", async () => {
   const sql = await readFile(path.resolve("migrations", "0002_consent_ledger_index.sql"), "utf8");
   assert.match(

@@ -3,6 +3,7 @@ import test from "node:test";
 import { createApi } from "../src/server/app";
 import {
   FakeIdentity,
+  FakeEnvironment,
   FakeRateLimits,
   FakeStore,
   FakeTurnstile,
@@ -15,7 +16,14 @@ import {
 const makeApp = (store = new FakeStore(), turnstile = new FakeTurnstile()) => {
   const uploads = new FakeUploads();
   const rateLimits = new FakeRateLimits();
-  const app = createApi({ store, identity: new FakeIdentity(), turnstile, uploads, rateLimits });
+  const app = createApi({
+    store,
+    identity: new FakeIdentity(),
+    turnstile,
+    uploads,
+    rateLimits,
+    environment: new FakeEnvironment()
+  });
   return { app, store, uploads, rateLimits };
 };
 
@@ -48,6 +56,7 @@ test("exposes only browser-safe runtime configuration", async () => {
     turnstile: new FakeTurnstile(),
     uploads: new FakeUploads(),
     rateLimits: new FakeRateLimits(),
+    environment: new FakeEnvironment(),
     config: {
       turnstileSiteKey: "0x-public",
       hunterPublishableKey: "pk_test_public",
@@ -180,7 +189,8 @@ test("rate limits report capture and returns a retry interval", async () => {
     identity: new FakeIdentity(),
     turnstile: new FakeTurnstile(),
     uploads: new FakeUploads(),
-    rateLimits: limiter
+    rateLimits: limiter,
+    environment: new FakeEnvironment()
   });
   const report = {
     type: "tip",
@@ -213,7 +223,8 @@ test("fails closed on report writes when rate-limit protection is not configured
     store: new FakeStore(),
     identity: new FakeIdentity(),
     turnstile: new FakeTurnstile(),
-    uploads: new FakeUploads()
+    uploads: new FakeUploads(),
+    environment: new FakeEnvironment()
   });
   const response = await app.request("https://www.timlostsomething.com/api/v1/reports", {
     method: "POST",

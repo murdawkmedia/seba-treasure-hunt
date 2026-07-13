@@ -3,6 +3,7 @@ import test from "node:test";
 import { createApi } from "../src/server/app";
 import {
   FakeIdentity,
+  FakeEnvironment,
   FakeRateLimits,
   FakeStore,
   FakeTurnstile,
@@ -102,6 +103,7 @@ const makeApp = () => {
     uploads: new FakeUploads(),
     rateLimits: new FakeRateLimits(),
     webhooks: new FakeWebhookVerifier(),
+    environment: new FakeEnvironment(),
   } as never);
   return { app, store };
 };

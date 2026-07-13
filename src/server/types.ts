@@ -1,5 +1,6 @@
 export type CaseState = "open" | "paused" | "found";
 export type ZoneState = "open" | "restricted" | "hazardous" | "temporarily_closed";
+export type DeploymentEnvironment = "validation" | "production";
 
 export interface CaseStatus {
   state: CaseState;
@@ -146,6 +147,10 @@ export interface RateLimiter {
   consume(input: RateLimitInput): Promise<{ allowed: boolean; retryAfter: number }>;
 }
 
+export interface EnvironmentGuard {
+  assertWritable(): Promise<void>;
+}
+
 export interface ApiDependencies {
   store: DataStore;
   identity: IdentityVerifier;
@@ -156,6 +161,7 @@ export interface ApiDependencies {
   playerAccounts?: StaffAccountManager;
   rateLimits?: RateLimiter;
   webhooks?: WebhookVerifier;
+  environment: EnvironmentGuard;
 }
 
 export interface PagesEnv {
@@ -183,4 +189,5 @@ export interface PagesEnv {
   AUTHORIZED_PARTY?: string;
   RESEND_API_KEY?: string;
   RECOVERY_EMAIL_FROM?: string;
+  DEPLOYMENT_ENV?: DeploymentEnvironment;
 }

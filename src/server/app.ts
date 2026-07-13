@@ -475,6 +475,13 @@ export const createApi = (deps: ApiDependencies) => {
     }
   });
 
+  app.use("/api/v1/*", async (c, next) => {
+    if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
+      await deps.environment.assertWritable();
+    }
+    await next();
+  });
+
   app.get("/api/v1/config", (c) =>
     success(
       c,

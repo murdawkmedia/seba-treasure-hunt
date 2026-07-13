@@ -466,6 +466,14 @@ export class FakeRateLimits {
   }
 }
 
+export class FakeEnvironment {
+  checks = 0;
+
+  async assertWritable() {
+    this.checks += 1;
+  }
+}
+
 export const json = (body: unknown, headers: Record<string, string> = {}) => ({
   headers: { "content-type": "application/json", ...headers },
   body: JSON.stringify(body)
