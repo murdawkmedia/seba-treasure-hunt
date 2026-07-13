@@ -33,7 +33,7 @@ test("favicon SVG contains the approved independent symbols", () => {
   ]) {
     assert.match(svg, new RegExp(`data-part="${part}"`));
   }
-  assert.doesNotMatch(svg, /<text|<script|https?:\/\//);
+  assert.doesNotMatch(svg, /<text|<script|\b(?:href|src)=["']https?:/);
 });
 
 test("generated PNG and ICO assets have the required dimensions", async () => {
