@@ -18,10 +18,12 @@ export interface MicrosoftGraphMailerConfig {
 
 const graphScope = "offline_access https://graph.microsoft.com/Mail.Send";
 const graphSendUrl = "https://graph.microsoft.com/v1.0/me/sendMail";
-const tenantSegment = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
+const canonicalGuid =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const providerReference = /^[\x20-\x7e]{1,128}$/;
 
 interface TokenResponseRecord {
+  token_type?: unknown;
   access_token?: unknown;
   refresh_token?: unknown;
   error?: unknown;
@@ -35,13 +37,10 @@ function nonEmpty(value: string | null): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function validTenant(value: string | null): value is string {
-  return (
-    nonEmpty(value) &&
-    value !== "." &&
-    value !== ".." &&
-    tenantSegment.test(value)
-  );
+function normalizedGuid(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return canonicalGuid.test(normalized) ? normalized : null;
 }
 
 function tokenRecord(value: unknown): TokenResponseRecord | null {
@@ -58,10 +57,29 @@ function safeProviderReference(response: Response): string | null {
   }
 }
 
+async function cancelUnusedBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // A body cleanup failure must not expose or replace the safe provider outcome.
+  }
+}
+
 export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
   constructor(private readonly config: MicrosoftGraphMailerConfig) {}
 
   async send(message: TransactionalMessage): Promise<TransactionalMailAcceptance> {
+    let mime: ReturnType<typeof renderTransactionalMime>;
+    try {
+      mime = renderTransactionalMime(message);
+    } catch {
+      throw new TransactionalMailError("provider_response_invalid");
+    }
+
+    const clientId = normalizedGuid(this.config.clientId);
+    const tenantId = normalizedGuid(this.config.tenantId);
+    if (!clientId || !tenantId) throw unavailable();
+
     let storedToken: Awaited<ReturnType<GraphRefreshTokenStore["load"]>>;
     try {
       storedToken = await this.config.tokenStore.load();
@@ -69,12 +87,8 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
       throw unavailable();
     }
 
-    const clientId = this.config.clientId;
-    const tenantId = this.config.tenantId;
     const refreshToken = storedToken?.refreshToken ?? this.config.bootstrapRefreshToken;
-    if (!nonEmpty(clientId) || !validTenant(tenantId) || !nonEmpty(refreshToken)) {
-      throw unavailable();
-    }
+    if (!nonEmpty(refreshToken)) throw unavailable();
 
     const form = new URLSearchParams({
       grant_type: "refresh_token",
@@ -89,6 +103,7 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
         `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
         {
           method: "POST",
+          redirect: "manual",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: form
         }
@@ -96,7 +111,10 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
     } catch {
       throw unavailable();
     }
-    if (!tokenResponse.ok) throw unavailable();
+    if (!tokenResponse.ok) {
+      await cancelUnusedBody(tokenResponse);
+      throw unavailable();
+    }
 
     let decoded: unknown;
     try {
@@ -108,6 +126,8 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
     if (
       !token ||
       Object.prototype.hasOwnProperty.call(token, "error") ||
+      typeof token.token_type !== "string" ||
+      token.token_type.trim().toLowerCase() !== "bearer" ||
       typeof token.access_token !== "string" ||
       !nonEmpty(token.access_token)
     ) {
@@ -126,11 +146,11 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
       }
     }
 
-    const mime = renderTransactionalMime(message);
     let sendResponse: Response;
     try {
       sendResponse = await this.config.fetch(graphSendUrl, {
         method: "POST",
+        redirect: "manual",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "text/plain",
@@ -143,6 +163,7 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
       throw new TransactionalMailError("provider_delivery_uncertain");
     }
 
+    await cancelUnusedBody(sendResponse);
     if (sendResponse.status !== 202) {
       throw new TransactionalMailError("provider_rejected");
     }
