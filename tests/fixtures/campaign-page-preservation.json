@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseCommit": "e77fb69d980e9dbfa9290eb79da110a65316be51",
-  "normalizationVersion": "campaign-shell-v1",
+  "normalizationVersion": "campaign-shell-v2",
   "pages": {
     "index.html": {
       "headSha256": "8cd08231c627f2102f24dfacb351f225b3c4d6b2cc311916575741d3658f5226",
@@ -11,7 +11,7 @@
     "start.html": {
       "headSha256": "306b2ccea870c5c4d604c8ec9621039455f21de5be88d1b1ebbfa16ef236c49e",
       "scriptsSha256": "262f8f0930497e8050dfb3978007566d6248423c30bea3db1fca7d356b1d9bf9",
-      "bodySha256": "637f6aae223f35fa975f3e5da5cb654b4ee02d591c0a3cee7e51671a87a517b3"
+      "bodySha256": "301bad19b48c169d8920887af99b50cfd6551a0c62c87e035eaa1808f66b36e7"
     },
     "route.html": {
       "headSha256": "ecf2246ef89600a1c158b25dc35d245a2d7042b58086045b9260d42ed37ee250",
@@ -26,47 +26,47 @@
     "updates.html": {
       "headSha256": "fc14ebc7bb89266871e7e0f8addfaffc9eaa77f776169b9e6dc3326afed54225",
       "scriptsSha256": "4cae1450b14fbdf22df10132c2214394dcdf228c36e23b67588af655f1da89df",
-      "bodySha256": "6f87a7a067d428ea4a19781725f9e96af2b6aa8c7adc691fe45143dd68b4fed0"
+      "bodySha256": "e39b009747196567cf4b77ab546384b14497c15ece235c77506428a5657d34c3"
     },
     "clue-board.html": {
       "headSha256": "b2283c864b06dbce37ddcfc0eae57b86b59e7722a5794aac69277a2e5fa3fb07",
       "scriptsSha256": "33cfcfe06b304f951a5c68269a423adf42ed4d20e845dbb045298d45b3b565a7",
-      "bodySha256": "c2c8906b43dba3f5207a0105445cae1e1ded7bc3585017c7bd5bf74ed79b6da7"
+      "bodySha256": "c412faddae1a67fa450cdbf439bfef4ac8cd08c360c867e1930a6a91d1b17898"
     },
     "report.html": {
       "headSha256": "22d87d78c6f0081ade8c8d04db85798bcb0402b9b3fd5ea8d8587defdab288c8",
       "scriptsSha256": "575859454cb1e1cd0c049bc2683e44d54e849d460c707e105c92fc8144b7387c",
-      "bodySha256": "c44b3442fa6c95a489183024308834980cdc4aa2f1e4dc957e711b9e286e4ecf"
+      "bodySha256": "af116ba532816f7002bfa7d4603901c02eb1ea8ec6b0f4b3e964945685df6937"
     },
     "rules.html": {
       "headSha256": "d8b5ea5e6fb682b1e515cdd8ea6fc1f431081d90157c6dce354d63be507d559c",
       "scriptsSha256": "367ff84bd6251a75b0b1aa6aee7311e295a2336208a4ab09eb9f6958a9d2aa2f",
-      "bodySha256": "5e1bb1db72338ee8dc3baa3a4314322cc841575898d7703bc11d82b7fbdc48e4"
+      "bodySha256": "f1b9ccae3b21e13d8d7d9fc16f9884fcacb6375f259e5b3be0a3e349ccacdaca"
     },
     "dashboard.html": {
       "headSha256": "ca974a53879646027b7963e3d44951a12daa668c9ad95b6faf2463fef006913b",
       "scriptsSha256": "e05ab979782e680caf291b2f77e492f28d3ecbfadaff5abc4e2e1f18ed5bef2d",
-      "bodySha256": "787af435776d66e731569f8602d0f3983043735ff6545295640c60a420c667e9"
+      "bodySha256": "957b2adefa135cc637c1fcfd9f71363fa7e154acc6a592611e010d96958e4222"
     },
     "sponsors.html": {
       "headSha256": "6c1bdffd7a0d0d723aa6781c139fc32fa1f33cb920c7d3156f923bae5059e5b1",
       "scriptsSha256": "e750a5f7e43531944e9454afb1c60ca4736d76699ca98a65d9052a3f4e251711",
-      "bodySha256": "90da295eba41456aa6148bc3072dd10f0c7c40ffa4709b721b6bcbd5dd206018"
+      "bodySha256": "4d2b56427a9aac4361ebd45d001eb7b13d09c74f2fb99aea3598a71573d15189"
     },
     "privacy.html": {
       "headSha256": "baf3b12404a3e2be1076289cefd81e329c872f4049b7a645659a17da6add6c35",
       "scriptsSha256": "1401289e16acc7528e52ffec169a0ac9075a169914aa014a02c4ccd61be8c6ec",
-      "bodySha256": "24187a675722248d5ddb73a0de03bca61126f432f7d1b67738af71cf3855cd70"
+      "bodySha256": "16dd4cd31965769c2851bb2e5310a46dcb4e7cfa7d190e9b0b3bb6021f8f99f6"
     },
     "waiver.html": {
       "headSha256": "a8299274588d621a2645d67958e7e5ea8c615e659139abaa6fa374a948c3580f",
       "scriptsSha256": "5833cd69d2f9d7f8962234eaf8a3ad95a0dffa58d78cb5498dc007dfcdd1ca6e",
-      "bodySha256": "da7335747d018495ec231dccc8ccc538fc867f80182344ba448fe0b55b7f4344"
+      "bodySha256": "db249c4beb9dbade1e5023b76adccf525233dba2ef7c8f0734b0e168c2dadef1"
     },
     "community-guidelines.html": {
       "headSha256": "fb6f816f5965e3ed87aeb3e86b0c8e4c6038b463403a5fee0c0bb26cfd6d18eb",
       "scriptsSha256": "dd7444b4dad735acac2fb07be0e163e92e841ace087b3944cea5f03b19f78f96",
-      "bodySha256": "37fd1e1de025885ffed3af01dfb26c169893bce63494710af0d3c7989601b7cb"
+      "bodySha256": "2d6586f8c0ac81cd338f652dcc016e5c77033e286375efce2e5d3ed9a4fc315d"
     }
   }
 }

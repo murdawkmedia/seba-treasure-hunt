@@ -1,15 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -22,28 +12,6 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const buildScript = path.join(root, "scripts", "build.mjs");
-
-function runBuild({ dist, mediaDist, pageSource } = {}) {
-  return execFileSync(process.execPath, [buildScript], {
-    cwd: root,
-    env: {
-      ...process.env,
-      ...(dist ? { TIM_LOST_BUILD_DIST_DIR: dist } : {}),
-      ...(mediaDist ? { TIM_LOST_BUILD_MEDIA_DIST_DIR: mediaDist } : {}),
-      ...(pageSource ? { TIM_LOST_BUILD_PAGE_SOURCE_DIR: pageSource } : {}),
-    },
-    stdio: "pipe",
-  });
-}
-
-function withTemporaryBuild(callback) {
-  const directory = mkdtempSync(path.join(tmpdir(), "tim-lost-build-"));
-  try {
-    return callback(directory);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-}
 
 const descriptors = {
   "index.html": { route: "home", skipLabel: "Skip to the campaign", skipTarget: "main" },
@@ -60,6 +28,13 @@ const descriptors = {
   "waiver.html": { route: "waiver", skipLabel: "Skip to the participation waiver", skipTarget: "main" },
   "community-guidelines.html": { route: "community-guidelines", skipLabel: "Skip to the community guidelines", skipTarget: "main" },
 };
+
+test("build exposes an imported seam without runtime path overrides", () => {
+  const buildSource = readFileSync(buildScript, "utf8");
+  assert.doesNotMatch(buildSource, /TIM_LOST_BUILD_(?:DIST|MEDIA_DIST|PAGE_SOURCE)_DIR/);
+  assert.match(buildSource, /export\s+async\s+function\s+buildSite\b/);
+  assert.match(buildSource, /import\.meta\.url[\s\S]*process\.argv\[1\]/);
+});
 
 const filenames = Object.fromEntries(
   Object.entries({
@@ -610,70 +585,4 @@ test("every registered source page declares exactly its approved shell descripto
       `${filename} footer marker must immediately precede its body scripts`,
     );
   }
-});
-
-test("build emits complete shells to isolated outputs and leaves Ops independent", () => {
-  withTemporaryBuild((directory) => {
-    const dist = path.join(directory, "dist");
-    const mediaDist = path.join(directory, "dist-media");
-    runBuild({ dist, mediaDist });
-
-    for (const file of Object.keys(CAMPAIGN_PAGES)) {
-      const html = readFileSync(path.join(dist, file), "utf8");
-      assert.match(html, /class="campaign-header"/, `${file} has rendered header`);
-      assert.doesNotMatch(html, /CAMPAIGN_SHELL|CAMPAIGN_FOOTER/, `${file} has no markers`);
-    }
-
-    const sourceOps = readFileSync(path.join(root, "ops.html"), "utf8");
-    const builtOps = readFileSync(path.join(dist, "ops.html"), "utf8");
-    assert.equal(builtOps, sourceOps, "Ops must be copied unchanged");
-    assert.doesNotMatch(builtOps, /class="campaign-header"/);
-    assert.ok(readdirSync(mediaDist).length > 0, "isolated media output is emitted");
-  });
-});
-
-test("invalid registered input fails before modifying either output", () => {
-  withTemporaryBuild((directory) => {
-    const dist = path.join(directory, "dist");
-    const mediaDist = path.join(directory, "dist-media");
-    const pageSource = path.join(directory, "campaign-pages");
-    mkdirSync(dist);
-    mkdirSync(mediaDist);
-    mkdirSync(pageSource);
-    writeFileSync(path.join(dist, "sentinel.txt"), "public sentinel", "utf8");
-    writeFileSync(path.join(mediaDist, "sentinel.txt"), "media sentinel", "utf8");
-
-    for (const file of Object.keys(CAMPAIGN_PAGES)) {
-      cpSync(path.join(root, file), path.join(pageSource, file));
-    }
-    const invalidPage = path.join(pageSource, "start.html");
-    writeFileSync(
-      invalidPage,
-      readFileSync(invalidPage, "utf8").replace("<!-- CAMPAIGN_FOOTER -->", ""),
-      "utf8",
-    );
-
-    assert.throws(() => runBuild({ dist, mediaDist, pageSource }));
-    assert.deepEqual(readdirSync(dist), ["sentinel.txt"]);
-    assert.deepEqual(readdirSync(mediaDist), ["sentinel.txt"]);
-    assert.equal(readFileSync(path.join(dist, "sentinel.txt"), "utf8"), "public sentinel");
-    assert.equal(readFileSync(path.join(mediaDist, "sentinel.txt"), "utf8"), "media sentinel");
-  });
-});
-
-test("build rejects destructive or overlapping output overrides", () => {
-  withTemporaryBuild((directory) => {
-    assert.throws(() =>
-      runBuild({ dist: "relative-output", mediaDist: path.join(directory, "media") }),
-    );
-    assert.throws(() =>
-      runBuild({ dist: root, mediaDist: path.join(directory, "media") }),
-    );
-    assert.throws(() =>
-      runBuild({
-        dist: path.join(directory, "output"),
-        mediaDist: path.join(directory, "output", "media"),
-      }),
-    );
-  });
 });

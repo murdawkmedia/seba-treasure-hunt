@@ -36,6 +36,23 @@ function normalizeAttributes(value, expressions) {
   return attributes.trim().replace(/\s+/g, " ");
 }
 
+function normalizeBodyAttributes(value) {
+  const withoutCampaignClass = value.replace(
+    /\s+class\s*=\s*(["'])(.*?)\1/i,
+    (_attribute, _quote, classValue) => {
+      const preservedClasses = classValue
+        .split(/[\t\n\f\r ]+/)
+        .filter((className) => className && className !== "campaign-page");
+      return preservedClasses.length > 0
+        ? ` class="${preservedClasses.join(" ")}"`
+        : "";
+    },
+  );
+  return normalizeAttributes(withoutCampaignClass, [
+    /\s+data-campaign-route\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+  ]);
+}
+
 function scriptTags(html, filename) {
   const tags = [...normalizeLines(html).matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/gi)]
     .map((match) => match[0]);
@@ -50,10 +67,7 @@ function scriptTags(html, filename) {
 function normalizeBody(html, filename) {
   const bodyMatch = normalizeLines(html).match(/<body\b([^>]*)>([\s\S]*?)<\/body>/i);
   assert.ok(bodyMatch, `${filename} has a complete body`);
-  const bodyAttributes = normalizeAttributes(bodyMatch[1], [
-    /\s+class\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
-    /\s+data-campaign-route\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
-  ]);
+  const bodyAttributes = normalizeBodyAttributes(bodyMatch[1]);
   let body = bodyMatch[2];
 
   body = body
@@ -117,7 +131,7 @@ function preservationHashes(html, filename) {
 test("all campaign sources preserve the reviewed pre-migration page content", () => {
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.baseCommit, baseCommit);
-  assert.equal(manifest.normalizationVersion, "campaign-shell-v1");
+  assert.equal(manifest.normalizationVersion, "campaign-shell-v2");
   assert.deepEqual(Object.keys(manifest.pages), Object.keys(CAMPAIGN_PAGES));
 
   for (const filename of Object.keys(CAMPAIGN_PAGES)) {
@@ -146,5 +160,16 @@ test("preservation hashes detect head, script, and body drift", () => {
   assert.notEqual(
     preservationHashes(html.replace("Help Tim Find His ID", "Help Tim Misplace His ID"), filename).bodySha256,
     expected.bodySha256,
+  );
+
+  const hunterFilename = "start.html";
+  const hunterHtml = readFileSync(new URL(`../${hunterFilename}`, import.meta.url), "utf8");
+  assert.notEqual(
+    preservationHashes(
+      hunterHtml.replace('class="campaign-page hunter-page"', 'class="campaign-page"'),
+      hunterFilename,
+    ).bodySha256,
+    preservationHashes(hunterHtml, hunterFilename).bodySha256,
+    "removing an existing page-family class must be detected",
   );
 });
