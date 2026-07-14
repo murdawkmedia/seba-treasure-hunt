@@ -191,6 +191,78 @@ test("an idempotent acceptance replay re-drives an interrupted receipt unless it
   assert.deepEqual(receipts.calls, [acceptanceId, acceptanceId]);
 });
 
+test("an uncertain receipt survives replay and requires explicit Ops mailbox confirmation", async () => {
+  const { app, store, receipts } = makeApp();
+  await completePlayer(store);
+  const reviewEventId = await recordReview(app);
+  const body = {
+    reviewEventId,
+    ...documentIdentity,
+    waiverAccepted: true,
+    guardianAttested: false,
+    minors: [],
+  };
+  const accept = () => app.request(`${origin}/api/v1/me/waiver/accept`, {
+    method: "POST",
+    ...json(body, { ...hunterHeaders, "idempotency-key": "accept-uncertain" }),
+  });
+  const accepted = await accept();
+  const acceptanceId = (await responseJson(accepted)).data.acceptance.id as string;
+  const record = store.waiverAcceptances.get(acceptanceId)!;
+  record.receipt.status = "uncertain";
+  const callsBeforeReplay = [...receipts.calls];
+
+  const replay = await accept();
+  assert.equal(replay.status, 200);
+  assert.equal((await responseJson(replay)).data.acceptance.receipt.status, "uncertain");
+  assert.deepEqual(receipts.calls, callsBeforeReplay);
+
+  const participantResend = await app.request(`${origin}/api/v1/me/waiver/receipt`, {
+    method: "POST",
+    ...json({}, hunterHeaders),
+  });
+  assert.equal(participantResend.status, 409);
+  assert.equal(
+    (await responseJson(participantResend)).error.code,
+    "waiver_receipt_delivery_uncertain"
+  );
+  assert.deepEqual(receipts.calls, callsBeforeReplay);
+
+  const opsHeaders = { authorization: "Bearer staff-token", origin };
+  const ordinaryOpsRetry = await app.request(
+    `${origin}/api/v1/ops/players/hunter-1/waiver/receipt`,
+    { method: "POST", ...json({}, opsHeaders) }
+  );
+  assert.equal(ordinaryOpsRetry.status, 409);
+  assert.equal(
+    (await responseJson(ordinaryOpsRetry)).error.code,
+    "waiver_receipt_delivery_uncertain"
+  );
+  assert.deepEqual(receipts.calls, callsBeforeReplay);
+
+  const confirmedOpsRetry = await app.request(
+    `${origin}/api/v1/ops/players/hunter-1/waiver/receipt`,
+    {
+      method: "POST",
+      ...json({ confirmUncertainRetry: true }, opsHeaders),
+    }
+  );
+  assert.equal(confirmedOpsRetry.status, 202);
+  const confirmedPayload = await responseJson(confirmedOpsRetry);
+  assert.equal(confirmedPayload.data.acceptance.receipt.status, "pending");
+  assert.doesNotMatch(
+    JSON.stringify(confirmedPayload),
+    /providerReference|provider_reference|provider_message_id/i
+  );
+  assert.deepEqual(receipts.calls, [...callsBeforeReplay, acceptanceId]);
+  assert.equal(
+    store.audits.filter(
+      (event) => event.action === "player.waiver-receipt.uncertain-retry-confirmed"
+    ).length,
+    1
+  );
+});
+
 test("rejects stale, unreviewed, and ineligible waiver acceptance", async () => {
   const { app, store } = makeApp();
   await completePlayer(store);

@@ -867,6 +867,7 @@ export class D1DataStore implements DataStore {
       .prepare(
         `SELECT l.id, l.hunter_subject, l.document_version, l.document_hash, l.accepted_at,
                 j.id AS job_id, j.status AS job_status, j.attempts AS job_attempts,
+                j.last_error_code AS job_last_error_code,
                 (SELECT occurred_at FROM notification_delivery_events d
                  WHERE d.notification_job_id = j.id AND d.event_type = 'sent'
                  ORDER BY d.occurred_at DESC, d.id DESC LIMIT 1) AS sent_at
@@ -903,7 +904,10 @@ export class D1DataStore implements DataStore {
       })),
       receipt: {
         jobId: value(row.job_id),
-        status: row.job_status as WaiverAcceptanceRecord["receipt"]["status"],
+        status:
+          row.job_status === "failed" && row.job_last_error_code === "provider_delivery_uncertain"
+            ? "uncertain"
+            : (row.job_status as WaiverAcceptanceRecord["receipt"]["status"]),
         attempts: Number(row.job_attempts),
         sentAt: nullable(row.sent_at)
       }
@@ -1103,7 +1107,8 @@ export class D1DataStore implements DataStore {
     acceptance: WaiverAcceptanceRecord,
     additionalStatements: (requeueToken: string) => D1PreparedStatement[] = () => [],
     guardStatements: (requeueToken: string) => D1PreparedStatement[] = () => [],
-    unsentOnly = false
+    unsentOnly = false,
+    allowUncertainRetry = false
   ): Promise<boolean> {
     const timestamp = now();
     const requeueToken = id();
@@ -1117,6 +1122,12 @@ export class D1DataStore implements DataStore {
            FROM notification_jobs j
            WHERE j.id = ? AND j.kind = 'waiver_receipt' AND j.target_record_id = ?
              AND (? = 0 OR j.status IN ('pending', 'failed'))
+             AND (
+               (? = 1 AND j.status = 'failed'
+                 AND j.last_error_code = 'provider_delivery_uncertain')
+               OR
+               (? = 0 AND COALESCE(j.last_error_code, '') <> 'provider_delivery_uncertain')
+             )
              AND NOT EXISTS (
                SELECT 1 FROM notification_job_leases active
                WHERE active.notification_job_id = j.id AND active.lease_until > ?
@@ -1135,6 +1146,8 @@ export class D1DataStore implements DataStore {
           acceptance.receipt.jobId,
           acceptance.id,
           unsentOnly ? 1 : 0,
+          allowUncertainRetry ? 1 : 0,
+          allowUncertainRetry ? 1 : 0,
           timestamp,
           timestamp
         ),
@@ -1209,10 +1222,16 @@ export class D1DataStore implements DataStore {
   async queueOpsWaiverReceiptResend(
     subject: string,
     acceptanceId: string,
-    actorSubject: string
+    actorSubject: string,
+    allowUncertainRetry = false
   ): Promise<OpsWaiverReceiptResendResult> {
     const acceptance = await this.waiverAcceptanceById(acceptanceId, subject, true);
     if (!acceptance) return { status: "not_found" };
+    if (acceptance.receipt.status === "uncertain" && !allowUncertainRetry) {
+      return { status: "uncertain" };
+    }
+    const confirmedUncertainRetry =
+      acceptance.receipt.status === "uncertain" && allowUncertainRetry;
     const timestamp = now();
     const requeued = await this.requeueWaiverReceiptJob(
       acceptance,
@@ -1234,7 +1253,30 @@ export class D1DataStore implements DataStore {
             timestamp,
             acceptance.receipt.jobId,
             requeueToken
-          )
+          ),
+        ...(confirmedUncertainRetry
+          ? [
+              this.db
+                .prepare(
+                  `INSERT INTO audit_events
+                   (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+                   SELECT ?, ?, 'player.waiver-receipt.uncertain-retry-confirmed',
+                          'legal_acceptance', ?, '{}', ?
+                   WHERE EXISTS (
+                     SELECT 1 FROM notification_job_leases lease
+                     WHERE lease.notification_job_id = ? AND lease.lease_token = ?
+                   )`
+                )
+                .bind(
+                  id(),
+                  actorSubject,
+                  acceptanceId,
+                  timestamp,
+                  acceptance.receipt.jobId,
+                  requeueToken
+                )
+            ]
+          : [])
       ],
       (requeueToken) => [
         this.db
@@ -1268,7 +1310,9 @@ export class D1DataStore implements DataStore {
             participationWaiverDocument.version,
             participationWaiverDocument.hash
           )
-      ]
+      ],
+      false,
+      confirmedUncertainRetry
     );
     if (!requeued) {
       const latest = await this.db
@@ -1298,6 +1342,7 @@ export class D1DataStore implements DataStore {
          FROM notification_jobs
          WHERE kind = 'waiver_receipt' AND target_record_id = ?
            AND status IN ('pending', 'failed')
+           AND COALESCE(last_error_code, '') <> 'provider_delivery_uncertain'
            AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
          LIMIT 1`
       )
@@ -1316,6 +1361,7 @@ export class D1DataStore implements DataStore {
            FROM notification_jobs j
            WHERE j.id = ? AND j.kind = 'waiver_receipt' AND j.attempts = ?
              AND j.status IN ('pending', 'failed')
+             AND COALESCE(j.last_error_code, '') <> 'provider_delivery_uncertain'
              AND (j.next_attempt_at IS NULL OR j.next_attempt_at <= ?)
            ON CONFLICT(notification_job_id) DO UPDATE SET
              lease_token = excluded.lease_token,
@@ -2203,7 +2249,12 @@ export class D1DataStore implements DataStore {
                (SELECT COUNT(*) FROM waiver_acceptance_participants wp
                 WHERE wp.acceptance_event_id = waiver.waiver_id
                   AND wp.participant_role = 'minor') AS minor_count,
-               job.status AS receipt_status
+               CASE
+                 WHEN job.status = 'failed'
+                   AND job.last_error_code = 'provider_delivery_uncertain'
+                 THEN 'uncertain'
+                 ELSE job.status
+               END AS receipt_status
         FROM ranked_current_waiver waiver
         JOIN notification_jobs job
           ON job.target_record_id = waiver.waiver_id AND job.kind = 'waiver_receipt'

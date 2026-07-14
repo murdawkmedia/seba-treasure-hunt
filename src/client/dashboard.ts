@@ -970,18 +970,48 @@ function appendAcceptanceDetail(root: HTMLDListElement, label: string, value: st
   root.append(term, description);
 }
 
+export function waiverReceiptPresentation(receipt: unknown): {
+  status: string;
+  message: string;
+  resendDisabled: boolean;
+} {
+  const state = isRecord(receipt) && typeof receipt.status === "string" ? receipt.status : "pending";
+  if (state === "sent") {
+    return {
+      status: state,
+      message: "Receipt sent to your verified account email.",
+      resendDisabled: false,
+    };
+  }
+  if (state === "uncertain") {
+    return {
+      status: state,
+      message: "Microsoft may have accepted this receipt, but the confirmation response was interrupted. To prevent duplicates, another copy is temporarily blocked while the case team checks the sender mailbox.",
+      resendDisabled: true,
+    };
+  }
+  if (state === "failed") {
+    return {
+      status: state,
+      message: "Your acceptance is stored, but the receipt email could not be delivered. You can try again.",
+      resendDisabled: false,
+    };
+  }
+  return {
+    status: "pending",
+    message: "Your acceptance is stored. The receipt email is pending.",
+    resendDisabled: false,
+  };
+}
+
 function renderReceiptStatus(receipt: unknown): void {
   const status = document.querySelector<HTMLElement>("[data-waiver-receipt-status]");
   if (!status) return;
-  const state = isRecord(receipt) && typeof receipt.status === "string" ? receipt.status : "pending";
-  status.dataset.receiptStatus = state;
-  if (state === "sent") {
-    status.textContent = "Receipt sent to your verified account email.";
-  } else if (state === "failed") {
-    status.textContent = "Your acceptance is stored, but the receipt email could not be delivered. You can try again.";
-  } else {
-    status.textContent = "Your acceptance is stored. The receipt email is pending.";
-  }
+  const presentation = waiverReceiptPresentation(receipt);
+  status.dataset.receiptStatus = presentation.status;
+  status.textContent = presentation.message;
+  const resend = document.querySelector<HTMLButtonElement>("[data-resend-waiver-receipt]");
+  if (resend) resend.disabled = presentation.resendDisabled;
 }
 
 function renderStoredAcceptance(acceptance: Record<string, unknown>): void {
@@ -1214,7 +1244,7 @@ async function initializeWaiverExperience(
       } catch (error) {
         if (status) status.textContent = error instanceof Error ? error.message : "The receipt could not be queued.";
       } finally {
-        button.disabled = false;
+        button.disabled = status?.dataset.receiptStatus === "uncertain";
       }
     });
   }

@@ -399,6 +399,7 @@ export class FakeStore {
       !record ||
       record.subject !== subject ||
       record.receipt.status === "sent" ||
+      record.receipt.status === "uncertain" ||
       this.waiverReceiptInProgress.has(acceptanceId)
     ) {
       return false;
@@ -411,6 +412,7 @@ export class FakeStore {
   async queueWaiverReceiptResend(subject: string, acceptanceId: string) {
     const record = this.waiverAcceptances.get(acceptanceId);
     if (!record || record.subject !== subject) return null;
+    if (record.receipt.status === "uncertain") return structuredClone(record);
     record.receipt.status = "pending";
     record.receipt.sentAt = null;
     return structuredClone(record);
@@ -418,7 +420,7 @@ export class FakeStore {
 
   async claimWaiverReceiptJob(acceptanceId: string) {
     const record = this.waiverAcceptances.get(acceptanceId);
-    if (!record || record.receipt.status === "sent") return null;
+    if (!record || record.receipt.status === "sent" || record.receipt.status === "uncertain") return null;
     record.receipt.attempts += 1;
     return {
       id: record.receipt.jobId,
@@ -443,7 +445,10 @@ export class FakeStore {
   ) {
     const record = [...this.waiverAcceptances.values()].find((entry) => entry.receipt.jobId === job.id);
     if (!record) return;
-    record.receipt.status = result.status;
+    record.receipt.status =
+      result.status === "failed" && result.errorCode === "provider_delivery_uncertain"
+        ? "uncertain"
+        : result.status;
     record.receipt.sentAt = result.status === "sent" ? "2026-07-13T18:06:00.000Z" : null;
   }
 
@@ -463,8 +468,20 @@ export class FakeStore {
     return detail;
   }
 
-  async queueOpsWaiverReceiptResend(subject: string, acceptanceId: string, actorSubject: string) {
+  async queueOpsWaiverReceiptResend(
+    subject: string,
+    acceptanceId: string,
+    actorSubject: string,
+    allowUncertainRetry = false
+  ) {
     if (this.waiverReceiptInProgress.has(acceptanceId)) return { status: "in_progress" as const };
+    const current = this.waiverAcceptances.get(acceptanceId);
+    if (current?.subject === subject && current.receipt.status === "uncertain" && !allowUncertainRetry) {
+      return { status: "uncertain" as const };
+    }
+    const confirmedUncertainRetry =
+      current?.subject === subject && current.receipt.status === "uncertain" && allowUncertainRetry;
+    if (confirmedUncertainRetry) current.receipt.status = "failed";
     const acceptance = await this.queueWaiverReceiptResend(subject, acceptanceId);
     if (!acceptance) return { status: "not_found" as const };
     this.audits.push({
@@ -473,6 +490,14 @@ export class FakeStore {
       target: acceptanceId,
       subject
     });
+    if (confirmedUncertainRetry) {
+      this.audits.push({
+        action: "player.waiver-receipt.uncertain-retry-confirmed",
+        actorSubject,
+        target: acceptanceId,
+        subject
+      });
+    }
     return { status: "queued" as const, acceptance };
   }
 

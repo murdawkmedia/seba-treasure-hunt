@@ -123,7 +123,7 @@ export interface OpsWaiverDetail {
     guardianAttested: boolean;
   }>;
   receipt: {
-    status: "pending" | "sent" | "failed";
+    status: "pending" | "sent" | "failed" | "uncertain";
     attempts: number;
     sentAt: string;
   };
@@ -427,7 +427,7 @@ export function normalizeOpsWaiverDetail(payload: unknown): OpsWaiverDetail | nu
   const receiptAttempts = asNumber(value.receipt.attempts);
   if (
     !id || !subject || !documentVersion || !/^[a-f0-9]{64}$/.test(documentHash) ||
-    !acceptedAt || !referenceCode || !["pending", "sent", "failed"].includes(receiptStatus) ||
+    !acceptedAt || !referenceCode || !["pending", "sent", "failed", "uncertain"].includes(receiptStatus) ||
     receiptAttempts === null
   ) return null;
   const participants = value.participants.flatMap((candidate) => {
@@ -460,7 +460,7 @@ export function normalizeOpsWaiverDetail(payload: unknown): OpsWaiverDetail | nu
     referenceCode,
     participants,
     receipt: {
-      status: receiptStatus as "pending" | "sent" | "failed",
+      status: receiptStatus as "pending" | "sent" | "failed" | "uncertain",
       attempts: receiptAttempts,
       sentAt: asString(value.receipt.sentAt),
     },
@@ -480,6 +480,23 @@ export function renderOpsWaiverDetail(detail: OpsWaiverDetail): string {
     <div><dt>Reference</dt><dd class="ops-mono">${escapeOpsHtml(detail.referenceCode)}</dd></div>
     <div><dt>Receipt</dt><dd>${escapeOpsHtml(detail.receipt.status)} &middot; ${escapeOpsHtml(attempts)}</dd></div>
   </dl><section class="ops-legal-participants"><h3>Covered participants</h3><ul>${participants}</ul></section>`;
+}
+
+export function waiverReceiptRetryIntent(
+  status: OpsWaiverDetail["receipt"]["status"]
+): {
+  confirmation: string;
+  body: { confirmUncertainRetry: true } | undefined;
+} {
+  return status === "uncertain"
+    ? {
+        confirmation: "I checked tech@sebahub.com Sent Items and still want to retry this uncertain receipt.",
+        body: { confirmUncertainRetry: true },
+      }
+    : {
+        confirmation: "Retry this participant's legal receipt email? This action will be audited.",
+        body: undefined,
+      };
 }
 
 function consentCell(value: boolean): string {
@@ -977,6 +994,7 @@ async function openWaiverDetail(subject: string): Promise<void> {
     if (!detail || detail.subject !== subject) throw new Error("The legal record response was incomplete.");
     output.innerHTML = renderOpsWaiverDetail(detail);
     dialog.dataset.playerId = subject;
+    dialog.dataset.receiptStatus = detail.receipt.status;
     retry.disabled = false;
     setWaiverDetailState("Private legal record loaded for deliberate review.");
   } catch (error) {
@@ -1358,12 +1376,19 @@ function setupWorkspace(): void {
     const dialog = document.querySelector<HTMLDialogElement>("#ops-waiver-dialog");
     const subject = dialog?.dataset.playerId;
     if (!(button instanceof HTMLButtonElement) || !subject) return;
-    if (!window.confirm("Retry this participant's legal receipt email? This action will be audited.")) return;
+    const receiptStatus = dialog?.dataset.receiptStatus;
+    const intent = waiverReceiptRetryIntent(
+      receiptStatus === "uncertain" ? "uncertain" : "failed"
+    );
+    const receiptConfirmation = intent.confirmation;
+    if (!window.confirm(receiptConfirmation)) return;
     button.disabled = true;
     setWaiverDetailState("Queueing a fresh copy of the legal receipt...");
     try {
       const { response, payload } = await opsRequest(`/api/v1/ops/players/${encodeURIComponent(subject)}/waiver/receipt`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(intent.body ?? {}),
       });
       if (!response.ok) throw new Error(apiError(payload, "The legal receipt could not be retried."));
       setWaiverDetailState("Receipt retry queued and recorded in the audit trail.");
@@ -1378,6 +1403,7 @@ function setupWorkspace(): void {
     const dialog = event.currentTarget;
     if (!(dialog instanceof HTMLDialogElement)) return;
     dialog.dataset.playerId = "";
+    dialog.dataset.receiptStatus = "";
     dialog.querySelector<HTMLElement>("[data-waiver-detail-output]")?.replaceChildren();
     const retry = dialog.querySelector<HTMLButtonElement>("[data-retry-waiver-receipt]");
     if (retry) retry.disabled = true;

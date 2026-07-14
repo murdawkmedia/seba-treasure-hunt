@@ -1108,9 +1108,23 @@ export const createApi = (deps: ApiDependencies) => {
     if (!acceptance) {
       throw new ApiError(404, "waiver_acceptance_not_found", "No accepted participation waiver was found.");
     }
+    if (acceptance.receipt.status === "uncertain") {
+      throw new ApiError(
+        409,
+        "waiver_receipt_delivery_uncertain",
+        "The receipt may already have been accepted by Microsoft. The case team must check the sender mailbox before another copy can be sent."
+      );
+    }
     const queued = await deps.store.queueWaiverReceiptResend(hunter.subject, acceptance.id);
     if (!queued) {
       throw new ApiError(404, "waiver_acceptance_not_found", "No accepted participation waiver was found.");
+    }
+    if (queued.receipt.status === "uncertain") {
+      throw new ApiError(
+        409,
+        "waiver_receipt_delivery_uncertain",
+        "The receipt may already have been accepted by Microsoft. The case team must check the sender mailbox before another copy can be sent."
+      );
     }
     scheduleWaiverReceipt(c, deps.waiverReceipts, queued.id);
     return success(c, { acceptance: queued }, 202);
@@ -1434,7 +1448,17 @@ export const createApi = (deps: ApiDependencies) => {
     ) {
       throw new ApiError(409, "waiver_document_outdated", "Only the current waiver acceptance can be resent here.");
     }
-    const result = await deps.store.queueOpsWaiverReceiptResend(subject, detail.id, staff.subject);
+    const { body, files } = c.req.raw.body
+      ? await requestBody(c.req.raw)
+      : { body: {} as Record<string, unknown>, files: [] as File[] };
+    if (files.length) throw new ApiError(415, "unsupported_media_type", "Waiver receipt requests accept JSON only.");
+    const confirmUncertainRetry = body.confirmUncertainRetry === true;
+    const result = await deps.store.queueOpsWaiverReceiptResend(
+      subject,
+      detail.id,
+      staff.subject,
+      confirmUncertainRetry
+    );
     if (result.status === "not_found") {
       throw new ApiError(404, "waiver_acceptance_not_found", "No current waiver acceptance was found.");
     }
@@ -1443,6 +1467,13 @@ export const createApi = (deps: ApiDependencies) => {
         409,
         "waiver_receipt_in_progress",
         "A receipt delivery is already in progress. Try again after it finishes."
+      );
+    }
+    if (result.status === "uncertain") {
+      throw new ApiError(
+        409,
+        "waiver_receipt_delivery_uncertain",
+        "Check tech@sebahub.com Sent Items, then explicitly confirm before retrying this uncertain receipt."
       );
     }
     scheduleWaiverReceipt(c, deps.waiverReceipts, result.acceptance.id);

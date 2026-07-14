@@ -17,7 +17,10 @@ import {
   renderSponsorRows,
   renderStaffRows,
   resolveOpsView,
+  waiverReceiptRetryIntent,
 } from "../src/client/ops";
+
+const uncertainRetryConfirmation = "I checked tech@sebahub.com Sent Items and still want to retry this uncertain receipt.";
 
 test("player ledger keeps only a waiver summary until deliberate detail review", () => {
   const ledger = normalizeOpsSubscribers({ data: { counts: {}, items: [{
@@ -69,6 +72,17 @@ test("waiver detail rendering validates and escapes the deliberately loaded priv
   assert.match(html, /Sam &lt;script&gt;<\/strong> \(birth year 2014\)/);
   assert.match(html, /2 attempts/);
   assert.doesNotMatch(html, /<script>|private-job/);
+});
+
+test("Ops sends the uncertain override only after the explicit Sent Items confirmation", () => {
+  assert.deepEqual(waiverReceiptRetryIntent("uncertain"), {
+    confirmation: uncertainRetryConfirmation,
+    body: { confirmUncertainRetry: true },
+  });
+  assert.deepEqual(waiverReceiptRetryIntent("failed"), {
+    confirmation: "Retry this participant's legal receipt email? This action will be audited.",
+    body: undefined,
+  });
 });
 
 test("sponsor operations rows normalize private fields and escape every rendered value", () => {

@@ -11,10 +11,13 @@ import {
   performWaiverReview,
   validateWaiverDraft,
   waiverAcceptanceResultMessage,
+  waiverReceiptPresentation,
   waiverWrite,
   WaiverRequestError,
   type WaiverDraft,
 } from "../src/client/dashboard";
+
+const uncertainReceiptCopy = "Microsoft may have accepted this receipt, but the confirmation response was interrupted. To prevent duplicates, another copy is temporarily blocked while the case team checks the sender mailbox.";
 
 const validDraft: WaiverDraft = {
   reviewEventId: "review-1",
@@ -357,5 +360,18 @@ test("accepted waiver view uses the immutable authenticated document with exact 
   await assert.rejects(
     performAcceptedWaiverView(null, async () => undefined),
     /exact accepted waiver document is unavailable/i,
+  );
+});
+
+test("uncertain receipt copy explains the ambiguity and disables participant resend", () => {
+  assert.deepEqual(waiverReceiptPresentation({ status: "uncertain" }), {
+    status: "uncertain",
+    message: uncertainReceiptCopy,
+    resendDisabled: true,
+  });
+  assert.equal(
+    waiverReceiptPresentation({ status: "failed" }).resendDisabled,
+    false,
+    "ordinary provider failures remain participant-retryable"
   );
 });

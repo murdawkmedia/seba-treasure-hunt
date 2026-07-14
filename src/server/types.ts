@@ -51,7 +51,7 @@ export interface WaiverParticipantSnapshot {
 
 export interface WaiverReceiptState {
   jobId: string;
-  status: "pending" | "sent" | "failed";
+  status: "pending" | "sent" | "failed" | "uncertain";
   attempts: number;
   sentAt: string | null;
 }
@@ -111,6 +111,7 @@ export interface WaiverReceiptEnvelope {
 export type OpsWaiverReceiptResendResult =
   | { status: "queued"; acceptance: WaiverAcceptanceRecord }
   | { status: "in_progress" }
+  | { status: "uncertain" }
   | { status: "not_found" };
 
 export type WaiverReceiptDeliveryResult = { status: "sent" | "failed" };
@@ -231,7 +232,8 @@ export interface DataStore {
   queueOpsWaiverReceiptResend(
     subject: string,
     acceptanceId: string,
-    actorSubject: string
+    actorSubject: string,
+    allowUncertainRetry?: boolean
   ): Promise<OpsWaiverReceiptResendResult>;
   applyIdentityEvent(event: IdentityLifecycleEvent): Promise<{ replayed: boolean }>;
   upsertProfile(subject: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;

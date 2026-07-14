@@ -1145,6 +1145,137 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     .first<{ count: number }>();
   assert.equal(afterResendCount?.count, 1, "resending never creates another legal acceptance");
 
+  const uncertain = await prepareRaceAcceptance(
+    "hunter-uncertain-receipt",
+    "uncertain-receipt"
+  );
+  const uncertainClaim = await store.claimWaiverReceiptJob(uncertain.value.id);
+  assert.ok(uncertainClaim);
+  await store.completeWaiverReceiptJob(uncertainClaim, {
+    status: "failed",
+    errorCode: "provider_delivery_uncertain"
+  });
+
+  const uncertainProjection = await store.getParticipationWaiver(
+    "hunter-uncertain-receipt"
+  );
+  assert.equal(uncertainProjection?.receipt.status, "uncertain");
+  assert.doesNotMatch(
+    JSON.stringify(uncertainProjection),
+    /providerReference|provider_reference|provider_message_id|graph_request_id|client_request_id/i
+  );
+  const uncertainReplay = await store.acceptParticipationWaiver(
+    "hunter-uncertain-receipt",
+    {
+      ...input,
+      reviewEventId: "unused-on-idempotent-replay",
+      idempotencyKey: "uncertain-receipt",
+      adultName: "Race Test Adult",
+      minors: []
+    }
+  );
+  assert.equal(uncertainReplay.replayed, true);
+  assert.equal(
+    await store.requeueWaiverReceiptForAcceptanceReplay(
+      "hunter-uncertain-receipt",
+      uncertain.value.id
+    ),
+    false,
+    "acceptance replay cannot requeue an uncertain delivery"
+  );
+  assert.equal(
+    (await store.queueWaiverReceiptResend(
+      "hunter-uncertain-receipt",
+      uncertain.value.id
+    ))?.receipt.status,
+    "uncertain",
+    "participant resend preserves the uncertain projection"
+  );
+  assert.equal(
+    await store.claimWaiverReceiptJob(uncertain.value.id),
+    null,
+    "the ordinary worker claim path cannot retry an uncertain delivery"
+  );
+  assert.deepEqual(
+    await store.queueOpsWaiverReceiptResend(
+      "hunter-uncertain-receipt",
+      uncertain.value.id,
+      "staff-uncertain-review"
+    ),
+    { status: "uncertain" },
+    "standard Ops retry is fenced until mailbox confirmation"
+  );
+
+  const confirmedRetries = await Promise.all([
+    store.queueOpsWaiverReceiptResend(
+      "hunter-uncertain-receipt",
+      uncertain.value.id,
+      "staff-uncertain-review",
+      true
+    ),
+    store.queueOpsWaiverReceiptResend(
+      "hunter-uncertain-receipt",
+      uncertain.value.id,
+      "staff-uncertain-review",
+      true
+    )
+  ]);
+  assert.equal(
+    confirmedRetries.filter((result) => result.status === "queued").length,
+    1,
+    "only one concurrent confirmed uncertain retry wins the D1 fence"
+  );
+  assert.equal(
+    confirmedRetries.filter((result) => result.status === "in_progress").length,
+    1,
+    "the losing concurrent confirmation observes the in-progress retry"
+  );
+  const uncertainEvidence = await Promise.all([
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM notification_delivery_events
+         WHERE notification_job_id = ? AND event_type = 'requeued'`
+      )
+      .bind(uncertain.value.receipt.jobId)
+      .first<{ count: number }>(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM audit_events
+         WHERE target_id = ? AND action = 'player.waiver-receipt.requested'`
+      )
+      .bind(uncertain.value.id)
+      .first<{ count: number }>(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM audit_events
+         WHERE target_id = ?
+           AND action = 'player.waiver-receipt.uncertain-retry-confirmed'`
+      )
+      .bind(uncertain.value.id)
+      .first<{ count: number }>()
+  ]);
+  assert.deepEqual(
+    uncertainEvidence.map((row) => row?.count ?? 0),
+    [1, 1, 1],
+    "the winning retry, ordinary audit, and explicit mailbox confirmation commit together"
+  );
+  const uncertainAudit = await db
+    .prepare(
+      `SELECT actor_subject, action, target_kind, target_id, metadata_json
+       FROM audit_events
+       WHERE target_id = ?
+         AND action = 'player.waiver-receipt.uncertain-retry-confirmed'`
+    )
+    .bind(uncertain.value.id)
+    .first<Record<string, unknown>>();
+  assert.deepEqual(uncertainAudit, {
+    actor_subject: "staff-uncertain-review",
+    action: "player.waiver-receipt.uncertain-retry-confirmed",
+    target_kind: "legal_acceptance",
+    target_id: uncertain.value.id,
+    metadata_json: "{}"
+  });
+
   await store.applyIdentityEvent({
     id: "deleted-waiver-player",
     type: "user.deleted",
