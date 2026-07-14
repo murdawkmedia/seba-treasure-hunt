@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current state
 
-The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `65e12bf`.
+The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `0e701b6` (deployment `aab9303b-36a7-4c91-9740-8293332cf995`).
 
 Validation now presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the new guardian/receipt/Ops surfaces at `https://codex-validation.seba-treasure-hunt.pages.dev`. Its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; its deployment ID, DNS, domains and data were not changed. Resend and the transactional sender/reply settings are configured as encrypted Preview secrets. No account or submission has been created, and no email has been sent.
 
@@ -40,7 +40,7 @@ Validation inquiries are disposable and must not be promoted to production.
 - Public `/waiver` route, legal navigation, sitemap entry and active architecture documentation.
 - A validation-safe browser QA gate that exercises the built Dashboard, Ops, Clue Board and Report clients at desktop, mobile and zoom-equivalent viewports.
 
-Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5` and `65e12bf`.
+Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5`, `65e12bf` and `0e701b6`.
 
 ## Database and provider state
 
@@ -67,7 +67,7 @@ Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `
 - `npm run build`: passed; Pages Worker 304.8 kB, media Worker 3.2 kB and client bundles completed.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
-- Validation deployment from `65e12bf` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return the expected open state and legal versions. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
+- Validation deployment `aab9303b-36a7-4c91-9740-8293332cf995` from `0e701b6` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return 200. Cloudflare lists all four transactional email settings as encrypted Preview secrets. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
 - `npm audit --omit=dev --audit-level=high`: exit 0 with zero high/critical findings. Twelve moderate findings remain in Clerk's optional Solana chain; no forced breaking remediation was applied.
 - Full evidence and reproduction commands are recorded in `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`.
 
@@ -79,8 +79,9 @@ Validation activation is approved, but the following still require authenticated
 2. Configure the remaining Preview-only identity, webhook and Turnstile values.
 3. Run one owner-controlled disposable hunter/guardian/receipt/Ops test and a controlled test receipt.
 4. Verify password recovery, staff invitation/authorization, all Turnstile actions and private media processing.
-5. Wipe disposable validation identities, D1 activity/legal records and validation media after testing. Immutable legal ledgers mean this should be a controlled validation-resource reset, not ad hoc deletes.
-6. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
+5. Rotate the Resend API key after the controlled delivery test because the initial credential was supplied through chat; replace only the encrypted Preview secret.
+6. Wipe disposable validation identities, D1 activity/legal records and validation media after testing. Immutable legal ledgers mean this should be a controlled validation-resource reset, not ad hoc deletes.
+7. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
 
 ## Next approved workflow
 
