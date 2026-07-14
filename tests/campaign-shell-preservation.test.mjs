@@ -15,6 +15,16 @@ const manifest = JSON.parse(
 const wrapperOnlyPages = new Set(["index.html", "route.html", "interview.html"]);
 const clueBoardStatusScript =
   '<script type="module" src="/assets/app/status.js"></script>';
+const authorizedBodyClasses = new Set([
+  "campaign-page",
+  "campaign-page--landing",
+  "campaign-page--route",
+  "campaign-page--editorial",
+  "campaign-page--ledger",
+  "campaign-page--workspace",
+  "campaign-page--document",
+  "campaign-page--sponsors",
+]);
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -42,7 +52,7 @@ function normalizeBodyAttributes(value) {
     (_attribute, _quote, classValue) => {
       const preservedClasses = classValue
         .split(/[\t\n\f\r ]+/)
-        .filter((className) => className && className !== "campaign-page");
+        .filter((className) => className && !authorizedBodyClasses.has(className));
       return preservedClasses.length > 0
         ? ` class="${preservedClasses.join(" ")}"`
         : "";
@@ -184,7 +194,7 @@ test("preservation hashes detect head, script, and body drift", () => {
   const hunterHtml = readFileSync(new URL(`../${hunterFilename}`, import.meta.url), "utf8");
   assert.notEqual(
     preservationHashes(
-      hunterHtml.replace('class="campaign-page hunter-page"', 'class="campaign-page"'),
+      hunterHtml.replace(/\shunter-page(?=["'])/, ""),
       hunterFilename,
     ).bodySha256,
     preservationHashes(hunterHtml, hunterFilename).bodySha256,

@@ -62,7 +62,7 @@ const generatedPage = `<!doctype html>
   <link rel="stylesheet" href="/css/hunter.css" />
   <link rel="stylesheet" href="/css/campaign-shell.css" />
 </head>
-<body class="campaign-page hunter-page waiver-page" data-campaign-route="waiver">
+<body class="campaign-page campaign-page--document hunter-page waiver-page" data-campaign-route="waiver">
   <!-- CAMPAIGN_SHELL {"route":"waiver","skipLabel":"Skip to the participation waiver","skipTarget":"main"} -->
   <main id="main" tabindex="-1">
     <section class="hunter-hero" aria-labelledby="waiver-title"><div class="hunter-hero__inner"><p class="hunter-kicker">Participation legal document</p><h1 id="waiver-title">${escape(source.title)}</h1><p class="hunter-hero__lead">Version ${escape(source.version)} &middot; Effective ${escape(source.effectiveDateLabel)}</p></div></section>

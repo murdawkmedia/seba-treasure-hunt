@@ -1,5 +1,5 @@
 :root {
-  --board-night: #071f1c;
+  --board-night: var(--campaign-surface-dark);
   --board-panel: #0d3029;
   --board-raised: #15443a;
   --board-ink: #f8f0d5;
@@ -7,8 +7,8 @@
   --board-gold: #f1b62b;
   --board-gold-dark: #9d6510;
   --board-danger: #e75b4f;
-  --board-open: #69c58d;
-  --board-found: #8db8dc;
+  --board-open: var(--campaign-open);
+  --board-found: var(--campaign-found);
   --board-paper: #f4ead0;
   --board-paper-ink: #292116;
 }
@@ -22,7 +22,7 @@
     radial-gradient(circle at 9% 2%, rgba(241, 182, 43, .12), transparent 26rem),
     linear-gradient(rgba(7, 31, 28, .96), rgba(7, 31, 28, .98)),
     url("../assets/photos/hero-aerial.jpg") center top / cover fixed;
-  font-family: var(--font-body);
+  font-family: var(--campaign-font-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -115,7 +115,7 @@
   font: inherit;
 }
 .ledger-panel textarea { resize: vertical; }
-.ledger-panel :focus-visible { outline: 3px solid var(--board-gold); outline-offset: 3px; }
+.ledger-panel :focus-visible { outline: 3px solid var(--campaign-focus); outline-offset: 3px; }
 .control-hint { margin: 9px 0 0; color: var(--board-muted); font-size: .86rem; line-height: 1.45; }
 .field-meta { display: flex; gap: 12px; justify-content: space-between; margin-top: 6px; color: var(--board-muted); font-size: .78rem; }
 .field-meta output { font-variant-numeric: tabular-nums; }

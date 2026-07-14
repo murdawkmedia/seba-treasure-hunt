@@ -1,5 +1,5 @@
 :root {
-  --hunter-night: #071f1c;
+  --hunter-night: var(--campaign-forest-950);
   --hunter-panel: #0d3029;
   --hunter-raised: #15443a;
   --hunter-ink: #f8f0d5;
@@ -8,11 +8,11 @@
   --hunter-gold-dark: #9d6510;
   --hunter-danger: #e75b4f;
   --hunter-warning: #f0a33a;
-  --hunter-open: #69c58d;
-  --hunter-found: #8db8dc;
-  --hunter-paper: #f6efdd;
-  --hunter-paper-deep: #e5d5ac;
-  --hunter-ink-dark: #241b0f;
+  --hunter-open: var(--campaign-open);
+  --hunter-found: var(--campaign-found);
+  --hunter-paper: var(--campaign-surface-paper);
+  --hunter-paper-deep: var(--campaign-paper-300);
+  --hunter-ink-dark: var(--campaign-ink);
   --hunter-rule: rgba(248, 240, 213, 0.2);
   --hunter-shadow: 0 22px 55px rgba(2, 16, 14, 0.32);
 }
@@ -28,9 +28,9 @@ body.hunter-page {
     radial-gradient(circle at 12% 10%, rgba(241, 182, 43, 0.1), transparent 31rem),
     linear-gradient(140deg, rgba(7, 31, 28, 0.97), rgba(13, 48, 41, 0.99)),
     var(--hunter-night);
-  font-family: var(--font-body, "IM Fell English", Georgia, serif);
+  font-family: var(--campaign-font-body);
   font-size: 1.08rem;
-  line-height: 1.58;
+  line-height: 1.6;
 }
 
 .hunter-page a {
@@ -40,9 +40,9 @@ body.hunter-page {
 .hunter-page h1,
 .hunter-page h2,
 .hunter-page h3 {
-  font-family: var(--font-pirate, "Pirata One", Georgia, serif);
+  font-family: var(--campaign-font-display);
   font-weight: 400;
-  line-height: 1.04;
+  line-height: 1.05;
 }
 
 .hunter-page img {
@@ -120,9 +120,9 @@ button.hunter-button {
   color: var(--hunter-night) !important;
   background: linear-gradient(180deg, #f6ce6a, var(--hunter-gold));
   border: 2px solid var(--hunter-night);
-  border-radius: 8px;
+  border-radius: var(--campaign-radius-control);
   box-shadow: 0 4px 0 var(--hunter-gold-dark), 0 10px 24px rgba(0, 0, 0, 0.22);
-  font-family: var(--font-pirate, "Pirata One", Georgia, serif);
+  font-family: var(--campaign-font-display);
   font-size: 1.22rem;
   letter-spacing: 0.025em;
   line-height: 1.1;
@@ -578,8 +578,8 @@ button.hunter-button {
 .form-field select:focus,
 .form-field textarea:focus {
   border-color: var(--hunter-gold);
-  outline: 3px solid rgba(241, 182, 43, 0.28);
-  outline-offset: 1px;
+  outline: 3px solid var(--campaign-focus);
+  outline-offset: 3px;
 }
 
 .form-field [aria-invalid="true"] {

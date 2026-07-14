@@ -1,8 +1,8 @@
 .sponsor-page {
-  --sponsor-rust: #a6452a;
-  --sponsor-paper: #f6efdd;
-  --sponsor-paper-deep: #e5d5ac;
-  --sponsor-ink: #241b0f;
+  --sponsor-rust: var(--campaign-rust);
+  --sponsor-paper: var(--campaign-surface-paper);
+  --sponsor-paper-deep: var(--campaign-paper-300);
+  --sponsor-ink: var(--campaign-ink);
   overflow-x: clip;
   background:
     radial-gradient(circle at 88% 7%, rgba(224, 160, 30, 0.12), transparent 24rem),
@@ -352,7 +352,7 @@
 .sponsor-form textarea { background: #fffcf4; border-color: #bba774; }
 .sponsor-form input:focus,
 .sponsor-form select:focus,
-.sponsor-form textarea:focus { border-color: #7b3d21; outline-color: rgba(166, 69, 42, 0.28); }
+.sponsor-form textarea:focus { border-color: #7b3d21; outline: 3px solid var(--campaign-focus); outline-offset: 3px; }
 .sponsor-form .turnstile-shell { color: var(--hunter-ink); background: var(--green-900); border-color: #8d7b51; }
 .human-check__label { display: block; margin-bottom: 6px; font-weight: 700; }
 .acknowledgement-field { padding: 15px; background: rgba(229, 213, 172, 0.44); border: 1px solid #bba774; }

@@ -10,6 +10,35 @@ import { buildSite } from "../scripts/build.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
 
+const PAGE_FAMILIES = Object.freeze({
+  "index.html": "landing",
+  "start.html": "landing",
+  "updates.html": "landing",
+  "route.html": "route",
+  "interview.html": "editorial",
+  "clue-board.html": "ledger",
+  "dashboard.html": "workspace",
+  "report.html": "workspace",
+  "rules.html": "document",
+  "privacy.html": "document",
+  "waiver.html": "document",
+  "community-guidelines.html": "document",
+  "sponsors.html": "sponsors",
+});
+
+const FUNCTIONAL_PAGE_CLASSES = Object.freeze({
+  "start.html": ["hunter-page"],
+  "updates.html": ["hunter-page"],
+  "clue-board.html": ["board-page"],
+  "dashboard.html": ["hunter-page"],
+  "report.html": ["hunter-page"],
+  "rules.html": ["hunter-page"],
+  "privacy.html": ["hunter-page"],
+  "waiver.html": ["hunter-page", "waiver-page"],
+  "community-guidelines.html": ["hunter-page"],
+  "sponsors.html": ["hunter-page", "sponsor-page"],
+});
+
 const cssBlock = (css, marker) => {
   const markerMatch = marker.exec(css);
   assert.ok(markerMatch, `missing CSS block for ${marker}`);
@@ -37,6 +66,72 @@ test("the canonical stylesheet owns every public campaign shell surface", () => 
   ]) {
     assert.match(css, new RegExp(`(?:^|[},\\s])${selector.replace(".", "\\.")}(?=[\\s:{,.#\\[])`, "m"), `${selector} is owned by campaign-shell.css`);
   }
+});
+
+test("the canonical stylesheet defines the shared campaign design tokens", () => {
+  const css = read("css/campaign-shell.css");
+  for (const [token, value] of Object.entries({
+    "--campaign-font-display": '"Pirata One", Georgia, serif',
+    "--campaign-font-body": '"IM Fell English", Georgia, serif',
+    "--campaign-font-meta": '"Special Elite", "Courier New", monospace',
+    "--campaign-space-section": "clamp(3rem, 7vw, 6rem)",
+    "--campaign-radius-control": "10px",
+    "--campaign-focus": "var(--campaign-gold-300)",
+    "--campaign-surface-paper": "var(--campaign-paper-100)",
+    "--campaign-surface-dark": "var(--campaign-forest-950)",
+  })) {
+    assert.match(css, new RegExp(`${token.replaceAll("-", "\\-")}:\\s*${value.replace(/[()]/g, "\\$&")}\\s*;`));
+  }
+});
+
+test("campaign pages share body type, headings, readable wrapping, controls, and focus", () => {
+  const css = read("css/campaign-shell.css");
+  assert.match(
+    css,
+    /\.campaign-page\s*\{[^}]*font-family:\s*var\(--campaign-font-body\);[^}]*line-height:\s*1\.6;/s,
+  );
+  assert.match(
+    css,
+    /\.campaign-page\s+:where\(h1,\s*h2,\s*h3\)\s*\{(?=[^}]*font-family:\s*var\(--campaign-font-display\);)(?=[^}]*font-weight:\s*400;)(?=[^}]*line-height:\s*1\.05;)(?=[^}]*text-wrap:\s*balance;)[^}]*\}/s,
+  );
+  assert.match(
+    css,
+    /\.campaign-page\s+:where\(p,\s*li,\s*dd\)\s*\{[^}]*text-wrap:\s*pretty;[^}]*\}/s,
+  );
+  assert.match(
+    css,
+    /\.campaign-page\s+:where\(\.btn,\s*\.hunter-button,\s*\.board-button,\s*\.sponsor-button\)\s*\{(?=[^}]*border-radius:\s*var\(--campaign-radius-control\);)(?=[^}]*font-family:\s*var\(--campaign-font-display\);)[^}]*\}/s,
+  );
+  assert.match(
+    css,
+    /\.campaign-page\s+:where\(input,\s*select,\s*textarea,\s*button\):focus-visible\s*\{(?=[^}]*outline:\s*3px solid var\(--campaign-focus\);)(?=[^}]*outline-offset:\s*3px;)[^}]*\}/s,
+  );
+});
+
+test("every campaign body has exactly one mapped page-family class and keeps functional classes", () => {
+  assert.deepEqual(Object.keys(PAGE_FAMILIES).sort(), Object.keys(CAMPAIGN_PAGES).sort());
+  for (const [filename, family] of Object.entries(PAGE_FAMILIES)) {
+    const body = read(filename).match(/<body\b[^>]*\bclass=["']([^"']*)["'][^>]*>/i);
+    assert.ok(body, `${filename} has a body class`);
+    const classes = body[1].split(/\s+/).filter(Boolean);
+    assert.ok(classes.includes("campaign-page"), `${filename} remains a campaign page`);
+    assert.deepEqual(
+      classes.filter((className) => className.startsWith("campaign-page--")),
+      [`campaign-page--${family}`],
+      `${filename} has its exact page-family class`,
+    );
+    for (const functionalClass of FUNCTIONAL_PAGE_CLASSES[filename] ?? []) {
+      assert.ok(classes.includes(functionalClass), `${filename} keeps ${functionalClass}`);
+    }
+  }
+});
+
+test("the private Ops console has no campaign page-family or shared-style dependency", () => {
+  const opsHtml = read("ops.html");
+  const opsCss = read("css/ops.css");
+  assert.doesNotMatch(opsHtml, /campaign-page(?:--[a-z]+)?/);
+  assert.doesNotMatch(opsHtml, /campaign-shell\.css/);
+  assert.doesNotMatch(opsCss, /campaign-page(?:--[a-z]+)?/);
 });
 
 test("legacy stylesheets no longer expose public shell selectors", () => {

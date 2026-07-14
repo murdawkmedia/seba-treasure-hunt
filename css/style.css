@@ -5,27 +5,27 @@
    ============================================================ */
 
 :root {
-  --green-950: #14261c;
-  --green-900: #1c3527;
+  --green-950: var(--campaign-forest-900);
+  --green-900: var(--campaign-forest-800);
   --green-800: #234331;
   --green-700: #2f5741;
-  --gold-500:  #e0a01e;
-  --gold-400:  #eab63f;
-  --gold-300:  #f2cd6a;
-  --cream-100: #f6efdd;
-  --cream-200: #efe4c6;
-  --cream-300: #e5d5ac;
+  --gold-500:  var(--campaign-gold-500);
+  --gold-400:  var(--campaign-gold-400);
+  --gold-300:  var(--campaign-gold-300);
+  --cream-100: var(--campaign-paper-100);
+  --cream-200: var(--campaign-paper-200);
+  --cream-300: var(--campaign-paper-300);
   --ink-700:   #3a2e1c;
-  --ink-900:   #241b0f;
-  --rust-600:  #a6452a;
+  --ink-900:   var(--campaign-ink);
+  --rust-600:  var(--campaign-rust);
   --rust-500:  #c25a37;
 
-  --font-pirate: "Pirata One", "Georgia", serif;
-  --font-body:   "IM Fell English", "Georgia", "Times New Roman", serif;
-  --font-mono:   "Special Elite", "Courier New", monospace;
+  --font-pirate: var(--campaign-font-display);
+  --font-body:   var(--campaign-font-body);
+  --font-mono:   var(--campaign-font-meta);
 
   --shadow-card: 0 10px 30px rgba(20, 38, 28, 0.28);
-  --max: 1120px;
+  --max: var(--campaign-max);
 }
 
 * { box-sizing: border-box; }
@@ -64,7 +64,7 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   color: var(--ink-900);
   background: linear-gradient(180deg, var(--gold-300), var(--gold-500));
   border: 3px solid var(--ink-900);
-  border-radius: 10px;
+  border-radius: var(--campaign-radius-control);
   padding: 12px 30px;
   box-shadow: 0 5px 0 var(--ink-900), 0 12px 22px rgba(20,38,28,0.35);
   transition: transform .08s ease, box-shadow .08s ease;

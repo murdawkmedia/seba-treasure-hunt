@@ -12,6 +12,14 @@
   --campaign-rust: #a6452a;
   --campaign-open: #69c58d;
   --campaign-found: #8db8dc;
+  --campaign-font-display: "Pirata One", Georgia, serif;
+  --campaign-font-body: "IM Fell English", Georgia, serif;
+  --campaign-font-meta: "Special Elite", "Courier New", monospace;
+  --campaign-space-section: clamp(3rem, 7vw, 6rem);
+  --campaign-radius-control: 10px;
+  --campaign-focus: var(--campaign-gold-300);
+  --campaign-surface-paper: var(--campaign-paper-100);
+  --campaign-surface-dark: var(--campaign-forest-950);
   --campaign-case-min-height: 54px;
   --campaign-nav-min-height: 66px;
   --case-strip-height: var(--campaign-case-min-height);
@@ -31,11 +39,34 @@ html {
 
 .campaign-page {
   min-width: 320px;
+  font-family: var(--campaign-font-body);
+  line-height: 1.6;
 }
 
 .campaign-page :focus-visible {
-  outline: 3px solid var(--campaign-gold-400);
-  outline-offset: 4px;
+  outline: 3px solid var(--campaign-focus);
+  outline-offset: 3px;
+}
+
+.campaign-page :where(h1, h2, h3) {
+  font-family: var(--campaign-font-display);
+  font-weight: 400;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.campaign-page :where(p, li, dd) {
+  text-wrap: pretty;
+}
+
+.campaign-page :where(.btn, .hunter-button, .board-button, .sponsor-button) {
+  border-radius: var(--campaign-radius-control);
+  font-family: var(--campaign-font-display);
+}
+
+.campaign-page :where(input, select, textarea, button):focus-visible {
+  outline: 3px solid var(--campaign-focus);
+  outline-offset: 3px;
 }
 
 .sr-only {
@@ -61,7 +92,7 @@ html {
   border: 2px solid var(--campaign-ink);
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
-  font-family: "Special Elite", "Courier New", monospace;
+  font-family: var(--campaign-font-meta);
   transform: translateY(-180%);
   transition: transform 140ms ease;
 }
@@ -86,7 +117,7 @@ html {
     var(--campaign-forest-800);
   border-bottom: 3px solid var(--campaign-paper-300);
   box-shadow: 0 8px 24px rgba(2, 16, 14, 0.32);
-  font-family: "Special Elite", "Courier New", monospace;
+  font-family: var(--campaign-font-meta);
   font-variant-numeric: tabular-nums;
 }
 
@@ -164,7 +195,7 @@ html {
 .campaign-brand {
   flex: 0 0 auto;
   color: var(--campaign-gold-300) !important;
-  font-family: "Pirata One", Georgia, serif;
+  font-family: var(--campaign-font-display);
   font-size: clamp(1.35rem, 3vw, 1.75rem);
   line-height: 1;
   text-decoration: none;
@@ -175,7 +206,7 @@ html {
   display: block;
   margin-top: 4px;
   color: var(--campaign-paper-300);
-  font-family: "Special Elite", "Courier New", monospace;
+  font-family: var(--campaign-font-meta);
   font-size: 0.57rem;
   letter-spacing: 0.06em;
   line-height: 1.2;
@@ -247,7 +278,7 @@ html {
   color: var(--campaign-paper-300);
   background: var(--campaign-forest-950);
   border-top: 2px solid var(--campaign-gold-500);
-  font-family: "Special Elite", "Courier New", monospace;
+  font-family: var(--campaign-font-meta);
   font-size: 0.82rem;
 }
 
