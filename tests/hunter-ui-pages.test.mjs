@@ -213,10 +213,10 @@ test("hunter page menus expose one labelled toggle and retain campaign destinati
   }
 });
 
-test("the clue board keeps its distinct shell without becoming a navigation exception", () => {
+test("the clue board uses the canonical shell without becoming a navigation exception", () => {
   const html = readRenderedCampaignPage("clue-board.html");
   const source = read("clue-board.html");
-  const board = read("css/board.css");
+  const shell = read("css/campaign-shell.css");
 
   assert.equal((html.match(/\bid="campaign-nav"/g) ?? []).length, 1, "clue-board.html has one nav id");
   assert.equal((html.match(/\bclass="campaign-menu-toggle"/g) ?? []).length, 1, "clue-board.html has one menu toggle");
@@ -229,15 +229,14 @@ test("the clue board keeps its distinct shell without becoming a navigation exce
   assert.match(source, /<script src="\/js\/site\.js"><\/script>/);
   assert.match(html, /<section\b(?=[^>]*class="case-strip")(?=[^>]*role="status")(?=[^>]*aria-live="polite")[^>]*>/);
 
-  assert.match(board, /\.case-signal\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1200[^}]*top:\s*0[^}]*min-height:\s*var\(--case-strip-min-height\)/s);
-  assert.doesNotMatch(board, /\.case-signal\s*\{[^}]*height:\s*var\(--case-strip-height\)/s);
-  assert.match(board, /\.board-topbar\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1100[^}]*top:\s*var\(--case-strip-height\)[^}]*min-height:\s*var\(--campaign-nav-min-height\)/s);
-  assert.match(board, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
-  assert.match(board, /\.board-dialog\s*\{[^}]*z-index:\s*3000/s);
-  assert.match(board, /@media\s*\(max-width:\s*940px\)[\s\S]*\.board-topbar nav\s*\{[^}]*display:\s*none/s);
-  assert.match(board, /\.board-topbar nav\.open\s*\{[^}]*display:\s*flex/s);
-  assert.match(board, /@media\s*\(max-width:\s*940px\)[\s\S]*\.board-menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
-  assert.doesNotMatch(board, /nav a:not\(\.board-topbar__account\)\s*\{[^}]*display:\s*none/s);
+  assert.match(shell, /\.case-strip\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*var\(--campaign-case-min-height\)/s);
+  assert.doesNotMatch(shell, /\.case-strip\s*\{[^}]*height:\s*var\(--case-strip-height\)/s);
+  assert.match(shell, /\.campaign-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)[^}]*min-height:\s*var\(--campaign-nav-min-height\)/s);
+  assert.match(shell, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
+  assert.match(read("css/board.css"), /\.board-dialog\s*\{[^}]*z-index:\s*3000/s);
+  assert.match(shell, /@media\s*\(max-width:\s*760px\)[\s\S]*\.campaign-nav\s*\{[^}]*display:\s*none/s);
+  assert.match(shell, /\.campaign-nav\.open\s*\{[^}]*display:\s*flex/s);
+  assert.match(shell, /@media\s*\(max-width:\s*760px\)[\s\S]*\.campaign-menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
 });
 
 test("the clue board loads shared status before its board client", () => {
@@ -269,8 +268,8 @@ test("shared menu behavior closes consistently without trapping focus", () => {
 test("shared header geometry observes real row sizes with a safe fallback", () => {
   const site = read("js/site.js");
   assert.match(site, /function initStackedHeaderGeometry\(\)/);
-  assert.match(site, /\.case-strip, \.case-signal/);
-  assert.match(site, /\.topbar, \.hunter-header, \.board-topbar/);
+  assert.match(site, /querySelector\("\.case-strip"\)/);
+  assert.match(site, /querySelector\("\.campaign-header"\)/);
   assert.match(site, /getBoundingClientRect\(\)\.height/);
   assert.match(site, /--case-strip-height/);
   assert.match(site, /--campaign-nav-height/);

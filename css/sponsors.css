@@ -15,31 +15,9 @@
   margin-inline: auto;
 }
 
-.sponsor-topbar {
-  position: sticky;
-  z-index: 1100;
-  top: var(--case-strip-height);
-  border-bottom-color: rgba(224, 160, 30, 0.75);
-  background: rgba(7, 31, 28, 0.96);
-}
-
 #opportunities,
 #inquiry {
   scroll-margin-top: var(--stacked-header-height);
-}
-
-.sponsor-topbar .hunter-header__inner {
-  width: min(100%, 1164px);
-  max-width: none;
-}
-
-.sponsor-topbar .hunter-nav a[aria-current="page"] {
-  padding: 5px 10px;
-  color: var(--hunter-night);
-  background: var(--hunter-gold);
-  border-radius: 4px 4px 1px 1px;
-  text-decoration: none;
-  transform: rotate(-1deg);
 }
 
 .sponsor-hero {
@@ -403,9 +381,6 @@
 .faq-list details[open] summary::after { content: "-"; }
 .faq-list p { margin: -4px 0 23px; padding-right: 44px; color: var(--hunter-muted); }
 
-.sponsor-footer .hunter-footer__inner { align-items: center; }
-.sponsor-footer .hunter-brand { display: inline-block; margin-bottom: 8px; }
-
 @media (max-width: 900px) {
   .sponsor-hero__grid { grid-template-columns: minmax(0, 1fr) minmax(230px, 0.55fr); gap: 34px; }
   .sponsor-hero h1 { font-size: clamp(3.4rem, 10vw, 5.7rem); }
@@ -417,10 +392,6 @@
 
 @media (max-width: 760px) {
   .sponsor-shell { width: min(100% - 32px, 1120px); }
-  .sponsor-topbar .hunter-header__inner { align-items: center; flex-direction: row; }
-  .sponsor-topbar .hunter-brand span { display: none; }
-  .sponsor-topbar .hunter-nav { justify-content: flex-start; }
-  .sponsor-topbar .hunter-nav a[aria-current="page"] { border-radius: 0; transform: none; }
   .sponsor-hero { padding-top: 58px; }
   .sponsor-hero__grid,
   .trust-grid,
@@ -447,8 +418,6 @@
 @media (max-width: 430px) {
   .sponsor-hero h1 { font-size: clamp(3rem, 17vw, 4.4rem); }
   .sponsor-hero__lead { font-size: 1.06rem; }
-  .sponsor-topbar .hunter-header__inner { padding-inline: 16px; }
-  .sponsor-topbar .brand { font-size: 1.27rem; }
   .sponsor-form .form-grid { grid-template-columns: minmax(0, 1fr); }
   .form-field--full { grid-column: auto; }
 }
@@ -456,7 +425,6 @@
 @media (prefers-reduced-motion: reduce) {
   .sponsor-hero__artifact,
   .opportunity-card--featured,
-  .recognition__stamp,
-  .sponsor-topbar .hunter-nav a[aria-current="page"] { transform: none; }
+  .recognition__stamp { transform: none; }
   .inquiry { background-attachment: scroll; }
 }

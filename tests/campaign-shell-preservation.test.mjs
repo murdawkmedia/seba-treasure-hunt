@@ -55,7 +55,9 @@ function normalizeBodyAttributes(value) {
 
 function scriptTags(html, filename) {
   const tags = [...normalizeLines(html).matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/gi)]
-    .map((match) => match[0]);
+    .map((match) => wrapperOnlyPages.has(filename)
+      ? match[0].replace('src="/js/site.js"', 'src="js/site.js"')
+      : match[0]);
 
   if (filename === "clue-board.html") {
     const allowedIndex = tags.indexOf(clueBoardStatusScript);
@@ -120,6 +122,9 @@ function preservationHashes(html, filename) {
     normalizeLines(html),
     /<head\b[^>]*>[\s\S]*?<\/head>/i,
     `${filename} has a complete head`,
+  ).replace(
+    /^[ \t]*<link rel="stylesheet" href="\/css\/campaign-shell\.css" \/>\n/m,
+    "",
   );
   return {
     headSha256: sha256(head),
@@ -154,8 +159,18 @@ test("preservation hashes detect head, script, and body drift", () => {
     expected.headSha256,
   );
   assert.notEqual(
-    preservationHashes(html.replace('<script src="js/site.js"></script>', ""), filename).scriptsSha256,
+    preservationHashes(html.replace('<script src="/js/site.js"></script>', ""), filename).scriptsSha256,
     expected.scriptsSha256,
+  );
+  assert.notEqual(
+    preservationHashes(html.replace('<link rel="stylesheet" href="css/style.css" />', ""), filename).headSha256,
+    expected.headSha256,
+    "removing an unrelated stylesheet must be detected",
+  );
+  assert.notEqual(
+    preservationHashes(html.replace('/assets/app/status.js', '/assets/app/changed-status.js'), filename).scriptsSha256,
+    expected.scriptsSha256,
+    "changing an unrelated script must be detected",
   );
   assert.notEqual(
     preservationHashes(html.replace("Help Tim Find His ID", "Help Tim Misplace His ID"), filename).bodySha256,

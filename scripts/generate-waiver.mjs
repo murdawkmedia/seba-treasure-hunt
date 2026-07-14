@@ -60,6 +60,7 @@ const generatedPage = `<!doctype html>
   <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&amp;family=Pirata+One&amp;family=Special+Elite&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/hunter.css" />
+  <link rel="stylesheet" href="/css/campaign-shell.css" />
 </head>
 <body class="campaign-page hunter-page waiver-page" data-campaign-route="waiver">
   <!-- CAMPAIGN_SHELL {"route":"waiver","skipLabel":"Skip to the participation waiver","skipTarget":"main"} -->

@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import { CAMPAIGN_PAGES, renderCampaignPage } from "../scripts/campaign-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const mime = {
@@ -84,7 +85,10 @@ before(async () => {
         response.writeHead(403).end();
         return;
       }
-      const body = await readFile(filename);
+      const source = await readFile(filename);
+      const body = Object.hasOwn(CAMPAIGN_PAGES, relative)
+        ? renderCampaignPage(source.toString("utf8"), relative)
+        : source;
       response.writeHead(200, { "content-type": mime[path.extname(filename)] ?? "application/octet-stream" });
       response.end(body);
     } catch {
@@ -111,10 +115,10 @@ test("390px headers use measured compact stacked geometry and an operable menu",
   try {
     const page = await context.newPage();
     for (const [file, stripSelector, headerSelector] of [
-      ["index.html", ".case-strip", ".topbar"],
-      ["privacy.html", ".case-strip", ".hunter-header"],
-      ["clue-board.html", ".case-signal", ".board-topbar"],
-      ["sponsors.html", ".case-strip", ".sponsor-topbar"],
+      ["index.html", ".case-strip", ".campaign-header"],
+      ["privacy.html", ".case-strip", ".campaign-header"],
+      ["clue-board.html", ".case-strip", ".campaign-header"],
+      ["sponsors.html", ".case-strip", ".campaign-header"],
     ]) {
       await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
       const geometry = await waitForSyncedGeometry(page, stripSelector, headerSelector);
@@ -127,8 +131,8 @@ test("390px headers use measured compact stacked geometry and an operable menu",
     }
 
     for (const [file, stripSelector, headerSelector, labelSelector] of [
-      ["privacy.html", ".case-strip", ".hunter-header", ".case-strip__label"],
-      ["clue-board.html", ".case-signal", ".board-topbar", "#case-signal-label"],
+      ["privacy.html", ".case-strip", ".campaign-header", ".case-strip__label"],
+      ["clue-board.html", ".case-strip", ".campaign-header", ".case-strip__label"],
     ]) {
       await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
       const normal = await waitForSyncedGeometry(page, stripSelector, headerSelector);
@@ -164,7 +168,7 @@ test("390px headers use measured compact stacked geometry and an operable menu",
         inquiryMargin: Number.parseFloat(getComputedStyle(inquiry).scrollMarginTop),
       };
     });
-    const normalSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".sponsor-topbar");
+    const normalSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
     const normalSponsorAnchors = await readSponsorAnchors();
     assert.ok(normalSponsorAnchors);
     assert.ok(Math.abs(normalSponsorAnchors.opportunitiesMargin - normalSponsorAnchors.stackedHeight) <= 1);
@@ -174,7 +178,7 @@ test("390px headers use measured compact stacked geometry and an operable menu",
       label.style.fontSize = "28px";
       label.textContent = "Sponsor case status has expanded into a deliberately long wrapped update so both primary conversion anchors must clear the complete live header stack.";
     });
-    const grownSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".sponsor-topbar", 76);
+    const grownSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header", 76);
     const grownSponsorAnchors = await readSponsorAnchors();
     assert.ok(grownSponsorGeometry.stackedVariable > normalSponsorGeometry.stackedVariable);
     assert.ok(Math.abs(grownSponsorAnchors.opportunitiesMargin - grownSponsorAnchors.stackedHeight) <= 1);
@@ -188,7 +192,7 @@ test("390px headers use measured compact stacked geometry and an operable menu",
       const value = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stacked-header-height"));
       return Number.isFinite(value) && value < grownHeight - 1;
     }, grownSponsorGeometry.stackedVariable);
-    const restoredSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".sponsor-topbar");
+    const restoredSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
     const restoredSponsorAnchors = await readSponsorAnchors();
     assert.ok(restoredSponsorGeometry.stackedVariable < grownSponsorGeometry.stackedVariable);
     assert.ok(restoredSponsorAnchors.opportunitiesMargin < grownSponsorAnchors.opportunitiesMargin);
@@ -196,14 +200,14 @@ test("390px headers use measured compact stacked geometry and an operable menu",
     assert.ok(Math.abs(restoredSponsorAnchors.inquiryMargin - restoredSponsorAnchors.stackedHeight) <= 1);
 
     await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
-    const toggle = page.locator(".menu-toggle");
-    const nav = page.locator("#nav");
+    const toggle = page.locator(".campaign-menu-toggle");
+    const nav = page.locator("#campaign-nav");
     assert.equal(await toggle.count(), 1);
     assert.equal(await nav.evaluate((element) => getComputedStyle(element).display), "none");
     await toggle.click();
     assert.equal(await toggle.getAttribute("aria-expanded"), "true");
     assert.equal(await nav.evaluate((element) => getComputedStyle(element).display), "flex");
-    const expanded = await waitForSyncedGeometry(page, ".case-strip", ".hunter-header");
+    const expanded = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
     const nestedSponsorContent = nav.locator('a[href="/sponsors"] span[data-nested-link]');
     await nav.locator('a[href="/sponsors"]').evaluate((anchor) => {
       anchor.addEventListener("click", (event) => event.preventDefault(), { once: true });
@@ -215,7 +219,7 @@ test("390px headers use measured compact stacked geometry and an operable menu",
     await nestedSponsorContent.click();
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
     assert.equal(await nav.evaluate((element) => getComputedStyle(element).display), "none");
-    const nestedClosed = await waitForSyncedGeometry(page, ".case-strip", ".hunter-header");
+    const nestedClosed = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
     assert.ok(nestedClosed.headerHeight < expanded.headerHeight, "nested link closure shrinks measured navigation height");
     await toggle.click();
     await page.keyboard.press("Escape");
@@ -224,17 +228,17 @@ test("390px headers use measured compact stacked geometry and an operable menu",
     assert.equal(await toggle.evaluate((element) => document.activeElement === element), true);
 
     await page.goto(`${origin}/clue-board.html`, { waitUntil: "domcontentloaded" });
-    const boardToggle = page.locator(".menu-toggle");
-    const boardNav = page.locator("#nav");
+    const boardToggle = page.locator(".campaign-menu-toggle");
+    const boardNav = page.locator("#campaign-nav");
     assert.equal(await boardToggle.count(), 1);
     assert.equal(await boardNav.evaluate((element) => getComputedStyle(element).display), "none");
     await boardToggle.click();
     assert.equal(await boardToggle.getAttribute("aria-expanded"), "true");
     assert.equal(await boardNav.evaluate((element) => getComputedStyle(element).display), "flex");
     const sponsors = boardNav.locator('a[href="/sponsors"]');
-    const signIn = boardNav.locator('a[href="/dashboard#sign-in"]');
+    const dashboard = boardNav.locator('a[href="/dashboard"]');
     assert.equal(await sponsors.isVisible(), true);
-    assert.equal(await signIn.isVisible(), true);
+    assert.equal(await dashboard.isVisible(), true);
     await page.keyboard.press("Escape");
     assert.equal(await boardToggle.getAttribute("aria-expanded"), "false");
     assert.equal(await boardNav.evaluate((element) => getComputedStyle(element).display), "none");
@@ -258,15 +262,15 @@ test("stacked geometry remains live without ResizeObserver", { timeout: 30_000 }
   try {
     const page = await context.newPage();
     await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
-    await waitForSyncedGeometry(page, ".case-strip", ".hunter-header");
+    await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
     await page.locator(".case-strip__label").evaluate((label) => {
       label.style.fontSize = "28px";
       label.textContent = "This deliberately long live status update wraps repeatedly and must update sticky geometry even when ResizeObserver is not available.";
     });
-    await waitForSyncedGeometry(page, ".case-strip", ".hunter-header", 76);
-    await page.locator(".menu-toggle").click();
-    const expanded = await waitForSyncedGeometry(page, ".case-strip", ".hunter-header", 76);
-    assert.equal(await page.locator("#nav").evaluate((element) => getComputedStyle(element).display), "flex");
+    await waitForSyncedGeometry(page, ".case-strip", ".campaign-header", 76);
+    await page.locator(".campaign-menu-toggle").click();
+    const expanded = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header", 76);
+    assert.equal(await page.locator("#campaign-nav").evaluate((element) => getComputedStyle(element).display), "flex");
     assert.ok(expanded.stackedVariable > expanded.stripHeight, "fallback measures the expanded second row");
   } finally {
     await browser.close();

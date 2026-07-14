@@ -115,24 +115,29 @@ function renderGallery() {
 
 /* ---------------- Mobile nav ---------------- */
 function closeNav(toggle, nav) {
+  if (!toggle || !nav) return;
   nav.classList.remove("open");
   toggle.setAttribute("aria-expanded", "false");
 }
 
 function initStackedHeaderGeometry() {
-  var firstRow = document.querySelector(".case-strip, .case-signal");
+  var firstRow = document.querySelector(".case-strip");
   if (!(firstRow instanceof HTMLElement)) return;
-  var secondRow = firstRow.nextElementSibling;
-  if (!(secondRow instanceof HTMLElement) || !secondRow.matches(".topbar, .hunter-header, .board-topbar")) return;
+  var secondRow = document.querySelector(".campaign-header");
+  if (!(secondRow instanceof HTMLElement)) return;
 
   var root = document.documentElement;
   var frame = 0;
 
+  function minimumHeight(name, fallback) {
+    var value = Number.parseFloat(window.getComputedStyle(root).getPropertyValue(name));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
   function writeGeometry() {
     frame = 0;
-    var firstHeight = firstRow.getBoundingClientRect().height;
-    var secondHeight = secondRow.getBoundingClientRect().height;
-    if (!firstHeight || !secondHeight) return;
+    var firstHeight = Math.max(firstRow.getBoundingClientRect().height, minimumHeight("--campaign-case-min-height", 54));
+    var secondHeight = Math.max(secondRow.getBoundingClientRect().height, minimumHeight("--campaign-nav-min-height", 66));
     root.style.setProperty("--case-strip-height", firstHeight + "px");
     root.style.setProperty("--campaign-nav-height", secondHeight + "px");
     root.style.setProperty("--stacked-header-height", firstHeight + secondHeight + "px");
@@ -160,8 +165,8 @@ function initStackedHeaderGeometry() {
 }
 
 function initNav() {
-  var toggle = document.querySelector(".menu-toggle");
-  var nav = document.getElementById("nav");
+  var toggle = document.querySelector(".campaign-menu-toggle");
+  var nav = document.getElementById("campaign-nav");
   if (!toggle || !nav) return;
   toggle.addEventListener("click", function () {
     var open = nav.classList.toggle("open");
@@ -176,6 +181,12 @@ function initNav() {
       toggle.focus();
     }
   });
+  var desktop = window.matchMedia("(min-width: 761px)");
+  var closeAtDesktop = function (event) {
+    if (event.matches) closeNav(toggle, nav);
+  };
+  if (typeof desktop.addEventListener === "function") desktop.addEventListener("change", closeAtDesktop);
+  else if (typeof desktop.addListener === "function") desktop.addListener(closeAtDesktop);
 }
 
 document.addEventListener("DOMContentLoaded", function () {

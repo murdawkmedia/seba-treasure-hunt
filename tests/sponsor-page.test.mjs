@@ -43,9 +43,10 @@ test("the sponsor page is a canonical, indexable answer and conversion surface",
   assert.match(html, /<link rel="apple-touch-icon" href="\/assets\/apple-touch-icon\.png">/);
   assert.match(html, /<link rel="manifest" href="\/site\.webmanifest">/);
   assert.match(html, /family=IM\+Fell\+English[^"']*family=Pirata\+One[^"']*family=Special\+Elite|family=Pirata\+One[^"']*family=IM\+Fell\+English[^"']*family=Special\+Elite/i);
-  for (const stylesheet of ["/css/style.css", "/css/hunter.css", "/css/sponsors.css"]) {
+  for (const stylesheet of ["/css/style.css", "/css/hunter.css", "/css/sponsors.css", "/css/campaign-shell.css"]) {
     assert.match(html, new RegExp(`<link rel=["']stylesheet["'] href=["']${stylesheet.replaceAll("/", "\\/")}["']`));
   }
+  assert.ok(html.lastIndexOf('/css/campaign-shell.css') > html.lastIndexOf('/css/sponsors.css'));
 });
 
 test("the sponsor hero uses dedicated campaign artwork, never an enlarged favicon", () => {
@@ -222,39 +223,29 @@ test("the build allowlist includes the sponsor page", () => {
 });
 
 test("desktop uses the approved stacked sticky header and mobile menus remain explicit", () => {
-  const style = read("css/style.css");
-  const hunter = read("css/hunter.css");
+  const shell = read("css/campaign-shell.css");
 
-  for (const css of [style, hunter]) {
-    assert.match(css, /--case-strip-min-height:\s*54px/);
-    assert.match(css, /--campaign-nav-min-height:\s*66px/);
-    assert.match(css, /--case-strip-height:\s*var\(--case-strip-min-height\)/);
-    assert.match(css, /--campaign-nav-height:\s*var\(--campaign-nav-min-height\)/);
-    assert.match(css, /--stacked-header-height:\s*calc\(var\(--case-strip-height\) \+ var\(--campaign-nav-height\)\)/);
-    assert.match(css, /scroll-padding-top:\s*var\(--stacked-header-height\)/);
-    assert.match(css, /\[id\][^{]*\{[^}]*scroll-margin-top:\s*var\(--stacked-header-height\)/s);
-  }
-
-  assert.match(style, /\.case-strip\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*var\(--case-strip-min-height\)/s);
-  assert.match(style, /\.case-strip\s*\+\s*\.topbar\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)/s);
-  assert.match(hunter, /\.hunter-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)/s);
-  assert.match(style, /\.validation-environment-notice\s*\{[^}]*position:\s*relative/s);
-  assert.match(style, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
-
-  for (const css of [style, hunter]) {
-    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--case-strip-min-height:\s*76px/);
-    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*--campaign-nav-min-height:\s*58px/);
-    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*\.case-strip__detail\s*\{[^}]*display:\s*none/s);
-  }
-  assert.match(hunter, /@media\s*\(max-width:\s*720px\)[\s\S]*\.hunter-nav\s*\{[^}]*display:\s*none/s);
-  assert.match(hunter, /\.hunter-nav\.open\s*\{[^}]*display:\s*flex/s);
-  assert.match(hunter, /@media\s*\(max-width:\s*720px\)[\s\S]*\.menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
+  assert.match(shell, /--campaign-case-min-height:\s*54px/);
+  assert.match(shell, /--campaign-nav-min-height:\s*66px/);
+  assert.match(shell, /--case-strip-height:\s*var\(--campaign-case-min-height\)/);
+  assert.match(shell, /--campaign-nav-height:\s*var\(--campaign-nav-min-height\)/);
+  assert.match(shell, /--stacked-header-height:\s*calc\(var\(--case-strip-height\) \+ var\(--campaign-nav-height\)\)/);
+  assert.match(shell, /scroll-padding-top:\s*var\(--stacked-header-height\)/);
+  assert.match(shell, /\[id\][^{]*\{[^}]*scroll-margin-top:\s*var\(--stacked-header-height\)/s);
+  assert.match(shell, /\.case-strip\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*var\(--campaign-case-min-height\)/s);
+  assert.match(shell, /\.campaign-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--case-strip-height\)/s);
+  assert.match(read("css/style.css"), /\.validation-environment-notice\s*\{[^}]*position:\s*relative/s);
+  assert.match(shell, /\.skip-link\s*\{[^}]*z-index:\s*2000/s);
+  assert.match(shell, /@media\s*\(max-width:\s*760px\)[\s\S]*\.campaign-nav\s*\{[^}]*display:\s*none/s);
+  assert.match(shell, /\.campaign-nav\.open\s*\{[^}]*display:\s*flex/s);
+  assert.match(shell, /@media\s*\(max-width:\s*760px\)[\s\S]*\.campaign-menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
 });
 
 test("sponsor sticky and anchor offsets derive from live stacked geometry", () => {
   const sponsor = read("css/sponsors.css");
-  assert.match(sponsor, /\.sponsor-topbar\s*\{[^}]*top:\s*var\(--case-strip-height\)/s);
-  assert.doesNotMatch(sponsor, /\.sponsor-topbar\s*\{[^}]*top:\s*(?:52|82)px/s);
+  const shell = read("css/campaign-shell.css");
+  assert.match(shell, /\.campaign-header\s*\{[^}]*top:\s*var\(--case-strip-height\)/s);
+  assert.doesNotMatch(shell, /\.campaign-header\s*\{[^}]*top:\s*(?:52|82)px/s);
   assert.match(sponsor, /#opportunities,\s*#inquiry\s*\{[^}]*scroll-margin-top:\s*var\(--stacked-header-height\)/s);
   assert.doesNotMatch(sponsor, /scroll-margin(?:-top)?:\s*138px/);
   assert.match(sponsor, /\.inquiry__brief\s*\{[^}]*top:\s*calc\(var\(--stacked-header-height\) \+ 20px\)/s);
