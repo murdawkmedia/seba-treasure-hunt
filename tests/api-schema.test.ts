@@ -88,3 +88,21 @@ test("the sponsor migration keeps inquiries private and events append-only", asy
   assert.match(sql, /FOREIGN KEY\s*\(inquiry_id\).*ON DELETE CASCADE/is);
   assert.doesNotMatch(sql, /ip_address|fingerprint|turnstile_token/i);
 });
+
+test("the waiver ledger schema records review, participants, and receipt delivery", async () => {
+  const sql = await readFile(
+    path.resolve("migrations", "0006_participation_waiver_and_receipts.sql"),
+    "utf8"
+  );
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS legal_document_review_events/i);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS waiver_acceptance_participants/i);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS notification_delivery_events/i);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_job_target/i);
+  assert.match(
+    sql,
+    /participant_role TEXT NOT NULL CHECK \(participant_role IN \('adult', 'minor'\)\)/i
+  );
+  assert.match(sql, /document_type TEXT NOT NULL CHECK \(document_type = 'participation_waiver'\)/i);
+  assert.match(sql, /event_type TEXT NOT NULL CHECK \(event_type IN \('queued', 'attempted', 'sent', 'failed', 'requeued'\)\)/i);
+});
