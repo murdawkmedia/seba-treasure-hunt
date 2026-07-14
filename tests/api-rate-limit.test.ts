@@ -66,6 +66,102 @@ test("D1 limiter atomically allows no more than the configured concurrent reques
   assert.equal(row?.window_expires_at, Math.floor(now / 1_000 / 600) * 600 + 600);
 });
 
+test("D1 limiter prevents either account or IP rotation from resetting a bucket", async (t) => {
+  const db = await createRateLimitDatabase(t);
+  const limiter = new D1RateLimiter(
+    db,
+    "test-only-salt",
+    () => Date.parse("2026-07-14T18:02:00.000Z")
+  );
+  const rule = { limit: 1, windowSeconds: 600 };
+
+  assert.equal((await limiter.consume({
+    ...rule,
+    scope: "waiver_review",
+    identifiers: ["ip:203.0.113.8", "subject:hunter-1"]
+  })).allowed, true);
+  assert.equal((await limiter.consume({
+    ...rule,
+    scope: "waiver_review",
+    identifiers: ["ip:203.0.113.9", "subject:hunter-1"]
+  })).allowed, false, "changing IP does not reset the account bucket");
+
+  assert.equal((await limiter.consume({
+    ...rule,
+    scope: "waiver_accept",
+    identifiers: ["ip:203.0.113.8", "subject:hunter-1"]
+  })).allowed, true);
+  assert.equal((await limiter.consume({
+    ...rule,
+    scope: "waiver_accept",
+    identifiers: ["ip:203.0.113.8", "subject:hunter-2"]
+  })).allowed, false, "changing account does not reset the IP bucket");
+});
+
+test("D1 limiter atomically caps concurrent requests by every supplied bucket", async (t) => {
+  const db = await createRateLimitDatabase(t);
+  const limiter = new D1RateLimiter(
+    db,
+    "test-only-salt",
+    () => Date.parse("2026-07-14T18:02:00.000Z")
+  );
+  const rule = { limit: 5, windowSeconds: 600 };
+
+  const sharedSubject = await Promise.all(
+    Array.from({ length: 20 }, (_, index) => limiter.consume({
+      ...rule,
+      scope: "waiver_receipt",
+      identifiers: [`ip:203.0.113.${index + 1}`, "subject:hunter-shared"]
+    }))
+  );
+  assert.equal(sharedSubject.filter((result) => result.allowed).length, 5);
+
+  const sharedIp = await Promise.all(
+    Array.from({ length: 20 }, (_, index) => limiter.consume({
+      ...rule,
+      scope: "field_note",
+      identifiers: ["ip:203.0.113.200", `subject:hunter-${index + 1}`]
+    }))
+  );
+  assert.equal(sharedIp.filter((result) => result.allowed).length, 5);
+
+  for (const scope of ["waiver_receipt", "field_note"]) {
+    const rows = await db
+      .prepare(
+        `SELECT request_count FROM campaign_rate_limit_buckets
+         WHERE scope = ? ORDER BY request_count DESC`
+      )
+      .bind(scope)
+      .all<{ request_count: number }>();
+    assert.equal(rows.results.length, 21);
+    assert.equal(rows.results.filter((row) => row.request_count === 5).length, 1);
+    assert.equal(rows.results.filter((row) => row.request_count === 1).length, 20);
+  }
+});
+
+test("a denied multi-bucket request conservatively consumes every bucket still below its limit", async (t) => {
+  const db = await createRateLimitDatabase(t);
+  const limiter = new D1RateLimiter(
+    db,
+    "test-only-salt",
+    () => Date.parse("2026-07-14T18:02:00.000Z")
+  );
+  const rule = { scope: "progress", limit: 1, windowSeconds: 600 };
+
+  assert.equal((await limiter.consume({
+    ...rule,
+    identifiers: ["ip:203.0.113.8", "subject:hunter-1"]
+  })).allowed, true);
+  assert.equal((await limiter.consume({
+    ...rule,
+    identifiers: ["ip:203.0.113.9", "subject:hunter-1"]
+  })).allowed, false);
+  assert.equal((await limiter.consume({
+    ...rule,
+    identifiers: ["ip:203.0.113.9", "subject:hunter-2"]
+  })).allowed, false, "the second denied request charged the otherwise available IP bucket");
+});
+
 test("D1 limiter stores only a salted hash and removes expired buckets", async (t) => {
   const db = await createRateLimitDatabase(t);
   const now = Date.parse("2026-07-14T18:02:00.000Z");
@@ -90,9 +186,9 @@ test("D1 limiter stores only a salted hash and removes expired buckets", async (
       `SELECT scope, identifier_hash FROM campaign_rate_limit_buckets ORDER BY scope`
     )
     .all<{ scope: string; identifier_hash: string }>();
-  assert.equal(rows.results.length, 1);
-  assert.equal(rows.results[0]?.scope, "waiver_accept");
-  assert.match(rows.results[0]?.identifier_hash ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(rows.results.length, 2);
+  assert.ok(rows.results.every((row) => row.scope === "waiver_accept"));
+  assert.ok(rows.results.every((row) => /^[a-f0-9]{64}$/.test(row.identifier_hash)));
   const serialized = JSON.stringify(rows.results);
   assert.equal(serialized.includes("203.0.113.8"), false);
   assert.equal(serialized.includes("hunter-subject-1"), false);

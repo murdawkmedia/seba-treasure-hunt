@@ -8,7 +8,7 @@ const sha256 = async (value: string) => {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 };
 
-type RateLimitCountRow = { request_count: number };
+type RateLimitCountRow = { identifier_hash: string };
 
 export class D1RateLimiter implements RateLimiter {
   constructor(
@@ -36,8 +36,14 @@ export class D1RateLimiter implements RateLimiter {
     const currentTime = Math.floor(this.clock() / 1_000);
     const windowStartedAt = Math.floor(currentTime / input.windowSeconds) * input.windowSeconds;
     const windowExpiresAt = windowStartedAt + input.windowSeconds;
-    const identifiers = input.identifiers.length > 0 ? input.identifiers : ["client-unavailable"];
-    const hash = await sha256(`${this.salt}\0${JSON.stringify([input.scope, ...identifiers])}`);
+    const identifiers = [
+      ...new Set(input.identifiers.length > 0 ? input.identifiers : ["client-unavailable"])
+    ];
+    const hashes = await Promise.all(
+      identifiers.map((identifier) =>
+        sha256(`tim-lost-rate-limit:v2\0${this.salt}\0${input.scope}\0${identifier}`)
+      )
+    );
     const retryAfter = Math.max(1, windowExpiresAt - currentTime);
 
     try {
@@ -45,19 +51,28 @@ export class D1RateLimiter implements RateLimiter {
         .prepare("DELETE FROM campaign_rate_limit_buckets WHERE window_expires_at <= ?")
         .bind(currentTime)
         .run();
-      const row = await this.database
+      const values = hashes.map(() => "(?, ?, ?, ?, 1)").join(", ");
+      const bindings = hashes.flatMap((hash) => [
+        input.scope,
+        hash,
+        windowStartedAt,
+        windowExpiresAt
+      ]);
+      const result = await this.database
         .prepare(
           `INSERT INTO campaign_rate_limit_buckets
            (scope, identifier_hash, window_started_at, window_expires_at, request_count)
-           VALUES (?, ?, ?, ?, 1)
+           VALUES ${values}
            ON CONFLICT(scope, identifier_hash, window_started_at) DO UPDATE SET
              request_count = campaign_rate_limit_buckets.request_count + 1
            WHERE campaign_rate_limit_buckets.request_count < ?
-           RETURNING request_count`
+           RETURNING identifier_hash`
         )
-        .bind(input.scope, hash, windowStartedAt, windowExpiresAt, input.limit)
-        .first<RateLimitCountRow>();
-      return { allowed: row !== null, retryAfter };
+        .bind(...bindings, input.limit)
+        .all<RateLimitCountRow>();
+      // The one atomic statement charges every non-exhausted bucket even if another bucket
+      // rejects the request. Denied attempts therefore cannot preserve a fresh rotating bucket.
+      return { allowed: result.results.length === hashes.length, retryAfter };
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(
