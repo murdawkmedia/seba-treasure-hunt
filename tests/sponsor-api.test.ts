@@ -344,12 +344,14 @@ test("requires a strict browser origin before sponsor replay lookup", async () =
 
   for (const item of rejectedOrigins) {
     const { app, store, rateLimits, turnstile } = makeApp();
+    const request = json(validInquiry, {
+      "idempotency-key": `origin-reject-${item.name.replaceAll(" ", "-")}`,
+      ...(item.origin ? { origin: item.origin } : {})
+    });
+    if (item.origin === undefined) delete request.headers.origin;
     const response = await app.request("https://www.timlostsomething.com/api/v1/sponsors/inquiries", {
       method: "POST",
-      ...json(validInquiry, {
-        "idempotency-key": `origin-reject-${item.name.replaceAll(" ", "-")}`,
-        ...(item.origin ? { origin: item.origin } : {})
-      })
+      ...request
     });
 
     assert.equal(response.status, 403, item.name);

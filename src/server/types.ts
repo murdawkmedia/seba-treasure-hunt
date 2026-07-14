@@ -217,6 +217,11 @@ export interface DataStore {
       | { status: "failed"; errorCode: WaiverReceiptErrorCode }
   ): Promise<void>;
   getOpsWaiverDetail(subject: string): Promise<WaiverAcceptanceRecord | null>;
+  /** Returns private detail only after its privacy-safe staff-view audit append succeeds. */
+  getAndAuditOpsWaiverDetail(
+    subject: string,
+    actorSubject: string
+  ): Promise<WaiverAcceptanceRecord | null>;
   queueOpsWaiverReceiptResend(
     subject: string,
     acceptanceId: string,

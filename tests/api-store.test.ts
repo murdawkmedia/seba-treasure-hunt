@@ -39,6 +39,11 @@ class Statement {
     }
     return { results: [] as T[] };
   }
+
+  async run() {
+    if (this.database.runError) throw this.database.runError;
+    return { success: true, meta: { changes: 1 } };
+  }
 }
 
 class ScriptedD1 {
@@ -48,6 +53,7 @@ class ScriptedD1 {
   batchCalls: Statement[][] = [];
   batchChanges: number[][] = [];
   batchError: Error | null = null;
+  runError: Error | null = null;
   profile: Row = {
     subject: "hunter-1",
     verified_email: "hunter@example.test",
@@ -216,6 +222,48 @@ test("D1 waiver replay returns the subject-owned winner without duplicating acce
   assert.equal(result.replayed, true);
   assert.equal(result.value.id, waiverAcceptanceRow.id);
   assert.equal(database.batchCalls.length, 0);
+});
+
+test("D1 returns private Ops waiver detail only after appending a privacy-safe view audit", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(
+    { id: waiverAcceptanceRow.id, action: "accepted" },
+    waiverAcceptanceRow
+  );
+  database.allResults.push(waiverParticipantRows);
+  const store = new D1DataStore(database as never);
+
+  const detail = await store.getAndAuditOpsWaiverDetail("hunter-1", "staff-1");
+
+  assert.equal(detail?.id, waiverAcceptanceRow.id);
+  const audit = database.statements.find((statement) =>
+    statement.sql.includes("INSERT INTO audit_events")
+  );
+  assert.ok(audit);
+  assert.equal(audit.bindings[1], "staff-1");
+  assert.equal(audit.bindings[2], "player.waiver-detail.viewed");
+  assert.equal(audit.bindings[3], "legal_acceptance");
+  assert.equal(audit.bindings[4], waiverAcceptanceRow.id);
+  assert.equal(audit.bindings[5], "{}");
+  assert.match(String(audit.bindings[6]), /^\d{4}-\d{2}-\d{2}T/);
+  assert.doesNotMatch(
+    JSON.stringify(audit.bindings),
+    /Alex Adult|Casey Minor|hunter@example\.test|2014/
+  );
+
+  const failingDatabase = new ScriptedD1();
+  failingDatabase.firstResults.push(
+    { id: waiverAcceptanceRow.id, action: "accepted" },
+    waiverAcceptanceRow
+  );
+  failingDatabase.allResults.push(waiverParticipantRows);
+  failingDatabase.runError = new Error("audit unavailable");
+  const failingStore = new D1DataStore(failingDatabase as never);
+
+  await assert.rejects(
+    failingStore.getAndAuditOpsWaiverDetail("hunter-1", "staff-1"),
+    /audit unavailable/
+  );
 });
 
 test("D1 waiver acceptance recovers only the exact idempotency unique race", async () => {

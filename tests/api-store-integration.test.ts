@@ -414,6 +414,25 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.match(accepted.value.referenceCode, /^TLS-W-[A-F0-9]{8}$/);
   assert.equal(accepted.value.referenceCode.includes("HUNTER"), false);
 
+  const viewed = await store.getAndAuditOpsWaiverDetail("hunter-current-1", "staff-viewer-1");
+  assert.equal(viewed?.id, accepted.value.id);
+  const viewAudit = await db
+    .prepare(
+      `SELECT actor_subject, action, target_kind, target_id, metadata_json, occurred_at
+       FROM audit_events WHERE action = 'player.waiver-detail.viewed' AND target_id = ?`
+    )
+    .bind(accepted.value.id)
+    .first<Record<string, unknown>>();
+  assert.equal(viewAudit?.actor_subject, "staff-viewer-1");
+  assert.equal(viewAudit?.target_kind, "legal_acceptance");
+  assert.equal(viewAudit?.target_id, accepted.value.id);
+  assert.equal(viewAudit?.metadata_json, "{}");
+  assert.match(String(viewAudit?.occurred_at), /^\d{4}-\d{2}-\d{2}T/);
+  assert.doesNotMatch(
+    JSON.stringify(viewAudit),
+    /hunter-current-1@example\.test|Alex Adult|Casey Minor|Jordan Minor|2014|2016/
+  );
+
   await preparePlayer("hunter-current-2");
   const secondReview = await store.recordWaiverReview("hunter-current-2", {
     version: participationWaiverDocument.version,

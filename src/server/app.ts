@@ -476,25 +476,6 @@ const scheduleWaiverReceipt = (
 };
 
 const sameOrigin = (request: Request) => {
-  const raw = request.headers.get("origin");
-  if (!raw) return;
-  let origin: URL;
-  try {
-    origin = new URL(raw);
-  } catch {
-    throw new ApiError(403, "origin_rejected", "The request origin is not allowed.");
-  }
-  const allowed =
-    origin.hostname === canonicalHost ||
-    origin.hostname === "localhost" ||
-    origin.hostname === "127.0.0.1" ||
-    origin.hostname.endsWith(".seba-treasure-hunt.pages.dev");
-  if (!allowed || !["https:", "http:"].includes(origin.protocol)) {
-    throw new ApiError(403, "origin_rejected", "The request origin is not allowed.");
-  }
-};
-
-const strictSponsorOrigin = (request: Request) => {
   const raw = request.headers.get("origin")?.trim() ?? "";
   let origin: URL;
   try {
@@ -845,7 +826,7 @@ export const createApi = (deps: ApiDependencies) => {
   });
 
   app.post("/api/v1/sponsors/inquiries", async (c) => {
-    strictSponsorOrigin(c.req.raw);
+    sameOrigin(c.req.raw);
     const key = idempotencyKey(c.req.raw);
     const existing = await deps.store.getSponsorInquiryByIdempotencyKey(key);
     if (existing) return success(c, safeSponsorSubmission(existing, true));
@@ -1426,11 +1407,8 @@ export const createApi = (deps: ApiDependencies) => {
     });
   });
   app.get("/api/v1/ops/players/:subject/waiver", async (c) => {
-    await requireStaff(deps, c.req.raw);
-    if (!deps.store.getOpsWaiverDetail) {
-      throw new ApiError(503, "waiver_store_unavailable", "The legal record is temporarily unavailable.");
-    }
-    const detail = await deps.store.getOpsWaiverDetail(c.req.param("subject"));
+    const staff = await requireStaff(deps, c.req.raw);
+    const detail = await deps.store.getAndAuditOpsWaiverDetail(c.req.param("subject"), staff.subject);
     if (!detail) throw new ApiError(404, "waiver_acceptance_not_found", "No current waiver acceptance was found.");
     return success(c, detail);
   });

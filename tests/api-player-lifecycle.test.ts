@@ -13,7 +13,10 @@ import {
 } from "./api-test-kit";
 import type { IdentityLifecycleEvent, PlayerAccessState } from "../src/server/types";
 
-const auth = { authorization: "Bearer hunter-token" };
+const auth = {
+  authorization: "Bearer hunter-token",
+  origin: "https://www.timlostsomething.com"
+};
 
 class PlayerStore extends FakeStore {
   accounts = new Map<string, Record<string, unknown>>();

@@ -40,6 +40,7 @@ const makeApp = (store = new FakeStore()) => {
 
 const hunterHeaders = {
   authorization: "Bearer hunter-token",
+  origin: "https://www.timlostsomething.com",
   "cf-turnstile-response": "human-token"
 };
 
@@ -238,7 +239,10 @@ test("activates a verified staff subject only when its email was privately invit
 
 test("requires deliberate FOUND confirmation and records an auditable reason", async () => {
   const { app, store } = makeApp();
-  const headers = { authorization: "Bearer staff-token" };
+  const headers = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com"
+  };
 
   const rejected = await app.request("https://www.timlostsomething.com/api/v1/ops/status", {
     method: "PUT",
@@ -268,7 +272,10 @@ test("gives active staff a private dashboard, report queue, and moderation actio
   const { app, store } = makeApp();
   store.reports.push({ id: "report-1", status: "received", type: "tip" });
   store.notes.push({ id: "note-1", status: "pending", body: "A pending observation." });
-  const headers = { authorization: "Bearer staff-token" };
+  const headers = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com"
+  };
 
   const dashboard = await app.request("https://www.timlostsomething.com/api/v1/ops/dashboard", { headers });
   assert.equal(dashboard.status, 200);
@@ -327,7 +334,13 @@ test("lets one active operator send another operator through verified password r
   const { app, store, staffAccounts } = makeApp();
   const response = await app.request(
     "https://www.timlostsomething.com/api/v1/ops/staff/staff-1/recovery",
-    { method: "POST", headers: { authorization: "Bearer staff-token" } }
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer staff-token",
+        origin: "https://www.timlostsomething.com"
+      }
+    }
   );
 
   const responseBody = await responseJson(response);
@@ -373,7 +386,10 @@ test("exposes the consent-aware subscriber ledger only to active staff", async (
 test("lets active staff send player recovery instructions or revoke player sessions", async () => {
   const { app, store, staffAccounts } = makeApp();
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const headers = { authorization: "Bearer staff-token" };
+  const headers = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com"
+  };
 
   for (const action of ["recovery", "revoke-sessions"]) {
     const response = await app.request(
@@ -434,6 +450,13 @@ test("keeps waiver summaries minimal and loads legal detail only for deliberate 
   const detailBody = (await responseJson(detail)).data;
   assert.equal(detailBody.id, accepted.value.id);
   assert.equal(detailBody.participants[1].fullName, "Sam Hunter");
+  const detailAudit = store.audits.at(-1);
+  assert.equal(detailAudit?.action, "player.waiver-detail.viewed");
+  assert.equal(detailAudit?.actorSubject, "staff-1");
+  assert.equal(detailAudit?.target, accepted.value.id);
+  assert.equal(typeof detailAudit?.occurredAt, "string");
+  assert.match(String(detailAudit?.occurredAt), /^\d{4}-\d{2}-\d{2}T/);
+  assert.doesNotMatch(JSON.stringify(detailAudit), /Alex Hunter|Sam Hunter|hunter@example\.test|2014/);
 
   const retry = await app.request(
     "https://www.timlostsomething.com/api/v1/ops/players/hunter-1/waiver/receipt",

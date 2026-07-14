@@ -318,6 +318,7 @@ test("rejects an oversized JSON request before human-verification work", async (
       "content-type": "application/json",
       "content-length": "70000",
       "idempotency-key": "large-key-1",
+      origin: "https://www.timlostsomething.com",
       "cf-connecting-ip": "203.0.113.9"
     },
     body: "{}"
@@ -339,7 +340,10 @@ test("requires an image for find reports and stores accepted uploads privately",
 
   const rejected = await app.request("https://www.timlostsomething.com/api/v1/reports", {
     method: "POST",
-    headers: { "idempotency-key": "find-key-1" },
+    headers: {
+      "idempotency-key": "find-key-1",
+      origin: "https://www.timlostsomething.com"
+    },
     body: missingPhoto
   });
   assert.equal(rejected.status, 422);
@@ -350,7 +354,10 @@ test("requires an image for find reports and stores accepted uploads privately",
   withPhoto.append("images", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], "find.jpg", { type: "image/jpeg" }));
   const accepted = await app.request("https://www.timlostsomething.com/api/v1/reports", {
     method: "POST",
-    headers: { "idempotency-key": "find-key-2" },
+    headers: {
+      "idempotency-key": "find-key-2",
+      origin: "https://www.timlostsomething.com"
+    },
     body: withPhoto
   });
   assert.equal(accepted.status, 201);
@@ -362,7 +369,10 @@ test("requires an image for find reports and stores accepted uploads privately",
 
   const retry = await app.request("https://www.timlostsomething.com/api/v1/reports", {
     method: "POST",
-    headers: { "idempotency-key": "find-key-2" },
+    headers: {
+      "idempotency-key": "find-key-2",
+      origin: "https://www.timlostsomething.com"
+    },
     body: withPhoto
   });
   assert.equal(retry.status, 200);
@@ -393,6 +403,7 @@ test("dispatches multipart reports by media type essence and preserves case-sens
     headers: {
       "content-type": `multipart/form-data; boundary=${boundary}`,
       "idempotency-key": "boundary-key-1",
+      origin: "https://www.timlostsomething.com",
       "cf-connecting-ip": "203.0.113.10"
     },
     body

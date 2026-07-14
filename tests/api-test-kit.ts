@@ -438,6 +438,18 @@ export class FakeStore {
     return this.getParticipationWaiver(subject);
   }
 
+  async getAndAuditOpsWaiverDetail(subject: string, actorSubject: string) {
+    const detail = await this.getOpsWaiverDetail(subject);
+    if (!detail) return null;
+    this.audits.push({
+      action: "player.waiver-detail.viewed",
+      actorSubject,
+      target: detail.id,
+      occurredAt: new Date().toISOString()
+    });
+    return detail;
+  }
+
   async queueOpsWaiverReceiptResend(subject: string, acceptanceId: string, actorSubject: string) {
     if (this.waiverReceiptInProgress.has(acceptanceId)) return { status: "in_progress" as const };
     const acceptance = await this.queueWaiverReceiptResend(subject, acceptanceId);
@@ -785,7 +797,11 @@ export class FakeLegalReceiptSender {
 }
 
 export const json = (body: unknown, headers: Record<string, string> = {}) => ({
-  headers: { "content-type": "application/json", ...headers },
+  headers: {
+    "content-type": "application/json",
+    origin: "https://www.timlostsomething.com",
+    ...headers
+  },
   body: JSON.stringify(body)
 });
 

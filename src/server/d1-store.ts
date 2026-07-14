@@ -1042,6 +1042,24 @@ export class D1DataStore implements DataStore {
     return this.getParticipationWaiver(subject);
   }
 
+  async getAndAuditOpsWaiverDetail(
+    subject: string,
+    actorSubject: string
+  ): Promise<WaiverAcceptanceRecord | null> {
+    const detail = await this.getOpsWaiverDetail(subject);
+    if (!detail) return null;
+    // The endpoint receives no private detail until this append succeeds. The legal
+    // acceptance is immutable, so its exact ID remains a stable audit target.
+    await this.audit(
+      actorSubject,
+      "player.waiver-detail.viewed",
+      "legal_acceptance",
+      detail.id,
+      {}
+    );
+    return detail;
+  }
+
   async getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null> {
     const acceptance = await this.waiverAcceptanceById(acceptanceId);
     if (!acceptance) return null;
