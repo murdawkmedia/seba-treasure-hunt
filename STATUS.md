@@ -4,9 +4,9 @@ Last updated: 2026-07-14
 
 ## Current state
 
-The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `0e701b6` (deployment `aab9303b-36a7-4c91-9740-8293332cf995`).
+The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `765102d` (deployment `85ccc8e5-0cd9-428b-af65-ad32f5494a67`).
 
-Validation now presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the new guardian/receipt/Ops surfaces at `https://codex-validation.seba-treasure-hunt.pages.dev`. Its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; its deployment ID, DNS, domains and data were not changed. Resend and the transactional sender/reply settings are configured as encrypted Preview secrets. No account or submission has been created, and no email has been sent.
+Validation now presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the new guardian/receipt/Ops surfaces at `https://codex-validation.seba-treasure-hunt.pages.dev`. Its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; its deployment ID, DNS, domains and data were not changed. The verified Murdawk Media Resend sender remains active, the campaign lead mailbox is the encrypted receipt Reply-To, and the new SebaHub Resend credential is stored separately as a pending encrypted Preview secret. No account or submission has been created, and no email has been sent.
 
 For historical sponsor-release auditability, the pre-disclosure Privacy/Media `2026.1` hash was `c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9`; it is not the active local `2026.2` policy hash below.
 
@@ -40,7 +40,7 @@ Validation inquiries are disposable and must not be promoted to production.
 - Public `/waiver` route, legal navigation, sitemap entry and active architecture documentation.
 - A validation-safe browser QA gate that exercises the built Dashboard, Ops, Clue Board and Report clients at desktop, mobile and zoom-equivalent viewports.
 
-Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5`, `65e12bf` and `0e701b6`.
+Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5`, `65e12bf`, `0e701b6` and `765102d`.
 
 ## Database and provider state
 
@@ -48,7 +48,7 @@ Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `
 - Validation migrations `0005` through `0009` are applied and recorded. Post-checks show no pending migration and zero sponsor, waiver-review, participant, delivery, lease or rate-limit rows.
 - Wrangler's normal migration command applied `0005` but could not parse the trigger bodies in `0006`. Migrations `0006`–`0009` were therefore imported one at a time through D1's atomic raw-file path, verified by object signature and then recorded in the migration ledger. Preserve this fact for production planning.
 - Production migrations, deployment, DNS and data remain unchanged. No waiver, receipt-lease, immutable-ledger or atomic-rate-limit migration is applied there.
-- Clerk and Turnstile Preview configuration is absent/unverified, so identity and human-verified writes remain fail-closed. Resend and the recovery/legal-receipt sender settings are installed as encrypted Preview-only secrets; the sender uses Resend's verified Murdawk Media domain and replies route to the SebaHub Project mailbox. No credential value is recorded in source or documentation.
+- Clerk and Turnstile Preview configuration is absent/unverified, so identity and human-verified writes remain fail-closed. Resend and the recovery/legal-receipt sender settings are installed as encrypted Preview-only secrets. The verified Murdawk Media sender remains active and receipt replies route to the campaign lead mailbox. A non-delivering API probe confirmed the new SebaHub credential is valid but its Resend account currently has zero sending domains, so it is stored only as `RESEND_API_KEY_SEBAHUB_PENDING` and is not used by the Worker. No credential value is recorded in source or documentation.
 - The validation Turnstile action `sponsor_inquiry` is not verified or configured, so the deployed sponsor form remains fail-closed.
 - The existing Murdawk Media Wrangler OAuth session was verified and used only for the approved validation migration and deployment work. The authenticated Cloudflare and Resend dashboard sessions were used only for Preview configuration and verified-domain inspection. No raw credential value is stored in the repository or documentation, and no real provider delivery occurred.
 - Pages domains remain `seba-treasure-hunt.pages.dev`, `timlostsomething.com` and `www.timlostsomething.com`; no domain or DNS change occurred.
@@ -67,7 +67,7 @@ Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `
 - `npm run build`: passed; Pages Worker 304.8 kB, media Worker 3.2 kB and client bundles completed.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
-- Validation deployment `aab9303b-36a7-4c91-9740-8293332cf995` from `0e701b6` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return 200. Cloudflare lists all four transactional email settings as encrypted Preview secrets. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
+- Validation deployment `85ccc8e5-0cd9-428b-af65-ad32f5494a67` from `765102d` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return 200. Cloudflare lists the active transactional settings and pending SebaHub credential as encrypted Preview secrets. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
 - `npm audit --omit=dev --audit-level=high`: exit 0 with zero high/critical findings. Twelve moderate findings remain in Clerk's optional Solana chain; no forced breaking remediation was applied.
 - Full evidence and reproduction commands are recorded in `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`.
 
@@ -79,9 +79,10 @@ Validation activation is approved, but the following still require authenticated
 2. Configure the remaining Preview-only identity, webhook and Turnstile values.
 3. Run one owner-controlled disposable hunter/guardian/receipt/Ops test and a controlled test receipt.
 4. Verify password recovery, staff invitation/authorization, all Turnstile actions and private media processing.
-5. Rotate the Resend API key after the controlled delivery test because the initial credential was supplied through chat; replace only the encrypted Preview secret.
-6. Wipe disposable validation identities, D1 activity/legal records and validation media after testing. Immutable legal ledgers mean this should be a controlled validation-resource reset, not ad hoc deletes.
-7. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
+5. Verify a SebaHub sending domain in Resend or implement the existing Microsoft Graph sender pattern before activating the pending SebaHub credential and sender address.
+6. Rotate the Resend credentials after controlled delivery/domain verification because both initial credentials were supplied through chat; replace only their encrypted Preview secrets.
+7. Wipe disposable validation identities, D1 activity/legal records and validation media after testing. Immutable legal ledgers mean this should be a controlled validation-resource reset, not ad hoc deletes.
+8. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
 
 ## Next approved workflow
 
