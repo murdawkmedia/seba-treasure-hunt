@@ -57,13 +57,14 @@ test("Ops offers only provider-managed player recovery and session revocation", 
   assert.doesNotMatch(client, /data-player-action="(?:set-password|view-password)"/);
 });
 
-test("onboarding requires the versioned privacy-media notice and presents a non-accepting waiver placeholder", () => {
+test("onboarding keeps the active waiver separate and locked until its review is recorded", () => {
   const html = read("dashboard.html");
   assert.match(html, /name="privacyMediaAccepted"[^>]*required/);
   assert.match(html, /href="\/privacy#media-notice"/);
-  assert.match(html, /Participation waiver[^<]*coming soon/i);
-  assert.match(html, /name="participationWaiver"[^>]*disabled/);
-  assert.doesNotMatch(html, /name="participationWaiver"[^>]*checked/);
+  assert.match(html, /href="\/waiver"/);
+  assert.match(html, /name="waiverAccepted"[^>]*disabled/);
+  assert.match(html, /name="guardianAttested"/);
+  assert.doesNotMatch(html, /Participation waiver[^<]*coming soon|name="participationWaiver"/i);
 });
 
 test("privacy page adapts the SebaHub media notice to the hunt without importing unrelated claims", () => {
@@ -84,14 +85,13 @@ test("privacy page adapts the SebaHub media notice to the hunt without importing
   assert.doesNotMatch(html, /Meta Pixel|reservation details|payment information|mailing address/i);
 });
 
-test("the active legal document hash ignores decorative head assets and matches the published policy", () => {
+test("the active legal document hash covers the legal main and ignores decorative chrome", () => {
   const html = read("privacy.html");
   const legal = read("src/server/legal-documents.ts");
   const generated = read("src/generated/privacy-media.ts");
-  const canonicalPolicy = html.replace(
-    /^.*(?:\/favicon\.ico|\/assets\/favicon(?:-32x32)?\.(?:svg|png)|\/assets\/apple-touch-icon\.png|\/site\.webmanifest).*\r?\n/gm,
-    "",
-  );
+  const main = html.match(/<main id="main" tabindex="-1">[\s\S]*?<\/main>/);
+  assert.ok(main);
+  const canonicalPolicy = `${main[0].replaceAll("\r\n", "\n").trim()}\n`;
   const hash = createHash("sha256").update(canonicalPolicy).digest("hex");
   assert.match(generated, new RegExp(`hash:\\s*"${hash}"`));
   assert.match(generated, /version:\s*"2026\.2"/);
