@@ -279,6 +279,11 @@ html {
 }
 
 @media (max-width: 760px) {
+  :root {
+    --campaign-case-min-height: 72px;
+    --campaign-nav-min-height: 58px;
+  }
+
   .case-strip {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 4px 10px;
@@ -341,7 +346,14 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .skip-link { transition-duration: 0.01ms; }
+
+  .campaign-page *,
+  .campaign-page *::before,
+  .campaign-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @media print {

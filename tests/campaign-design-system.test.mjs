@@ -10,6 +10,19 @@ import { buildSite } from "../scripts/build.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
 
+const cssBlock = (css, marker) => {
+  const markerMatch = marker.exec(css);
+  assert.ok(markerMatch, `missing CSS block for ${marker}`);
+  const start = css.indexOf("{", markerMatch.index);
+  let depth = 0;
+  for (let index = start; index < css.length; index += 1) {
+    if (css[index] === "{") depth += 1;
+    if (css[index] === "}") depth -= 1;
+    if (depth === 0) return css.slice(start + 1, index);
+  }
+  assert.fail(`unterminated CSS block for ${marker}`);
+};
+
 test("the canonical stylesheet owns every public campaign shell surface", () => {
   const css = read("css/campaign-shell.css");
   for (const selector of [
@@ -54,6 +67,23 @@ test("shared shell JavaScript addresses canonical selectors only", () => {
   for (const legacy of [".case-signal", ".topbar", ".hunter-header", ".board-topbar", 'getElementById("nav")', "#nav"]) {
     assert.doesNotMatch(site, new RegExp(legacy.replace(/[.#()]/g, "\\$&")), `site.js does not address ${legacy}`);
   }
+});
+
+test("the mobile shell uses compact measured row minimums", () => {
+  const mobile = cssBlock(read("css/campaign-shell.css"), /@media\s*\(max-width:\s*760px\)/);
+  assert.match(
+    mobile,
+    /:root\s*\{(?=[^}]*--campaign-case-min-height:\s*72px)(?=[^}]*--campaign-nav-min-height:\s*58px)[^}]*\}/s,
+  );
+});
+
+test("reduced motion resets campaign animations and transitions", () => {
+  const reducedMotion = cssBlock(read("css/campaign-shell.css"), /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(reducedMotion, /html\s*\{[^}]*scroll-behavior:\s*auto[^}]*\}/s);
+  assert.match(
+    reducedMotion,
+    /\.campaign-page \*,\s*\.campaign-page \*::before,\s*\.campaign-page \*::after\s*\{[^}]*animation-duration:\s*0\.01ms\s*!important;[^}]*animation-iteration-count:\s*1\s*!important;[^}]*transition-duration:\s*0\.01ms\s*!important;[^}]*\}/s,
+  );
 });
 
 test("the build publishes the canonical shell stylesheet", async () => {
