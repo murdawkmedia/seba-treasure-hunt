@@ -143,13 +143,13 @@ test("campaign pages share body type, headings, readable wrapping, controls, and
     ["a", "button", "input", "select", "textarea", "summary", "[tabindex]"],
     "focus styling covers links, controls, disclosure widgets, and explicit focus targets",
   );
-  assert.match(focusRules[0][2], /outline:\s*3px solid var\(--campaign-focus-light\);/);
+  assert.match(focusRules[0][2], /outline:\s*3px solid var\(--campaign-focus\);/);
   assert.match(focusRules[0][2], /outline-offset:\s*3px;/);
-  assert.match(focusRules[0][2], /box-shadow:\s*0 0 0 3px var\(--campaign-focus-dark\);/);
+  assert.doesNotMatch(focusRules[0][2], /box-shadow\s*:/, "shared focus never replaces component shadows");
   assert.doesNotMatch(css, /\.campaign-page\s+:focus-visible/);
 });
 
-test("the two-tone focus indicator keeps a three-to-one edge on light and dark surfaces", () => {
+test("contextual focus tokens keep three-to-one outlines on light and dark surfaces", () => {
   const properties = customProperties(read("css/campaign-shell.css"));
   const focusLight = resolveHexColor(properties["--campaign-focus-light"], properties);
   const focusDark = resolveHexColor(properties["--campaign-focus-dark"], properties);
@@ -160,6 +160,40 @@ test("the two-tone focus indicator keeps a three-to-one edge on light and dark s
 
   assert.ok(darkOnPaper >= 3, `dark focus edge contrasts ${darkOnPaper.toFixed(2)}:1 on parchment`);
   assert.ok(lightOnForest >= 3, `light focus edge contrasts ${lightOnForest.toFixed(2)}:1 on forest`);
+});
+
+test("light surfaces select dark focus while dark campaign chrome stays gold", () => {
+  const shellCss = read("css/campaign-shell.css");
+  const sponsorCss = read("css/sponsors.css");
+  const hunterCss = read("css/hunter.css");
+  const boardCss = read("css/board.css");
+  const publicCss = read("css/style.css");
+
+  assert.match(
+    shellCss,
+    /\.case-strip,\s*\.campaign-header,\s*\.campaign-footer\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
+    "canonical dark chrome pins the gold focus token",
+  );
+  assert.match(
+    sponsorCss,
+    /\.sponsor-form\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    "the sponsor parchment form selects dark focus",
+  );
+  assert.match(
+    hunterCss,
+    /\.field-panel--paper,\s*\.waiver-legal-body\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    "Hunter paper and waiver surfaces select dark focus",
+  );
+  assert.match(
+    boardCss,
+    /\.community-notice,\s*\.field-note\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    "Board paper notes and their replies select dark focus",
+  );
+  assert.match(
+    publicCss,
+    /\.card,\s*\.anchor-sponsor,\s*details\.qa\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    "public parchment cards select dark focus without changing whole page families",
+  );
 });
 
 test("every campaign body has exactly one mapped page-family class and keeps functional classes", () => {

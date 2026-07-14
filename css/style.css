@@ -50,6 +50,12 @@ a { color: var(--rust-600); }
 
 h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.05; letter-spacing: 0.5px; }
 
+.card,
+.anchor-sponsor,
+details.qa {
+  --campaign-focus: var(--campaign-focus-dark);
+}
+
 .wrap { max-width: var(--max); margin: 0 auto; padding: 0 22px; }
 
 .center { text-align: center; }

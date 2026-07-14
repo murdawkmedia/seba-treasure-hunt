@@ -211,6 +211,11 @@ button.hunter-button {
   grid-column: 1 / -1;
 }
 
+.field-panel--paper,
+.waiver-legal-body {
+  --campaign-focus: var(--campaign-focus-dark);
+}
+
 .field-panel--paper {
   color: var(--hunter-ink-dark);
   background:

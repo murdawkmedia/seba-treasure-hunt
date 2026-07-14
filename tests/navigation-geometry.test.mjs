@@ -104,6 +104,63 @@ after(async () => {
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
+test("contextual focus outlines preserve raised and current-state shadows", { timeout: 30_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.route("**/*", async (route) => {
+    if (route.request().url().startsWith(origin)) await route.continue();
+    else await route.abort();
+  });
+
+  const readFocusStyle = (locator) => locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      boxShadow: style.boxShadow,
+      focusVisible: element.matches(":focus-visible"),
+      outlineColor: style.outlineColor,
+      outlineOffset: style.outlineOffset,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+    };
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.goto(`${origin}/start.html`, { waitUntil: "domcontentloaded" });
+    const hunterButton = page.locator(".hunter-button").first();
+    const hunterShadow = (await readFocusStyle(hunterButton)).boxShadow;
+    await hunterButton.focus();
+    const focusedHunter = await readFocusStyle(hunterButton);
+    assert.equal(focusedHunter.focusVisible, true);
+    assert.equal(focusedHunter.boxShadow, hunterShadow, "Hunter focus keeps the raised component shadow");
+    assert.deepEqual(
+      [focusedHunter.outlineColor, focusedHunter.outlineStyle, focusedHunter.outlineWidth, focusedHunter.outlineOffset],
+      ["rgb(242, 205, 106)", "solid", "3px", "3px"],
+    );
+
+    await page.goto(`${origin}/sponsors.html`, { waitUntil: "domcontentloaded" });
+    const sponsorNav = page.locator("#campaign-nav .nav-sponsors");
+    const sponsorNavShadow = (await readFocusStyle(sponsorNav)).boxShadow;
+    assert.match(sponsorNavShadow, /inset/, "current Sponsors nav starts with its inset state shadow");
+    await sponsorNav.focus();
+    const focusedSponsorNav = await readFocusStyle(sponsorNav);
+    assert.equal(focusedSponsorNav.boxShadow, sponsorNavShadow, "Sponsors focus keeps the current-state inset shadow");
+    assert.equal(focusedSponsorNav.outlineColor, "rgb(242, 205, 106)");
+
+    const sponsorInput = page.locator("#sponsor-contact");
+    const sponsorInputShadow = (await readFocusStyle(sponsorInput)).boxShadow;
+    await sponsorInput.focus();
+    const focusedSponsorInput = await readFocusStyle(sponsorInput);
+    assert.equal(focusedSponsorInput.boxShadow, sponsorInputShadow, "Sponsor input focus keeps its component shadow");
+    assert.deepEqual(
+      [focusedSponsorInput.outlineColor, focusedSponsorInput.outlineStyle, focusedSponsorInput.outlineWidth, focusedSponsorInput.outlineOffset],
+      ["rgb(7, 31, 28)", "solid", "3px", "3px"],
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
 test("390px headers use measured compact stacked geometry and an operable menu", { timeout: 60_000 }, async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });

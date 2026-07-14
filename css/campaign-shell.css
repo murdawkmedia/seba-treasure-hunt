@@ -46,9 +46,14 @@ html {
 }
 
 .campaign-page :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 3px solid var(--campaign-focus-light);
+  outline: 3px solid var(--campaign-focus);
   outline-offset: 3px;
-  box-shadow: 0 0 0 3px var(--campaign-focus-dark);
+}
+
+.case-strip,
+.campaign-header,
+.campaign-footer {
+  --campaign-focus: var(--campaign-focus-light);
 }
 
 .campaign-page :where(h1, h2, h3) {

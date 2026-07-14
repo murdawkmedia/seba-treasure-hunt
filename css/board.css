@@ -58,6 +58,11 @@
 
 .board-hero__lead { max-width: 780px; margin: 22px 0 0; color: var(--board-muted); font-size: clamp(1.05rem, 2vw, 1.3rem); text-wrap: pretty; }
 
+.community-notice,
+.field-note {
+  --campaign-focus: var(--campaign-focus-dark);
+}
+
 .community-notice {
   position: relative;
   margin-bottom: 7px;
