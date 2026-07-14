@@ -663,6 +663,106 @@ button.hunter-button {
   scroll-margin-top: var(--stacked-header-height);
 }
 
+.waiver-panel {
+  scroll-margin-top: var(--stacked-header-height);
+}
+
+.waiver-legal-body {
+  margin: 22px 0;
+  padding: clamp(18px, 4vw, 30px);
+  color: var(--hunter-ink-dark);
+  background: var(--hunter-paper);
+  border: 2px solid var(--hunter-paper-deep);
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.waiver-legal-body h3,
+.waiver-legal-body h4 {
+  color: #2f5741;
+}
+
+.waiver-legal-body h3 {
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+}
+
+.waiver-legal-section {
+  padding: 16px 0;
+  border-top: 1px solid rgba(36, 27, 15, 0.22);
+}
+
+.waiver-legal-section h4 {
+  margin: 0 0 8px;
+  font-size: 1.45rem;
+}
+
+.waiver-form,
+.waiver-receipt {
+  margin-top: 22px;
+}
+
+.minors-fieldset {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hunter-rule);
+}
+
+.minor-rows {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.minor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(130px, 0.7fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(7, 31, 28, 0.34);
+  border: 1px solid var(--hunter-rule);
+  border-radius: 7px;
+}
+
+.minor-remove {
+  min-height: 44px;
+  padding: 8px 12px;
+  color: var(--hunter-ink);
+  background: transparent;
+  border: 2px solid var(--hunter-danger);
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.guardian-confirmation {
+  margin-top: 18px;
+}
+
+.waiver-acceptance-details {
+  display: grid;
+  grid-template-columns: minmax(145px, auto) minmax(0, 1fr);
+  gap: 7px 14px;
+}
+
+.waiver-acceptance-details dt {
+  color: var(--hunter-muted);
+  font-weight: 700;
+}
+
+.waiver-acceptance-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.waiver-action:focus-visible,
+.minor-remove:focus-visible,
+.waiver-panel a:focus-visible {
+  outline: 3px solid var(--hunter-gold);
+  outline-offset: 4px;
+}
+
 .form-field input:focus,
 .form-field select:focus,
 .form-field textarea:focus {
@@ -918,6 +1018,22 @@ button.hunter-button {
   .record-state {
     justify-self: start;
   }
+
+  .minor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .minor-remove {
+    width: 100%;
+  }
+
+  .waiver-acceptance-details {
+    grid-template-columns: 1fr;
+  }
+
+  .waiver-acceptance-details dd + dt {
+    margin-top: 7px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -932,5 +1048,63 @@ button.hunter-button {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body.hunter-page {
+    color: #000;
+    background: #fff;
+    font-size: 12pt;
+  }
+
+  .case-strip,
+  .hunter-header,
+  .hunter-hero,
+  .dashboard-sidebar,
+  .dashboard-content > :not(.waiver-panel),
+  .waiver-form,
+  .waiver-actions,
+  .hunter-footer,
+  [data-dashboard-message],
+  [data-waiver-result],
+  [data-waiver-errors],
+  [data-waiver-review-link] {
+    display: none !important;
+  }
+
+  .hunter-main,
+  .dashboard-grid,
+  .dashboard-content,
+  .waiver-panel,
+  .waiver-receipt,
+  .waiver-legal-body {
+    display: block !important;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    background: #fff;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .waiver-panel h2,
+  .waiver-panel h3,
+  .waiver-panel h4,
+  .waiver-legal-body,
+  .waiver-legal-body h3,
+  .waiver-legal-body h4,
+  .waiver-acceptance-details dt {
+    color: #000;
+  }
+
+  .waiver-legal-section {
+    break-inside: avoid;
+    border-color: #bbb;
   }
 }

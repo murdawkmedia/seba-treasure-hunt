@@ -99,7 +99,8 @@ test("start and dashboard explain the member tool without pretending historical 
   assert.match(dashboard, /name="huntEmail"/);
   assert.match(dashboard, /name="marketing"/);
   assert.match(dashboard, /name="privacyMediaAccepted"/);
-  assert.match(dashboard, /name="participationWaiver"[^>]*disabled/);
+  assert.match(dashboard, /data-waiver-form/);
+  assert.match(dashboard, /name="waiverAccepted"[^>]*disabled/);
   assert.doesNotMatch(dashboard, /name="sms"|data-profile-turnstile/);
   assert.doesNotMatch(dashboard, /53\.\d+|-114\.\d+/);
 });
@@ -111,7 +112,7 @@ test("dashboard bootstraps managed hunter identity from runtime-safe public conf
   assert.match(client, /getToken/);
   assert.match(client, /\/api\/v1\/config/);
   assert.match(client, /\/api\/v1\/me\/profile/);
-  assert.match(client, /privacyMediaVersion:\s*"2026\.1"/);
+  assert.match(client, /privacyMediaVersion:\s*"2026\.2"/);
   assert.match(client, /reset_password_email_code/);
   assert.doesNotMatch(client, /pk_(?:test|live)_/);
 });

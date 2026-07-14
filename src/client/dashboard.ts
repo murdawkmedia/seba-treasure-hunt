@@ -23,6 +23,22 @@ export interface HunterProfileDraft {
   marketing: boolean;
 }
 
+export interface WaiverMinorDraft {
+  fullName: string;
+  birthYear: string;
+}
+
+export interface WaiverDraft {
+  reviewEventId: string;
+  version: string;
+  hash: string;
+  waiverAccepted: boolean;
+  guardianAttested: boolean;
+  minors: WaiverMinorDraft[];
+}
+
+type WaiverErrors = Partial<Record<"review" | "waiverAccepted" | "guardianAttested" | "minors", string>>;
+
 type ProfileErrors = Partial<Record<"fullName" | "adultAttested" | "privacyMediaAccepted", string>>;
 
 export function validateProfileDraft(draft: HunterProfileDraft): ProfileErrors {
@@ -45,11 +61,60 @@ export function buildProfilePayload(draft: HunterProfileDraft): Record<string, u
     discoverySource: draft.discoverySource.trim() || null,
     adultAttested: draft.adultAttested,
     privacyMediaAccepted: draft.privacyMediaAccepted,
-    privacyMediaVersion: "2026.1",
+    privacyMediaVersion: "2026.2",
     consents: {
       huntEmail: draft.huntEmail,
       marketing: draft.marketing,
     },
+  };
+}
+
+const currentEdmontonYear = (): number =>
+  Number(new Intl.DateTimeFormat("en-CA", { year: "numeric", timeZone: "America/Edmonton" }).format(new Date()));
+
+export function validateWaiverDraft(draft: WaiverDraft): WaiverErrors {
+  const errors: WaiverErrors = {};
+  if (!draft.reviewEventId.trim() || !draft.version.trim() || !/^[a-f0-9]{64}$/i.test(draft.hash)) {
+    errors.review = "Open and review the current participation waiver before accepting it.";
+  }
+  if (!draft.waiverAccepted) {
+    errors.waiverAccepted = "Accept the participation waiver to register.";
+  }
+  if (draft.minors.length > 10) {
+    errors.minors = "Add no more than 10 supervised minors.";
+  } else {
+    const year = currentEdmontonYear();
+    const oldestMinorYear = year - 18;
+    const hasInvalidMinor = draft.minors.some((minor) => {
+      const name = minor.fullName.trim();
+      const birthYear = Number(minor.birthYear);
+      return name.length < 1 || name.length > 100 ||
+        !/^\d{4}$/.test(minor.birthYear.trim()) ||
+        !Number.isInteger(birthYear) ||
+        birthYear < oldestMinorYear ||
+        birthYear > year;
+    });
+    if (hasInvalidMinor) {
+      errors.minors = "Enter each minor's full name (1–100 characters) and a valid minor birth year.";
+    }
+  }
+  if (draft.minors.length > 0 && !draft.guardianAttested) {
+    errors.guardianAttested = "Confirm that you are the parent or legal guardian of every listed minor.";
+  }
+  return errors;
+}
+
+export function buildWaiverPayload(draft: WaiverDraft): Record<string, unknown> {
+  return {
+    reviewEventId: draft.reviewEventId.trim(),
+    version: draft.version.trim(),
+    hash: draft.hash.trim().toLowerCase(),
+    waiverAccepted: draft.waiverAccepted,
+    guardianAttested: draft.guardianAttested,
+    minors: draft.minors.map((minor) => ({
+      fullName: minor.fullName.trim(),
+      birthYear: Number(minor.birthYear.trim()),
+    })),
   };
 }
 
@@ -282,6 +347,8 @@ function renderDashboard(data: Record<string, unknown>): void {
   renderWaypoints(data.waypoints, data.status);
   renderRecords("[data-dashboard-reports]", data.reports, "No private reports yet.");
   renderRecords("[data-dashboard-notes]", data.notes, "No Field Notes yet.");
+  const waiverPanel = document.querySelector<HTMLElement>("[data-waiver-panel]");
+  if (waiverPanel) waiverPanel.hidden = !isRecord(data.profile) || data.privacyMediaRequired === true;
   message(
     isRecord(data.profile) ? "success" : "info",
     isRecord(data.profile)
@@ -297,7 +364,11 @@ function profileInput<T extends HTMLInputElement | HTMLSelectElement>(
   return form.querySelector<T>(selector);
 }
 
-function fillProfileForm(form: HTMLFormElement, profile: unknown): void {
+function fillProfileForm(
+  form: HTMLFormElement,
+  profile: unknown,
+  privacyMediaRequired = false,
+): void {
   if (!isRecord(profile)) return;
   const setValue = (name: string, value: unknown): void => {
     const input = profileInput<HTMLInputElement | HTMLSelectElement>(form, `[name="${name}"]`);
@@ -324,7 +395,7 @@ function fillProfileForm(form: HTMLFormElement, profile: unknown): void {
   const adult = profileInput<HTMLInputElement>(form, 'input[name="adultAttested"]');
   if (adult) adult.checked = Boolean(profile.adultAttestedAt);
   const privacy = profileInput<HTMLInputElement>(form, 'input[name="privacyMediaAccepted"]');
-  if (privacy) privacy.checked = true;
+  if (privacy) privacy.checked = !privacyMediaRequired;
 }
 
 function readProfileDraft(form: HTMLFormElement): HunterProfileDraft {
@@ -393,11 +464,12 @@ async function fetchDashboard(auth: HunterAuthHook | null): Promise<Response> {
 async function initializeProfileForm(
   auth: HunterAuthHook | null,
   profile: unknown,
+  privacyMediaRequired: boolean,
 ): Promise<void> {
   const form = document.querySelector<HTMLFormElement>("[data-profile-form]");
   const submit = document.querySelector<HTMLButtonElement>("[data-profile-submit]");
   if (!form || !submit) return;
-  fillProfileForm(form, profile);
+  fillProfileForm(form, profile, privacyMediaRequired);
 
   form.addEventListener("input", () => {
     for (const control of form.querySelectorAll<HTMLElement>('[aria-invalid="true"]')) {
@@ -428,7 +500,7 @@ async function initializeProfileForm(
       const saved = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
       if (saved) {
         renderProfile(saved);
-        fillProfileForm(form, saved);
+        fillProfileForm(form, saved, saved.privacyMediaRequired === true);
       }
 
       const dashboardResponse = await fetchDashboard(auth);
@@ -436,17 +508,521 @@ async function initializeProfileForm(
         const dashboardPayload: unknown = await dashboardResponse.json();
         if (isRecord(dashboardPayload) && isRecord(dashboardPayload.data)) {
           renderDashboard(dashboardPayload.data);
-          fillProfileForm(form, dashboardPayload.data.profile);
+          fillProfileForm(
+            form,
+            dashboardPayload.data.profile,
+            dashboardPayload.data.privacyMediaRequired === true,
+          );
+          await initializeWaiverExperience(
+            auth,
+            isRecord(dashboardPayload.data.profile) && dashboardPayload.data.privacyMediaRequired !== true,
+          );
         }
       }
       showProfileErrors({});
-      setProfileResult("Profile saved. Exact directions remain locked until the approved waiver is published and accepted.", "success");
+      setProfileResult(
+        currentWaiverAcceptance
+          ? "Profile saved. Your current waiver acceptance remains stored."
+          : "Profile saved. Review and accept the separate participation waiver to unlock approved directions.",
+        "success",
+      );
     } catch (error) {
       setProfileResult(error instanceof Error ? error.message : "Your profile could not be saved.", "error");
     } finally {
       submit.disabled = false;
     }
   });
+}
+
+let activeWaiverDocument: Record<string, unknown> | null = null;
+let waiverReviewEventId = "";
+let retainedWaiverIdempotencyKey: string | null = null;
+let currentWaiverAcceptance: Record<string, unknown> | null = null;
+let minorRowSequence = 0;
+
+function envelopeData(value: unknown): unknown {
+  return isRecord(value) && "data" in value ? value.data : value;
+}
+
+function nestedRecord(value: unknown, keys: string[]): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  for (const key of keys) {
+    if (isRecord(value[key])) return value[key];
+  }
+  return value;
+}
+
+function waiverDocumentFrom(value: unknown): Record<string, unknown> | null {
+  const data = envelopeData(value);
+  const candidate = nestedRecord(data, ["waiver", "document"]);
+  if (!candidate) return null;
+  return typeof candidate.version === "string" &&
+    typeof candidate.hash === "string" &&
+    /^[a-f0-9]{64}$/i.test(candidate.hash) &&
+    typeof candidate.title === "string" &&
+    Array.isArray(candidate.sections)
+    ? candidate
+    : null;
+}
+
+function appendLegalBlock(parent: HTMLElement, block: unknown): void {
+  if (!isRecord(block)) return;
+  if (block.kind === "list" && Array.isArray(block.items)) {
+    const list = document.createElement("ul");
+    for (const item of block.items) {
+      if (typeof item !== "string") continue;
+      const listItem = document.createElement("li");
+      listItem.textContent = item;
+      list.appendChild(listItem);
+    }
+    parent.appendChild(list);
+    return;
+  }
+  if (block.kind === "paragraph" && typeof block.text === "string") {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = block.text;
+    parent.appendChild(paragraph);
+  }
+}
+
+function renderWaiverDocument(documentValue: Record<string, unknown>): void {
+  const root = document.querySelector<HTMLElement>("[data-waiver-legal-body]");
+  if (!root) return;
+  const fragment = document.createDocumentFragment();
+  const title = document.createElement("h3");
+  const version = document.createElement("p");
+  title.textContent = text(documentValue.title, "Participation waiver");
+  version.className = "legal-updated";
+  version.textContent = `Version ${text(documentValue.version, "unavailable")} · Effective ${text(documentValue.effectiveDateLabel, text(documentValue.effectiveDate, "date unavailable"))}`;
+  fragment.append(title, version);
+
+  if (typeof documentValue.intro === "string") {
+    const intro = document.createElement("p");
+    intro.textContent = documentValue.intro;
+    fragment.appendChild(intro);
+  }
+  for (const rawSection of documentValue.sections as unknown[]) {
+    if (!isRecord(rawSection)) continue;
+    const section = document.createElement("section");
+    const heading = document.createElement("h4");
+    section.className = "waiver-legal-section";
+    heading.textContent = `${typeof rawSection.number === "number" ? `${rawSection.number}. ` : ""}${text(rawSection.title, "Waiver section")}`;
+    section.appendChild(heading);
+    if (Array.isArray(rawSection.blocks)) {
+      for (const block of rawSection.blocks) appendLegalBlock(section, block);
+    }
+    fragment.appendChild(section);
+  }
+  root.replaceChildren(fragment);
+}
+
+async function fetchCurrentWaiverDocument(): Promise<Record<string, unknown>> {
+  const response = await fetch("/api/v1/legal/waiver", {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    credentials: "same-origin",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  const documentValue = waiverDocumentFrom(payload);
+  if (!response.ok || !documentValue) {
+    throw new Error(profileErrorMessage(payload, "The current participation waiver could not be loaded."));
+  }
+  return documentValue;
+}
+
+function reviewIdFrom(value: unknown): string {
+  const data = envelopeData(value);
+  const candidate = nestedRecord(data, ["review"]);
+  if (!candidate) return "";
+  for (const key of ["reviewEventId", "id"] as const) {
+    if (typeof candidate[key] === "string" && candidate[key].trim()) return candidate[key].trim();
+  }
+  return "";
+}
+
+async function waiverWrite(
+  auth: HunterAuthHook | null,
+  route: string,
+  body?: Record<string, unknown>,
+  idempotencyKey?: string,
+): Promise<unknown> {
+  const headers = await authHeaders(auth);
+  headers.set("Content-Type", "application/json");
+  if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
+  const response = await fetch(route, {
+    method: "POST",
+    headers,
+    credentials: "same-origin",
+    body: JSON.stringify(body ?? {}),
+    signal: AbortSignal.timeout(12_000),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(profileErrorMessage(payload, "The waiver request could not be completed."));
+  return payload;
+}
+
+function setWaiverResult(copy: string, kind: "success" | "error", focus = false): void {
+  const result = document.querySelector<HTMLElement>("[data-waiver-result]");
+  if (!result) return;
+  result.textContent = copy;
+  result.dataset.kind = kind;
+  result.hidden = false;
+  if (focus) result.focus();
+}
+
+function minorRows(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("[data-minor-row]")];
+}
+
+function updateMinorControls(): void {
+  const rows = minorRows();
+  const add = document.querySelector<HTMLButtonElement>("[data-add-minor]");
+  const guardian = document.querySelector<HTMLElement>("[data-guardian-confirmation]");
+  const guardianInput = document.querySelector<HTMLInputElement>('input[name="guardianAttested"]');
+  if (add) add.disabled = rows.length >= 10;
+  if (guardian) guardian.hidden = rows.length === 0;
+  if (rows.length === 0 && guardianInput) guardianInput.checked = false;
+  rows.forEach((row, index) => {
+    const nameLabel = row.querySelector<HTMLLabelElement>("[data-minor-name-label]");
+    const yearLabel = row.querySelector<HTMLLabelElement>("[data-minor-year-label]");
+    if (nameLabel) nameLabel.firstChild!.textContent = `Minor ${index + 1} full name `;
+    if (yearLabel) yearLabel.firstChild!.textContent = `Minor ${index + 1} birth year `;
+  });
+}
+
+function createMinorRow(): void {
+  const rowsRoot = document.querySelector<HTMLElement>("[data-minor-rows]");
+  const add = document.querySelector<HTMLButtonElement>("[data-add-minor]");
+  if (!rowsRoot || minorRows().length >= 10) return;
+  minorRowSequence += 1;
+  const rowId = `waiver-minor-${minorRowSequence}`;
+  const row = document.createElement("div");
+  const nameField = document.createElement("div");
+  const nameLabel = document.createElement("label");
+  const nameInput = document.createElement("input");
+  const yearField = document.createElement("div");
+  const yearLabel = document.createElement("label");
+  const yearInput = document.createElement("input");
+  const remove = document.createElement("button");
+
+  row.className = "minor-row";
+  row.dataset.minorRow = "";
+  nameField.className = "form-field";
+  yearField.className = "form-field";
+  nameLabel.dataset.minorNameLabel = "";
+  yearLabel.dataset.minorYearLabel = "";
+  nameLabel.append("Minor full name ");
+  yearLabel.append("Minor birth year ");
+  nameLabel.htmlFor = `${rowId}-name`;
+  yearLabel.htmlFor = `${rowId}-year`;
+  nameInput.id = `${rowId}-name`;
+  nameInput.name = "minorFullName";
+  nameInput.type = "text";
+  nameInput.maxLength = 100;
+  nameInput.autocomplete = "off";
+  nameInput.value = "";
+  yearInput.id = `${rowId}-year`;
+  yearInput.name = "minorBirthYear";
+  yearInput.type = "text";
+  yearInput.inputMode = "numeric";
+  yearInput.pattern = "[0-9]{4}";
+  yearInput.maxLength = 4;
+  yearInput.autocomplete = "off";
+  remove.className = "minor-remove";
+  remove.type = "button";
+  remove.textContent = "Remove minor";
+  remove.addEventListener("click", () => {
+    row.remove();
+    updateMinorControls();
+    add?.focus();
+  });
+  nameLabel.appendChild(nameInput);
+  yearLabel.appendChild(yearInput);
+  nameField.appendChild(nameLabel);
+  yearField.appendChild(yearLabel);
+  row.append(nameField, yearField, remove);
+  rowsRoot.appendChild(row);
+  updateMinorControls();
+  nameInput.focus();
+}
+
+function readWaiverDraft(): WaiverDraft {
+  const minors = minorRows().map((row) => ({
+    fullName: row.querySelector<HTMLInputElement>('input[name="minorFullName"]')?.value ?? "",
+    birthYear: row.querySelector<HTMLInputElement>('input[name="minorBirthYear"]')?.value ?? "",
+  }));
+  return {
+    reviewEventId: waiverReviewEventId,
+    version: typeof activeWaiverDocument?.version === "string" ? activeWaiverDocument.version : "",
+    hash: typeof activeWaiverDocument?.hash === "string" ? activeWaiverDocument.hash : "",
+    waiverAccepted: document.querySelector<HTMLInputElement>('input[name="waiverAccepted"]')?.checked ?? false,
+    guardianAttested: document.querySelector<HTMLInputElement>('input[name="guardianAttested"]')?.checked ?? false,
+    minors,
+  };
+}
+
+function showWaiverErrors(errors: WaiverErrors): void {
+  const summary = document.querySelector<HTMLElement>("[data-waiver-errors]");
+  for (const control of document.querySelectorAll<HTMLElement>("[data-waiver-form] [aria-invalid]")) {
+    control.removeAttribute("aria-invalid");
+  }
+  const targets: Record<keyof WaiverErrors, string> = {
+    review: "[data-waiver-review-link]",
+    waiverAccepted: 'input[name="waiverAccepted"]',
+    guardianAttested: 'input[name="guardianAttested"]',
+    minors: "[data-minors-fieldset]",
+  };
+  let firstTarget: HTMLElement | null = null;
+  for (const field of Object.keys(errors) as (keyof WaiverErrors)[]) {
+    const target = document.querySelector<HTMLElement>(targets[field]);
+    target?.setAttribute("aria-invalid", "true");
+    firstTarget ??= target;
+  }
+  if (!summary) return;
+  summary.replaceChildren();
+  const messages = Object.values(errors);
+  summary.hidden = messages.length === 0;
+  if (!messages.length) return;
+  const heading = document.createElement("strong");
+  const list = document.createElement("ul");
+  heading.textContent = "Please fix this:";
+  for (const copy of messages) {
+    const item = document.createElement("li");
+    item.textContent = copy;
+    list.appendChild(item);
+  }
+  summary.append(heading, list);
+  summary.focus();
+  firstTarget?.scrollIntoView({ block: "center" });
+}
+
+function acceptanceRecordFrom(value: unknown): Record<string, unknown> | null {
+  const data = envelopeData(value);
+  if (!isRecord(data)) return null;
+  const candidate = nestedRecord(data, ["acceptance", "waiver"]);
+  if (!candidate) return null;
+  return typeof candidate.acceptedAt === "string" ||
+    typeof candidate.referenceCode === "string" ||
+    isRecord(candidate.receipt)
+    ? candidate
+    : null;
+}
+
+function acceptanceVersion(acceptance: Record<string, unknown>): string {
+  return text(acceptance.documentVersion ?? acceptance.version, "Unavailable");
+}
+
+function waiverDocumentMatchesAcceptance(documentValue: Record<string, unknown>, acceptance: Record<string, unknown>): boolean {
+  return documentValue.version === (acceptance.documentVersion ?? acceptance.version) &&
+    documentValue.hash === (acceptance.documentHash ?? acceptance.hash);
+}
+
+function appendAcceptanceDetail(root: HTMLDListElement, label: string, value: string): void {
+  const term = document.createElement("dt");
+  const description = document.createElement("dd");
+  term.textContent = label;
+  description.textContent = value;
+  root.append(term, description);
+}
+
+function renderReceiptStatus(receipt: unknown): void {
+  const status = document.querySelector<HTMLElement>("[data-waiver-receipt-status]");
+  if (!status) return;
+  const state = isRecord(receipt) && typeof receipt.status === "string" ? receipt.status : "pending";
+  status.dataset.receiptStatus = state;
+  if (state === "sent") {
+    status.textContent = "Receipt sent to your verified account email.";
+  } else if (state === "failed") {
+    status.textContent = "Your acceptance is stored, but the receipt email could not be delivered. You can try again.";
+  } else {
+    status.textContent = "Your acceptance is stored. The receipt email is pending.";
+  }
+}
+
+function renderStoredAcceptance(acceptance: Record<string, unknown>): void {
+  currentWaiverAcceptance = acceptance;
+  const form = document.querySelector<HTMLFormElement>("[data-waiver-form]");
+  const receiptPanel = document.querySelector<HTMLElement>("[data-waiver-receipt]");
+  const details = document.querySelector<HTMLDListElement>("[data-waiver-acceptance-details]");
+  const participantsRoot = document.querySelector<HTMLElement>("[data-waiver-participants]");
+  if (form) form.hidden = true;
+  if (receiptPanel) receiptPanel.hidden = false;
+  if (details) {
+    details.replaceChildren();
+    appendAcceptanceDetail(details, "Waiver version", acceptanceVersion(acceptance));
+    appendAcceptanceDetail(details, "Accepted", text(acceptance.acceptedAt, "Time unavailable"));
+    appendAcceptanceDetail(details, "Confirmation reference", text(acceptance.referenceCode, "Unavailable"));
+  }
+  if (participantsRoot) {
+    participantsRoot.replaceChildren();
+    const heading = document.createElement("h4");
+    const list = document.createElement("ul");
+    heading.textContent = "Covered participants";
+    const participants = Array.isArray(acceptance.participants) ? acceptance.participants : [];
+    for (const participant of participants) {
+      if (!isRecord(participant)) continue;
+      const item = document.createElement("li");
+      const participantName = text(participant.fullName, "Participant");
+      item.textContent = typeof participant.birthYear === "number"
+        ? `${participantName} (birth year ${participant.birthYear})`
+        : participantName;
+      list.appendChild(item);
+    }
+    participantsRoot.append(heading, list);
+  }
+  renderReceiptStatus(acceptance.receipt);
+  const print = document.querySelector<HTMLButtonElement>("[data-print-waiver]");
+  const legalBody = document.querySelector<HTMLElement>("[data-waiver-legal-body]");
+  if (print) {
+    print.disabled = !(activeWaiverDocument && legalBody && !legalBody.hidden &&
+      waiverDocumentMatchesAcceptance(activeWaiverDocument, acceptance));
+  }
+}
+
+async function loadCurrentWaiverAcceptance(auth: HunterAuthHook | null): Promise<Record<string, unknown> | null> {
+  const response = await fetch("/api/v1/me/waiver", {
+    headers: await authHeaders(auth),
+    cache: "no-store",
+    credentials: "same-origin",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(profileErrorMessage(payload, "Your waiver status could not be loaded."));
+  const acceptance = acceptanceRecordFrom(payload);
+  if (acceptance) renderStoredAcceptance(acceptance);
+  return acceptance;
+}
+
+async function initializeWaiverExperience(
+  auth: HunterAuthHook | null,
+  profileComplete: boolean,
+): Promise<void> {
+  const panel = document.querySelector<HTMLElement>("[data-waiver-panel]");
+  if (!panel) return;
+  panel.hidden = !profileComplete;
+
+  if (panel.dataset.waiverInitialized !== "true") {
+    panel.dataset.waiverInitialized = "true";
+    const reviewLink = document.querySelector<HTMLAnchorElement>("[data-waiver-review-link]");
+    const acceptanceInput = document.querySelector<HTMLInputElement>('input[name="waiverAccepted"]');
+    const acceptanceCopy = document.querySelector<HTMLElement>("[data-waiver-acceptance-statement]");
+    const legalBody = document.querySelector<HTMLElement>("[data-waiver-legal-body]");
+    const addMinor = document.querySelector<HTMLButtonElement>("[data-add-minor]");
+    const waiverForm = document.querySelector<HTMLFormElement>("[data-waiver-form]");
+
+    addMinor?.addEventListener("click", createMinorRow);
+    updateMinorControls();
+
+    reviewLink?.addEventListener("click", async (event) => {
+      event.preventDefault();
+      if (waiverReviewEventId && activeWaiverDocument && legalBody) {
+        legalBody.hidden = !legalBody.hidden;
+        reviewLink.setAttribute("aria-expanded", String(!legalBody.hidden));
+        return;
+      }
+      reviewLink.setAttribute("aria-busy", "true");
+      try {
+        const documentValue = await fetchCurrentWaiverDocument();
+        const reviewPayload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
+          version: documentValue.version,
+          hash: documentValue.hash,
+        });
+        const reviewId = reviewIdFrom(reviewPayload);
+        if (!reviewId) throw new Error("Your waiver review could not be confirmed.");
+        activeWaiverDocument = documentValue;
+        waiverReviewEventId = reviewId;
+        renderWaiverDocument(documentValue);
+        if (legalBody) legalBody.hidden = false;
+        reviewLink.setAttribute("aria-expanded", "true");
+        if (acceptanceCopy && typeof documentValue.acceptanceStatement === "string") {
+          acceptanceCopy.textContent = documentValue.acceptanceStatement;
+        }
+        if (acceptanceInput) acceptanceInput.disabled = false;
+        showWaiverErrors({});
+        setWaiverResult("The current waiver review is recorded. You may now accept it.", "success");
+      } catch (error) {
+        setWaiverResult(error instanceof Error ? error.message : "The waiver review could not be recorded.", "error", true);
+      } finally {
+        reviewLink.removeAttribute("aria-busy");
+      }
+    });
+
+    waiverForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const draft = readWaiverDraft();
+      const errors = validateWaiverDraft(draft);
+      showWaiverErrors(errors);
+      if (Object.keys(errors).length) return;
+      const submit = document.querySelector<HTMLButtonElement>("[data-waiver-submit]");
+      if (submit) submit.disabled = true;
+      retainedWaiverIdempotencyKey ??= crypto.randomUUID();
+      let acceptanceStored = false;
+      try {
+        const payload = await waiverWrite(
+          auth,
+          "/api/v1/me/waiver/accept",
+          buildWaiverPayload(draft),
+          retainedWaiverIdempotencyKey,
+        );
+        acceptanceStored = true;
+        retainedWaiverIdempotencyKey = null;
+        const acceptance = await loadCurrentWaiverAcceptance(auth).catch(() => acceptanceRecordFrom(payload));
+        if (!acceptance) throw new Error("Your acceptance was stored, but its confirmation could not be loaded. Refresh to retrieve it.");
+        renderStoredAcceptance(acceptance);
+        setWaiverResult("Waiver accepted and registration stored.", "success");
+      } catch (error) {
+        setWaiverResult(error instanceof Error ? error.message : "The waiver could not be accepted.", "error", true);
+      } finally {
+        if (submit && !acceptanceStored && !currentWaiverAcceptance) submit.disabled = false;
+      }
+    });
+
+    document.querySelector<HTMLButtonElement>("[data-view-accepted-waiver]")?.addEventListener("click", async () => {
+      if (!currentWaiverAcceptance) return;
+      try {
+        const documentValue = await fetchCurrentWaiverDocument();
+        if (!waiverDocumentMatchesAcceptance(documentValue, currentWaiverAcceptance)) {
+          throw new Error(`The accepted waiver version ${acceptanceVersion(currentWaiverAcceptance)} is not the current public version.`);
+        }
+        activeWaiverDocument = documentValue;
+        renderWaiverDocument(documentValue);
+        if (legalBody) legalBody.hidden = false;
+        reviewLink?.setAttribute("aria-expanded", "true");
+        const print = document.querySelector<HTMLButtonElement>("[data-print-waiver]");
+        if (print) print.disabled = false;
+      } catch (error) {
+        setWaiverResult(error instanceof Error ? error.message : "The accepted waiver could not be loaded.", "error", true);
+      }
+    });
+
+    document.querySelector<HTMLButtonElement>("[data-print-waiver]")?.addEventListener("click", () => {
+      window.print();
+    });
+
+    document.querySelector<HTMLButtonElement>("[data-resend-waiver-receipt]")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      if (!(button instanceof HTMLButtonElement)) return;
+      button.disabled = true;
+      const status = document.querySelector<HTMLElement>("[data-waiver-receipt-status]");
+      if (status) status.textContent = "Requesting another receipt email…";
+      try {
+        await waiverWrite(auth, "/api/v1/me/waiver/receipt");
+        if (status) status.textContent = "Receipt resend queued for your verified account email.";
+      } catch (error) {
+        if (status) status.textContent = error instanceof Error ? error.message : "The receipt could not be queued.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  if (profileComplete && !currentWaiverAcceptance) {
+    await loadCurrentWaiverAcceptance(auth).catch((error: unknown) => {
+      setWaiverResult(error instanceof Error ? error.message : "Your waiver status could not be loaded.", "error");
+      return null;
+    });
+  }
 }
 
 function authMessage(copy: string, kind: "info" | "error" | "success" = "info"): void {
@@ -501,7 +1077,15 @@ async function loadSignedInDashboard(auth: HunterAuthHook): Promise<void> {
   const envelope: unknown = await response.json();
   if (!isRecord(envelope) || !isRecord(envelope.data)) throw new Error("Your dashboard could not be loaded.");
   renderDashboard(envelope.data);
-  await initializeProfileForm(auth, envelope.data.profile);
+  await initializeProfileForm(
+    auth,
+    envelope.data.profile,
+    envelope.data.privacyMediaRequired === true,
+  );
+  await initializeWaiverExperience(
+    auth,
+    isRecord(envelope.data.profile) && envelope.data.privacyMediaRequired !== true,
+  );
 }
 
 function setupAccountForms(auth: HunterAuthHook): void {

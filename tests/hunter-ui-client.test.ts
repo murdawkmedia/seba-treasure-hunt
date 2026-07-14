@@ -138,7 +138,7 @@ test("profile payload keeps hunt and marketing permissions separate", () => {
     discoverySource: "friend",
     adultAttested: true,
     privacyMediaAccepted: true,
-    privacyMediaVersion: "2026.1",
+    privacyMediaVersion: "2026.2",
     consents: { huntEmail: true, marketing: false },
   });
 });

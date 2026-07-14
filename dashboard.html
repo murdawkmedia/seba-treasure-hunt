@@ -178,7 +178,7 @@
 
                 <fieldset class="form-field form-field--full check-group">
                   <legend>Contact choices</legend>
-                  <label class="check-row"><input name="huntEmail" type="checkbox" /> Email me official hunt updates.</label>
+                  <label class="check-row"><input name="huntEmail" type="checkbox" /> Email me Tim Lost Something? clue and hunt updates.</label>
                   <label class="check-row"><input name="marketing" type="checkbox" /> Email me other SebaHub news and offers.</label>
                   <span class="field-hint">These choices are separate. You can update them here later.</span>
                 </fieldset>
@@ -199,10 +199,6 @@
                   <span class="field-error" id="profile-privacy-media-error" data-profile-error-for="privacyMediaAccepted"></span>
                 </div>
 
-                <div class="form-field form-field--full">
-                  <label class="check-row"><input name="participationWaiver" type="checkbox" disabled /> Participation waiver &mdash; coming soon.</label>
-                  <span class="field-hint">You may create an account now. Exact directions and participation-only tools remain locked until the approved waiver is published and accepted separately.</span>
-                </div>
               </div>
 
               <div class="action-row">
@@ -210,6 +206,65 @@
               </div>
               <p class="field-hint">See the <a href="/privacy">privacy notice</a>. Your contact details and consent ledger are visible only to approved operators.</p>
             </form>
+          </section>
+
+          <section class="field-panel field-panel--full waiver-panel" id="waiver" data-waiver-panel aria-labelledby="waiver-title" style="margin-top: 20px" hidden>
+            <p class="field-label">Participation registration</p>
+            <h2 id="waiver-title">Review and accept the participation waiver</h2>
+            <p>This legal step is separate from your profile and optional communication choices. Read the complete current document before accepting for yourself or supervised minors.</p>
+            <p><a href="/waiver" data-waiver-review-link aria-expanded="false" aria-controls="waiver-legal-body">Open and review the current participation waiver</a></p>
+            <div class="system-message" data-waiver-errors role="alert" tabindex="-1" hidden></div>
+            <div class="system-message" data-waiver-result role="status" aria-live="polite" tabindex="-1" hidden></div>
+
+            <div class="waiver-legal-body" id="waiver-legal-body" data-waiver-legal-body hidden></div>
+
+            <form class="waiver-form" data-waiver-form novalidate>
+              <div class="form-field">
+                <label class="check-row" for="waiver-accepted">
+                  <input id="waiver-accepted" name="waiverAccepted" type="checkbox" aria-describedby="waiver-accepted-hint" disabled />
+                  <span data-waiver-acceptance-statement>Acceptance becomes available after the current waiver review is recorded.</span>
+                </label>
+                <span class="field-hint" id="waiver-accepted-hint">The checkbox remains locked until the complete legal document above has loaded and your review has been recorded.</span>
+              </div>
+
+              <fieldset class="form-field check-group minors-fieldset" data-minors-fieldset>
+                <legend>Supervised minors covered by this acceptance (optional)</legend>
+                <p class="field-hint">Add only minors you directly supervise. Use a full name and birth year; do not enter an exact birth date or contact details.</p>
+                <div class="minor-rows" data-minor-rows></div>
+                <template data-minor-template>
+                  <div class="minor-row">
+                    <label>Minor full name <input type="text" maxlength="100" autocomplete="off" /></label>
+                    <label>Birth year <input type="text" inputmode="numeric" maxlength="4" autocomplete="off" /></label>
+                    <button type="button">Remove minor</button>
+                  </div>
+                </template>
+                <button class="hunter-button hunter-button--quiet waiver-action" type="button" data-add-minor>Add a supervised minor</button>
+              </fieldset>
+
+              <div class="form-field guardian-confirmation" data-guardian-confirmation hidden>
+                <label class="check-row" for="guardian-attested">
+                  <input id="guardian-attested" name="guardianAttested" type="checkbox" />
+                  I confirm that I am the parent or legal guardian of each minor listed, that the information is accurate, and that I accept this agreement on their behalf. I will directly supervise them throughout their participation.
+                </label>
+              </div>
+
+              <div class="action-row waiver-actions">
+                <button class="hunter-button waiver-action" type="submit" data-waiver-submit>Accept waiver and register</button>
+              </div>
+            </form>
+
+            <section class="waiver-receipt" data-waiver-receipt aria-labelledby="waiver-success-title" hidden>
+              <h3 id="waiver-success-title">You're registered.</h3>
+              <p>Save this confirmation and show it at the official clue station to receive your first clue. Registration does not permit entry into private, restricted or unsafe areas. Always follow the official map, posted signs and staff directions.</p>
+              <dl class="waiver-acceptance-details" data-waiver-acceptance-details></dl>
+              <div data-waiver-participants></div>
+              <p data-waiver-receipt-status role="status" aria-live="polite" aria-atomic="true"></p>
+              <div class="action-row waiver-actions">
+                <button class="hunter-button hunter-button--quiet waiver-action" type="button" data-view-accepted-waiver>View accepted waiver</button>
+                <button class="hunter-button hunter-button--quiet waiver-action" type="button" data-print-waiver disabled>Print</button>
+                <button class="hunter-button hunter-button--quiet waiver-action" type="button" data-resend-waiver-receipt>Email my receipt again</button>
+              </div>
+            </section>
           </section>
 
           <section class="field-panel field-panel--full" aria-labelledby="password-title" style="margin-top: 20px">
