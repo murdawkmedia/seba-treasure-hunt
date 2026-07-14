@@ -99,8 +99,10 @@ export interface WaiverReceiptEnvelope {
   verifiedEmail: string;
 }
 
+export type WaiverReceiptDeliveryResult = { status: "sent" | "failed" };
+
 export interface LegalReceiptSender {
-  deliver(acceptanceId: string): Promise<{ status: "sent" | "failed" }>;
+  deliver(acceptanceId: string): Promise<WaiverReceiptDeliveryResult>;
 }
 
 export interface IdentityLifecycleEvent {

@@ -11,6 +11,7 @@ import { R2UploadStorage } from "./server/uploads";
 import { KvRateLimiter } from "./server/rate-limit";
 import { D1EnvironmentGuard } from "./server/environment-guard";
 import { providerKeyForEnvironment } from "./server/provider-environment";
+import { ManagedWaiverReceipts } from "./server/waiver-receipts";
 
 const canonicalOrigin = "https://www.timlostsomething.com";
 const defaultTurnstileHosts = ["www.timlostsomething.com", "seba-treasure-hunt.pages.dev"];
@@ -57,6 +58,8 @@ const application = (env: PagesEnv) => {
     env.AUTHORIZED_PARTY ?? null,
     env.RESEND_API_KEY ?? null,
     env.RECOVERY_EMAIL_FROM ?? null,
+    env.LEGAL_RECEIPT_EMAIL_FROM ?? null,
+    env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null,
     env.RATE_LIMIT_SALT ?? null,
     env.DEPLOYMENT_ENV ?? null
   ]);
@@ -91,8 +94,9 @@ const application = (env: PagesEnv) => {
     env.STAFF_CLERK_SECRET_KEY,
     env.DEPLOYMENT_ENV
   );
+  const store = env.DB ? new D1DataStore(env.DB) : unavailableStore;
   const app = createApi({
-    store: env.DB ? new D1DataStore(env.DB) : unavailableStore,
+    store,
     identity: new ManagedIdentityVerifier({
       hunterIssuer: env.HUNTER_AUTH_ISSUER ?? null,
       hunterJwksUrl: env.HUNTER_AUTH_JWKS_URL ?? null,
@@ -115,6 +119,13 @@ const application = (env: PagesEnv) => {
       invitationRedirectUrl: env.STAFF_INVITATION_REDIRECT_URL ?? null,
       resendApiKey: env.RESEND_API_KEY ?? null,
       recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
+    }),
+    waiverReceipts: new ManagedWaiverReceipts(store, {
+      fetch,
+      apiKey: env.RESEND_API_KEY ?? null,
+      from: env.LEGAL_RECEIPT_EMAIL_FROM ?? null,
+      replyTo: env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null,
+      canonicalOrigin
     }),
     config: {
       deploymentEnvironment: env.DEPLOYMENT_ENV ?? null,
