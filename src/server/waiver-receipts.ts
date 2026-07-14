@@ -1,4 +1,9 @@
 import { generatedParticipationWaiver } from "../generated/participation-waiver";
+import {
+  TransactionalMailError,
+  type TransactionalMailer,
+  type TransactionalMessage,
+} from "./transactional-mail";
 import type {
   DataStore,
   LegalReceiptSender,
@@ -14,11 +19,14 @@ export interface WaiverReceiptMessage {
 }
 
 export interface ManagedWaiverReceiptConfig {
-  fetch: typeof globalThis.fetch;
-  apiKey: string | null;
-  from: string | null;
+  mailer?: TransactionalMailer | null;
+  sender?: TransactionalMessage["from"] | null;
   replyTo: string | null;
   canonicalOrigin: string | null;
+  // Retained until Task 7 rewires the Worker; these values are never used here.
+  fetch?: typeof globalThis.fetch;
+  apiKey?: string | null;
+  from?: string | null;
 }
 
 const escapeHtml = (input: string) =>
@@ -182,50 +190,37 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
       return this.fail(job, "document_mismatch");
     }
 
-    const apiKey = this.config.apiKey?.trim() ?? "";
-    const from = this.config.from?.trim() ?? "";
+    const mailer = this.config.mailer ?? null;
+    const senderName = this.config.sender?.name.trim() ?? "";
+    const senderAddress = this.config.sender?.address.trim() ?? "";
     const replyTo = this.config.replyTo?.trim() ?? "";
     const campaignBaseUrl = this.config.canonicalOrigin?.trim() ?? "";
-    if (!apiKey || !from || !replyTo || !campaignBaseUrl) {
+    if (!mailer || !senderName || !senderAddress || !replyTo || !campaignBaseUrl) {
       return this.fail(job, "provider_unavailable");
     }
 
     const message = renderWaiverReceipt(envelope, campaignBaseUrl);
-    let response: Response;
+    let acceptance;
     try {
-      response = await this.config.fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          from,
-          to: [envelope.verifiedEmail],
-          reply_to: replyTo,
-          subject: message.subject,
-          text: message.text,
-          html: message.html,
-        }),
+      acceptance = await mailer.send({
+        to: envelope.verifiedEmail,
+        from: { name: senderName, address: senderAddress },
+        replyTo,
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+        correlationId: crypto.randomUUID(),
       });
-    } catch {
-      return this.fail(job, "provider_unavailable");
+    } catch (error) {
+      return this.fail(
+        job,
+        error instanceof TransactionalMailError ? error.code : "provider_unavailable",
+      );
     }
-    if (!response.ok) return this.fail(job, "provider_rejected");
-
-    let providerMessageId: string | null = null;
-    try {
-      const body = (await response.json()) as Record<string, unknown>;
-      providerMessageId =
-        typeof body.id === "string" && body.id.trim().length > 0 ? body.id.trim() : null;
-    } catch {
-      providerMessageId = null;
-    }
-    if (!providerMessageId) return this.fail(job, "provider_response_invalid");
 
     await this.store.completeWaiverReceiptJob(job, {
       status: "sent",
-      providerMessageId,
+      ...acceptance,
     });
     return { status: "sent" };
   }

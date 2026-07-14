@@ -18,6 +18,7 @@ import type {
   WaiverAcceptanceRecord,
   WaiverDocumentIdentity,
   WaiverReceiptErrorCode,
+  WaiverReceiptCompletion,
   WaiverReceiptEnvelope,
   WaiverReceiptJob,
   WaiverReviewRecord,
@@ -140,7 +141,8 @@ const waiverReceiptErrorCodes = new Set<WaiverReceiptErrorCode>([
   "document_mismatch",
   "provider_unavailable",
   "provider_rejected",
-  "provider_response_invalid"
+  "provider_response_invalid",
+  "provider_delivery_uncertain"
 ]);
 
 const waiverReviewFromRow = (row: Row): WaiverReviewRecord => ({
@@ -1349,9 +1351,7 @@ export class D1DataStore implements DataStore {
 
   async completeWaiverReceiptJob(
     job: WaiverReceiptJob,
-    result:
-      | { status: "sent"; providerMessageId: string }
-      | { status: "failed"; errorCode: WaiverReceiptErrorCode }
+    result: WaiverReceiptCompletion
   ): Promise<void> {
     if (result.status === "failed" && !waiverReceiptErrorCodes.has(result.errorCode)) {
       throw new ApiError(422, "waiver_receipt_error_invalid", "The receipt error code is invalid.");
@@ -1374,8 +1374,9 @@ export class D1DataStore implements DataStore {
         this.db
           .prepare(
             `INSERT INTO notification_delivery_events
-             (id, notification_job_id, event_type, provider, provider_message_id, occurred_at)
-             SELECT ?, ?, 'sent', 'resend', ?, ?
+             (id, notification_job_id, event_type, provider, provider_message_id,
+              provider_reference, provider_reference_kind, occurred_at)
+             SELECT ?, ?, 'sent', ?, ?, ?, ?, ?
              WHERE EXISTS (
                SELECT 1 FROM notification_job_leases lease
                JOIN notification_jobs queued ON queued.id = lease.notification_job_id
@@ -1387,8 +1388,13 @@ export class D1DataStore implements DataStore {
           .bind(
             id(),
             job.id,
-            result.providerMessageId,
-            timestamp,
+            result.provider,
+            result.providerReferenceKind === "resend_message_id"
+              ? result.providerReference
+              : null,
+            result.providerReference,
+            result.providerReferenceKind,
+            result.acceptedAt,
             job.id,
             job.leaseToken,
             job.attempts,

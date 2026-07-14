@@ -1,5 +1,10 @@
 import { createClerkClient, type ClerkClient } from "@clerk/backend";
 import { ApiError } from "./errors";
+import {
+  TransactionalMailError,
+  type TransactionalMailer,
+  type TransactionalMessage,
+} from "./transactional-mail";
 import type { StaffAccountManager } from "./types";
 
 const targetSubject = (target: Record<string, unknown>) =>
@@ -16,9 +21,12 @@ export class ManagedPlayerAccounts implements StaffAccountManager {
     secretKey: string | null,
     private readonly options: {
       dashboardUrl: string | null;
-      resendApiKey: string | null;
-      recoveryEmailFrom: string | null;
+      mailer?: TransactionalMailer | null;
+      sender?: TransactionalMessage["from"] | null;
       recoveryEmailReplyTo: string | null;
+      // Retained until Task 7 rewires the Worker; these values are never used here.
+      resendApiKey?: string | null;
+      recoveryEmailFrom?: string | null;
     }
   ) {
     this.clerk = secretKey ? createClerkClient({ secretKey }) : null;
@@ -44,25 +52,31 @@ export class ManagedPlayerAccounts implements StaffAccountManager {
 
   private async sendRecovery(target: Record<string, unknown>) {
     const email = targetEmail(target);
-    const { dashboardUrl, resendApiKey, recoveryEmailFrom, recoveryEmailReplyTo } = this.options;
-    if (!email || !dashboardUrl || !resendApiKey || !recoveryEmailFrom || !recoveryEmailReplyTo) {
+    const { dashboardUrl, mailer, sender, recoveryEmailReplyTo } = this.options;
+    const senderName = sender?.name.trim() ?? "";
+    const senderAddress = sender?.address.trim() ?? "";
+    if (
+      !email ||
+      !dashboardUrl ||
+      !mailer ||
+      !senderName ||
+      !senderAddress ||
+      !recoveryEmailReplyTo
+    ) {
       throw this.unavailable();
     }
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${resendApiKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        from: recoveryEmailFrom,
-        reply_to: recoveryEmailReplyTo,
-        to: [email],
+    try {
+      await mailer.send({
+        to: email,
+        from: { name: senderName, address: senderAddress },
+        replyTo: recoveryEmailReplyTo,
         subject: "Tim Lost Something? account recovery",
-        text: `An administrator requested account-recovery instructions for you. Open ${dashboardUrl}, choose Forgot password, and use the provider's emailed verification code. Campaign administrators cannot view or choose your password.`
-      })
-    });
-    if (!response.ok) {
+        text: `An administrator requested account-recovery instructions for you. Open ${dashboardUrl}, choose Forgot password, and use the provider's emailed verification code. Campaign administrators cannot view or choose your password.`,
+        html: null,
+        correlationId: crypto.randomUUID(),
+      });
+    } catch (error) {
+      if (!(error instanceof TransactionalMailError)) throw error;
       throw new ApiError(502, "recovery_delivery_failed", "Recovery instructions could not be delivered.");
     }
     return { status: "instructions_sent" };

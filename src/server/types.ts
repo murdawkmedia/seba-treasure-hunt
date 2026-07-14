@@ -1,3 +1,5 @@
+import type { TransactionalMailAcceptance } from "./transactional-mail";
+
 export type CaseState = "open" | "paused" | "found";
 export type ZoneState = "open" | "restricted" | "hazardous" | "temporarily_closed";
 export type DeploymentEnvironment = "validation" | "production";
@@ -94,7 +96,12 @@ export type WaiverReceiptErrorCode =
   | "document_mismatch"
   | "provider_unavailable"
   | "provider_rejected"
-  | "provider_response_invalid";
+  | "provider_response_invalid"
+  | "provider_delivery_uncertain";
+
+export type WaiverReceiptCompletion =
+  | ({ status: "sent" } & TransactionalMailAcceptance)
+  | { status: "failed"; errorCode: WaiverReceiptErrorCode };
 
 export interface WaiverReceiptEnvelope {
   acceptance: WaiverAcceptanceRecord;
@@ -213,9 +220,7 @@ export interface DataStore {
   getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null>;
   completeWaiverReceiptJob(
     job: WaiverReceiptJob,
-    result:
-      | { status: "sent"; providerMessageId: string }
-      | { status: "failed"; errorCode: WaiverReceiptErrorCode }
+    result: WaiverReceiptCompletion
   ): Promise<void>;
   getOpsWaiverDetail(subject: string): Promise<WaiverAcceptanceRecord | null>;
   /** Returns private detail only after its privacy-safe staff-view audit append succeeds. */

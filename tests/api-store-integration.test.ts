@@ -9,6 +9,7 @@ import { D1DataStore } from "../src/server/d1-store";
 import { ApiError } from "../src/server/errors";
 import { participationWaiverDocument, privacyMediaDocument } from "../src/server/legal-documents";
 import { ManagedWaiverReceipts } from "../src/server/waiver-receipts";
+import type { TransactionalMessage } from "../src/server/transactional-mail";
 import type { DataStore, SponsorInquiryInput } from "../src/server/types";
 import {
   FakeEnvironment,
@@ -348,7 +349,8 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     "0006_participation_waiver_and_receipts.sql",
     "0007_waiver_receipt_leases.sql",
     "0008_immutable_waiver_ledgers.sql",
-    "0009_atomic_rate_limits.sql"
+    "0009_atomic_rate_limits.sql",
+    "0010_graph_transactional_email.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -476,15 +478,21 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     )
     .bind(replayBackoffAcceptance.value.receipt.jobId, new Date().toISOString())
     .run();
-  let replayDeliveryCalls = 0;
+  const replayMessages: TransactionalMessage[] = [];
   const receiptSender = new ManagedWaiverReceipts(store, {
-    fetch: async () => {
-      replayDeliveryCalls += 1;
-      return Response.json({ id: "replay-delivery-1" });
+    mailer: {
+      async send(message) {
+        replayMessages.push(message);
+        return {
+          provider: "microsoft_graph",
+          providerReference: "replay-delivery-1",
+          providerReferenceKind: "graph_request_id",
+          acceptedAt: "2026-07-14T18:00:00.000Z"
+        };
+      }
     },
-    apiKey: "test-only-key",
-    from: "Tim Lost Something? <legal@example.test>",
-    replyTo: "help@example.test",
+    sender: { name: "Tim Lost Something? by SebaHub", address: "tech@sebahub.com" },
+    replyTo: "casey@sebahub.com",
     canonicalOrigin: "https://www.timlostsomething.com/"
   });
   const replayApi = createApi({
@@ -536,7 +544,7 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     JSON.stringify(await responseJson(activeLeaseReplay.clone()))
   );
   await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(replayDeliveryCalls, 0, "an active receipt lease suppresses replay delivery");
+  assert.equal(replayMessages.length, 0, "an active receipt lease suppresses replay delivery");
   const replayActiveLeaseState = await db
     .prepare(
       `SELECT j.status, j.next_attempt_at, lease.lease_token
@@ -558,10 +566,10 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     .run();
   const replayResponse = await requestReplay();
   assert.equal(replayResponse.status, 200, JSON.stringify(await responseJson(replayResponse.clone())));
-  for (let attempt = 0; attempt < 40 && replayDeliveryCalls === 0; attempt += 1) {
+  for (let attempt = 0; attempt < 40 && replayMessages.length === 0; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  assert.equal(replayDeliveryCalls, 1, "a deliberate idempotent replay bypasses stale receipt backoff");
+  assert.equal(replayMessages.length, 1, "a deliberate idempotent replay bypasses stale receipt backoff");
   assert.equal(
     (await store.getParticipationWaiver("hunter-replay-backoff"))?.receipt.status,
     "sent"
@@ -569,7 +577,7 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   const sentReplay = await requestReplay();
   assert.equal(sentReplay.status, 200, JSON.stringify(await responseJson(sentReplay.clone())));
   await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(replayDeliveryCalls, 1, "a sent receipt remains silent on acceptance replay");
+  assert.equal(replayMessages.length, 1, "a sent receipt remains silent on acceptance replay");
 
   await preparePlayer("hunter-current-2");
   const secondReview = await store.recordWaiverReview("hunter-current-2", {
@@ -924,7 +932,10 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.equal(reclaimed?.attempts, 2);
   await store.completeWaiverReceiptJob(reclaimed!, {
     status: "sent",
-    providerMessageId: "provider-message-1"
+    provider: "microsoft_graph",
+    providerReference: "graph-request-1",
+    providerReferenceKind: "graph_request_id",
+    acceptedAt: "2026-07-14T18:00:00.000Z"
   });
   const sent = await store.getParticipationWaiver("hunter-current-1");
   assert.equal(sent?.receipt.status, "sent");
@@ -939,12 +950,31 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     "a stale completion cannot overwrite a newer successful generation"
   );
   const evidence = await db
-    .prepare("SELECT provider_message_id, error_code FROM notification_delivery_events WHERE notification_job_id = ? ORDER BY occurred_at DESC, id DESC")
+    .prepare(
+      `SELECT provider, provider_message_id, provider_reference, provider_reference_kind,
+              error_code, occurred_at
+       FROM notification_delivery_events
+       WHERE notification_job_id = ? ORDER BY occurred_at DESC, id DESC`
+    )
     .bind(claimed!.id)
-    .all<{ provider_message_id: string | null; error_code: string | null }>();
+    .all<{
+      provider: string | null;
+      provider_message_id: string | null;
+      provider_reference: string | null;
+      provider_reference_kind: string | null;
+      error_code: string | null;
+      occurred_at: string;
+    }>();
   assert.deepEqual(
-    evidence.results.filter((event) => event.provider_message_id !== null),
-    [{ provider_message_id: "provider-message-1", error_code: null }]
+    evidence.results.filter((event) => event.provider_reference !== null),
+    [{
+      provider: "microsoft_graph",
+      provider_message_id: null,
+      provider_reference: "graph-request-1",
+      provider_reference_kind: "graph_request_id",
+      error_code: null,
+      occurred_at: "2026-07-14T18:00:00.000Z"
+    }]
   );
   assert.equal(
     evidence.results.filter((event) => event.error_code !== null).length,
@@ -953,6 +983,46 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   );
 
   await store.queueWaiverReceiptResend("hunter-current-1", accepted.value.id);
+  const resendClaim = await store.claimWaiverReceiptJob(accepted.value.id);
+  assert.ok(resendClaim);
+  await store.completeWaiverReceiptJob(resendClaim, {
+    status: "sent",
+    provider: "resend",
+    providerReference: "resend-message-2",
+    providerReferenceKind: "resend_message_id",
+    acceptedAt: "2026-07-14T18:05:00.000Z"
+  });
+  const sentEvidence = await db
+    .prepare(
+      `SELECT provider, provider_message_id, provider_reference, provider_reference_kind, occurred_at
+       FROM notification_delivery_events
+       WHERE notification_job_id = ? AND event_type = 'sent'
+       ORDER BY occurred_at, id`
+    )
+    .bind(claimed!.id)
+    .all<{
+      provider: string | null;
+      provider_message_id: string | null;
+      provider_reference: string | null;
+      provider_reference_kind: string | null;
+      occurred_at: string;
+    }>();
+  assert.deepEqual(sentEvidence.results, [
+    {
+      provider: "microsoft_graph",
+      provider_message_id: null,
+      provider_reference: "graph-request-1",
+      provider_reference_kind: "graph_request_id",
+      occurred_at: "2026-07-14T18:00:00.000Z"
+    },
+    {
+      provider: "resend",
+      provider_message_id: "resend-message-2",
+      provider_reference: "resend-message-2",
+      provider_reference_kind: "resend_message_id",
+      occurred_at: "2026-07-14T18:05:00.000Z"
+    }
+  ]);
   const afterResendCount = await db
     .prepare("SELECT COUNT(*) AS count FROM legal_acceptance_events WHERE id = ?")
     .bind(accepted.value.id)

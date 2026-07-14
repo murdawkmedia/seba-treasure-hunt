@@ -5,6 +5,12 @@ import {
   renderWaiverReceipt,
 } from "../src/server/waiver-receipts";
 import { participationWaiverDocument } from "../src/server/legal-documents";
+import {
+  TransactionalMailError,
+  type TransactionalMailAcceptance,
+  type TransactionalMailer,
+  type TransactionalMessage,
+} from "../src/server/transactional-mail";
 import type {
   DataStore,
   WaiverReceiptEnvelope,
@@ -38,8 +44,12 @@ class ReceiptStore {
   }];
   envelope: WaiverReceiptEnvelope | null = envelope;
   completions: Array<
-    | { jobId: string; status: "sent"; providerMessageId: string }
-    | { jobId: string; status: "failed"; errorCode: WaiverReceiptErrorCode }
+    | ({ jobId: string; status: "sent" } & TransactionalMailAcceptance)
+    | {
+        jobId: string;
+        status: "failed";
+        errorCode: WaiverReceiptErrorCode;
+      }
   > = [];
 
   async claimWaiverReceiptJob() {
@@ -53,19 +63,39 @@ class ReceiptStore {
   async completeWaiverReceiptJob(
     job: WaiverReceiptJob,
     result:
-      | { status: "sent"; providerMessageId: string }
-      | { status: "failed"; errorCode: WaiverReceiptErrorCode },
+      | ({ status: "sent" } & TransactionalMailAcceptance)
+      | {
+          status: "failed";
+          errorCode: WaiverReceiptErrorCode;
+        },
   ) {
     this.completions.push({ jobId: job.id, ...result });
   }
 }
 
-const config = (fetcher: typeof fetch) => ({
-  fetch: fetcher,
-  apiKey: "resend-test-key",
-  from: "Tim Lost Something? <legal@example.test>",
-  replyTo: "help@example.test",
+const accepted: TransactionalMailAcceptance = {
+  provider: "microsoft_graph",
+  providerReference: "graph-request-1",
+  providerReferenceKind: "graph_request_id",
+  acceptedAt: "2026-07-14T18:00:00.000Z",
+};
+const sender = {
+  name: "Tim Lost Something? by SebaHub",
+  address: "tech@sebahub.com",
+};
+
+const config = (mailer: TransactionalMailer) => ({
+  mailer,
+  sender,
+  replyTo: "casey@sebahub.com",
   canonicalOrigin: "https://www.timlostsomething.com/",
+});
+
+const captureMailer = (messages: TransactionalMessage[]): TransactionalMailer => ({
+  async send(message) {
+    messages.push(message);
+    return accepted;
+  },
 });
 
 test("waiver receipt renderer includes the complete legal record and escapes controlled values", () => {
@@ -127,32 +157,27 @@ test("waiver receipt renderer uses the configured stable validation origin for e
   assert.doesNotMatch(message.html, /www\.timlostsomething\.com/);
 });
 
-test("managed waiver receipts sends one Resend request and stores only the provider message id", async () => {
+test("managed waiver receipts sends the exact legal receipt to the verified email and stores Graph acceptance evidence", async () => {
   const store = new ReceiptStore();
-  const requests: Array<{ url: string; init: RequestInit; body: Record<string, unknown> }> = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    requests.push({
-      url: String(input),
-      init: init ?? {},
-      body: JSON.parse(String(init?.body)) as Record<string, unknown>,
-    });
-    return Response.json({ id: "resend-message-1", ignored_private_detail: "do not persist" });
-  };
-  const sender = new ManagedWaiverReceipts(store as unknown as DataStore, config(fetcher));
+  const messages: TransactionalMessage[] = [];
+  const receiptSender = new ManagedWaiverReceipts(
+    store as unknown as DataStore,
+    config(captureMailer(messages)),
+  );
+  const expected = renderWaiverReceipt(envelope, "https://www.timlostsomething.com/");
 
-  assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "sent" });
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0]?.url, "https://api.resend.com/emails");
-  assert.equal(requests[0]?.init.method, "POST");
-  assert.equal(new Headers(requests[0]?.init.headers).get("authorization"), "Bearer resend-test-key");
-  assert.deepEqual(requests[0]?.body.to, ["hunter@example.test"]);
-  assert.equal(requests[0]?.body.from, "Tim Lost Something? <legal@example.test>");
-  assert.equal(requests[0]?.body.reply_to, "help@example.test");
-  assert.match(String(requests[0]?.body.html), /https:\/\/www\.timlostsomething\.com\/waiver/);
+  assert.deepEqual(await receiptSender.deliver(envelope.acceptance.id), { status: "sent" });
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0]?.to, envelope.verifiedEmail);
+  assert.deepEqual(messages[0]?.from, sender);
+  assert.equal(messages[0]?.replyTo, "casey@sebahub.com");
+  assert.equal(messages[0]?.subject, expected.subject);
+  assert.equal(messages[0]?.text, expected.text);
+  assert.equal(messages[0]?.html, expected.html);
+  assert.match(messages[0]?.correlationId ?? "", /^[0-9a-f-]{36}$/i);
   assert.deepEqual(store.completions, [
-    { jobId: "job-1", status: "sent", providerMessageId: "resend-message-1" },
+    { jobId: "job-1", status: "sent", ...accepted },
   ]);
-  assert.equal(JSON.stringify(store.completions).includes("ignored_private_detail"), false);
 });
 
 test("managed waiver receipts rejects acceptance documents that do not exactly match the rendered waiver", async (t) => {
@@ -184,17 +209,19 @@ test("managed waiver receipts rejects acceptance documents that do not exactly m
           documentHash: mismatch.documentHash,
         },
       };
-      let networkCalls = 0;
+      let mailCalls = 0;
       const sender = new ManagedWaiverReceipts(
         store as unknown as DataStore,
-        config(async () => {
-          networkCalls += 1;
-          return Response.json({ id: "must-not-send" });
+        config({
+          async send() {
+            mailCalls += 1;
+            return accepted;
+          },
         }),
       );
 
       assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "failed" });
-      assert.equal(networkCalls, 0, "a mismatched legal document never reaches the provider");
+      assert.equal(mailCalls, 0, "a mismatched legal document never reaches the provider");
       assert.deepEqual(store.completions, [
         { jobId: "job-1", status: "failed", errorCode: "document_mismatch" },
       ]);
@@ -204,16 +231,18 @@ test("managed waiver receipts rejects acceptance documents that do not exactly m
 
 test("managed waiver receipts suppresses an unavailable lease and can send a deliberate resend", async () => {
   const store = new ReceiptStore();
-  let networkCalls = 0;
-  const fetcher: typeof fetch = async () => {
-    networkCalls += 1;
-    return Response.json({ id: `message-${networkCalls}` });
+  let mailCalls = 0;
+  const mailer: TransactionalMailer = {
+    async send() {
+      mailCalls += 1;
+      return { ...accepted, providerReference: `graph-request-${mailCalls}` };
+    },
   };
-  const sender = new ManagedWaiverReceipts(store as unknown as DataStore, config(fetcher));
+  const receiptSender = new ManagedWaiverReceipts(store as unknown as DataStore, config(mailer));
 
-  assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "sent" });
-  assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "sent" });
-  assert.equal(networkCalls, 1, "a missing claim never reaches the provider");
+  assert.deepEqual(await receiptSender.deliver(envelope.acceptance.id), { status: "sent" });
+  assert.deepEqual(await receiptSender.deliver(envelope.acceptance.id), { status: "sent" });
+  assert.equal(mailCalls, 1, "a missing claim never reaches the provider");
 
   store.claims.push({
     id: "job-1",
@@ -221,8 +250,8 @@ test("managed waiver receipts suppresses an unavailable lease and can send a del
     attempts: 2,
     leaseToken: "opaque-lease-2",
   });
-  assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "sent" });
-  assert.equal(networkCalls, 2, "a deliberately requeued job may be sent after success");
+  assert.deepEqual(await receiptSender.deliver(envelope.acceptance.id), { status: "sent" });
+  assert.equal(mailCalls, 2, "a deliberately requeued job may be sent after success");
 });
 
 test("managed waiver receipts completes the exact claimed lease generation", async () => {
@@ -240,7 +269,7 @@ test("managed waiver receipts completes the exact claimed lease generation", asy
   };
   const sender = new ManagedWaiverReceipts(
     store as unknown as DataStore,
-    config(async () => Response.json({ id: "message-7" })),
+    config({ async send() { return accepted; } }),
   );
 
   await sender.deliver(envelope.acceptance.id);
@@ -248,19 +277,23 @@ test("managed waiver receipts completes the exact claimed lease generation", asy
   assert.deepEqual(completedClaims, [claimed]);
 });
 
-test("managed waiver receipts fails retryably when dedicated sender configuration is missing", async () => {
-  for (const missing of ["apiKey", "from", "replyTo"] as const) {
+test("managed waiver receipts fails retryably when shared mail configuration is missing", async () => {
+  for (const missing of ["mailer", "sender", "replyTo", "canonicalOrigin"] as const) {
     const store = new ReceiptStore();
-    let networkCalls = 0;
-    const fetcher: typeof fetch = async () => {
-      networkCalls += 1;
-      return Response.json({ id: "must-not-send" });
+    let mailCalls = 0;
+    const options = {
+      ...config({
+        async send() {
+          mailCalls += 1;
+          return accepted;
+        },
+      }),
+      [missing]: null,
     };
-    const options = { ...config(fetcher), [missing]: null };
     const sender = new ManagedWaiverReceipts(store as unknown as DataStore, options);
 
     assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "failed" });
-    assert.equal(networkCalls, 0);
+    assert.equal(mailCalls, 0);
     assert.deepEqual(store.completions, [
       { jobId: "job-1", status: "failed", errorCode: "provider_unavailable" },
     ]);
@@ -270,30 +303,23 @@ test("managed waiver receipts fails retryably when dedicated sender configuratio
 test("managed waiver receipts maps provider failures to fixed non-sensitive codes", async (t) => {
   const cases: Array<{
     name: string;
-    fetcher: typeof fetch;
-    errorCode: WaiverReceiptErrorCode;
+    errorCode: TransactionalMailError["code"];
   }> = [
     {
       name: "network unavailable",
-      fetcher: async () => {
-        throw new Error("private network detail");
-      },
       errorCode: "provider_unavailable",
     },
     {
       name: "provider rejection",
-      fetcher: async () => new Response("private rejection body", { status: 422 }),
       errorCode: "provider_rejected",
     },
     {
-      name: "malformed provider JSON",
-      fetcher: async () => new Response("not-json", { status: 200 }),
+      name: "malformed provider response",
       errorCode: "provider_response_invalid",
     },
     {
-      name: "missing provider message id",
-      fetcher: async () => Response.json({ ok: true }),
-      errorCode: "provider_response_invalid",
+      name: "provider delivery uncertain",
+      errorCode: "provider_delivery_uncertain",
     },
   ];
 
@@ -302,15 +328,18 @@ test("managed waiver receipts maps provider failures to fixed non-sensitive code
       const store = new ReceiptStore();
       const sender = new ManagedWaiverReceipts(
         store as unknown as DataStore,
-        config(scenario.fetcher),
+        config({
+          async send() {
+            throw new TransactionalMailError(scenario.errorCode);
+          },
+        }),
       );
       assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "failed" });
       assert.deepEqual(store.completions, [
         { jobId: "job-1", status: "failed", errorCode: scenario.errorCode },
       ]);
       const persisted = JSON.stringify(store.completions);
-      assert.equal(persisted.includes("private network detail"), false);
-      assert.equal(persisted.includes("private rejection body"), false);
+      assert.equal(persisted.includes("graph-request-1"), false);
     });
   }
 });

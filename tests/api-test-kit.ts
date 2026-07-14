@@ -12,7 +12,7 @@ import type {
   WaiverAcceptanceRecord,
   WaiverDocumentIdentity,
   WaiverReceiptEnvelope,
-  WaiverReceiptErrorCode,
+  WaiverReceiptCompletion,
   WaiverReceiptJob,
   WaiverReviewRecord
 } from "../src/server/types";
@@ -439,9 +439,7 @@ export class FakeStore {
 
   async completeWaiverReceiptJob(
     job: WaiverReceiptJob,
-    result:
-      | { status: "sent"; providerMessageId: string }
-      | { status: "failed"; errorCode: WaiverReceiptErrorCode }
+    result: WaiverReceiptCompletion
   ) {
     const record = [...this.waiverAcceptances.values()].find((entry) => entry.receipt.jobId === job.id);
     if (!record) return;
