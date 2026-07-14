@@ -26,9 +26,10 @@ The bare hostname permanently redirects to the canonical `www` hostname while pr
 | `/report` | Private find, tip and safety reporting; account optional |
 | `/clue-board` | Moderated public Field Notes, images, replies and abuse reporting |
 | `/rules` | Versioned current rules and safety guidance |
+| `/sponsors` | Public information and a protected private sponsorship inquiry form |
 | `/privacy` | Versioned Privacy Policy & Media Notice |
 | `/community-guidelines` | Public contribution and moderation rules |
-| `/ops` | Invitation-only staff case room |
+| `/ops` | Invitation-only staff case room, including the private Ops Sponsors ledger |
 
 Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](https://www.sebastays.com/guarantee).
 
@@ -40,6 +41,8 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 - A Queue delivers uploaded media to a private Worker that validates and re-encodes approved raster formats through Cloudflare Images.
 - Only a D1-authorized, ready derivative can be read publicly; originals and find evidence have no public delivery path.
 - KV provides salted, hashed-identifier rate limits. Turnstile is the second write control.
+- Sponsor inquiries use the dedicated `sponsor_inquiry` Turnstile action, idempotency, and rate limits before entering a private D1 sponsor-inquiry and append-only event ledger. Authorized staff use Ops Sponsors to search, filter, and record audited pipeline changes.
+- Sponsor follow-up remains a deliberate staff workflow. There is no automated email, marketing subscription, public sponsor list, or CSV export in this implementation.
 - Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
 - `assets/favicon.svg` is the canonical Sunny Pirate Mystery Chest favicon. `npm run assets:favicons` deterministically regenerates its PNG and multi-resolution ICO variants.
 
@@ -64,7 +67,7 @@ npm run build
 npm run dev
 ```
 
-The complete suite covers public content contracts, SEO/AEO, canonical redirects, gated waypoint data, auth separation, status transitions, reporting, moderation, rate limits, upload privacy, media re-encoding, UI normalization, metadata removal and the Cloudflare file-size limit.
+The complete suite covers public content contracts, SEO/AEO, canonical redirects, gated waypoint data, auth separation, status transitions, reporting, sponsorship inquiries, private sponsor workflow totals, moderation, rate limits, upload privacy, legal-document integrity, media re-encoding, UI normalization, metadata removal and the Cloudflare file-size limit.
 
 ## Deploy
 
@@ -79,12 +82,13 @@ Do not promote a build until all of these are configured and tested in preview:
 1. public Clerk application with verified email/password, password recovery and compromised-password protection;
 2. separate invitation-only staff Clerk application;
 3. signed Clerk lifecycle webhook and deployment secret;
-4. D1 migration `0003_player_accounts_and_legal_acceptance.sql`;
+4. required D1 migrations, including the player/legal ledger, environment sentinel, and sponsor-inquiry migration `0005_sponsor_inquiries.sql`;
 5. privately seeded staff principals;
 6. hostname-restricted Turnstile widget and secret;
 7. private report upload and queue processing;
 8. hunter and staff sign-in, recovery and authorization;
-9. full public-output privacy scan.
+9. sponsor inquiry submission and Ops Sponsors review with the exact `sponsor_inquiry` Turnstile action;
+10. full public-output privacy scan.
 
 ## Decisions in force
 
@@ -95,6 +99,7 @@ Do not promote a build until all of these are configured and tested in preview:
 - The current 12-waypoint route is authoritative.
 - Public media must be metadata-free; exact guidance is account-gated.
 - Public notes and images are premoderated. Private reports never auto-publish.
+- Sponsor inquiries and internal pipeline notes remain private; submitting does not create an agreement, marketing consent, or publication authorization.
 - Privacy/media acceptance and the forthcoming participation waiver are separate versioned records. No waiver language is invented; participation remains locked until the approved document is supplied.
 - The real evidence photo remains the social preview.
 - No fabricated claims, countdowns or urgency.

@@ -2,7 +2,7 @@ export const privacyMediaDocument = Object.freeze({
   type: "privacy_media" as const,
   version: "2026.1",
   // SHA-256 of the published policy HTML, excluding decorative favicon and manifest links.
-  hash: "c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9"
+  hash: "5c7290339e22b35daaf08c7d561ff94ccb64dfd8d361e69b74ce738664b0c2ee"
 });
 
 // The authoritative waiver has not been supplied. A missing document is a hard participation gate.

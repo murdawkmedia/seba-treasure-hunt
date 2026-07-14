@@ -6,7 +6,7 @@ Last updated: 2026-07-13
 
 The hunter-account, privacy/media, pending-waiver and Sunny Pirate Mystery Chest favicon implementation is deployed to the noindex validation branch from `codex/tim-lost-hunter-platform`.
 
-The dedicated sponsor-page and persistent-navigation design is owner-approved and recorded in `docs/superpowers/specs/2026-07-13-sponsor-page-and-persistent-navigation-design.md`. Its reviewed implementation plan is recorded in `docs/superpowers/plans/2026-07-13-sponsor-page-and-persistent-navigation.md` and is ready for an execution-mode decision. The approved direction uses a two-row persistent desktop header, a highlighted sitewide Sponsors destination, a qualified public inquiry form, a private Ops Sponsors workflow and validation-only disposable inquiry data.
+The dedicated sponsor page, persistent navigation, protected inquiry intake, private D1 workflow, and staff-only Ops Sponsors ledger are implemented locally on `codex/tim-lost-hunter-platform`. The implementation sequence includes sponsor persistence (`b12aca2`), protected intake (`dff10ff`), accessible client (`7e37970`), sponsor page (`7976f0d`), persistent navigation (`1b6988a`), Ops ledger (`219bcb3`), and workflow-total correction (`1aae14f`). These sponsor commits have not been deployed as part of this work.
 
 Validation branch alias:
 
@@ -17,6 +17,8 @@ Unique July 13 deployment:
 <https://00b10632.seba-treasure-hunt.pages.dev/>
 
 Deployed: 2026-07-13. The feature branch is pushed to GitHub. Validation-only D1 and media-worker changes were made; no production alias, custom-domain, DNS, production migration or production secret was changed.
+
+That deployment statement describes the earlier validation release only. The newer sponsor implementation remains local. Production migration, deployment, DNS, secrets, and data are unchanged by the sponsor work.
 
 The canonical production site remains on its previous working release. This is deliberate: the new report, community and account flows fail closed until Clerk and Turnstile are activated, so the preview must not replace production yet.
 
@@ -32,11 +34,14 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 - Hunter email/password accounts with verified-email lifecycle intake, 12-character minimum passwords, provider-managed compromised-password checks, sessions and emailed recovery.
 - D1 player lifecycle ledger, separate communication permissions and append-only privacy/media legal-acceptance events; passwords and reset codes remain provider-only.
 - Required Privacy Policy & Media Notice version `2026.1`; its stored SHA-256 matches the published policy while excluding decorative favicon and manifest links so non-legal head changes do not trigger reacceptance.
+- A narrow sponsorship-inquiry transparency disclosure was added without changing hunter/media purposes, rights, version `2026.1`, effective date, or pending-waiver state. The exact policy hash changed from `c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9` to `5c7290339e22b35daaf08c7d561ff94ccb64dfd8d361e69b74ce738664b0c2ee`.
 - Separate disabled participation-waiver placeholder. Account creation is allowed, while exact directions, progress and community participation remain locked until approved waiver language is supplied and accepted.
 - Staff may send provider-managed player recovery instructions or revoke player sessions; they cannot view or choose player passwords.
 - Account-optional private reporting with required photo for find claims, optional geolocation and idempotency.
+- Public `/sponsors` conversion surface with a protected, idempotent inquiry form. Submissions do not create marketing consent, an agreement, or publication authorization.
+- Private D1 sponsor inquiry and append-only event ledgers with staff-actor audit history, filtered/paginated staff reads, and aggregate workflow totals independent of table filters.
 - Moderated virtual clue board with premoderated notes/images, constrained replies, flags, Turnstile actions and rate limits.
-- Invitation-only staff case room for status, updates, reports, moderation, zones, rules, players, access and audit. The private Players ledger shows account/profile stage, legal versions and separate email permissions.
+- Invitation-only staff case room for status, updates, reports, sponsors, moderation, zones, rules, players, access and audit. Ops Sponsors shows private contact/proposal fields and deliberate audited state changes; it has no email automation or export.
 - Provider-managed staff recovery, session revocation, suspension/reactivation and optional MFA reset; no peer password visibility or password setting.
 - Versioned rules, public zone labels, Privacy Policy & Media Notice and community guidelines.
 - SEO/AEO metadata, JSON-LD, sitemap, robots policy, canonical host behavior and SebaStays guarantee links.
@@ -49,15 +54,19 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 
 - Validation-only D1, private R2, KV, processing queue and dead-letter queue are provisioned with explicit `-validation` names. Pages preview configuration overrides every stateful production binding together.
 - Validation D1 migrations 0001 through 0004 are applied and its sentinel is `validation`.
+- Migration `0005_sponsor_inquiries.sql` is exercised against local Miniflare D1, including atomic events, literal search, tuple pagination, state totals, and concurrent transitions. Migration 0005 is not confirmed remotely and there is no repository evidence that it has been applied to the validation D1.
+- The sponsor client and server both require the exact Turnstile action `sponsor_inquiry`, and allowed preview hosts are declared. Whether the managed validation widget and preview secret permit `sponsor_inquiry` is not verified; no live sponsor submission is claimed.
 - Validation seed verification: OPEN; 12 published waypoints; one published rules version; two published zones; three feature flags; zero player accounts, hunter profiles, reports, Field Notes and staff principals.
 - The validation media processor verifies the D1 sentinel before touching R2, resolves only validation D1/R2/queue resources and is deployed as the consumer of `tim-lost-media-processing-validation`.
 - Production D1 migrations 0001 and 0002 are applied and the idempotent campaign seed is loaded. Migration 0003 was validated against local D1 only and is not applied remotely.
 - Seed verification: OPEN; 09:00–20:00 America/Edmonton; 12 published waypoints; one published rules version; two published zones; three explicit community feature flags; zero staff principals.
 - The current noindex preview and private validation media consumer are deployed successfully. The July 13 Pages preview is deployment `00b10632`; production remains on its previous release.
+- Any future validation inquiries are disposable test records and must never be promoted to production.
 
 ## Verification evidence
 
-- Automated tests: 128/128 passing.
+- Sponsor implementation commits through `1aae14f` are locally verified. Focused API, authorization, D1 store/integration, client behavior, static privacy, and legal-hash tests pass.
+- Full local automated suite: 70 static/contract tests and 134 TypeScript tests passing after the sponsorship disclosure and exact-hash update.
 - TypeScript checks: Worker, client and both test environments passing.
 - Production Pages and media bundles build successfully.
 - Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.
@@ -69,26 +78,29 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 - Preview public waypoint payload contains no exact URLs, map URLs, coordinates or private member content.
 - Validation write routes fail closed because preview abuse-protection and identity secrets are not configured; the validation database remains at zero personal and staff records.
 - Source and built-output privacy scan: no private staff allowlist, exact coordinates, local paths, credentials, deferred claims or ignored planning/source files.
+- Public-source safety contracts reject test lead data, private note fixtures, staff identifiers, CFCW, and unsupported sponsor/media claims.
 - All 76 source and 76 built raster images contain no EXIF, XMP, IPTC, ICC or GPS markers.
 - Route video is below Cloudflare Pages' 25 MiB per-file limit and its final frame is visually verified.
 - `npm audit --omit=dev --audit-level=high`: no high or critical findings. Twelve moderate findings are in Clerk's optional Solana dependency chain; the available automated fix is a breaking Clerk downgrade and was not applied.
 
 ## Launch blockers
 
-1. Refresh the active Cloudflare authorization so it includes Turnstile/challenge-widget write access, then create a managed widget restricted to `codex-validation.seba-treasure-hunt.pages.dev`.
+1. Refresh the active Cloudflare authorization so it includes Turnstile/challenge-widget write access, then create or verify a managed widget restricted to `codex-validation.seba-treasure-hunt.pages.dev` and confirm that it returns the exact `sponsor_inquiry` action.
 2. Configure validation-only `RATE_LIMIT_SALT`, Turnstile site/secret values and identity secrets in the Pages preview environment. The existing production salt remains unchanged.
 3. Configure the public Clerk application for verified email/password accounts, 12-character passwords, compromised-password checks and emailed recovery.
 4. Configure its signed lifecycle webhook and store `HUNTER_CLERK_SECRET_KEY` and `CLERK_WEBHOOK_SIGNING_SECRET` as preview secrets.
-5. Apply migrations 0003 and 0004 to the production campaign D1 only with explicit deployment approval. Both are already applied to isolated validation D1.
+5. Apply migration 0005 to the isolated validation D1 only after explicit validation approval, then verify its environment sentinel and empty disposable sponsor tables. Apply migrations 0003, 0004, and 0005 to production only after separate production promotion and legal approval; production is unchanged today.
 6. Configure the separate invitation-only staff Clerk application and staff password/recovery/MFA policy.
 7. Store identity, Turnstile and recovery-mail values as deployment secrets; never commit them.
 8. Invite approved operators and privately seed their verified identity subjects.
 9. Obtain the authoritative participation waiver, preserve it unchanged, render and hash it, then enable its separate acceptance flow.
-10. Run preview end-to-end tests for signup, verification, password login, recovery, session revocation, legal acceptance, private uploads, moderation and FOUND confirmation.
+10. Run preview end-to-end tests for signup, verification, password login, recovery, session revocation, legal acceptance, sponsor inquiry/receipt/Ops transition, private uploads, moderation and FOUND confirmation.
 11. Promote `dist/` to production and verify both custom hostnames only after step 10 passes.
 
 ## Operational notes
 
 - Scheduled update records do not auto-promote. Publish them manually at the approved time, or add and test a cron promotion job before relying on scheduling.
+- The sponsorship workflow does not send automated email. Staff follow-up happens outside the application after authorized review.
+- Existing validation users may be required to accept the updated exact privacy hash even though the version remains `2026.1`. Validation accounts and inquiries are disposable; production requires a separate promotion and legal decision.
 - Future physical activations and campaign chapters remain outside this release.
 - Private launch, identity and incident instructions are maintained outside the public repository.

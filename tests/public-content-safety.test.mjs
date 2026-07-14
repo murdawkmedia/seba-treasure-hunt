@@ -9,6 +9,51 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const read = (file) => fs.readFileSync(path.join(repo, file), "utf8");
 
+const publicFiles = [
+  ...fs.readdirSync(repo).filter((file) => /\.(?:html|xml|txt)$/i.test(file)),
+  ...["css", "js", "src/client"].flatMap((directory) =>
+    fs.readdirSync(path.join(repo, directory))
+      .filter((file) => /\.(?:css|js|ts)$/i.test(file))
+      .map((file) => path.join(directory, file))
+  )
+];
+
+test("sponsor inquiry handling is disclosed but private records never enter public files", () => {
+  const privacy = read("privacy.html");
+  assert.match(privacy, /<h3>Sponsorship inquiries<\/h3>/i);
+  assert.match(privacy, /contact name.*organization.*work email.*optional callback phone/is);
+  assert.match(privacy, /support type.*optional contribution range.*partnership outcome/is);
+  assert.match(privacy, /assess and follow up.*private partnership pipeline.*prevent abuse.*later agreement/is);
+  assert.match(privacy, /does not subscribe.*marketing.*create a sponsorship agreement.*authorize.*publish/is);
+
+  const publicSources = publicFiles.map(read).join("\n");
+  assert.doesNotMatch(publicSources, /alex@example\.test|Good local fit|staff_subject/i);
+  assert.doesNotMatch(
+    publicSources,
+    /CFCW|Official Radio Partner|guaranteed reach|exclusive sponsor/i
+  );
+});
+
+test("project docs make the sponsor workflow and unresolved validation state actionable", () => {
+  const readme = read("README.md");
+  const status = read("STATUS.md");
+  const legal = read("src/server/legal-documents.ts");
+  const currentHash = legal.match(/hash:\s*"([a-f0-9]{64})"/)?.[1];
+  assert.ok(currentHash, "current privacy hash is documented in the server contract");
+
+  assert.match(readme, /`\/sponsors`[\s\S]{0,180}sponsor(?:ship)? inquir/i);
+  assert.match(readme, /sponsor inquir[\s\S]{0,220}private D1[\s\S]{0,220}event ledger/i);
+  assert.match(readme, /no automated email|no email automation/i);
+  assert.match(readme, /Ops Sponsors|Sponsors ledger/i);
+
+  assert.match(status, /migration `?0005[^\n]*not (?:confirmed|applied) remotely/i);
+  assert.match(status, /Turnstile[^\n]*`sponsor_inquiry`[^\n]*(?:not verified|not configured|unconfirmed)/i);
+  assert.match(status, /production[^\n]*(?:migration|deployment|DNS|data)[\s\S]{0,240}unchanged/i);
+  assert.match(status, /validation inquir[^\n]*disposable/i);
+  assert.match(status, /c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9/i);
+  assert.match(status, new RegExp(currentHash, "i"));
+});
+
 test("public pages do not disclose gated coordinates or unsafe route directions", () => {
   const publicSource = ["index.html", "route.html", "interview.html", "js/site.js"]
     .map(read)
