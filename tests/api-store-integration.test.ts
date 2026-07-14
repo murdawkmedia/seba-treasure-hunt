@@ -992,6 +992,16 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     providerReferenceKind: "resend_message_id",
     acceptedAt: "2026-07-14T18:05:00.000Z"
   });
+  await store.queueWaiverReceiptResend("hunter-current-1", accepted.value.id);
+  const mismatchedGraphClaim = await store.claimWaiverReceiptJob(accepted.value.id);
+  assert.ok(mismatchedGraphClaim);
+  await store.completeWaiverReceiptJob(mismatchedGraphClaim, {
+    status: "sent",
+    provider: "microsoft_graph",
+    providerReference: "graph-kind-mismatch",
+    providerReferenceKind: "resend_message_id",
+    acceptedAt: "2026-07-14T18:10:00.000Z"
+  });
   const sentEvidence = await db
     .prepare(
       `SELECT provider, provider_message_id, provider_reference, provider_reference_kind, occurred_at
@@ -1021,6 +1031,13 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
       provider_reference: "resend-message-2",
       provider_reference_kind: "resend_message_id",
       occurred_at: "2026-07-14T18:05:00.000Z"
+    },
+    {
+      provider: "microsoft_graph",
+      provider_message_id: null,
+      provider_reference: "graph-kind-mismatch",
+      provider_reference_kind: "resend_message_id",
+      occurred_at: "2026-07-14T18:10:00.000Z"
     }
   ]);
   const afterResendCount = await db

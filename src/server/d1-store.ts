@@ -1389,6 +1389,7 @@ export class D1DataStore implements DataStore {
             id(),
             job.id,
             result.provider,
+            result.provider === "resend" &&
             result.providerReferenceKind === "resend_message_id"
               ? result.providerReference
               : null,
