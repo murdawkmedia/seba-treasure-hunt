@@ -137,6 +137,7 @@ const isWaiverIdempotencyConflict = (error: unknown) =>
     error.message
   );
 const waiverReceiptErrorCodes = new Set<WaiverReceiptErrorCode>([
+  "document_mismatch",
   "provider_unavailable",
   "provider_rejected",
   "provider_response_invalid"

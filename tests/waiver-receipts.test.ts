@@ -137,6 +137,53 @@ test("managed waiver receipts sends one Resend request and stores only the provi
   assert.equal(JSON.stringify(store.completions).includes("ignored_private_detail"), false);
 });
 
+test("managed waiver receipts rejects acceptance documents that do not exactly match the rendered waiver", async (t) => {
+  const mismatches: Array<{
+    name: string;
+    documentVersion: string;
+    documentHash: string;
+  }> = [
+    {
+      name: "version mismatch",
+      documentVersion: "2025.9",
+      documentHash: participationWaiverDocument.hash,
+    },
+    {
+      name: "hash mismatch",
+      documentVersion: participationWaiverDocument.version,
+      documentHash: "f".repeat(64),
+    },
+  ];
+
+  for (const mismatch of mismatches) {
+    await t.test(mismatch.name, async () => {
+      const store = new ReceiptStore();
+      store.envelope = {
+        ...envelope,
+        acceptance: {
+          ...envelope.acceptance,
+          documentVersion: mismatch.documentVersion,
+          documentHash: mismatch.documentHash,
+        },
+      };
+      let networkCalls = 0;
+      const sender = new ManagedWaiverReceipts(
+        store as unknown as DataStore,
+        config(async () => {
+          networkCalls += 1;
+          return Response.json({ id: "must-not-send" });
+        }),
+      );
+
+      assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "failed" });
+      assert.equal(networkCalls, 0, "a mismatched legal document never reaches the provider");
+      assert.deepEqual(store.completions, [
+        { jobId: "job-1", status: "failed", errorCode: "document_mismatch" },
+      ]);
+    });
+  }
+});
+
 test("managed waiver receipts suppresses an unavailable lease and can send a deliberate resend", async () => {
   const store = new ReceiptStore();
   let networkCalls = 0;

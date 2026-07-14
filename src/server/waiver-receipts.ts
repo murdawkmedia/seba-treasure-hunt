@@ -172,6 +172,15 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
     const job = await this.store.claimWaiverReceiptJob(acceptanceId);
     if (!job) return { status: "sent" };
 
+    const envelope = await this.store.getWaiverReceiptEnvelope(acceptanceId);
+    if (!envelope) return this.fail(job, "provider_unavailable");
+    if (
+      envelope.acceptance.documentVersion !== generatedParticipationWaiver.version ||
+      envelope.acceptance.documentHash !== generatedParticipationWaiver.hash
+    ) {
+      return this.fail(job, "document_mismatch");
+    }
+
     const apiKey = this.config.apiKey?.trim() ?? "";
     const from = this.config.from?.trim() ?? "";
     const replyTo = this.config.replyTo?.trim() ?? "";
@@ -179,8 +188,6 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
       return this.fail(job, "provider_unavailable");
     }
 
-    const envelope = await this.store.getWaiverReceiptEnvelope(acceptanceId);
-    if (!envelope) return this.fail(job, "provider_unavailable");
     const message = renderWaiverReceipt(envelope, this.config.canonicalOrigin);
     let response: Response;
     try {

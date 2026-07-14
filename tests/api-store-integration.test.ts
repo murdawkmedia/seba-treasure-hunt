@@ -756,7 +756,7 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.deepEqual(await evidenceCounts(), [1, 1], "a blocked retry creates no delivery or audit evidence");
   await store.completeWaiverReceiptJob(claimed!, {
     status: "failed",
-    errorCode: "provider_rejected"
+    errorCode: "document_mismatch"
   });
   assert.equal((await store.getParticipationWaiver("hunter-current-1"))?.receipt.status, "failed");
 

@@ -91,6 +91,7 @@ export interface WaiverReceiptJob {
 }
 
 export type WaiverReceiptErrorCode =
+  | "document_mismatch"
   | "provider_unavailable"
   | "provider_rejected"
   | "provider_response_invalid";
