@@ -6,7 +6,7 @@ Last updated: 2026-07-13
 
 The hunter-account, privacy/media, pending-waiver and Sunny Pirate Mystery Chest favicon implementation is deployed to the noindex validation branch from `codex/tim-lost-hunter-platform`.
 
-The dedicated sponsor page, persistent navigation, protected inquiry intake, private D1 workflow, and staff-only Ops Sponsors ledger are implemented locally on `codex/tim-lost-hunter-platform`. The implementation sequence includes sponsor persistence (`b12aca2`), protected intake (`dff10ff`), accessible client (`7e37970`), sponsor page (`7976f0d`), persistent navigation (`1b6988a`), Ops ledger (`219bcb3`), and workflow-total correction (`1aae14f`). These sponsor commits have not been deployed as part of this work.
+The dedicated sponsor page, persistent navigation, protected inquiry intake, private D1 workflow, and staff-only Ops Sponsors ledger are implemented and verified to the local Task 10 scope on `codex/tim-lost-hunter-platform`. The implementation sequence includes sponsor persistence (`b12aca2`), protected intake (`dff10ff`), accessible client (`7e37970`), sponsor page (`7976f0d`), persistent navigation (`1b6988a`), Ops ledger (`219bcb3`), workflow-total correction (`1aae14f`), and private-inquiry disclosure (`2f8d157`). These sponsor commits have not been deployed as part of this work.
 
 Validation branch alias:
 
@@ -65,10 +65,20 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 
 ## Verification evidence
 
-- Sponsor implementation commits through `1aae14f` are locally verified. Focused API, authorization, D1 store/integration, client behavior, static privacy, and legal-hash tests pass.
-- Full local automated suite: 70 static/contract tests and 134 TypeScript tests passing after the sponsorship disclosure and exact-hash update.
-- TypeScript checks: Worker, client and both test environments passing.
-- Production Pages and media bundles build successfully.
+- Sponsor implementation commits through `2f8d157` are locally verified. Focused API, authorization, D1 store/integration, client behavior, static privacy, and legal-hash tests pass.
+- Fresh Task 10 automated suite: 70 of 70 static/contract tests and 134 of 134 TypeScript tests pass with no failures, skips, cancellations, or TODOs.
+- Fresh Task 10 TypeScript checks pass for the Worker, client, Worker tests, and client tests.
+- Fresh Task 10 production build succeeds: the Pages Worker is 268.0 kB, the media Worker is 3.2 kB, and the client bundle completes successfully.
+- Fresh Task 10 production-dependency audit exits successfully with zero high or critical findings. Twelve moderate findings remain in Clerk's optional Solana dependency chain; the only complete automated remediation offered is a forced breaking Clerk downgrade, which was not applied.
+- A hidden local Pages runtime served `http://127.0.0.1:8788` during Task 10 with launcher PID 62404 and listening Worker PID 10756. Its temporary logs and screenshots are under `C:/Users/Murphy/AppData/Local/Temp/tim-lost-task10/`; they are local QA artifacts, are not committed, and are not a durable runtime dependency.
+- Local sponsor smoke checks: `/sponsors` returns HTTP 200; `/api/v1/status` returns HTTP 200 with the normal OPEN state, 09:00â€“20:00 America/Edmonton hours, version 1, and the verified update timestamp; unauthenticated `/api/v1/ops/sponsors` returns HTTP 401 with only the safe `staff_auth_required` response and no inquiry data.
+- Desktop sponsor QA at 1440Ã—1000 (1425 px effective content width) shows no horizontal overflow. The 54 px case strip remains sticky at the top, the 67 px header remains sticky below it, and the live 121 px stack/anchor offset clears the inquiry, FAQ, and footer. Sponsors remains gold-highlighted and current. Local Turnstile fails closed, the submit button remains disabled, and the console reports zero warnings or errors.
+- Mobile sponsor QA at 390Ã—844 (375 px effective content width) shows no horizontal overflow. The 76 px case strip and 59 px header stack correctly; the menu exposes Sponsors, closes on link activation, closes with Escape, and restores focus. The 343 px cards stack with `min-height: auto`; the 343 px form, privacy notice, Turnstile shell, disabled submit button, and result region remain readable.
+- A 720Ã—500 zoom-equivalent sponsor check has no overflow or overlap; the sticky stack is 135 px and the hero begins below it. The 390 px Clue Board retains a 76 px case strip and 58 px header, exposes Sponsors in the menu, restores focus after Escape, and has no horizontal overflow.
+- Axe reports zero WCAG 2.0 A/AA and WCAG 2.1 A/AA violations on the desktop sponsor page, mobile sponsor page, and unauthenticated Ops gate. A test-only mocked configuration and Turnstile token enabled the sponsor button without sending a POST; empty submission focused `contactName` and set `aria-invalid="true"`.
+- Authorized Ops visual QA remains unavailable locally because staff identity configuration is intentionally absent. The static Ops, client, authorization, and axe contracts pass; authenticated Ops Sponsors review is deferred to validation Task 11.
+- The broad planned output grep is not clean and must not be cited as a data-leak scan: sponsor table names appear only as executable server code in the bundled Worker, `private note` appears only as UI copy in the downloadable Ops implementation bundle, and the matched SebaHub and Business as a Force for Good addresses are pre-existing intentional public contact details on Home, Privacy, and Route. The Worker bundle is not served at `/_worker.js` (HTTP 404), the Ops API remains staff-gated, and CFCW has zero built-output matches.
+- The corrected rendered-public-surface scan, which excludes server and Ops implementation bundles, is clean. The sponsor page contact-address scan is clean, and an actual fixture/data scan for `alex@example.test`, `Good local fit`, and `staff_subject` is clean.
 - Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.
 - Live validation smoke test: home, Privacy, ICO, SVG, 32-pixel PNG, Apple touch icon and manifest return HTTP 200 with `X-Robots-Tag: noindex`; the deployed SVG byte hash matches the local source and the old money-bag data favicon is absent.
 - Local Pages runtime: home, start, dashboard, clue board, Ops and status API all return 200 with clean routes.
@@ -77,11 +87,10 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 - Both the stable alias and immutable deployment show the disposable-data notice and `X-Robots-Tag: noindex, nofollow`; production shows neither.
 - Preview public waypoint payload contains no exact URLs, map URLs, coordinates or private member content.
 - Validation write routes fail closed because preview abuse-protection and identity secrets are not configured; the validation database remains at zero personal and staff records.
-- Source and built-output privacy scan: no private staff allowlist, exact coordinates, local paths, credentials, deferred claims or ignored planning/source files.
+- Source and rendered-public-output privacy scans contain no private staff allowlist, exact coordinates, credentials, deferred claims, or ignored planning/source files.
 - Public-source safety contracts reject test lead data, private note fixtures, staff identifiers, CFCW, and unsupported sponsor/media claims.
 - All 76 source and 76 built raster images contain no EXIF, XMP, IPTC, ICC or GPS markers.
 - Route video is below Cloudflare Pages' 25 MiB per-file limit and its final frame is visually verified.
-- `npm audit --omit=dev --audit-level=high`: no high or critical findings. Twelve moderate findings are in Clerk's optional Solana dependency chain; the available automated fix is a breaking Clerk downgrade and was not applied.
 
 ## Launch blockers
 
