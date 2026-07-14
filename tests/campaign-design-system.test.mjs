@@ -10,6 +10,36 @@ import { buildSite } from "../scripts/build.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
 
+const customProperties = (css) => Object.fromEntries(
+  [...css.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/gi)]
+    .map((match) => [match[1], match[2].trim()]),
+);
+
+const resolveHexColor = (value, properties, seen = new Set()) => {
+  assert.equal(typeof value, "string", "color token is defined");
+  const reference = value.match(/^var\((--[a-z0-9-]+)\)$/i)?.[1];
+  if (!reference) {
+    assert.match(value, /^#[0-9a-f]{6}$/i, `${value} is a six-digit hex color`);
+    return value;
+  }
+  assert.equal(seen.has(reference), false, `${reference} is not a circular color token`);
+  assert.ok(properties[reference], `${reference} is defined`);
+  return resolveHexColor(properties[reference], properties, new Set([...seen, reference]));
+};
+
+const relativeLuminance = (hex) => {
+  const channels = hex.slice(1).match(/.{2}/g).map((channel) => Number.parseInt(channel, 16) / 255);
+  const linear = channels.map((channel) => channel <= 0.04045
+    ? channel / 12.92
+    : ((channel + 0.055) / 1.055) ** 2.4);
+  return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+};
+
+const contrastRatio = (first, second) => {
+  const luminances = [relativeLuminance(first), relativeLuminance(second)].sort((a, b) => b - a);
+  return (luminances[0] + 0.05) / (luminances[1] + 0.05);
+};
+
 const PAGE_FAMILIES = Object.freeze({
   "index.html": "landing",
   "start.html": "landing",
@@ -76,7 +106,9 @@ test("the canonical stylesheet defines the shared campaign design tokens", () =>
     "--campaign-font-meta": '"Special Elite", "Courier New", monospace',
     "--campaign-space-section": "clamp(3rem, 7vw, 6rem)",
     "--campaign-radius-control": "10px",
-    "--campaign-focus": "var(--campaign-gold-300)",
+    "--campaign-focus-light": "var(--campaign-gold-300)",
+    "--campaign-focus-dark": "var(--campaign-forest-950)",
+    "--campaign-focus": "var(--campaign-focus-light)",
     "--campaign-surface-paper": "var(--campaign-paper-100)",
     "--campaign-surface-dark": "var(--campaign-forest-950)",
   })) {
@@ -102,10 +134,32 @@ test("campaign pages share body type, headings, readable wrapping, controls, and
     css,
     /\.campaign-page\s+:where\(\.btn,\s*\.hunter-button,\s*\.board-button,\s*\.sponsor-button\)\s*\{(?=[^}]*border-radius:\s*var\(--campaign-radius-control\);)(?=[^}]*font-family:\s*var\(--campaign-font-display\);)[^}]*\}/s,
   );
-  assert.match(
-    css,
-    /\.campaign-page\s+:where\(input,\s*select,\s*textarea,\s*button\):focus-visible\s*\{(?=[^}]*outline:\s*3px solid var\(--campaign-focus\);)(?=[^}]*outline-offset:\s*3px;)[^}]*\}/s,
+  const focusRules = [...css.matchAll(
+    /\.campaign-page\s+:where\(([^)]*)\):focus-visible\s*\{([^}]*)\}/g,
+  )];
+  assert.equal(focusRules.length, 1, "campaign focus styling has one scoped source");
+  assert.deepEqual(
+    focusRules[0][1].split(",").map((target) => target.trim()),
+    ["a", "button", "input", "select", "textarea", "summary", "[tabindex]"],
+    "focus styling covers links, controls, disclosure widgets, and explicit focus targets",
   );
+  assert.match(focusRules[0][2], /outline:\s*3px solid var\(--campaign-focus-light\);/);
+  assert.match(focusRules[0][2], /outline-offset:\s*3px;/);
+  assert.match(focusRules[0][2], /box-shadow:\s*0 0 0 3px var\(--campaign-focus-dark\);/);
+  assert.doesNotMatch(css, /\.campaign-page\s+:focus-visible/);
+});
+
+test("the two-tone focus indicator keeps a three-to-one edge on light and dark surfaces", () => {
+  const properties = customProperties(read("css/campaign-shell.css"));
+  const focusLight = resolveHexColor(properties["--campaign-focus-light"], properties);
+  const focusDark = resolveHexColor(properties["--campaign-focus-dark"], properties);
+  const paper = resolveHexColor(properties["--campaign-surface-paper"], properties);
+  const forest = resolveHexColor(properties["--campaign-surface-dark"], properties);
+  const darkOnPaper = contrastRatio(focusDark, paper);
+  const lightOnForest = contrastRatio(focusLight, forest);
+
+  assert.ok(darkOnPaper >= 3, `dark focus edge contrasts ${darkOnPaper.toFixed(2)}:1 on parchment`);
+  assert.ok(lightOnForest >= 3, `light focus edge contrasts ${lightOnForest.toFixed(2)}:1 on forest`);
 });
 
 test("every campaign body has exactly one mapped page-family class and keeps functional classes", () => {

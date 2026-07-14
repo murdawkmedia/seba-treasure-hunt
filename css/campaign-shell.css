@@ -17,7 +17,9 @@
   --campaign-font-meta: "Special Elite", "Courier New", monospace;
   --campaign-space-section: clamp(3rem, 7vw, 6rem);
   --campaign-radius-control: 10px;
-  --campaign-focus: var(--campaign-gold-300);
+  --campaign-focus-light: var(--campaign-gold-300);
+  --campaign-focus-dark: var(--campaign-forest-950);
+  --campaign-focus: var(--campaign-focus-light);
   --campaign-surface-paper: var(--campaign-paper-100);
   --campaign-surface-dark: var(--campaign-forest-950);
   --campaign-case-min-height: 54px;
@@ -43,9 +45,10 @@ html {
   line-height: 1.6;
 }
 
-.campaign-page :focus-visible {
-  outline: 3px solid var(--campaign-focus);
+.campaign-page :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--campaign-focus-light);
   outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--campaign-focus-dark);
 }
 
 .campaign-page :where(h1, h2, h3) {
@@ -62,11 +65,6 @@ html {
 .campaign-page :where(.btn, .hunter-button, .board-button, .sponsor-button) {
   border-radius: var(--campaign-radius-control);
   font-family: var(--campaign-font-display);
-}
-
-.campaign-page :where(input, select, textarea, button):focus-visible {
-  outline: 3px solid var(--campaign-focus);
-  outline-offset: 3px;
 }
 
 .sr-only {
