@@ -7,7 +7,7 @@ import { Miniflare } from "miniflare";
 import { D1DataStore } from "../src/server/d1-store";
 import { ApiError } from "../src/server/errors";
 import { participationWaiverDocument, privacyMediaDocument } from "../src/server/legal-documents";
-import type { SponsorInquiryInput } from "../src/server/types";
+import type { DataStore, SponsorInquiryInput } from "../src/server/types";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const migration = await readFile(
@@ -514,6 +514,100 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.deepEqual(counts.map((row) => row?.count), [1, 3, 1, 1, 1]);
   assert.equal((await store.getPlayerAccess("hunter-current-1")).participationUnlocked, true);
 
+  const opsResend = (store as DataStore).queueOpsWaiverReceiptResend!;
+  const evidenceCounts = async () => {
+    const [requeued, audited] = await Promise.all([
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_delivery_events
+           WHERE notification_job_id = ? AND event_type = 'requeued'`
+        )
+        .bind(accepted.value.receipt.jobId)
+        .first<{ count: number }>(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM audit_events
+           WHERE action = 'player.waiver-receipt.requested' AND target_id = ?`
+        )
+        .bind(accepted.value.id)
+        .first<{ count: number }>()
+    ]);
+    return [requeued?.count ?? 0, audited?.count ?? 0] as const;
+  };
+
+  assert.equal(
+    await opsResend.call(store, "hunter-current-2", accepted.value.id, "staff-ops-1"),
+    null,
+    "an acceptance cannot be retried through a foreign subject"
+  );
+  assert.deepEqual(await evidenceCounts(), [0, 0]);
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO legal_acceptance_events
+         (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
+         VALUES ('stale-acceptance', 'hunter-current-2', 'participation_waiver',
+                 '2025.1', 'stale-waiver-hash', 'accepted', '2026-07-13T20:20:00.000Z')`
+      ),
+    db
+      .prepare(
+        `INSERT INTO waiver_acceptance_participants
+         (id, acceptance_event_id, participant_role, full_name, birth_year, guardian_attested, created_at)
+         VALUES ('stale-adult', 'stale-acceptance', 'adult', 'Stale Adult', NULL, 0,
+                 '2026-07-13T20:20:00.000Z')`
+      ),
+    db
+      .prepare(
+        `INSERT INTO notification_jobs
+         (id, kind, target_record_id, status, attempts, created_at, updated_at)
+         VALUES ('stale-receipt-job', 'waiver_receipt', 'stale-acceptance', 'failed', 1,
+                 '2026-07-13T20:20:00.000Z', '2026-07-13T20:20:00.000Z')`
+      )
+  ]);
+  assert.equal(
+    await opsResend.call(store, "hunter-current-2", "stale-acceptance", "staff-ops-1"),
+    null,
+    "only the exact current waiver document can be retried"
+  );
+  const staleJob = await db
+    .prepare("SELECT status FROM notification_jobs WHERE id = 'stale-receipt-job'")
+    .first<{ status: string }>();
+  assert.equal(staleJob?.status, "failed");
+
+  const opsQueued = await opsResend.call(
+    store,
+    "hunter-current-1",
+    accepted.value.id,
+    "staff-ops-1"
+  );
+  assert.equal(opsQueued?.receipt.status, "pending");
+  assert.deepEqual(await evidenceCounts(), [1, 1]);
+  const opsAudit = await db
+    .prepare(
+      `SELECT actor_subject, action, target_kind, target_id, metadata_json, occurred_at
+       FROM audit_events WHERE action = 'player.waiver-receipt.requested' AND target_id = ?`
+    )
+    .bind(accepted.value.id)
+    .first<Record<string, unknown>>();
+  assert.equal(opsAudit?.actor_subject, "staff-ops-1");
+  assert.equal(opsAudit?.action, "player.waiver-receipt.requested");
+  assert.equal(opsAudit?.target_kind, "legal_acceptance");
+  assert.equal(opsAudit?.target_id, accepted.value.id);
+  assert.equal(opsAudit?.metadata_json, "{}");
+  assert.match(String(opsAudit?.occurred_at), /^\d{4}-\d{2}-\d{2}T/);
+  const serializedAudit = JSON.stringify(opsAudit);
+  for (const privateValue of [
+    "hunter-current-1@example.test",
+    "Alex Adult",
+    "Casey Minor",
+    "Jordan Minor",
+    "birthYear",
+    "participants"
+  ]) {
+    assert.equal(serializedAudit.includes(privateValue), false);
+  }
+
   const detail = await store.getParticipationWaiver("hunter-current-1");
   assert.deepEqual(detail?.participants, accepted.value.participants);
   const envelope = await store.getWaiverReceiptEnvelope(accepted.value.id);
@@ -559,7 +653,14 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.equal(activeLeaseState?.attempts, 1);
   assert.ok(activeLeaseState?.next_attempt_at, "resend does not clear an active lease");
   assert.equal(activeLeaseState?.lease_count, 1);
-  assert.equal(activeLeaseState?.requeue_count, 0);
+  assert.equal(activeLeaseState?.requeue_count, 1, "the active lease adds no second requeue event");
+  assert.equal(
+    await opsResend.call(store, "hunter-current-1", accepted.value.id, "staff-ops-1"),
+    null,
+    "an Ops retry must not clear or steal an active receipt lease"
+  );
+  assert.equal(await store.claimWaiverReceiptJob(accepted.value.id), null);
+  assert.deepEqual(await evidenceCounts(), [1, 1], "a blocked retry creates no delivery or audit evidence");
   await store.completeWaiverReceiptJob(claimed!, {
     status: "failed",
     errorCode: "provider_rejected"

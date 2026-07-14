@@ -1139,6 +1139,38 @@ export class D1DataStore implements DataStore {
     return this.waiverAcceptanceById(acceptanceId, subject, true);
   }
 
+  async queueOpsWaiverReceiptResend(
+    subject: string,
+    acceptanceId: string,
+    actorSubject: string
+  ): Promise<WaiverAcceptanceRecord | null> {
+    const acceptance = await this.waiverAcceptanceById(acceptanceId, subject, true);
+    if (!acceptance) return null;
+    const timestamp = now();
+    const requeued = await this.requeueWaiverReceiptJob(acceptance, (requeueToken) => [
+      this.db
+        .prepare(
+          `INSERT INTO audit_events
+           (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+           SELECT ?, ?, 'player.waiver-receipt.requested', 'legal_acceptance', ?, '{}', ?
+           WHERE EXISTS (
+             SELECT 1 FROM notification_job_leases lease
+             WHERE lease.notification_job_id = ? AND lease.lease_token = ?
+           )`
+        )
+        .bind(
+          id(),
+          actorSubject,
+          acceptanceId,
+          timestamp,
+          acceptance.receipt.jobId,
+          requeueToken
+        )
+    ]);
+    if (!requeued) return null;
+    return this.waiverAcceptanceById(acceptanceId, subject, true);
+  }
+
   async claimWaiverReceiptJob(acceptanceId: string): Promise<WaiverReceiptJob | null> {
     const timestamp = now();
     const row = await this.db

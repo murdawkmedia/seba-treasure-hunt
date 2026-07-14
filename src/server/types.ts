@@ -211,7 +211,7 @@ export interface DataStore {
       | { status: "failed"; errorCode: WaiverReceiptErrorCode }
   ): Promise<void>;
   getOpsWaiverDetail(subject: string): Promise<WaiverAcceptanceRecord | null>;
-  queueOpsWaiverReceiptResend?(
+  queueOpsWaiverReceiptResend(
     subject: string,
     acceptanceId: string,
     actorSubject: string
