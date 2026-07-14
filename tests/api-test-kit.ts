@@ -7,7 +7,12 @@ import type {
   SponsorInquiryRecord,
   SponsorInquiryState,
   SponsorSupportType,
-  StoredMedia
+  StoredMedia,
+  WaiverAcceptanceInput,
+  WaiverAcceptanceRecord,
+  WaiverDocumentIdentity,
+  WaiverReceiptEnvelope,
+  WaiverReviewRecord
 } from "../src/server/types";
 import { ApiError } from "../src/server/errors";
 
@@ -92,6 +97,10 @@ export class FakeStore {
   profiles = new Map<string, Record<string, unknown>>();
   accounts = new Map<string, Record<string, unknown>>();
   legalEvents: Array<Record<string, unknown>> = [];
+  waiverReviews = new Map<string, WaiverReviewRecord>();
+  waiverAcceptances = new Map<string, WaiverAcceptanceRecord>();
+  waiverAcceptanceKeys = new Map<string, string>();
+  waiverSequence = 0;
   identityEvents = new Set<string>();
   waiverStatus: "pending" | "accepted" = "pending";
   participationUnlocked = false;
@@ -306,11 +315,115 @@ export class FakeStore {
       accountState: this.accounts.has(subject) ? "active" : "missing",
       profileComplete: this.profiles.has(subject),
       privacyMediaRequired: !privacyAccepted,
-      privacyMediaVersion: privacyAccepted ? "2026.1" : null,
+      privacyMediaVersion: privacyAccepted ? "2026.2" : null,
       waiverStatus: this.waiverStatus,
       waiverVersion: this.waiverStatus === "accepted" ? "test-waiver" : null,
       participationUnlocked: this.participationUnlocked
     };
+  }
+
+  async recordWaiverReview(subject: string, document: WaiverDocumentIdentity) {
+    const id = `review-${this.waiverReviews.size + 1}`;
+    const review: WaiverReviewRecord = {
+      id,
+      subject,
+      documentVersion: document.version,
+      documentHash: document.hash,
+      reviewedAt: "2026-07-13T18:00:00.000Z"
+    };
+    this.waiverReviews.set(id, review);
+    return { ...review };
+  }
+
+  async getWaiverReview(subject: string, reviewEventId: string) {
+    const review = this.waiverReviews.get(reviewEventId);
+    return review?.subject === subject ? { ...review } : null;
+  }
+
+  async acceptParticipationWaiver(subject: string, input: WaiverAcceptanceInput) {
+    const key = `${subject}:${input.idempotencyKey}`;
+    const existingId = this.waiverAcceptanceKeys.get(key);
+    if (existingId) {
+      const existing = this.waiverAcceptances.get(existingId);
+      if (!existing) throw new Error("waiver idempotency fixture is inconsistent");
+      return { value: structuredClone(existing), replayed: true };
+    }
+    const review = await this.getWaiverReview(subject, input.reviewEventId);
+    if (!review || review.documentVersion !== input.documentVersion || review.documentHash !== input.documentHash) {
+      throw new Error("matching waiver review is required");
+    }
+    const id = `waiver-${++this.waiverSequence}`;
+    const record: WaiverAcceptanceRecord = {
+      id,
+      subject,
+      documentVersion: input.documentVersion,
+      documentHash: input.documentHash,
+      acceptedAt: "2026-07-13T18:05:00.000Z",
+      referenceCode: `TLS-W-${id.slice(0, 8).toUpperCase()}`,
+      participants: [
+        { role: "adult", fullName: input.adultName, birthYear: null, guardianAttested: false },
+        ...input.minors.map((minor) => ({
+          role: "minor" as const,
+          fullName: minor.fullName,
+          birthYear: minor.birthYear,
+          guardianAttested: input.guardianAttested
+        }))
+      ],
+      receipt: {
+        jobId: `waiver-receipt-${id}`,
+        status: "pending",
+        attempts: 0,
+        sentAt: null
+      }
+    };
+    this.waiverAcceptances.set(id, record);
+    this.waiverAcceptanceKeys.set(key, id);
+    this.waiverStatus = "accepted";
+    this.participationUnlocked = true;
+    return { value: structuredClone(record), replayed: false };
+  }
+
+  async getParticipationWaiver(subject: string) {
+    const record = [...this.waiverAcceptances.values()].find((entry) => entry.subject === subject);
+    return record ? structuredClone(record) : null;
+  }
+
+  async queueWaiverReceiptResend(subject: string, acceptanceId: string) {
+    const record = this.waiverAcceptances.get(acceptanceId);
+    if (!record || record.subject !== subject) return null;
+    record.receipt.status = "pending";
+    record.receipt.sentAt = null;
+    return structuredClone(record);
+  }
+
+  async claimWaiverReceiptJob(acceptanceId: string) {
+    const record = this.waiverAcceptances.get(acceptanceId);
+    if (!record || record.receipt.status === "sent") return null;
+    record.receipt.attempts += 1;
+    return { id: record.receipt.jobId, acceptanceId, attempts: record.receipt.attempts };
+  }
+
+  async getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null> {
+    const record = this.waiverAcceptances.get(acceptanceId);
+    const account = record ? this.accounts.get(record.subject) : null;
+    const verifiedEmail = account?.verifiedEmail;
+    return record && typeof verifiedEmail === "string"
+      ? { acceptance: structuredClone(record), verifiedEmail }
+      : null;
+  }
+
+  async completeWaiverReceiptJob(
+    jobId: string,
+    result: { status: "sent"; providerMessageId: string } | { status: "failed"; errorCode: string }
+  ) {
+    const record = [...this.waiverAcceptances.values()].find((entry) => entry.receipt.jobId === jobId);
+    if (!record) return;
+    record.receipt.status = result.status;
+    record.receipt.sentAt = result.status === "sent" ? "2026-07-13T18:06:00.000Z" : null;
+  }
+
+  async getOpsWaiverDetail(subject: string) {
+    return this.getParticipationWaiver(subject);
   }
 
   async upsertProfile(subject: string, input: Record<string, unknown>) {

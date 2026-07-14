@@ -30,6 +30,74 @@ export interface PlayerAccessState {
   participationUnlocked: boolean;
 }
 
+export interface WaiverDocumentIdentity {
+  version: string;
+  hash: string;
+}
+
+export interface WaiverMinorInput {
+  fullName: string;
+  birthYear: number;
+}
+
+export interface WaiverParticipantSnapshot {
+  role: "adult" | "minor";
+  fullName: string;
+  birthYear: number | null;
+  guardianAttested: boolean;
+}
+
+export interface WaiverReceiptState {
+  jobId: string;
+  status: "pending" | "sent" | "failed";
+  attempts: number;
+  sentAt: string | null;
+}
+
+export interface WaiverReviewRecord {
+  id: string;
+  subject: string;
+  documentVersion: string;
+  documentHash: string;
+  reviewedAt: string;
+}
+
+export interface WaiverAcceptanceInput {
+  reviewEventId: string;
+  idempotencyKey: string;
+  adultName: string;
+  minors: WaiverMinorInput[];
+  guardianAttested: boolean;
+  documentVersion: string;
+  documentHash: string;
+}
+
+export interface WaiverAcceptanceRecord {
+  id: string;
+  subject: string;
+  documentVersion: string;
+  documentHash: string;
+  acceptedAt: string;
+  referenceCode: string;
+  participants: WaiverParticipantSnapshot[];
+  receipt: WaiverReceiptState;
+}
+
+export interface WaiverReceiptJob {
+  id: string;
+  acceptanceId: string;
+  attempts: number;
+}
+
+export interface WaiverReceiptEnvelope {
+  acceptance: WaiverAcceptanceRecord;
+  verifiedEmail: string;
+}
+
+export interface LegalReceiptSender {
+  deliver(acceptanceId: string): Promise<{ status: "sent" | "failed" }>;
+}
+
 export interface IdentityLifecycleEvent {
   id: string;
   type: "user.created" | "user.updated" | "user.deleted";
@@ -118,6 +186,21 @@ export interface DataStore {
   getPlayerAccount(subject: string): Promise<Record<string, unknown> | null>;
   upsertPlayerAccount(subject: string, verifiedEmail: string): Promise<Record<string, unknown>>;
   getPlayerAccess(subject: string): Promise<PlayerAccessState>;
+  recordWaiverReview?(subject: string, document: WaiverDocumentIdentity): Promise<WaiverReviewRecord>;
+  getWaiverReview?(subject: string, reviewEventId: string): Promise<WaiverReviewRecord | null>;
+  acceptParticipationWaiver?(
+    subject: string,
+    input: WaiverAcceptanceInput
+  ): Promise<{ value: WaiverAcceptanceRecord; replayed: boolean }>;
+  getParticipationWaiver?(subject: string): Promise<WaiverAcceptanceRecord | null>;
+  queueWaiverReceiptResend?(subject: string, acceptanceId: string): Promise<WaiverAcceptanceRecord | null>;
+  claimWaiverReceiptJob?(acceptanceId: string): Promise<WaiverReceiptJob | null>;
+  getWaiverReceiptEnvelope?(acceptanceId: string): Promise<WaiverReceiptEnvelope | null>;
+  completeWaiverReceiptJob?(
+    jobId: string,
+    result: { status: "sent"; providerMessageId: string } | { status: "failed"; errorCode: string }
+  ): Promise<void>;
+  getOpsWaiverDetail?(subject: string): Promise<WaiverAcceptanceRecord | null>;
   applyIdentityEvent(event: IdentityLifecycleEvent): Promise<{ replayed: boolean }>;
   upsertProfile(subject: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getMemberWaypoint(id: number): Promise<Record<string, unknown> | null>;
@@ -217,6 +300,7 @@ export interface ApiDependencies {
   playerAccounts?: StaffAccountManager;
   rateLimits?: RateLimiter;
   webhooks?: WebhookVerifier;
+  waiverReceipts?: LegalReceiptSender;
   environment: EnvironmentGuard;
 }
 
@@ -245,5 +329,7 @@ export interface PagesEnv {
   AUTHORIZED_PARTY?: string;
   RESEND_API_KEY?: string;
   RECOVERY_EMAIL_FROM?: string;
+  LEGAL_RECEIPT_EMAIL_FROM?: string;
+  LEGAL_RECEIPT_EMAIL_REPLY_TO?: string;
   DEPLOYMENT_ENV?: DeploymentEnvironment;
 }
