@@ -4,9 +4,9 @@ Last updated: 2026-07-14
 
 ## Current state
 
-The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform` and verified locally. It is not deployed.
+The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `65e12bf`.
 
-The currently deployed validation site remains the earlier noindex sponsor-art release from source `458ac27`. It still presents Privacy/Media `2026.1` and the old pending-waiver experience. Production remains on its earlier release from source `5552a57`. This implementation pass did not deploy Pages or Workers, apply a migration, change DNS/domains, configure a provider, open credentials, write a secret, create an account, submit data or send email.
+Validation now presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the new guardian/receipt/Ops surfaces at `https://codex-validation.seba-treasure-hunt.pages.dev`. Its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; its deployment ID, DNS, domains and data were not changed. No provider secret has been configured, no account or submission has been created, and no email has been sent.
 
 For historical sponsor-release auditability, the pre-disclosure Privacy/Media `2026.1` hash was `c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9`; it is not the active local `2026.2` policy hash below.
 
@@ -40,17 +40,17 @@ Validation inquiries are disposable and must not be promoted to production.
 - Public `/waiver` route, legal navigation, sitemap entry and active architecture documentation.
 - A validation-safe browser QA gate that exercises the built Dashboard, Ops, Clue Board and Report clients at desktop, mobile and zoom-equivalent viewports.
 
-Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760` and `1774882`.
+Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5` and `65e12bf`.
 
 ## Database and provider state
 
-- Migrations `0006_participation_waiver_and_receipts.sql` through `0009_atomic_rate_limits.sql` are local-only. They have not been applied to validation or production.
-- Sponsor migration `0005_sponsor_inquiries.sql` is not applied remotely; validation sponsor tables remain absent until the same separately approved reconciliation.
-- Validation D1 previously contained schema objects through `0004` but had an empty `d1_migrations` ledger; Wrangler therefore reported `0001` onward as pending. Reconcile exact validation DDL and the migration ledger before applying `0005`–`0009` in order.
+- Validation D1 was backed up, verified against canonical schema `0001`–`0004`, and confirmed to contain the validation sentinel, the 12-waypoint public seed and zero personal/staff data before its empty migration ledger was reconciled.
+- Validation migrations `0005` through `0009` are applied and recorded. Post-checks show no pending migration and zero sponsor, waiver-review, participant, delivery, lease or rate-limit rows.
+- Wrangler's normal migration command applied `0005` but could not parse the trigger bodies in `0006`. Migrations `0006`–`0009` were therefore imported one at a time through D1's atomic raw-file path, verified by object signature and then recorded in the migration ledger. Preserve this fact for production planning.
 - Production migrations, deployment, DNS and data remain unchanged. No waiver, receipt-lease, immutable-ledger or atomic-rate-limit migration is applied there.
-- Clerk, Turnstile and Resend preview configuration is absent/unverified. The new flows remain fail-closed until separately configured.
+- Clerk, Turnstile and Resend preview configuration is absent/unverified. The new flows remain fail-closed until configured through authenticated provider sessions.
 - The validation Turnstile action `sponsor_inquiry` is not verified or configured, so the deployed sponsor form remains fail-closed.
-- No Clerk, Resend or Cloudflare credential/session was opened or used. No real provider write occurred.
+- The existing Murdawk Media Wrangler OAuth session was verified and used only for the approved validation migration and deployment work. No raw credential value was opened, copied or logged. Clerk, Resend and Cloudflare dashboard sessions still require interactive sign-in before preview-provider configuration. No real provider delivery occurred.
 - Pages domains remain `seba-treasure-hunt.pages.dev`, `timlostsomething.com` and `www.timlostsomething.com`; no domain or DNS change occurred.
 
 ## Verification evidence
@@ -64,25 +64,27 @@ Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `
 - The earlier sponsor surface remains documented in `docs/qa/2026-07-13-sponsor-feature-verification.md` with its reproducible `scripts/verify-sponsor-qa.mjs` runner and uncommitted `%TEMP%\tim-lost-task10` artifacts; this waiver pass does not replace or redeploy that validation release.
 - `npm test`: 88/88 static/contract tests and 194/194 TypeScript tests passed.
 - `npm run typecheck`: Worker, client, Worker-test and client-test checks passed.
-- `npm run build`: passed; Pages Worker 304.2 kB, media Worker 3.2 kB and client bundles completed.
+- `npm run build`: passed; Pages Worker 304.8 kB, media Worker 3.2 kB and client bundles completed.
+- Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
+- Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
+- Validation deployment from `65e12bf` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return the expected open state and legal versions. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
 - `npm audit --omit=dev --audit-level=high`: exit 0 with zero high/critical findings. Twelve moderate findings remain in Clerk's optional Solana chain; no forced breaking remediation was applied.
 - Full evidence and reproduction commands are recorded in `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`.
 
-## External-action gates
+## Remaining activation gates
 
-The following remain unauthorized until the owner gives a new explicit approval naming the action:
+Validation activation is approved, but the following still require authenticated provider access and controlled verification:
 
-1. Reconcile or apply validation migrations `0001`–`0009`.
-2. Open or use Clerk, Resend or Cloudflare credentials/private sessions.
-3. Configure preview identity, webhook, Turnstile, sender or secret values.
-4. Send a controlled real waiver receipt.
-5. Deploy this waiver build to `codex-validation`.
-6. Wipe disposable validation data after controlled testing.
-7. Apply production migrations, deploy production or change DNS/domains.
+1. Complete interactive Cloudflare, Clerk and Resend sign-in without exposing credentials in chat or source.
+2. Configure preview-only identity, webhook, Turnstile, sender and secret values.
+3. Run one owner-controlled disposable hunter/guardian/receipt/Ops test and a controlled test receipt.
+4. Verify password recovery, staff invitation/authorization, all Turnstile actions and private media processing.
+5. Wipe disposable validation identities, D1 activity/legal records and validation media after testing. Immutable legal ledgers mean this should be a controlled validation-resource reset, not ad hoc deletes.
+6. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
 
 ## Next approved workflow
 
-After separate validation authorization: reconcile the disposable validation database and sentinel; configure preview-only providers without exposing values; run one owner-controlled acceptance/guardian/receipt/Ops retry; verify no public disclosure; wipe disposable records; then deploy only to `codex-validation` and repeat the noindex/fail-closed smoke checks. Production requires another later approval.
+Resume from the Cloudflare dashboard sign-in tab, then configure preview-only providers without exposing values. Run one owner-controlled acceptance/guardian/receipt/Ops retry, password-recovery, Turnstile and media test; verify no public disclosure; and reset disposable validation records. Production requires another explicit later approval.
 
 ## Decisions in force
 
