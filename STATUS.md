@@ -66,7 +66,7 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 ## Verification evidence
 
 - Sponsor implementation commits through `2f8d157` are locally verified. Focused API, authorization, D1 store/integration, client behavior, static privacy, and legal-hash tests pass.
-- `npm test`: the fresh Task 10 automated suite reports 70 of 70 static/contract tests and 134 of 134 TypeScript tests passing, with no failures, skips, cancellations, or TODOs.
+- `npm test`: the current Task 10 automated suite reports 71 of 71 static/contract tests and 134 of 134 TypeScript tests passing, with no failures, skips, cancellations, or TODOs.
 - `npm run typecheck`: the fresh Task 10 TypeScript checks pass for the Worker, client, Worker tests, and client tests.
 - `npm run build`: the fresh Task 10 production build succeeds; the Pages Worker is 268.0 kB, the media Worker is 3.2 kB, and the client bundle completes successfully.
 - `npm audit --omit=dev --audit-level=high`: the fresh Task 10 production-dependency audit exits successfully with zero high or critical findings. Twelve moderate findings remain in Clerk's optional Solana dependency chain; the only complete automated remediation offered is a forced breaking Clerk downgrade, which was not applied.
