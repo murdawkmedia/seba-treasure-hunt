@@ -112,8 +112,20 @@ test("the waiver ledger schema records review, participants, and receipt deliver
   assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_waiver_participant_acceptance_update/i);
   assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_waiver_receipt_target_insert/i);
   assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_waiver_receipt_target_update/i);
+  assert.match(
+    sql,
+    /CREATE TRIGGER IF NOT EXISTS trg_legal_acceptance_events_immutable\s+BEFORE UPDATE ON legal_acceptance_events/i
+  );
+  assert.match(
+    sql,
+    /CREATE TRIGGER IF NOT EXISTS trg_legal_acceptance_events_immutable_delete\s+BEFORE DELETE ON legal_acceptance_events/i
+  );
+  assert.match(sql, /CASE WHEN status = 'sent' THEN 0 ELSE 1 END/i);
+  assert.match(sql, /attempts DESC/i);
 
+  const reparentAt = sql.search(/UPDATE notification_delivery_events[\s\S]*notification_job_id/i);
   const reconcileAt = sql.search(/DELETE FROM notification_jobs[\s\S]*kind = 'waiver_receipt'/i);
   const uniqueIndexAt = sql.search(/CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_job_target/i);
+  assert.ok(reparentAt >= 0 && reparentAt < reconcileAt, "delivery history reparents first");
   assert.ok(reconcileAt >= 0 && reconcileAt < uniqueIndexAt, "receipt duplicates reconcile first");
 });

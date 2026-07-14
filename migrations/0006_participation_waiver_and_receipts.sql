@@ -2,19 +2,68 @@ PRAGMA foreign_keys = ON;
 
 DROP INDEX IF EXISTS idx_notification_job_target;
 
--- Preserve the oldest job by created_at, then by id, for each duplicate waiver receipt target
-DELETE FROM notification_jobs AS duplicate
-WHERE duplicate.kind = 'waiver_receipt'
-  AND EXISTS (
-    SELECT 1
-    FROM notification_jobs AS keeper
-    WHERE keeper.kind = 'waiver_receipt'
-      AND keeper.target_record_id = duplicate.target_record_id
-      AND (
-        keeper.created_at < duplicate.created_at
-        OR (keeper.created_at = duplicate.created_at AND keeper.id < duplicate.id)
-      )
-  );
+CREATE TABLE IF NOT EXISTS notification_delivery_events (
+  id TEXT PRIMARY KEY,
+  notification_job_id TEXT NOT NULL REFERENCES notification_jobs(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL CHECK (event_type IN ('queued', 'attempted', 'sent', 'failed', 'requeued')),
+  provider TEXT,
+  provider_message_id TEXT,
+  error_code TEXT,
+  occurred_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_delivery_job
+  ON notification_delivery_events(notification_job_id, occurred_at DESC, id DESC);
+
+-- Keep sent jobs first, then highest attempts, strongest terminal evidence, oldest creation, and id
+WITH ranked_receipt_jobs AS (
+  SELECT
+    id,
+    FIRST_VALUE(id) OVER (
+      PARTITION BY target_record_id
+      ORDER BY
+        CASE WHEN status = 'sent' THEN 0 ELSE 1 END,
+        attempts DESC,
+        CASE status WHEN 'failed' THEN 0 WHEN 'cancelled' THEN 1 ELSE 2 END,
+        created_at ASC,
+        id ASC
+    ) AS keeper_id
+  FROM notification_jobs
+  WHERE kind = 'waiver_receipt'
+)
+UPDATE notification_delivery_events
+SET notification_job_id = (
+  SELECT keeper_id
+  FROM ranked_receipt_jobs
+  WHERE ranked_receipt_jobs.id = notification_delivery_events.notification_job_id
+)
+WHERE notification_job_id IN (
+  SELECT id
+  FROM ranked_receipt_jobs
+  WHERE id <> keeper_id
+);
+
+WITH ranked_receipt_jobs AS (
+  SELECT
+    id,
+    FIRST_VALUE(id) OVER (
+      PARTITION BY target_record_id
+      ORDER BY
+        CASE WHEN status = 'sent' THEN 0 ELSE 1 END,
+        attempts DESC,
+        CASE status WHEN 'failed' THEN 0 WHEN 'cancelled' THEN 1 ELSE 2 END,
+        created_at ASC,
+        id ASC
+    ) AS keeper_id
+  FROM notification_jobs
+  WHERE kind = 'waiver_receipt'
+)
+DELETE FROM notification_jobs
+WHERE id IN (
+  SELECT id
+  FROM ranked_receipt_jobs
+  WHERE id <> keeper_id
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_job_target
   ON notification_jobs(kind, target_record_id)
@@ -46,19 +95,6 @@ CREATE TABLE IF NOT EXISTS waiver_acceptance_participants (
 
 CREATE INDEX IF NOT EXISTS idx_waiver_participants_acceptance
   ON waiver_acceptance_participants(acceptance_event_id, participant_role, id);
-
-CREATE TABLE IF NOT EXISTS notification_delivery_events (
-  id TEXT PRIMARY KEY,
-  notification_job_id TEXT NOT NULL REFERENCES notification_jobs(id) ON DELETE CASCADE,
-  event_type TEXT NOT NULL CHECK (event_type IN ('queued', 'attempted', 'sent', 'failed', 'requeued')),
-  provider TEXT,
-  provider_message_id TEXT,
-  error_code TEXT,
-  occurred_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_notification_delivery_job
-  ON notification_delivery_events(notification_job_id, occurred_at DESC, id DESC);
 
 CREATE TRIGGER IF NOT EXISTS trg_waiver_participant_acceptance_insert
 BEFORE INSERT ON waiver_acceptance_participants
@@ -114,38 +150,20 @@ BEGIN
   SELECT RAISE(ABORT, 'waiver receipt requires an accepted participation waiver');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_waiver_acceptance_integrity_update
-BEFORE UPDATE OF id, document_type, action ON legal_acceptance_events
-WHEN (
-    NEW.id <> OLD.id
-    OR NEW.document_type <> 'participation_waiver'
-    OR NEW.action <> 'accepted'
-  )
-  AND (
-    EXISTS (
-      SELECT 1
-      FROM waiver_acceptance_participants
-      WHERE acceptance_event_id = OLD.id
-    )
-    OR EXISTS (
-      SELECT 1
-      FROM notification_jobs
-      WHERE kind = 'waiver_receipt' AND target_record_id = OLD.id
-    )
-  )
+DROP TRIGGER IF EXISTS trg_waiver_acceptance_integrity_update;
+
+CREATE TRIGGER IF NOT EXISTS trg_legal_acceptance_events_immutable
+BEFORE UPDATE ON legal_acceptance_events
 BEGIN
-  SELECT RAISE(ABORT, 'linked records require an accepted participation waiver');
+  SELECT RAISE(ABORT, 'legal acceptance events are immutable');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_waiver_acceptance_integrity_delete
+DROP TRIGGER IF EXISTS trg_waiver_acceptance_integrity_delete;
+
+CREATE TRIGGER IF NOT EXISTS trg_legal_acceptance_events_immutable_delete
 BEFORE DELETE ON legal_acceptance_events
-WHEN EXISTS (
-  SELECT 1
-  FROM notification_jobs
-  WHERE kind = 'waiver_receipt' AND target_record_id = OLD.id
-)
 BEGIN
-  SELECT RAISE(ABORT, 'waiver receipt requires an accepted participation waiver');
+  SELECT RAISE(ABORT, 'legal acceptance events are immutable');
 END;
 
 -- Revalidate any rows created by a prior version of this migration

@@ -90,6 +90,37 @@ const notificationJobInsert = (
     )
     .bind(id, kind, targetRecordId, createdAt, createdAt);
 
+const waiverReceiptJobInsert = (
+  db: D1Database,
+  id: string,
+  targetRecordId: string,
+  status: "pending" | "sent" | "failed" | "cancelled",
+  attempts: number,
+  createdAt: string
+) =>
+  db
+    .prepare(
+      `INSERT INTO notification_jobs
+       (id, kind, target_record_id, status, attempts, created_at, updated_at)
+       VALUES (?, 'waiver_receipt', ?, ?, ?, ?, ?)`
+    )
+    .bind(id, targetRecordId, status, attempts, createdAt, createdAt);
+
+const deliveryEventInsert = (
+  db: D1Database,
+  id: string,
+  notificationJobId: string,
+  eventType: "queued" | "attempted" | "sent" | "failed" | "requeued",
+  occurredAt: string
+) =>
+  db
+    .prepare(
+      `INSERT INTO notification_delivery_events
+       (id, notification_job_id, event_type, occurred_at)
+       VALUES (?, ?, ?, ?)`
+    )
+    .bind(id, notificationJobId, eventType, occurredAt);
+
 const sponsorInput = (
   overrides: Partial<SponsorInquiryInput> = {}
 ): SponsorInquiryInput => ({
@@ -435,7 +466,28 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
   );
   await assert.rejects(
     db.prepare("UPDATE legal_acceptance_events SET action = 'withdrawn' WHERE id = 'acceptance-1'").run(),
-    /accepted participation waiver/i
+    /legal acceptance events are immutable/i
+  );
+
+  await playerInsert(db, "hunter-waiver-2").run();
+  const materialMutations = [
+    ["hunter_subject", "hunter-waiver-2"],
+    ["document_version", "2026.2"],
+    ["document_hash", "changed-waiver-hash"],
+    ["accepted_at", "2026-07-13T21:00:00.000Z"]
+  ] as const;
+  for (const [column, value] of materialMutations) {
+    await assert.rejects(
+      db
+        .prepare(`UPDATE legal_acceptance_events SET ${column} = ? WHERE id = 'acceptance-1'`)
+        .bind(value)
+        .run(),
+      /legal acceptance events are immutable/i
+    );
+  }
+  await assert.rejects(
+    db.prepare("DELETE FROM legal_acceptance_events WHERE id = 'acceptance-privacy'").run(),
+    /legal acceptance events are immutable/i
   );
 
   await assert.rejects(
@@ -475,25 +527,64 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
   for (const sql of migrations.slice(0, 5)) {
     await applySql(db, sql);
   }
+  await applySql(
+    db,
+    `CREATE TABLE IF NOT EXISTS notification_delivery_events (
+      id TEXT PRIMARY KEY,
+      notification_job_id TEXT NOT NULL REFERENCES notification_jobs(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL CHECK (event_type IN ('queued', 'attempted', 'sent', 'failed', 'requeued')),
+      provider TEXT,
+      provider_message_id TEXT,
+      error_code TEXT,
+      occurred_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notification_delivery_job
+      ON notification_delivery_events(notification_job_id, occurred_at DESC, id DESC);`
+  );
   await db.batch([
     playerInsert(db, "hunter-waiver-1"),
     acceptanceInsert(db, "acceptance-1", "participation_waiver"),
-    notificationJobInsert(
+    acceptanceInsert(db, "acceptance-2", "participation_waiver"),
+    waiverReceiptJobInsert(
       db,
-      "receipt-oldest",
-      "waiver_receipt",
+      "pending-old",
       "acceptance-1",
+      "pending",
+      0,
       "2026-07-13T20:02:00.000Z"
     ),
-    notificationJobInsert(
+    waiverReceiptJobInsert(
       db,
-      "receipt-newer",
-      "waiver_receipt",
+      "sent-new",
       "acceptance-1",
+      "sent",
+      1,
       "2026-07-13T20:03:00.000Z"
     ),
+    waiverReceiptJobInsert(
+      db,
+      "failed-old",
+      "acceptance-2",
+      "failed",
+      5,
+      "2026-07-13T20:02:00.000Z"
+    ),
+    waiverReceiptJobInsert(
+      db,
+      "sent-new-2",
+      "acceptance-2",
+      "sent",
+      1,
+      "2026-07-13T20:04:00.000Z"
+    ),
     notificationJobInsert(db, "generic-a", "account_notice", "same-target"),
-    notificationJobInsert(db, "generic-b", "account_notice", "same-target")
+    notificationJobInsert(db, "generic-b", "account_notice", "same-target"),
+    deliveryEventInsert(db, "delivery-pending-queued", "pending-old", "queued", "2026-07-13T20:02:00.000Z"),
+    deliveryEventInsert(db, "delivery-sent", "sent-new", "sent", "2026-07-13T20:03:00.000Z"),
+    deliveryEventInsert(db, "delivery-failed-attempt", "failed-old", "attempted", "2026-07-13T20:02:00.000Z"),
+    deliveryEventInsert(db, "delivery-failed", "failed-old", "failed", "2026-07-13T20:03:00.000Z"),
+    deliveryEventInsert(db, "delivery-sent-2", "sent-new-2", "sent", "2026-07-13T20:04:00.000Z")
   ]);
 
   const waiverMigration = migrations[5];
@@ -502,13 +593,29 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
   await applySql(db, waiverMigration);
 
   const jobs = await db
-    .prepare("SELECT id, kind FROM notification_jobs ORDER BY id")
-    .all<{ id: string; kind: string }>();
+    .prepare("SELECT id, kind, status, attempts FROM notification_jobs ORDER BY id")
+    .all<{ id: string; kind: string; status: string; attempts: number }>();
   assert.deepEqual(jobs.results, [
-    { id: "generic-a", kind: "account_notice" },
-    { id: "generic-b", kind: "account_notice" },
-    { id: "receipt-oldest", kind: "waiver_receipt" }
+    { id: "generic-a", kind: "account_notice", status: "pending", attempts: 0 },
+    { id: "generic-b", kind: "account_notice", status: "pending", attempts: 0 },
+    { id: "sent-new", kind: "waiver_receipt", status: "sent", attempts: 1 },
+    { id: "sent-new-2", kind: "waiver_receipt", status: "sent", attempts: 1 }
   ]);
+
+  const deliveryEvents = await db
+    .prepare("SELECT id, notification_job_id FROM notification_delivery_events ORDER BY id")
+    .all<{ id: string; notification_job_id: string }>();
+  assert.deepEqual(deliveryEvents.results, [
+    { id: "delivery-failed", notification_job_id: "sent-new-2" },
+    { id: "delivery-failed-attempt", notification_job_id: "sent-new-2" },
+    { id: "delivery-pending-queued", notification_job_id: "sent-new" },
+    { id: "delivery-sent", notification_job_id: "sent-new" },
+    { id: "delivery-sent-2", notification_job_id: "sent-new-2" }
+  ]);
+  const resendState = await db
+    .prepare("SELECT COUNT(*) AS count FROM notification_jobs WHERE kind = 'waiver_receipt' AND status <> 'sent'")
+    .first<{ count: number }>();
+  assert.equal(resendState?.count, 0);
 
   await notificationJobInsert(db, "generic-c", "account_notice", "same-target").run();
   await assert.rejects(
