@@ -97,7 +97,7 @@ test("updates a hunter profile after legal acceptance and gates progress on the 
     discoverySource: "friend",
     adultAttested: true,
     privacyMediaAccepted: true,
-    privacyMediaVersion: "2026.1",
+    privacyMediaVersion: "2026.2",
     consents: { huntEmail: true, marketing: false }
   };
 
@@ -113,6 +113,14 @@ test("updates a hunter profile after legal acceptance and gates progress on the 
     marketing: false
   });
   assert.equal(store.profiles.size, 1);
+
+  const locked = await app.request(
+    "https://www.timlostsomething.com/api/v1/progress/1",
+    { method: "PUT", ...json({ state: "visited" }, hunterHeaders) }
+  );
+  assert.equal(locked.status, 423);
+  assert.equal((await responseJson(locked)).error.code, "participation_waiver_required");
+
   store.waiverStatus = "accepted";
   store.participationUnlocked = true;
 
@@ -129,7 +137,7 @@ test("updates a hunter profile after legal acceptance and gates progress on the 
     huntEmail: true,
     marketing: false
   });
-  assert.deepEqual(rateLimits.seen.map((entry) => entry.scope), ["profile", "progress"]);
+  assert.deepEqual(rateLimits.seen.map((entry) => entry.scope), ["profile", "progress", "progress"]);
 });
 
 test("pre-moderates field notes, constrains replies, and accepts private abuse flags", async () => {

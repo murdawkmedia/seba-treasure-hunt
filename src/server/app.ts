@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { ApiError, StatusUnavailableError } from "./errors";
-import { privacyMediaDocument } from "./legal-documents";
+import { participationWaiverDocument, privacyMediaDocument } from "./legal-documents";
 import type {
   ApiDependencies,
   CaseState,
@@ -94,7 +94,10 @@ const rateLimitRules = {
   progress: { limit: 60, windowSeconds: 600 },
   field_note: { limit: 5, windowSeconds: 600 },
   reply: { limit: 20, windowSeconds: 600 },
-  flag: { limit: 10, windowSeconds: 600 }
+  flag: { limit: 10, windowSeconds: 600 },
+  waiver_review: { limit: 10, windowSeconds: 600 },
+  waiver_accept: { limit: 10, windowSeconds: 600 },
+  waiver_receipt: { limit: 3, windowSeconds: 600 }
 } as const;
 const validationNotice = `<aside class="validation-environment-notice" role="status" aria-label="Validation environment notice"><strong>Validation environment</strong><span>Test accounts and submissions will be deleted before launch.</span></aside>`;
 
@@ -397,6 +400,81 @@ const idempotencyKey = (request: Request) => {
   return key;
 };
 
+const currentEdmontonYear = () =>
+  Number(
+    new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      timeZone: "America/Edmonton"
+    }).format(new Date())
+  );
+
+const requireActiveWaiverIdentity = (body: Record<string, unknown>) => {
+  const version = typeof body.version === "string" ? body.version.trim() : "";
+  const hash = typeof body.hash === "string" ? body.hash.trim().toLowerCase() : "";
+  if (version !== participationWaiverDocument.version || hash !== participationWaiverDocument.hash) {
+    throw new ApiError(
+      409,
+      "waiver_document_outdated",
+      "The participation waiver changed. Review the current version before continuing."
+    );
+  }
+  return { version, hash };
+};
+
+const waiverMinors = (body: Record<string, unknown>) => {
+  if (!Array.isArray(body.minors) || body.minors.length > 10) {
+    throw new ApiError(422, "waiver_participants_invalid", "List no more than ten supervised minors.");
+  }
+  const currentYear = currentEdmontonYear();
+  const oldestMinorYear = currentYear - 18;
+  const minors = body.minors.map((candidate, index) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new ApiError(422, "waiver_participants_invalid", "Each supervised minor must include a name and birth year.", {
+        field: `minors.${index}`
+      });
+    }
+    const value = candidate as Record<string, unknown>;
+    const fullName = typeof value.fullName === "string" ? value.fullName.trim() : "";
+    const birthYear = value.birthYear;
+    if (
+      fullName.length < 1 ||
+      fullName.length > 100 ||
+      !Number.isInteger(birthYear) ||
+      (birthYear as number) < oldestMinorYear ||
+      (birthYear as number) > currentYear
+    ) {
+      throw new ApiError(422, "waiver_participants_invalid", "Each supervised minor must include a valid name and minor birth year.", {
+        field: `minors.${index}`
+      });
+    }
+    return { fullName, birthYear: birthYear as number };
+  });
+  if (minors.length > 0 && body.guardianAttested !== true) {
+    throw new ApiError(
+      422,
+      "guardian_attestation_required",
+      "Confirm that you are the parent or legal guardian of each listed minor."
+    );
+  }
+  return minors;
+};
+
+const scheduleWaiverReceipt = (
+  c: Context<AppBindings>,
+  sender: ApiDependencies["waiverReceipts"],
+  acceptanceId: string
+) => {
+  if (!sender) return;
+  const delivery = Promise.resolve()
+    .then(() => sender.deliver(acceptanceId))
+    .catch(() => ({ status: "failed" as const }));
+  try {
+    c.executionCtx.waitUntil(delivery);
+  } catch {
+    void delivery;
+  }
+};
+
 const sameOrigin = (request: Request) => {
   const raw = request.headers.get("origin");
   if (!raw) return;
@@ -552,11 +630,11 @@ const requireParticipationAccess = async (deps: ApiDependencies, principal: Prin
       "Accept the current Privacy Policy & Media Notice to continue."
     );
   }
-  if (access.waiverStatus === "pending") {
+  if (access.waiverStatus !== "accepted") {
     throw new ApiError(
       423,
-      "participation_waiver_pending",
-      "Exact directions and participation tools will unlock after the approved participation waiver is published and accepted."
+      "participation_waiver_required",
+      "Accept the current participation waiver to unlock exact directions and participation tools."
     );
   }
   if (!access.participationUnlocked) {
@@ -645,6 +723,8 @@ export const createApi = (deps: ApiDependencies) => {
       }
     )
   );
+
+  app.get("/api/v1/legal/waiver", (c) => success(c, participationWaiverDocument));
 
   app.post("/api/v1/webhooks/clerk", async (c) => {
     if (!deps.webhooks) {
@@ -915,6 +995,129 @@ export const createApi = (deps: ApiDependencies) => {
         policyVersion: privacyMediaDocument.version
       });
     return success(c, { ...profile, ...(await deps.store.getPlayerAccess(hunter.subject)) });
+  });
+
+  app.post("/api/v1/me/waiver/review", async (c) => {
+    sameOrigin(c.req.raw);
+    const hunter = await requireHunter(deps, c.req.raw);
+    await applyRateLimit(deps, c.req.raw, "waiver_review", hunter);
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length) throw new ApiError(415, "unsupported_media_type", "Waiver reviews accept JSON only.");
+    const document = requireActiveWaiverIdentity(body);
+    if (!deps.store.recordWaiverReview) {
+      throw new ApiError(503, "waiver_store_unavailable", "Waiver review is temporarily unavailable.");
+    }
+    const review = await deps.store.recordWaiverReview(hunter.subject, document);
+    return success(c, { review }, 201);
+  });
+
+  app.post("/api/v1/me/waiver/accept", async (c) => {
+    sameOrigin(c.req.raw);
+    const hunter = await requireHunter(deps, c.req.raw);
+    await applyRateLimit(deps, c.req.raw, "waiver_accept", hunter);
+    const key = idempotencyKey(c.req.raw);
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length) throw new ApiError(415, "unsupported_media_type", "Waiver acceptance accepts JSON only.");
+    const document = requireActiveWaiverIdentity(body);
+    if (body.waiverAccepted !== true) {
+      throw new ApiError(422, "waiver_acceptance_required", "Accept the current participation waiver to continue.");
+    }
+    const minors = waiverMinors(body);
+    const reviewEventId = requiredString(body, "reviewEventId", {
+      max: 128,
+      label: "Waiver review reference"
+    });
+    const account = await deps.store.getPlayerAccount(hunter.subject);
+    const verifiedEmail =
+      account?.accountState === "active" && typeof account.verifiedEmail === "string"
+        ? account.verifiedEmail
+        : null;
+    if (!verifiedEmail) {
+      throw new ApiError(
+        409,
+        "verified_account_required",
+        "A verified active account is required to accept the participation waiver."
+      );
+    }
+    const profile = await deps.store.getProfile(hunter.subject);
+    if (!profile) {
+      throw new ApiError(409, "profile_required", "Complete your hunter profile before accepting the participation waiver.");
+    }
+    const access = await deps.store.getPlayerAccess(hunter.subject);
+    if (access.privacyMediaRequired || access.privacyMediaVersion !== privacyMediaDocument.version) {
+      throw new ApiError(
+        428,
+        "privacy_media_acceptance_required",
+        "Accept the current Privacy Policy & Media Notice before accepting the participation waiver."
+      );
+    }
+    if (!deps.store.getWaiverReview || !deps.store.acceptParticipationWaiver) {
+      throw new ApiError(503, "waiver_store_unavailable", "Waiver acceptance is temporarily unavailable.");
+    }
+    const review = await deps.store.getWaiverReview(hunter.subject, reviewEventId);
+    if (
+      !review ||
+      review.documentVersion !== document.version ||
+      review.documentHash !== document.hash
+    ) {
+      throw new ApiError(
+        422,
+        "waiver_review_required",
+        "Open and review the current participation waiver before accepting it."
+      );
+    }
+    const capture = await deps.store.acceptParticipationWaiver(hunter.subject, {
+      reviewEventId,
+      idempotencyKey: key,
+      adultName: requiredString(profile, "fullName", { max: 100, label: "Full name" }),
+      minors,
+      guardianAttested: minors.length > 0,
+      documentVersion: document.version,
+      documentHash: document.hash
+    });
+    if (!capture.replayed) scheduleWaiverReceipt(c, deps.waiverReceipts, capture.value.id);
+    return success(
+      c,
+      {
+        acceptance: capture.value,
+        participationUnlocked: (await deps.store.getPlayerAccess(hunter.subject)).participationUnlocked,
+        replayed: capture.replayed
+      },
+      capture.replayed ? 200 : 201
+    );
+  });
+
+  app.get("/api/v1/me/waiver", async (c) => {
+    const hunter = await requireHunter(deps, c.req.raw);
+    if (!deps.store.getParticipationWaiver) {
+      throw new ApiError(503, "waiver_store_unavailable", "Waiver status is temporarily unavailable.");
+    }
+    const acceptance = await deps.store.getParticipationWaiver(hunter.subject);
+    const document =
+      acceptance?.documentVersion === participationWaiverDocument.version &&
+      acceptance.documentHash === participationWaiverDocument.hash
+        ? participationWaiverDocument
+        : null;
+    return success(c, { acceptance, document });
+  });
+
+  app.post("/api/v1/me/waiver/receipt", async (c) => {
+    sameOrigin(c.req.raw);
+    const hunter = await requireHunter(deps, c.req.raw);
+    await applyRateLimit(deps, c.req.raw, "waiver_receipt", hunter);
+    if (!deps.store.getParticipationWaiver || !deps.store.queueWaiverReceiptResend) {
+      throw new ApiError(503, "waiver_store_unavailable", "Waiver receipts are temporarily unavailable.");
+    }
+    const acceptance = await deps.store.getParticipationWaiver(hunter.subject);
+    if (!acceptance) {
+      throw new ApiError(404, "waiver_acceptance_not_found", "No accepted participation waiver was found.");
+    }
+    const queued = await deps.store.queueWaiverReceiptResend(hunter.subject, acceptance.id);
+    if (!queued) {
+      throw new ApiError(404, "waiver_acceptance_not_found", "No accepted participation waiver was found.");
+    }
+    scheduleWaiverReceipt(c, deps.waiverReceipts, queued.id);
+    return success(c, { acceptance: queued }, 202);
   });
 
   app.get("/api/v1/member/waypoints", async (c) => {

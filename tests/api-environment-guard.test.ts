@@ -112,7 +112,7 @@ test("blocks sponsor inquiries before lookup, rate limiting, Turnstile, or mutat
         supportType: "community",
         desiredOutcome: "Support the community treasure hunt.",
         acknowledgementAccepted: true,
-        acknowledgementVersion: "2026.1",
+        acknowledgementVersion: "2026.2",
         cfTurnstileResponse: "human-token"
       },
       { "idempotency-key": "sponsor-mismatch" }
@@ -138,7 +138,7 @@ test("blocks privacy acceptance and profile mutation on environment mismatch", a
         fullName: "Test Hunter",
         adultAttested: true,
         privacyMediaAccepted: true,
-        privacyMediaVersion: "2026.1",
+        privacyMediaVersion: "2026.2",
         consents: { huntEmail: false, marketing: false }
       },
       { authorization: "Bearer hunter-token" }
@@ -148,6 +148,27 @@ test("blocks privacy acceptance and profile mutation on environment mismatch", a
   await assertMismatch(response);
   assert.equal(store.profiles.size, 0);
   assert.equal(store.legalEvents.length, 0);
+});
+
+test("blocks waiver review, acceptance, and receipt writes before legal mutation", async () => {
+  const { app, store, environment } = makeApp();
+  const requests = [
+    ["/api/v1/me/waiver/review", { version: "2026.1", hash: "a".repeat(64) }, {}],
+    ["/api/v1/me/waiver/accept", { waiverAccepted: true }, { "idempotency-key": "blocked-waiver" }],
+    ["/api/v1/me/waiver/receipt", {}, {}],
+  ] as const;
+
+  for (const [path, body, headers] of requests) {
+    const response = await app.request(`https://www.timlostsomething.com${path}`, {
+      method: "POST",
+      ...json(body, { authorization: "Bearer hunter-token", ...headers }),
+    });
+    await assertMismatch(response);
+  }
+
+  assert.equal(environment.checks, 3);
+  assert.equal(store.waiverReviews.size, 0);
+  assert.equal(store.waiverAcceptances.size, 0);
 });
 
 test("blocks staff mutations before authorization or audit writes on environment mismatch", async () => {
