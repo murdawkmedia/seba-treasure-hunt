@@ -134,16 +134,32 @@ async function noOverflow(page, label) {
   return dimensions;
 }
 
-async function stickyGeometry(page, stripSelector, headerSelector, expected, label) {
+async function initialStickyGeometry(page, stripSelector, headerSelector, expected, label) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForFunction(() => window.scrollY === 0);
   const geometry = await page.evaluate(({ stripSelector: strip, headerSelector: header }) => {
     const first = document.querySelector(strip);
     const second = document.querySelector(header);
     if (!(first instanceof HTMLElement) || !(second instanceof HTMLElement)) return null;
+    const notice = document.querySelector(".validation-environment-notice");
     const firstRect = first.getBoundingClientRect();
     const secondRect = second.getBoundingClientRect();
     const firstStyle = getComputedStyle(first);
     const secondStyle = getComputedStyle(second);
+    const noticeRect = notice instanceof HTMLElement ? notice.getBoundingClientRect() : null;
+    const noticeStyle = notice instanceof HTMLElement ? getComputedStyle(notice) : null;
+    const noticeVisible = noticeRect && noticeStyle
+      ? noticeRect.height > 0 && noticeStyle.display !== "none" && noticeStyle.visibility !== "hidden"
+      : false;
     return {
+      notice: noticeVisible
+        ? {
+            top: noticeRect.top,
+            bottom: noticeRect.bottom,
+            height: noticeRect.height,
+            position: noticeStyle.position,
+          }
+        : null,
       strip: { top: firstRect.top, height: firstRect.height, position: firstStyle.position },
       header: { top: secondRect.top, height: secondRect.height, position: secondStyle.position },
       stack: firstRect.height + secondRect.height,
@@ -153,12 +169,37 @@ async function stickyGeometry(page, stripSelector, headerSelector, expected, lab
   assert.ok(geometry, `${label} sticky rows must exist.`);
   assert.equal(geometry.strip.position, "sticky", `${label} first row must be sticky.`);
   assert.equal(geometry.header.position, "sticky", `${label} second row must be sticky.`);
-  near(geometry.strip.top, 0, 1, `${label} first-row top`);
+  if (geometry.notice) {
+    assert.ok(
+      !["fixed", "sticky"].includes(geometry.notice.position),
+      `${label} initial validation notice must remain non-sticky in document flow.`,
+    );
+    near(geometry.notice.top, 0, 1, `${label} initial validation notice top`);
+    near(geometry.strip.top, geometry.notice.bottom, 1, `${label} initial first-row top after validation notice`);
+    near(geometry.strip.top, geometry.notice.height, 2, `${label} initial first-row top equals validation notice height`);
+    near(
+      geometry.header.top,
+      geometry.notice.height + geometry.strip.height,
+      2,
+      `${label} initial second-row top after validation notice`,
+    );
+  } else {
+    near(geometry.strip.top, 0, 1, `${label} initial first-row top without validation notice`);
+    near(geometry.header.top, geometry.strip.height, 2, `${label} initial second-row top without validation notice`);
+  }
   near(geometry.strip.height, expected.stripHeight, 2, `${label} first-row height`);
-  near(geometry.header.top, geometry.strip.height, 2, `${label} second-row top`);
   near(geometry.header.height, expected.headerHeight, 3, `${label} second-row height`);
   near(geometry.stack, expected.stack, 4, `${label} stacked height`);
   return {
+    notice: geometry.notice
+      ? {
+          present: true,
+          top: round(geometry.notice.top),
+          bottom: round(geometry.notice.bottom),
+          height: round(geometry.notice.height),
+          position: geometry.notice.position,
+        }
+      : { present: false },
     stripTop: round(geometry.strip.top),
     stripHeight: round(geometry.strip.height),
     headerTop: round(geometry.header.top),
@@ -204,6 +245,14 @@ async function assertSponsorCurrent(page) {
 }
 
 async function assertStickyRowsAfterScroll(page, stripSelector, headerSelector, label) {
+  await page.waitForFunction(({ stripSelector: strip, headerSelector: header }) => {
+    const first = document.querySelector(strip)?.getBoundingClientRect();
+    const second = document.querySelector(header)?.getBoundingClientRect();
+    return first
+      && second
+      && Math.abs(first.top) <= 1
+      && Math.abs(second.top - first.height) <= 2;
+  }, { stripSelector, headerSelector });
   const geometry = await page.evaluate(({ stripSelector: strip, headerSelector: header }) => {
     const first = document.querySelector(strip)?.getBoundingClientRect();
     const second = document.querySelector(header)?.getBoundingClientRect();
@@ -214,6 +263,34 @@ async function assertStickyRowsAfterScroll(page, stripSelector, headerSelector, 
   assert.ok(geometry, `${label} sticky rows must remain measurable.`);
   near(geometry.stripTop, 0, 1, `${label} scrolled first-row top`);
   near(geometry.headerTop, geometry.stripHeight, 2, `${label} scrolled second-row top`);
+  return {
+    stripTop: round(geometry.stripTop),
+    stripHeight: round(geometry.stripHeight),
+    headerTop: round(geometry.headerTop),
+    headerHeight: round(geometry.headerHeight),
+    stack: round(geometry.stripHeight + geometry.headerHeight),
+  };
+}
+
+async function scrollPastNoticeAndAssertStickyRows(page, stripSelector, headerSelector, label) {
+  await page.evaluate(() => {
+    const notice = document.querySelector(".validation-environment-notice");
+    const noticeHeight = notice instanceof HTMLElement ? notice.getBoundingClientRect().height : 0;
+    window.scrollTo({ top: Math.max(noticeHeight + 16, 160), behavior: "instant" });
+  });
+  assert.ok(
+    await page.evaluate(() => window.scrollY > 0),
+    `${label} navigation must scroll past the validation notice.`,
+  );
+  return assertStickyRowsAfterScroll(page, stripSelector, headerSelector, label);
+}
+
+async function assertStickyRowsAfterSurfaceScroll(page, stripSelector, headerSelector, label) {
+  const atInitialFlow = await page.evaluate(() => window.scrollY === 0);
+  if (atInitialFlow) {
+    return scrollPastNoticeAndAssertStickyRows(page, stripSelector, headerSelector, label);
+  }
+  return assertStickyRowsAfterScroll(page, stripSelector, headerSelector, label);
 }
 
 async function sponsorDesktop(browser) {
@@ -221,7 +298,7 @@ async function sponsorDesktop(browser) {
   try {
     await goto(page, "/sponsors");
     const overflow = await noOverflow(page, "Sponsor desktop");
-    const initialGeometry = await stickyGeometry(
+    const initialGeometry = await initialStickyGeometry(
       page,
       ".case-strip",
       ".sponsor-topbar",
@@ -232,11 +309,17 @@ async function sponsorDesktop(browser) {
     const mainTop = await page.locator("#main").evaluate((element) => element.getBoundingClientRect().top);
     assert.ok(mainTop >= initialGeometry.stack - 2, "The skip-link target must begin below both sticky rows.");
 
-    await page.locator('a[href="#inquiry"]').first().click();
-    await page.waitForTimeout(100);
+    await page.mouse.wheel(0, 400);
+    await page.waitForFunction(() => window.scrollY > 0);
+    assert.ok(
+      await page.evaluate(() => window.scrollY > 0),
+      "Sponsor inquiry scroll action must move past the validation notice.",
+    );
+    const postScrollGeometry = await assertStickyRowsAfterScroll(page, ".case-strip", ".sponsor-topbar", "Sponsor inquiry");
+    await page.locator("#inquiry").evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
+    await assertStickyRowsAfterScroll(page, ".case-strip", ".sponsor-topbar", "Sponsor inquiry clearance");
     const inquiryTop = await page.locator("#inquiry").evaluate((element) => element.getBoundingClientRect().top);
-    assert.ok(inquiryTop >= initialGeometry.stack - 2, "Inquiry anchor must clear both sticky rows.");
-    await assertStickyRowsAfterScroll(page, ".case-strip", ".sponsor-topbar", "Sponsor inquiry");
+    assert.ok(inquiryTop >= postScrollGeometry.stack - 2, "Inquiry anchor must clear both sticky rows.");
 
     for (const selector of [
       "#sponsor-hero",
@@ -247,7 +330,7 @@ async function sponsorDesktop(browser) {
     ]) {
       await page.locator(selector).scrollIntoViewIfNeeded();
       await page.waitForTimeout(50);
-      await assertStickyRowsAfterScroll(page, ".case-strip", ".sponsor-topbar", `Sponsor ${selector}`);
+      await assertStickyRowsAfterSurfaceScroll(page, ".case-strip", ".sponsor-topbar", `Sponsor ${selector}`);
     }
 
     const submit = page.locator("[data-sponsor-submit]");
@@ -265,6 +348,7 @@ async function sponsorDesktop(browser) {
       viewport: { width: 1440, height: 1000 },
       overflow,
       geometry: initialGeometry,
+      postScrollGeometry,
       mainTop: round(mainTop),
       inquiryTop: round(inquiryTop),
       current,
@@ -303,11 +387,17 @@ async function sponsorMobile(browser) {
   try {
     await goto(page, "/sponsors");
     const overflow = await noOverflow(page, "Sponsor mobile");
-    const geometry = await stickyGeometry(
+    const geometry = await initialStickyGeometry(
       page,
       ".case-strip",
       ".sponsor-topbar",
       { stripHeight: 76, headerHeight: 59, stack: 135 },
+      "Sponsor mobile",
+    );
+    const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
+      page,
+      ".case-strip",
+      ".sponsor-topbar",
       "Sponsor mobile",
     );
     await exerciseMobileMenu(page, ".menu-toggle", "#nav", "#nav .nav-sponsors", true);
@@ -350,6 +440,7 @@ async function sponsorMobile(browser) {
       viewport: { width: 390, height: 844 },
       overflow,
       geometry,
+      postScrollGeometry,
       layout: {
         cardWidths: layout.cardWidths.map(round),
         formWidth: round(layout.formWidth),
@@ -370,7 +461,7 @@ async function sponsorZoomEquivalent(browser) {
   try {
     await goto(page, "/sponsors");
     const overflow = await noOverflow(page, "Sponsor zoom-equivalent");
-    const geometry = await stickyGeometry(
+    const geometry = await initialStickyGeometry(
       page,
       ".case-strip",
       ".sponsor-topbar",
@@ -379,12 +470,20 @@ async function sponsorZoomEquivalent(browser) {
     );
     const heroTop = await page.locator("#sponsor-hero").evaluate((element) => element.getBoundingClientRect().top);
     assert.ok(heroTop >= geometry.stack - 2, `Zoom-equivalent hero must begin below the sticky stack: ${heroTop}`);
+    const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
+      page,
+      ".case-strip",
+      ".sponsor-topbar",
+      "Sponsor zoom-equivalent",
+    );
     evidence.sponsorPosts += tracker.sponsorPosts;
+    await page.evaluate(() => window.scrollTo(0, 0));
     const screenshot = await saveScreenshot(page, "sponsors-zoom-equivalent-720x500");
     return {
       viewport: { width: 720, height: 500 },
       overflow,
       geometry,
+      postScrollGeometry,
       heroTop: round(heroTop),
       screenshot,
     };
@@ -398,20 +497,28 @@ async function clueBoardMobile(browser) {
   try {
     await goto(page, "/clue-board");
     const overflow = await noOverflow(page, "Clue Board mobile");
-    const geometry = await stickyGeometry(
+    const geometry = await initialStickyGeometry(
       page,
       ".case-signal",
       ".board-topbar",
       { stripHeight: 76, headerHeight: 58, stack: 134 },
       "Clue Board mobile",
     );
+    const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
+      page,
+      ".case-signal",
+      ".board-topbar",
+      "Clue Board mobile",
+    );
     await exerciseMobileMenu(page, ".board-menu-toggle", "#nav", "#nav .nav-sponsors", false);
     evidence.sponsorPosts += tracker.sponsorPosts;
+    await page.evaluate(() => window.scrollTo(0, 0));
     const screenshot = await saveScreenshot(page, "clue-board-mobile-390x844");
     return {
       viewport: { width: 390, height: 844 },
       overflow,
       geometry,
+      postScrollGeometry,
       menu: { sponsorsVisible: true, escapeClosesAndReturnsFocus: true },
       screenshot,
     };

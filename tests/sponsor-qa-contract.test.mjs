@@ -40,6 +40,20 @@ test("sponsor QA has a durable read-only command, evidence record, and machine-n
   assert.match(script, /data-sponsor-turnstile/);
   assert.match(script, /aria-invalid/);
   assert.match(script, /test-only mocked/i);
+  assert.match(script, /\.validation-environment-notice/);
+  assert.match(script, /initial validation notice must remain non-sticky/i);
+  assert.match(script, /initial first-row top after validation notice/i);
+  assert.match(script, /initial first-row top without validation notice/i);
+  assert.match(script, /window\.scrollTo/);
+  assert.match(script, /mouse\.wheel/);
+  assert.match(script, /#inquiry[^\n]*scrollIntoView\([^\n]*block:\s*["']start["']/);
+  assert.match(script, /inquiryTop\s*>=\s*postScrollGeometry\.stack/);
+  assert.match(script, /atInitialFlow[^]*scrollPastNoticeAndAssertStickyRows/);
+  assert.match(script, /assertStickyRowsAfterSurfaceScroll/);
+  assert.match(script, /scroll action must move past the validation notice/i);
+  assert.doesNotMatch(script, /a\[href=["']#inquiry["']\][^\n]*\.click\(/);
+  assert.match(script, /waitForFunction[^]*scrolled first-row/i);
+  assert.match(script, /scrolled first-row top/);
 
   assert.match(record, /2026-07-13/);
   assert.match(record, /npm run build/);
@@ -52,6 +66,8 @@ test("sponsor QA has a durable read-only command, evidence record, and machine-n
   assert.match(record, /authenticated Ops[^\n]*Task 11/i);
   assert.match(record, /sponsor_inquiries\|sponsor_inquiry_events\|private note\|@sebahub/);
   assert.match(record, /SHA-256/i);
+  assert.match(record, /initial validation notice[^\n]*non-sticky/i);
+  assert.match(record, /after[^\n]*scroll[^\n]*sticky[^\n]*top 0/i);
 
   assert.match(status, /docs\/qa\/2026-07-13-sponsor-feature-verification\.md/);
   assert.match(status, /scripts\/verify-sponsor-qa\.mjs/);

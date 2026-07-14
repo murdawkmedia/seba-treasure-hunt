@@ -27,6 +27,8 @@ Screenshots are written outside the repository under `%TEMP%\tim-lost-task10`. T
 
 ## Browser and route coverage
 
+At `scrollY = 0`, the runner detects the optional visible `.validation-environment-notice`. An initial validation notice must remain non-sticky in normal document flow; the first sticky strip begins at its measured bottom and the header begins after the measured notice-plus-strip height. Targets without that notice retain the strict initial strip top of 0. After a real scroll action past the notice, the runner waits for measured geometry and requires the strip to be sticky at top 0 and the header to sit below the strip's actual height. Inquiry clearance continues to use the actual measured sticky stack rather than a blanket tolerance.
+
 - Sponsor desktop at 1440×1000: `.case-strip`, `.sponsor-topbar`, `.nav-sponsors[aria-current="page"]`, the `#inquiry` anchor, `#sponsor-faq`, `.sponsor-footer`, `[data-sponsor-turnstile]`, and `[data-sponsor-submit]`; verifies overflow, sticky geometry, gold/current Sponsors, anchor clearance, fail-closed submission, and zero console warnings/errors.
 - Sponsor mobile at 390×844: `.menu-toggle`, `#nav`, `#nav .nav-sponsors`, `.opportunity-card`, `[data-sponsor-form]`, `.acknowledgement-field`, `[data-sponsor-turnstile]`, `[data-sponsor-result]`, and `[data-sponsor-submit]`; verifies menu link/Escape behavior, focus return, single-column automatic card heights, readable form regions, no overflow, and fail-closed submission.
 - Zoom-equivalent at 720×500: verifies the 135 px sticky stack, hero clearance, and no overflow or overlap.
