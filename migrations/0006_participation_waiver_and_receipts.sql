@@ -22,6 +22,12 @@ WITH ranked_receipt_jobs AS (
     FIRST_VALUE(id) OVER (
       PARTITION BY target_record_id
       ORDER BY
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM notification_delivery_events AS delivery
+          WHERE delivery.notification_job_id = notification_jobs.id
+            AND delivery.event_type = 'sent'
+        ) THEN 0 ELSE 1 END,
         CASE WHEN status = 'sent' THEN 0 ELSE 1 END,
         attempts DESC,
         CASE status WHEN 'failed' THEN 0 WHEN 'cancelled' THEN 1 ELSE 2 END,
@@ -43,12 +49,30 @@ WHERE notification_job_id IN (
   WHERE id <> keeper_id
 );
 
+UPDATE notification_jobs
+SET status = 'sent',
+    next_attempt_at = NULL,
+    last_error_code = NULL
+WHERE kind = 'waiver_receipt'
+  AND EXISTS (
+    SELECT 1
+    FROM notification_delivery_events AS delivery
+    WHERE delivery.notification_job_id = notification_jobs.id
+      AND delivery.event_type = 'sent'
+  );
+
 WITH ranked_receipt_jobs AS (
   SELECT
     id,
     FIRST_VALUE(id) OVER (
       PARTITION BY target_record_id
       ORDER BY
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM notification_delivery_events AS delivery
+          WHERE delivery.notification_job_id = notification_jobs.id
+            AND delivery.event_type = 'sent'
+        ) THEN 0 ELSE 1 END,
         CASE WHEN status = 'sent' THEN 0 ELSE 1 END,
         attempts DESC,
         CASE status WHEN 'failed' THEN 0 WHEN 'cancelled' THEN 1 ELSE 2 END,

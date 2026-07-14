@@ -546,6 +546,7 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
     playerInsert(db, "hunter-waiver-1"),
     acceptanceInsert(db, "acceptance-1", "participation_waiver"),
     acceptanceInsert(db, "acceptance-2", "participation_waiver"),
+    acceptanceInsert(db, "acceptance-3", "participation_waiver"),
     waiverReceiptJobInsert(
       db,
       "pending-old",
@@ -578,14 +579,39 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
       1,
       "2026-07-13T20:04:00.000Z"
     ),
+    waiverReceiptJobInsert(
+      db,
+      "pending-ten",
+      "acceptance-3",
+      "pending",
+      10,
+      "2026-07-13T20:02:00.000Z"
+    ),
+    waiverReceiptJobInsert(
+      db,
+      "failed-evidential",
+      "acceptance-3",
+      "failed",
+      1,
+      "2026-07-13T20:05:00.000Z"
+    ),
     notificationJobInsert(db, "generic-a", "account_notice", "same-target"),
     notificationJobInsert(db, "generic-b", "account_notice", "same-target"),
     deliveryEventInsert(db, "delivery-pending-queued", "pending-old", "queued", "2026-07-13T20:02:00.000Z"),
     deliveryEventInsert(db, "delivery-sent", "sent-new", "sent", "2026-07-13T20:03:00.000Z"),
     deliveryEventInsert(db, "delivery-failed-attempt", "failed-old", "attempted", "2026-07-13T20:02:00.000Z"),
     deliveryEventInsert(db, "delivery-failed", "failed-old", "failed", "2026-07-13T20:03:00.000Z"),
-    deliveryEventInsert(db, "delivery-sent-2", "sent-new-2", "sent", "2026-07-13T20:04:00.000Z")
+    deliveryEventInsert(db, "delivery-sent-2", "sent-new-2", "sent", "2026-07-13T20:04:00.000Z"),
+    deliveryEventInsert(db, "delivery-evidence-pending", "pending-ten", "requeued", "2026-07-13T20:04:00.000Z"),
+    deliveryEventInsert(db, "delivery-evidence-sent", "failed-evidential", "sent", "2026-07-13T20:05:00.000Z")
   ]);
+  await db
+    .prepare(
+      `UPDATE notification_jobs
+       SET next_attempt_at = '2026-07-13T21:00:00.000Z', last_error_code = 'provider_timeout'
+       WHERE id = 'failed-evidential'`
+    )
+    .run();
 
   const waiverMigration = migrations[5];
   assert.ok(waiverMigration, "waiver migration is loaded");
@@ -596,6 +622,7 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
     .prepare("SELECT id, kind, status, attempts FROM notification_jobs ORDER BY id")
     .all<{ id: string; kind: string; status: string; attempts: number }>();
   assert.deepEqual(jobs.results, [
+    { id: "failed-evidential", kind: "waiver_receipt", status: "sent", attempts: 1 },
     { id: "generic-a", kind: "account_notice", status: "pending", attempts: 0 },
     { id: "generic-b", kind: "account_notice", status: "pending", attempts: 0 },
     { id: "sent-new", kind: "waiver_receipt", status: "sent", attempts: 1 },
@@ -606,12 +633,25 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
     .prepare("SELECT id, notification_job_id FROM notification_delivery_events ORDER BY id")
     .all<{ id: string; notification_job_id: string }>();
   assert.deepEqual(deliveryEvents.results, [
+    { id: "delivery-evidence-pending", notification_job_id: "failed-evidential" },
+    { id: "delivery-evidence-sent", notification_job_id: "failed-evidential" },
     { id: "delivery-failed", notification_job_id: "sent-new-2" },
     { id: "delivery-failed-attempt", notification_job_id: "sent-new-2" },
     { id: "delivery-pending-queued", notification_job_id: "sent-new" },
     { id: "delivery-sent", notification_job_id: "sent-new" },
     { id: "delivery-sent-2", notification_job_id: "sent-new-2" }
   ]);
+  const evidenceKeeper = await db
+    .prepare(
+      `SELECT status, next_attempt_at, last_error_code
+       FROM notification_jobs WHERE id = 'failed-evidential'`
+    )
+    .first<{ status: string; next_attempt_at: string | null; last_error_code: string | null }>();
+  assert.deepEqual(evidenceKeeper, {
+    status: "sent",
+    next_attempt_at: null,
+    last_error_code: null
+  });
   const resendState = await db
     .prepare("SELECT COUNT(*) AS count FROM notification_jobs WHERE kind = 'waiver_receipt' AND status <> 'sent'")
     .first<{ count: number }>();

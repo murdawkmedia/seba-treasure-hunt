@@ -122,10 +122,19 @@ test("the waiver ledger schema records review, participants, and receipt deliver
   );
   assert.match(sql, /CASE WHEN status = 'sent' THEN 0 ELSE 1 END/i);
   assert.match(sql, /attempts DESC/i);
+  assert.match(
+    sql,
+    /UPDATE notification_jobs\s+SET status = 'sent',\s+next_attempt_at = NULL,\s+last_error_code = NULL[\s\S]*event_type = 'sent'/i
+  );
 
+  const sentEvidenceAt = sql.search(
+    /EXISTS\s*\(\s*SELECT 1\s+FROM notification_delivery_events[\s\S]*event_type = 'sent'/i
+  );
+  const mutableStatusAt = sql.search(/CASE WHEN status = 'sent' THEN 0 ELSE 1 END/i);
   const reparentAt = sql.search(/UPDATE notification_delivery_events[\s\S]*notification_job_id/i);
   const reconcileAt = sql.search(/DELETE FROM notification_jobs[\s\S]*kind = 'waiver_receipt'/i);
   const uniqueIndexAt = sql.search(/CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_job_target/i);
+  assert.ok(sentEvidenceAt >= 0 && sentEvidenceAt < mutableStatusAt, "sent evidence ranks first");
   assert.ok(reparentAt >= 0 && reparentAt < reconcileAt, "delivery history reparents first");
   assert.ok(reconcileAt >= 0 && reconcileAt < uniqueIndexAt, "receipt duplicates reconcile first");
 });
