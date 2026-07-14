@@ -1167,6 +1167,81 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
   );
 });
 
+test("the Graph state upgrade preserves historical immutable delivery evidence", async (t) => {
+  const migrationFiles = [
+    "0001_hunter_platform.sql",
+    "0002_consent_ledger_index.sql",
+    "0003_player_accounts_and_legal_acceptance.sql",
+    "0004_environment_metadata.sql",
+    "0005_sponsor_inquiries.sql",
+    "0006_participation_waiver_and_receipts.sql",
+    "0007_waiver_receipt_leases.sql",
+    "0008_immutable_waiver_ledgers.sql",
+    "0009_atomic_rate_limits.sql",
+    "0010_graph_transactional_email.sql"
+  ];
+  const migrations = await Promise.all(
+    migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
+  );
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: `graph-upgrade-${crypto.randomUUID()}` }
+  });
+  t.after(() => miniflare.dispose());
+  const db = (await miniflare.getD1Database("DB")) as unknown as D1Database;
+
+  for (const sql of migrations.slice(0, -1)) await applySql(db, sql);
+  await db.batch([
+    playerInsert(db, "hunter-waiver-1"),
+    acceptanceInsert(db, "acceptance-graph-upgrade", "participation_waiver"),
+    notificationJobInsert(db, "receipt-graph-upgrade", "waiver_receipt", "acceptance-graph-upgrade"),
+    deliveryEventInsert(
+      db,
+      "delivery-graph-upgrade",
+      "receipt-graph-upgrade",
+      "sent",
+      "2026-07-14T20:00:00.000Z"
+    )
+  ]);
+
+  const graphMigration = migrations.at(-1);
+  assert.ok(graphMigration);
+  await applySql(db, graphMigration);
+
+  const historical = await db
+    .prepare(
+      `SELECT id, event_type, provider_reference, provider_reference_kind
+       FROM notification_delivery_events WHERE id = 'delivery-graph-upgrade'`
+    )
+    .first<{
+      id: string;
+      event_type: string;
+      provider_reference: string | null;
+      provider_reference_kind: string | null;
+    }>();
+  assert.deepEqual(historical, {
+    id: "delivery-graph-upgrade",
+    event_type: "sent",
+    provider_reference: null,
+    provider_reference_kind: null
+  });
+  await assert.rejects(
+    db
+      .prepare(
+        `UPDATE notification_delivery_events
+         SET provider_reference = 'changed' WHERE id = 'delivery-graph-upgrade'`
+      )
+      .run(),
+    /notification delivery events are immutable/i
+  );
+  await assert.rejects(
+    db.prepare("DELETE FROM notification_delivery_events WHERE id = 'delivery-graph-upgrade'").run(),
+    /notification delivery events are immutable/i
+  );
+});
+
 test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (t) => {
   const migrationFiles = [
     "0001_hunter_platform.sql",

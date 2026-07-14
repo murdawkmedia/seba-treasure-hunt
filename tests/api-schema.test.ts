@@ -56,6 +56,33 @@ test("the atomic rate-limit migration follows the immutable waiver ledgers and s
   assert.doesNotMatch(sql, /ip_address|hunter_subject|email|raw_identifier/i);
 });
 
+test("the Graph transactional-email migration adds private encrypted state and delivery evidence", async () => {
+  const names = (await readdir(path.resolve("migrations"))).sort();
+  assert.ok(names.indexOf("0010_graph_transactional_email.sql") > names.indexOf("0009_atomic_rate_limits.sql"));
+
+  const sql = await readFile(
+    path.resolve("migrations", "0010_graph_transactional_email.sql"),
+    "utf8"
+  );
+  assert.match(
+    sql,
+    /ALTER TABLE notification_delivery_events ADD COLUMN provider_reference TEXT/i
+  );
+  assert.match(
+    sql,
+    /ALTER TABLE notification_delivery_events ADD COLUMN provider_reference_kind TEXT/i
+  );
+  assert.match(sql, /CREATE TABLE oauth_provider_state/i);
+  assert.match(sql, /provider TEXT PRIMARY KEY CHECK \(provider = 'microsoft_graph'\)/i);
+  assert.match(sql, /encrypted_refresh_token TEXT NOT NULL/i);
+  assert.match(sql, /nonce TEXT NOT NULL/i);
+  assert.match(sql, /key_version TEXT NOT NULL/i);
+  assert.match(sql, /state_version INTEGER NOT NULL CHECK \(state_version >= 1\)/i);
+  assert.match(sql, /created_at TEXT NOT NULL/i);
+  assert.match(sql, /updated_at TEXT NOT NULL/i);
+  assert.doesNotMatch(sql, /CREATE\s+(?:UNIQUE\s+)?INDEX[\s\S]*oauth_provider_state/i);
+});
+
 test("the second D1 migration adds the current-consent projection index", async () => {
   const sql = await readFile(path.resolve("migrations", "0002_consent_ledger_index.sql"), "utf8");
   assert.match(
