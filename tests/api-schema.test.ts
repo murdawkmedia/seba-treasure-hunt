@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -41,6 +41,19 @@ test("the environment metadata migration defines one constrained deployment sent
   assert.match(sql, /CREATE TABLE IF NOT EXISTS environment_metadata/i);
   assert.match(sql, /CHECK\s*\(environment IN \('validation', 'production'\)\)/i);
   assert.match(sql, /CHECK\s*\(id = 1\)/i);
+});
+
+test("the atomic rate-limit migration follows the immutable waiver ledgers and stores no raw identifiers", async () => {
+  const names = (await readdir(path.resolve("migrations"))).sort();
+  assert.ok(names.indexOf("0009_atomic_rate_limits.sql") > names.indexOf("0008_immutable_waiver_ledgers.sql"));
+
+  const sql = await readFile(path.resolve("migrations", "0009_atomic_rate_limits.sql"), "utf8");
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS campaign_rate_limit_buckets/i);
+  assert.match(sql, /PRIMARY KEY\s*\(scope, identifier_hash, window_started_at\)/i);
+  assert.match(sql, /CHECK\s*\(\s*length\(identifier_hash\) = 64\s+AND/i);
+  assert.match(sql, /CHECK\s*\(request_count >= 1\)/i);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_campaign_rate_limit_expiry/i);
+  assert.doesNotMatch(sql, /ip_address|hunter_subject|email|raw_identifier/i);
 });
 
 test("the second D1 migration adds the current-consent projection index", async () => {

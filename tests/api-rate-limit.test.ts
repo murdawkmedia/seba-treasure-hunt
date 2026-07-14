@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
-import { KvRateLimiter } from "../src/server/rate-limit";
+import { Miniflare } from "miniflare";
+import { D1RateLimiter } from "../src/server/rate-limit";
 import { createApi } from "../src/server/app";
 import { privacyMediaDocument } from "../src/server/legal-documents";
 import {
@@ -14,51 +17,114 @@ import {
   responseJson
 } from "./api-test-kit";
 
-class MemoryKv {
-  values = new Map<string, string>();
-  keys: string[] = [];
+const rateLimitMigration = await readFile(
+  path.resolve("migrations", "0009_atomic_rate_limits.sql"),
+  "utf8"
+);
 
-  async get(key: string) {
-    this.keys.push(key);
-    return this.values.get(key) ?? null;
+const createRateLimitDatabase = async (t: test.TestContext) => {
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: `rate-limit-${crypto.randomUUID()}` }
+  });
+  t.after(() => miniflare.dispose());
+  const db = (await miniflare.getD1Database("DB")) as unknown as D1Database;
+  for (const statement of rateLimitMigration.split(";").map((item) => item.trim()).filter(Boolean)) {
+    await db.prepare(statement).run();
   }
+  return db;
+};
 
-  async put(key: string, value: string) {
-    this.keys.push(key);
-    this.values.set(key, value);
-  }
-}
-
-test("KV limiter hashes client identifiers before constructing a key", async () => {
-  const kv = new MemoryKv();
-  const limiter = new KvRateLimiter(kv as never, "test-only-salt");
+test("D1 limiter atomically allows no more than the configured concurrent request limit", async (t) => {
+  const db = await createRateLimitDatabase(t);
+  const now = Date.parse("2026-07-14T18:02:00.000Z");
+  const limiter = new D1RateLimiter(db, "test-only-salt", () => now);
   const input = {
     scope: "reply",
     identifiers: ["203.0.113.8", "hunter-subject-1"],
-    limit: 1,
+    limit: 5,
     windowSeconds: 600
   };
 
-  const first = await limiter.consume(input);
-  const second = await limiter.consume(input);
+  const results = await Promise.all(
+    Array.from({ length: 40 }, () => limiter.consume(input))
+  );
 
-  assert.equal(first.allowed, true);
-  assert.equal(second.allowed, false);
-  assert.ok(kv.keys.length > 0);
-  for (const key of kv.keys) {
-    assert.equal(key.includes("203.0.113.8"), false);
-    assert.equal(key.includes("hunter-subject-1"), false);
-    assert.match(key, /^rl:v1:reply:[a-f0-9]{64}:\d+$/);
-  }
+  assert.equal(results.filter((result) => result.allowed).length, 5);
+  assert.equal(results.filter((result) => !result.allowed).length, 35);
+  const row = await db
+    .prepare(
+      `SELECT identifier_hash, request_count, window_expires_at
+       FROM campaign_rate_limit_buckets WHERE scope = ?`
+    )
+    .bind("reply")
+    .first<{ identifier_hash: string; request_count: number; window_expires_at: number }>();
+  assert.match(row?.identifier_hash ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(row?.request_count, 5);
+  assert.equal(row?.window_expires_at, Math.floor(now / 1_000 / 600) * 600 + 600);
 });
 
-test("KV limiter fails closed when its binding or salt is unavailable", async () => {
-  const missingKv = new KvRateLimiter(null, "salt");
-  const missingSalt = new KvRateLimiter(new MemoryKv() as never, null);
+test("D1 limiter stores only a salted hash and removes expired buckets", async (t) => {
+  const db = await createRateLimitDatabase(t);
+  const now = Date.parse("2026-07-14T18:02:00.000Z");
+  await db
+    .prepare(
+      `INSERT INTO campaign_rate_limit_buckets
+       (scope, identifier_hash, window_started_at, window_expires_at, request_count)
+       VALUES ('old', ?, 1, 2, 1)`
+    )
+    .bind("a".repeat(64))
+    .run();
+  const limiter = new D1RateLimiter(db, "test-only-salt", () => now);
+  await limiter.consume({
+    scope: "waiver_accept",
+    identifiers: ["ip:203.0.113.8", "subject:hunter-subject-1"],
+    limit: 10,
+    windowSeconds: 600
+  });
+
+  const rows = await db
+    .prepare(
+      `SELECT scope, identifier_hash FROM campaign_rate_limit_buckets ORDER BY scope`
+    )
+    .all<{ scope: string; identifier_hash: string }>();
+  assert.equal(rows.results.length, 1);
+  assert.equal(rows.results[0]?.scope, "waiver_accept");
+  assert.match(rows.results[0]?.identifier_hash ?? "", /^[a-f0-9]{64}$/);
+  const serialized = JSON.stringify(rows.results);
+  assert.equal(serialized.includes("203.0.113.8"), false);
+  assert.equal(serialized.includes("hunter-subject-1"), false);
+});
+
+test("D1 limiter fails closed when its database, salt, or atomic query is unavailable", async () => {
+  const unavailableDb = {
+    prepare() {
+      throw new Error("D1 unavailable");
+    }
+  };
+  const missingDb = new D1RateLimiter(null, "test-only-salt");
+  const missingSalt = new D1RateLimiter(unavailableDb as never, null);
+  const failedQuery = new D1RateLimiter(unavailableDb as never, "test-only-salt");
   const input = { scope: "report", identifiers: ["anonymous"], limit: 5, windowSeconds: 600 };
 
-  await assert.rejects(missingKv.consume(input), (error: { code?: string }) => error.code === "rate_limit_unavailable");
+  await assert.rejects(missingDb.consume(input), (error: { code?: string }) => error.code === "rate_limit_unavailable");
   await assert.rejects(missingSalt.consume(input), (error: { code?: string }) => error.code === "rate_limit_unavailable");
+  await assert.rejects(failedQuery.consume(input), (error: { code?: string }) => error.code === "rate_limit_unavailable");
+});
+
+test("the Worker uses the sentinel-protected D1 database for rate limits and has no KV limiter path", async () => {
+  const [worker, types, wrangler] = await Promise.all([
+    readFile(path.resolve("src", "worker.ts"), "utf8"),
+    readFile(path.resolve("src", "server", "types.ts"), "utf8"),
+    readFile(path.resolve("wrangler.toml"), "utf8")
+  ]);
+
+  assert.match(worker, /new D1RateLimiter\(env\.DB \?\? null, env\.RATE_LIMIT_SALT \?\? null\)/);
+  assert.doesNotMatch(worker, /KvRateLimiter|env\.RATE_LIMITS/);
+  assert.doesNotMatch(types, /RATE_LIMITS\??:\s*KVNamespace/);
+  assert.doesNotMatch(wrangler, /binding\s*=\s*"RATE_LIMITS"/);
 });
 
 const sponsorBody = {

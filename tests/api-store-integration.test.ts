@@ -337,7 +337,8 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     "0005_sponsor_inquiries.sql",
     "0006_participation_waiver_and_receipts.sql",
     "0007_waiver_receipt_leases.sql",
-    "0008_immutable_waiver_ledgers.sql"
+    "0008_immutable_waiver_ledgers.sql",
+    "0009_atomic_rate_limits.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -818,7 +819,8 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
     "0004_environment_metadata.sql",
     "0005_sponsor_inquiries.sql",
     "0006_participation_waiver_and_receipts.sql",
-    "0008_immutable_waiver_ledgers.sql"
+    "0008_immutable_waiver_ledgers.sql",
+    "0009_atomic_rate_limits.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))

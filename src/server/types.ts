@@ -330,7 +330,6 @@ export interface PagesEnv {
   DB?: D1Database;
   UPLOADS?: R2Bucket;
   MEDIA_QUEUE?: Queue<MediaJob>;
-  RATE_LIMITS?: KVNamespace;
   RATE_LIMIT_SALT?: string;
   TURNSTILE_SECRET_KEY?: string;
   TURNSTILE_SITE_KEY?: string;

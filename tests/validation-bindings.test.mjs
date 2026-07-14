@@ -19,8 +19,8 @@ test("Pages preview overrides every stateful production binding", () => {
   assert.match(preview, /codex-validation\.seba-treasure-hunt\.pages\.dev/);
   assert.match(preview, /database_name\s*=\s*"tim-lost-hunter-platform-validation"/);
   assert.match(preview, /bucket_name\s*=\s*"tim-lost-private-media-validation"/);
-  assert.match(preview, /id\s*=\s*"5c32ae59aaeb421f8959f417a4751efd"/);
   assert.match(preview, /queue\s*=\s*"tim-lost-media-processing-validation"/);
+  assert.doesNotMatch(pagesConfig, /RATE_LIMITS|kv_namespaces/);
   assert.doesNotMatch(pagesConfig, /\[(?:env\.preview\.)?images\]/);
 
   assert.doesNotMatch(

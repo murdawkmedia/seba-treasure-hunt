@@ -8,7 +8,7 @@ import { ClerkWebhookVerifier } from "./server/clerk-webhooks";
 import { ManagedPlayerAccounts } from "./server/player-accounts";
 import type { DataStore, PagesEnv } from "./server/types";
 import { R2UploadStorage } from "./server/uploads";
-import { KvRateLimiter } from "./server/rate-limit";
+import { D1RateLimiter } from "./server/rate-limit";
 import { D1EnvironmentGuard } from "./server/environment-guard";
 import { providerKeyForEnvironment } from "./server/provider-environment";
 import { ManagedWaiverReceipts } from "./server/waiver-receipts";
@@ -32,7 +32,6 @@ let cache:
       db: D1Database | undefined;
       bucket: R2Bucket | undefined;
       queue: PagesEnv["MEDIA_QUEUE"];
-      rateLimits: KVNamespace | undefined;
       signature: string;
       app: ReturnType<typeof createApi>;
     }
@@ -68,7 +67,6 @@ const application = (env: PagesEnv) => {
     cache.db === env.DB &&
     cache.bucket === env.UPLOADS &&
     cache.queue === env.MEDIA_QUEUE &&
-    cache.rateLimits === env.RATE_LIMITS &&
     cache.signature === signature
   ) {
     return cache.app;
@@ -106,7 +104,7 @@ const application = (env: PagesEnv) => {
     }),
     turnstile: new TurnstileVerifier(env.TURNSTILE_SECRET_KEY ?? null, allowedHosts),
     uploads: new R2UploadStorage(env.UPLOADS ?? null, env.MEDIA_QUEUE ?? null),
-    rateLimits: new KvRateLimiter(env.RATE_LIMITS ?? null, env.RATE_LIMIT_SALT ?? null),
+    rateLimits: new D1RateLimiter(env.DB ?? null, env.RATE_LIMIT_SALT ?? null),
     environment: new D1EnvironmentGuard(env.DB ?? null, env.DEPLOYMENT_ENV ?? null),
     webhooks: new ClerkWebhookVerifier(env.CLERK_WEBHOOK_SIGNING_SECRET ?? null),
     playerAccounts: new ManagedPlayerAccounts(hunterSecretKey, {
@@ -140,7 +138,6 @@ const application = (env: PagesEnv) => {
     db: env.DB,
     bucket: env.UPLOADS,
     queue: env.MEDIA_QUEUE,
-    rateLimits: env.RATE_LIMITS,
     signature,
     app
   };

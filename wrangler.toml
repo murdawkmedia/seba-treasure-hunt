@@ -18,10 +18,6 @@ database_id = "6cd93ca6-7a4b-46eb-bfb3-e71040f405d7"
 binding = "UPLOADS"
 bucket_name = "tim-lost-private-media"
 
-[[kv_namespaces]]
-binding = "RATE_LIMITS"
-id = "0f2a1550dd764daa92624aad9f859f57"
-
 [[queues.producers]]
 binding = "MEDIA_QUEUE"
 queue = "tim-lost-media-processing"
@@ -40,10 +36,6 @@ database_id = "2ad5e924-39df-48ce-aec8-d3029b7a4abf"
 [[env.preview.r2_buckets]]
 binding = "UPLOADS"
 bucket_name = "tim-lost-private-media-validation"
-
-[[env.preview.kv_namespaces]]
-binding = "RATE_LIMITS"
-id = "5c32ae59aaeb421f8959f417a4751efd"
 
 [[env.preview.queues.producers]]
 binding = "MEDIA_QUEUE"

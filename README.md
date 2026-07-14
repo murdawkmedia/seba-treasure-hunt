@@ -41,7 +41,7 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 - Private R2 stores report and community-media originals.
 - A Queue delivers uploaded media to a private Worker that validates and re-encodes approved raster formats through Cloudflare Images.
 - Only a D1-authorized, ready derivative can be read publicly; originals and find evidence have no public delivery path.
-- KV provides salted, hashed-identifier rate limits. Turnstile is the second write control.
+- D1 provides atomic fixed-window rate limits using salted identifier hashes and expiring counters. Turnstile is the second write control.
 - Sponsor inquiries use the dedicated `sponsor_inquiry` Turnstile action, idempotency, and rate limits before entering a private D1 sponsor-inquiry and append-only event ledger. Authorized staff use Ops Sponsors to search, filter, and record audited pipeline changes.
 - Sponsor follow-up remains a deliberate staff workflow. There is no automated email, marketing subscription, public sponsor list, or CSV export in this implementation.
 - Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
@@ -78,7 +78,7 @@ The complete suite covers public content contracts, SEO/AEO, canonical redirects
 
 Cloudflare configuration is in `wrangler.toml`; the queue consumer is in `wrangler.media.toml`. Production database changes are versioned under `migrations/` and must be applied in order.
 
-All Pages preview deployments use disposable validation-suffixed D1, R2, KV and Queue bindings. The stable authenticated test URL is `codex-validation.seba-treasure-hunt.pages.dev`; immutable deployment URLs are for unauthenticated smoke tests only. Validation records are never promoted to production.
+All Pages preview deployments use disposable validation-suffixed D1, R2 and Queue bindings. Rate-limit counters live in the isolated validation D1 database. The stable authenticated test URL is `codex-validation.seba-treasure-hunt.pages.dev`; immutable deployment URLs are for unauthenticated smoke tests only. Validation records are never promoted to production.
 
 Never upload the working directory. `npm run build` creates an allowlisted `dist/` and excludes planning, source media, environment files, local Cloudflare state and unconfirmed partner assets.
 
@@ -87,7 +87,7 @@ Do not promote a build until all of these are configured and tested in preview:
 1. public Clerk application with verified email/password, password recovery and compromised-password protection;
 2. separate invitation-only staff Clerk application;
 3. signed Clerk lifecycle webhook and deployment secret;
-4. required D1 migrations through `0008_immutable_waiver_ledgers.sql`, including the player/legal ledger, environment sentinel, sponsor inquiries, waiver/receipt records, fenced delivery leases and immutable legal-delivery ledgers;
+4. required D1 migrations through `0009_atomic_rate_limits.sql`, including the player/legal ledger, environment sentinel, sponsor inquiries, waiver/receipt records, fenced delivery leases, immutable legal-delivery ledgers and atomic rate-limit counters;
 5. privately seeded staff principals;
 6. hostname-restricted Turnstile widget and secret;
 7. private report upload and queue processing;
