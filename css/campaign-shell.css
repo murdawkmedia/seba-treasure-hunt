@@ -307,6 +307,7 @@ html {
 
   .campaign-header__inner {
     flex-wrap: wrap;
+    row-gap: 0;
     padding: 6px 12px;
   }
 
@@ -318,14 +319,18 @@ html {
   .campaign-nav {
     display: none;
     flex: 0 0 100%;
+    flex-wrap: nowrap;
     align-items: stretch;
     flex-direction: column;
+    justify-content: flex-start;
     gap: 0;
     width: 100%;
+    min-width: 0;
     max-height: calc(100vh - var(--case-strip-height) - var(--campaign-nav-min-height));
     max-height: calc(100dvh - var(--case-strip-height) - var(--campaign-nav-min-height));
     margin-left: 0;
     padding: 4px 8px 10px;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     scroll-padding-block: 8px;
@@ -336,8 +341,9 @@ html {
 
   .campaign-nav a,
   .campaign-nav .nav-sponsors {
+    flex-shrink: 0;
     width: 100%;
-    min-height: 44px;
+    min-height: 48px;
     padding: 10px 12px;
     border-top: 1px solid rgba(234, 182, 63, 0.2);
     border-radius: 0;

@@ -293,10 +293,17 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
 
       for (const file of files) {
         await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
-        await page.locator(".campaign-menu-toggle").click();
-        const sponsor = page.locator('#campaign-nav a[href="/sponsors"]');
-        await sponsor.focus();
-        await sponsor.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
+        const toggle = page.locator(".campaign-menu-toggle");
+        await toggle.click();
+        const initialScrollTop = await page.locator("#campaign-nav").evaluate((nav) => nav.scrollTop);
+        const navLinkCount = await page.locator("#campaign-nav a").count();
+        let focusedHref = null;
+        for (let index = 0; index < navLinkCount; index += 1) {
+          await page.keyboard.press("Tab");
+          focusedHref = await page.evaluate(() => document.activeElement?.getAttribute("href"));
+          if (focusedHref === "/sponsors") break;
+        }
+        assert.equal(focusedHref, "/sponsors", `${file} reaches Sponsors through keyboard Tab traversal`);
         const metrics = await page.evaluate(() => {
           const nav = document.querySelector("#campaign-nav");
           const sponsorLink = nav?.querySelector('a[href="/sponsors"]');
@@ -305,20 +312,23 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
           const sponsorRect = sponsorLink.getBoundingClientRect();
           const sponsorStyles = getComputedStyle(sponsorLink);
           const focusSpace = Number.parseFloat(sponsorStyles.outlineWidth) + Number.parseFloat(sponsorStyles.outlineOffset);
-          const originalScrollTop = nav.scrollTop;
-          nav.scrollTop = nav.scrollHeight;
-          const maximumScrollTop = nav.scrollTop;
-          nav.scrollTop = originalScrollTop;
           return {
             documentOverflow: document.documentElement.scrollWidth - window.innerWidth,
             focusSpace,
-            maximumScrollTop,
             navBottom: navRect.bottom,
             navClientHeight: nav.clientHeight,
+            navClientWidth: nav.clientWidth,
             navOverflowY: getComputedStyle(nav).overflowY,
+            navScrollLeft: nav.scrollLeft,
+            navScrollTop: nav.scrollTop,
             navScrollHeight: nav.scrollHeight,
+            navScrollWidth: nav.scrollWidth,
+            navLeft: navRect.left,
+            navRight: navRect.right,
             navTop: navRect.top,
             sponsorBottom: sponsorRect.bottom,
+            sponsorLeft: sponsorRect.left,
+            sponsorRight: sponsorRect.right,
             sponsorTop: sponsorRect.top,
             viewportHeight: window.innerHeight,
           };
@@ -327,13 +337,19 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
         assert.ok(metrics, `${file} exposes menu geometry at ${viewport.width}x${viewport.height}`);
         assert.ok(metrics.documentOverflow <= 1, `${file} has no horizontal overflow at ${viewport.width}px`);
         assert.equal(metrics.navOverflowY, "auto", `${file} menu scroll is operable`);
-        if (metrics.navScrollHeight > metrics.navClientHeight) {
-          assert.ok(metrics.maximumScrollTop > 0, `${file} constrained menu accepts vertical scrolling`);
-        }
+        assert.ok(metrics.navScrollWidth <= metrics.navClientWidth, `${file} menu has no horizontal overflow`);
+        assert.equal(metrics.navScrollLeft, 0, `${file} Tab traversal needs no horizontal scrolling`);
+        assert.ok(
+          metrics.navScrollHeight > metrics.navClientHeight,
+          `${file} constrained menu has vertical overflow (${metrics.navScrollHeight} > ${metrics.navClientHeight})`,
+        );
+        assert.ok(metrics.navScrollTop > initialScrollTop, `${file} Tab traversal scrolls the menu vertically`);
+        assert.ok(metrics.sponsorLeft >= metrics.navLeft + metrics.focusSpace - 1, `${file} Sponsors focus left is visible`);
+        assert.ok(metrics.sponsorRight <= metrics.navRight - metrics.focusSpace + 1, `${file} Sponsors focus right is visible`);
         assert.ok(metrics.sponsorTop >= metrics.navTop + metrics.focusSpace - 1, `${file} Sponsors focus top is visible`);
         assert.ok(
           metrics.sponsorBottom <= Math.min(metrics.navBottom, metrics.viewportHeight) - metrics.focusSpace + 1,
-          `${file} Sponsors focus bottom is visible`,
+          `${file} Sponsors focus bottom is visible (${metrics.sponsorBottom} <= ${Math.min(metrics.navBottom, metrics.viewportHeight) - metrics.focusSpace + 1}; scrollTop ${metrics.navScrollTop})`,
         );
       }
       await context.close();
