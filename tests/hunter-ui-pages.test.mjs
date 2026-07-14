@@ -240,6 +240,18 @@ test("the clue board keeps its distinct shell without becoming a navigation exce
   assert.doesNotMatch(board, /nav a:not\(\.board-topbar__account\)\s*\{[^}]*display:\s*none/s);
 });
 
+test("the clue board loads shared status before its board client", () => {
+  const source = read("clue-board.html");
+  const statusScript = '<script type="module" src="/assets/app/status.js"></script>';
+  const boardScript = '<script type="module" src="/assets/app/board.js"></script>';
+
+  assert.notEqual(source.indexOf(statusScript), -1, "clue-board.html loads shared status");
+  assert.ok(
+    source.indexOf(statusScript) < source.indexOf(boardScript),
+    "shared status must initialize before the board client",
+  );
+});
+
 test("shared menu behavior closes consistently without trapping focus", () => {
   const site = read("js/site.js");
   assert.match(site, /function closeNav\(toggle, nav\)/);

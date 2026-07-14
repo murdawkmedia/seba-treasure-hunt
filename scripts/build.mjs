@@ -6,8 +6,52 @@ import { execFileSync } from "node:child_process";
 import { CAMPAIGN_PAGES, renderCampaignPage } from "./campaign-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dist = path.join(root, "dist");
-const mediaDist = path.join(root, "dist-media");
+
+function resolveDirectoryOverride(name, fallback) {
+  const value = process.env[name];
+  if (!value) return { path: fallback, overridden: false };
+  if (!path.isAbsolute(value)) throw new Error(`${name} must be an absolute path`);
+  return { path: path.resolve(value), overridden: true };
+}
+
+function containsPath(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative === "" || (
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function pathsOverlap(first, second) {
+  return containsPath(first, second) || containsPath(second, first);
+}
+
+const distConfig = resolveDirectoryOverride(
+  "TIM_LOST_BUILD_DIST_DIR",
+  path.join(root, "dist"),
+);
+const mediaDistConfig = resolveDirectoryOverride(
+  "TIM_LOST_BUILD_MEDIA_DIST_DIR",
+  path.join(root, "dist-media"),
+);
+const pageSourceConfig = resolveDirectoryOverride(
+  "TIM_LOST_BUILD_PAGE_SOURCE_DIR",
+  root,
+);
+
+for (const output of [distConfig, mediaDistConfig]) {
+  if (output.overridden && pathsOverlap(output.path, root)) {
+    throw new Error("Build output overrides must not overlap the source repository");
+  }
+}
+if (pathsOverlap(distConfig.path, mediaDistConfig.path)) {
+  throw new Error("Public and media build outputs must not overlap");
+}
+
+const dist = distConfig.path;
+const mediaDist = mediaDistConfig.path;
+const pageSource = pageSourceConfig.path;
 
 // Equivalent to `npm run legal:verify`, without invoking a platform shell.
 execFileSync(process.execPath, [path.join(root, "scripts", "generate-waiver.mjs"), "--check"], {
@@ -39,7 +83,7 @@ const staticDirectories = ["assets", "css", "js"];
 
 const renderedCampaignPages = new Map();
 for (const file of Object.keys(CAMPAIGN_PAGES)) {
-  const html = await readFile(path.join(root, file), "utf8");
+  const html = await readFile(path.join(pageSource, file), "utf8");
   renderedCampaignPages.set(file, renderCampaignPage(html, file));
 }
 
