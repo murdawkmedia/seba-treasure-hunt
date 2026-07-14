@@ -160,7 +160,7 @@ test("D1GraphTokenStore encrypts and rotates Graph refresh-token state in real D
 
   await t.test("missing database, key, version, or schema fails closed without sensitive detail", async () => {
     const refreshToken = runtimeSecret("refresh");
-    const cases = [
+    const cases: Array<() => Promise<unknown>> = [
       () => new D1GraphTokenStore(null, key, "graph-key-v1").save(null, refreshToken),
       () => new D1GraphTokenStore(db, null, "graph-key-v1").save(null, refreshToken),
       () => new D1GraphTokenStore(db, key, null).save(null, refreshToken)

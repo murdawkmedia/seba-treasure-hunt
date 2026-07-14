@@ -9,6 +9,7 @@
     "src/server/**/*.ts",
     "tests/api-*.test.ts",
     "tests/api-test-kit.ts",
+    "tests/graph-token-store.test.ts",
     "tests/media-worker.test.ts"
   ]
 }
