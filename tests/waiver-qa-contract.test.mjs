@@ -32,7 +32,11 @@ test("waiver QA has a durable local command and isolated browser server", async 
   assert.match(script, /replace\(\/\\r\\n\/g,\s*["']\\n["']\)/);
   assert.match(script, /spawnSync\(\s*process\.execPath,\s*\[path\.join\(stagingRoot,\s*["']scripts["'],\s*["']generate-waiver\.mjs["']\)/);
   assert.match(script, /spawnSync\(process\.execPath,\s*\[path\.join\(stagingRoot,\s*["']scripts["'],\s*["']build\.mjs["']\)/);
-  assert.match(script, /path\.join\(os\.tmpdir\(\),\s*["']tim-lost-waiver-qa["']\)/);
+  assert.match(script, /mkdtemp\(path\.join\(os\.tmpdir\(\),\s*["']tim-lost-waiver-qa-["']\)\)/);
+  assert.match(script, /preserveArtifacts/);
+  assert.match(script, /finally\s*\{/);
+  assert.match(script, /rm\(artifactRoot,\s*\{\s*recursive:\s*true,\s*force:\s*true\s*\}\)/);
+  assert.doesNotMatch(script, /path\.join\(os\.tmpdir\(\),\s*["']tim-lost-waiver-qa["']\)/);
   assert.match(script, /screenshots/);
   assert.match(script, /qa-log\.json/);
 });
@@ -40,7 +44,7 @@ test("waiver QA has a durable local command and isolated browser server", async 
 test("waiver QA statically covers every required route, viewport, and state", async () => {
   const script = await readRunner();
 
-  for (const route of ["/waiver", "/dashboard", "/ops"]) {
+  for (const route of ["/waiver", "/dashboard", "/ops", "/clue-board", "/report"]) {
     assert.match(script, new RegExp(`(?:path|route):\\s*["']${route}["']`));
   }
 
@@ -57,6 +61,11 @@ test("waiver QA statically covers every required route, viewport, and state", as
   assert.match(script, /receipt pending, sent, and failed/i);
   assert.match(script, /participant receipt resend/i);
   assert.match(script, /Ops receipt retry/i);
+  assert.match(script, /progress and waypoint boundaries/i);
+  assert.match(script, /note upload boundary/i);
+  assert.match(script, /reply privacy boundary/i);
+  assert.match(script, /private find report boundary/i);
+  assert.match(script, /report upload boundary/i);
   assert.match(script, /horizontal overflow/i);
   assert.match(script, /console errors/i);
   assert.match(script, /data-waiver-legal-body/);
@@ -64,6 +73,27 @@ test("waiver QA statically covers every required route, viewport, and state", as
   assert.match(script, /data-waiver-result/);
   assert.match(script, /data-waiver-receipt-status/);
   assert.match(script, /data-resend-waiver-receipt/);
+  assert.match(script, /data-retry-waiver-receipt/);
+  assert.match(script, /data-add-minor/);
+  assert.match(script, /data-waiver-submit/);
+  assert.match(script, /data-view=["']subscribers["']/);
+  assert.match(script, /data-waiver-detail/);
+});
+
+test("waiver QA exercises built clients and mocks only auth, APIs, and providers", async () => {
+  const script = await readRunner();
+
+  assert.doesNotMatch(script, /installDashboardFixture|installOpsFixture/);
+  assert.doesNotMatch(script, /window\.__waiverQa/);
+  assert.match(script, /assets\/app\/dashboard\.js/);
+  assert.match(script, /assets\/app\/ops\.js/);
+  assert.match(script, /fake Clerk module/i);
+  assert.match(script, /turnstile provider mock/i);
+  assert.match(script, /data-waiver-review-link/);
+  assert.match(script, /data-add-minor/);
+  assert.match(script, /data-waiver-submit/);
+  assert.match(script, /data-view=["']subscribers["']/);
+  assert.match(script, /data-waiver-detail/);
   assert.match(script, /data-retry-waiver-receipt/);
 });
 
@@ -76,6 +106,7 @@ test("waiver QA installs a zero-external-write boundary before every page", asyn
     .map((match) => match[1])
     .sort();
   assert.deepEqual(actualAllowedWrites, [
+    "/api/v1/me/bootstrap",
     "/api/v1/me/waiver/accept",
     "/api/v1/me/waiver/receipt",
     "/api/v1/me/waiver/review",
@@ -88,11 +119,18 @@ test("waiver QA installs a zero-external-write boundary before every page", asyn
   assert.match(script, /url\.origin === localOrigin/);
   assert.match(script, /allowedWritePaths\.has\(url\.pathname\)/);
   assert.match(script, /mockedWrites\.set/);
-  assert.match(script, /externalRequestsReached/);
+  assert.match(script, /identityBootstrapPath/);
+  assert.match(script, /identityBootstrapWrites/);
+  assert.match(script, /observedRequests/);
+  assert.match(script, /disposition/);
+  assert.match(script, /continuedExternalRequests/);
+  assert.match(script, /externalWritesObserved/);
+  assert.doesNotMatch(script, /externalRequestsReached/);
   assert.match(script, /route\.abort\(["']blockedbyclient["']\)/);
   assert.match(script, /Blocked non-allowlisted write/);
   assert.match(script, /zero external writes/i);
-  assert.match(script, /assert\.equal\(networkLedger\.externalRequestsReached\.length,\s*0/);
+  assert.match(script, /assert\.equal\(networkLedger\.continuedExternalRequests\.length,\s*0/);
+  assert.match(script, /assert\.equal\(networkLedger\.externalWritesObserved\.length,\s*0/);
 
   for (const forbiddenTarget of [
     "clerk",
@@ -103,4 +141,30 @@ test("waiver QA installs a zero-external-write boundary before every page", asyn
   ]) {
     assert.match(script.toLowerCase(), new RegExp(forbiddenTarget.replaceAll(".", "\\.")));
   }
+});
+
+test("waiver QA scans private fixture values across source and served public output", async () => {
+  const script = await readRunner();
+
+  for (const privateFixture of [
+    "qa-private-hunter@example.test",
+    "QA Private Minor 01",
+    "2014",
+    "waiver-acceptance-qa-private-001",
+    "receipt-job-qa-private-001",
+    "resend-provider-qa-private-001",
+    "sk_test_qa_private_credential",
+    "53.123456,-114.654321",
+    "qa-private-note-evidence",
+    "qa-private-report-evidence",
+  ]) {
+    assert.match(script, new RegExp(privateFixture.replaceAll(".", "\\.")));
+  }
+
+  assert.match(script, /production source privacy scan/i);
+  assert.match(script, /rendered public output privacy scan/i);
+  assert.match(script, /server\/Ops bundle privacy classification/i);
+  assert.match(script, /publicSurfaceOutputs/);
+  assert.match(script, /privateBundleOutputs/);
+  assert.match(script, /privacyFindings/);
 });
