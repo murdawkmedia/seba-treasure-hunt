@@ -16,6 +16,7 @@ test("sitemap exposes every indexable answer surface and no private tool", () =>
     "/updates",
     "/rules",
     "/privacy",
+    "/waiver",
     "/community-guidelines",
     "/clue-board",
     "/sponsors",

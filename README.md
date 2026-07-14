@@ -28,6 +28,7 @@ The bare hostname permanently redirects to the canonical `www` hostname while pr
 | `/rules` | Versioned current rules and safety guidance |
 | `/sponsors` | Public information and a protected private sponsorship inquiry form |
 | `/privacy` | Versioned Privacy Policy & Media Notice |
+| `/waiver` | Versioned Participation Waiver, guardian terms and print view |
 | `/community-guidelines` | Public contribution and moderation rules |
 | `/ops` | Invitation-only staff case room, including the private Ops Sponsors ledger |
 
@@ -44,9 +45,11 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 - Sponsor inquiries use the dedicated `sponsor_inquiry` Turnstile action, idempotency, and rate limits before entering a private D1 sponsor-inquiry and append-only event ledger. Authorized staff use Ops Sponsors to search, filter, and record audited pipeline changes.
 - Sponsor follow-up remains a deliberate staff workflow. There is no automated email, marketing subscription, public sponsor list, or CSV export in this implementation.
 - Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
+- Privacy/media acceptance, participation-waiver review and participation-waiver acceptance are separate append-only legal events. One adult may register up to ten directly supervised minors by name and birth year; those snapshots are private and absent from player exports.
+- A stored waiver acceptance queues one transactional full-text receipt to the player account's verified email. Delivery and deliberate resend use the dedicated `LEGAL_RECEIPT_EMAIL_FROM` and optional `LEGAL_RECEIPT_EMAIL_REPLY_TO` configuration; they never change hunt-update or SebaHub marketing permissions.
 - `assets/favicon.svg` is the canonical Sunny Pirate Mystery Chest favicon. `npm run assets:favicons` deterministically regenerates its PNG and multi-resolution ICO variants.
 
-The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication, completed legal requirements and an active/open safety check. While the approved participation waiver is pending, exact directions, progress writes and community participation stay locked.
+The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication, a completed profile, current Privacy/Media `2026.2` acceptance, current Participation Waiver `2026.1` acceptance and an active/open safety check. Exact directions, progress writes and community participation remain locked until all independent gates pass.
 
 ## Privacy and campaign artwork
 
@@ -61,6 +64,7 @@ The browser receives waypoint names, descriptions and safety states only. Exact 
 
 ```powershell
 npm ci
+npm run legal:verify
 npm run assets:favicons
 npm test
 npm run typecheck
@@ -83,13 +87,14 @@ Do not promote a build until all of these are configured and tested in preview:
 1. public Clerk application with verified email/password, password recovery and compromised-password protection;
 2. separate invitation-only staff Clerk application;
 3. signed Clerk lifecycle webhook and deployment secret;
-4. required D1 migrations, including the player/legal ledger, environment sentinel, and sponsor-inquiry migration `0005_sponsor_inquiries.sql`;
+4. required D1 migrations, including the player/legal ledger, environment sentinel, sponsor-inquiry migration `0005_sponsor_inquiries.sql`, and waiver/receipt migration `0006_participation_waiver_and_receipts.sql`;
 5. privately seeded staff principals;
 6. hostname-restricted Turnstile widget and secret;
 7. private report upload and queue processing;
 8. hunter and staff sign-in, recovery and authorization;
 9. sponsor inquiry submission and Ops Sponsors review with the exact `sponsor_inquiry` Turnstile action;
 10. full public-output privacy scan.
+11. a dedicated Resend legal-receipt sender configured through `LEGAL_RECEIPT_EMAIL_FROM` and, when used, `LEGAL_RECEIPT_EMAIL_REPLY_TO`;
 
 ## Decisions in force
 
@@ -101,7 +106,7 @@ Do not promote a build until all of these are configured and tested in preview:
 - Public media must be metadata-free; exact guidance is account-gated.
 - Public notes and images are premoderated. Private reports never auto-publish.
 - Sponsor inquiries and internal pipeline notes remain private; submitting does not create an agreement, marketing consent, or publication authorization.
-- Privacy/media acceptance and the forthcoming participation waiver are separate versioned records. No waiver language is invented; participation remains locked until the approved document is supplied.
+- Privacy/media acceptance and Participation Waiver `2026.1` acceptance are separate versioned records. Guardian acceptance, covered minors and receipt delivery remain private; participation unlocks only for the exact active version and hash.
 - The real evidence photo remains the social preview.
 - No fabricated claims, countdowns or urgency.
 - The route MP4 must remain below Cloudflare Pages' 25 MiB per-file limit.

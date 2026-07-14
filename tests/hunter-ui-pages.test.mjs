@@ -12,11 +12,35 @@ const pages = {
   "report.html": { canonical: "/report", robots: "noindex,follow" },
   "rules.html": { canonical: "/rules", robots: "index,follow,max-image-preview:large" },
   "privacy.html": { canonical: "/privacy", robots: "index,follow" },
+  "waiver.html": { canonical: "/waiver", robots: "index,follow" },
   "community-guidelines.html": {
     canonical: "/community-guidelines",
     robots: "index,follow",
   },
 };
+
+test("the active waiver is discoverable from legal footers, routing, build, and docs", () => {
+  for (const file of [
+    "dashboard.html",
+    "rules.html",
+    "privacy.html",
+    "start.html",
+    "updates.html",
+    "report.html",
+    "community-guidelines.html",
+    "clue-board.html",
+    "sponsors.html",
+  ]) {
+    assert.match(read(file), /href="\/waiver"/, `${file} links the active waiver`);
+  }
+  assert.match(read("src/server/app.ts"), /\["\/waiver", "\/waiver\.html"\]/);
+  assert.match(read("scripts/build.mjs"), /"waiver\.html"/);
+  const readme = read("README.md");
+  assert.match(readme, /\| `\/waiver` \|/);
+  assert.match(readme, /LEGAL_RECEIPT_EMAIL_FROM/);
+  assert.match(readme, /LEGAL_RECEIPT_EMAIL_REPLY_TO/);
+  assert.doesNotMatch(readme, /waiver is pending|forthcoming participation waiver/i);
+});
 
 const hunterMenuPages = [
   "start.html",
