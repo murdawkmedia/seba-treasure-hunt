@@ -41,6 +41,9 @@ const headerControl = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 const emailAddress =
   /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const correlationReference = /^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/;
+const recommendedHeaderLineLength = 78;
+const encodedWordByteLimit = 45;
+const bodyBase64LineLength = 76;
 
 function validatedHeader(label: string, value: string): string {
   if (!value || headerControl.test(value)) {
@@ -51,7 +54,7 @@ function validatedHeader(label: string, value: string): string {
 
 function validatedEmailHeader(label: string, value: string): string {
   const validated = validatedHeader(label, value);
-  if (!emailAddress.test(validated)) {
+  if (new TextEncoder().encode(validated).byteLength > 254 || !emailAddress.test(validated)) {
     throw new Error(`Invalid ${label} email header value.`);
   }
   return validated;
@@ -64,17 +67,75 @@ function toUtf8Base64(value: string): string {
   return btoa(binary);
 }
 
-function encodedHeaderText(value: string): string {
-  return /^[\x20-\x7e]+$/.test(value) ? value : `=?UTF-8?B?${toUtf8Base64(value)}?=`;
+function utf8Length(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
-function formattedDisplayName(value: string): string {
-  if (!/^[\x20-\x7e]+$/.test(value)) return encodedHeaderText(value);
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+function encodedWordTokens(value: string): string[] {
+  const chunks: string[] = [];
+  let chunk = "";
+  let chunkBytes = 0;
+
+  for (const codePoint of value) {
+    const codePointBytes = utf8Length(codePoint);
+    if (chunk && chunkBytes + codePointBytes > encodedWordByteLimit) {
+      chunks.push(chunk);
+      chunk = "";
+      chunkBytes = 0;
+    }
+    chunk += codePoint;
+    chunkBytes += codePointBytes;
+  }
+  if (chunk) chunks.push(chunk);
+
+  return chunks.map((valueChunk) => `=?UTF-8?B?${toUtf8Base64(valueChunk)}?=`);
+}
+
+function foldHeader(name: string, tokens: string[]): string {
+  const lines: string[] = [];
+  let line = `${name}:`;
+
+  for (const token of tokens) {
+    const candidate = `${line} ${token}`;
+    if (utf8Length(candidate) <= recommendedHeaderLineLength) {
+      line = candidate;
+    } else {
+      lines.push(line);
+      line = ` ${token}`;
+    }
+  }
+  lines.push(line);
+  return lines.join("\r\n");
+}
+
+function unstructuredHeader(name: string, value: string): string {
+  const rawHeader = `${name}: ${value}`;
+  if (/^[\x20-\x7e]+$/.test(value) && utf8Length(rawHeader) <= recommendedHeaderLineLength) {
+    return rawHeader;
+  }
+  return foldHeader(name, encodedWordTokens(value));
+}
+
+function fromHeader(displayName: string, address: string): string {
+  const quotedName = `"${displayName.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  const rawHeader = `From: ${quotedName} <${address}>`;
+  if (/^[\x20-\x7e]+$/.test(displayName) && utf8Length(rawHeader) <= recommendedHeaderLineLength) {
+    return rawHeader;
+  }
+  return foldHeader("From", [...encodedWordTokens(displayName), `<${address}>`]);
 }
 
 function canonicalBody(value: string): string {
   return value.replace(/\r\n|\r|\n/g, "\r\n");
+}
+
+function encodedBody(value: string): string {
+  const base64 = toUtf8Base64(canonicalBody(value));
+  const lines: string[] = [];
+  for (let start = 0; start < base64.length; start += bodyBase64LineLength) {
+    lines.push(base64.slice(start, start + bodyBase64LineLength));
+  }
+  return lines.join("\r\n");
 }
 
 export function renderTransactionalMime(message: TransactionalMessage): { base64: string } {
@@ -93,10 +154,10 @@ export function renderTransactionalMime(message: TransactionalMessage): { base64
 
   const boundary = `=_tim_lost_${correlationId}`;
   const headers = [
-    `From: ${formattedDisplayName(fromName)} <${fromAddress}>`,
+    fromHeader(fromName, fromAddress),
     `To: ${to}`,
     `Reply-To: ${replyTo}`,
-    `Subject: ${encodedHeaderText(subject)}`,
+    unstructuredHeader("Subject", subject),
     `Date: ${sentAt.toUTCString()}`,
     "MIME-Version: 1.0",
     `Message-ID: <${correlationId}@mail.sebahub.com>`,
@@ -111,14 +172,14 @@ export function renderTransactionalMime(message: TransactionalMessage): { base64
       "",
       `--${boundary}`,
       "Content-Type: text/plain; charset=UTF-8",
-      "Content-Transfer-Encoding: 8bit",
+      "Content-Transfer-Encoding: base64",
       "",
-      canonicalBody(message.text),
+      encodedBody(message.text),
       `--${boundary}`,
       "Content-Type: text/html; charset=UTF-8",
-      "Content-Transfer-Encoding: 8bit",
+      "Content-Transfer-Encoding: base64",
       "",
-      canonicalBody(message.html),
+      encodedBody(message.html),
       `--${boundary}--`,
       ""
     ].join("\r\n");
@@ -126,9 +187,9 @@ export function renderTransactionalMime(message: TransactionalMessage): { base64
     mime = [
       ...headers,
       "Content-Type: text/plain; charset=UTF-8",
-      "Content-Transfer-Encoding: 8bit",
+      "Content-Transfer-Encoding: base64",
       "",
-      canonicalBody(message.text),
+      encodedBody(message.text),
       ""
     ].join("\r\n");
   }
