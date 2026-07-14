@@ -46,7 +46,7 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 - Sponsor follow-up remains a deliberate staff workflow. There is no automated email, marketing subscription, public sponsor list, or CSV export in this implementation.
 - Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
 - Privacy/media acceptance, participation-waiver review and participation-waiver acceptance are separate append-only legal events. One adult may register up to ten directly supervised minors by name and birth year; those snapshots are private and absent from player exports.
-- A stored waiver acceptance queues one transactional full-text receipt to the player account's verified email. Delivery and deliberate resend use the dedicated `LEGAL_RECEIPT_EMAIL_FROM` and optional `LEGAL_RECEIPT_EMAIL_REPLY_TO` configuration; they never change hunt-update or SebaHub marketing permissions.
+- A stored waiver acceptance queues one transactional full-text receipt to the player account's verified email. Delivery and deliberate resend require dedicated `LEGAL_RECEIPT_EMAIL_FROM` and `LEGAL_RECEIPT_EMAIL_REPLY_TO` configuration; they never change hunt-update or SebaHub marketing permissions.
 - `assets/favicon.svg` is the canonical Sunny Pirate Mystery Chest favicon. `npm run assets:favicons` deterministically regenerates its PNG and multi-resolution ICO variants.
 
 The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication, a completed profile, current Privacy/Media `2026.2` acceptance, current Participation Waiver `2026.1` acceptance and an active/open safety check. Exact directions, progress writes and community participation remain locked until all independent gates pass.
@@ -87,14 +87,14 @@ Do not promote a build until all of these are configured and tested in preview:
 1. public Clerk application with verified email/password, password recovery and compromised-password protection;
 2. separate invitation-only staff Clerk application;
 3. signed Clerk lifecycle webhook and deployment secret;
-4. required D1 migrations, including the player/legal ledger, environment sentinel, sponsor-inquiry migration `0005_sponsor_inquiries.sql`, and waiver/receipt migration `0006_participation_waiver_and_receipts.sql`;
+4. required D1 migrations through `0008_immutable_waiver_ledgers.sql`, including the player/legal ledger, environment sentinel, sponsor inquiries, waiver/receipt records, fenced delivery leases and immutable legal-delivery ledgers;
 5. privately seeded staff principals;
 6. hostname-restricted Turnstile widget and secret;
 7. private report upload and queue processing;
 8. hunter and staff sign-in, recovery and authorization;
 9. sponsor inquiry submission and Ops Sponsors review with the exact `sponsor_inquiry` Turnstile action;
 10. full public-output privacy scan.
-11. a dedicated Resend legal-receipt sender configured through `LEGAL_RECEIPT_EMAIL_FROM` and, when used, `LEGAL_RECEIPT_EMAIL_REPLY_TO`;
+11. a dedicated Resend legal-receipt sender configured through both `LEGAL_RECEIPT_EMAIL_FROM` and `LEGAL_RECEIPT_EMAIL_REPLY_TO`;
 
 ## Decisions in force
 

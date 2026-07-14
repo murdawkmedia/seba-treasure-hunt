@@ -336,7 +336,8 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     "0004_environment_metadata.sql",
     "0005_sponsor_inquiries.sql",
     "0006_participation_waiver_and_receipts.sql",
-    "0007_waiver_receipt_leases.sql"
+    "0007_waiver_receipt_leases.sql",
+    "0008_immutable_waiver_ledgers.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -816,7 +817,8 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
     "0003_player_accounts_and_legal_acceptance.sql",
     "0004_environment_metadata.sql",
     "0005_sponsor_inquiries.sql",
-    "0006_participation_waiver_and_receipts.sql"
+    "0006_participation_waiver_and_receipts.sql",
+    "0008_immutable_waiver_ledgers.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -904,6 +906,28 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
   );
   assert.deepEqual(counts, [1, 1, 3, 1, 1]);
 
+  const immutableLedgerMutations = [
+    {
+      update: "UPDATE legal_document_review_events SET reviewed_at = '2026-07-13T21:00:00.000Z' WHERE id = 'review-1'",
+      remove: "DELETE FROM legal_document_review_events WHERE id = 'review-1'",
+      message: /legal document review events are immutable/i
+    },
+    {
+      update: "UPDATE waiver_acceptance_participants SET full_name = 'Changed Name', birth_year = 2012 WHERE id = 'participant-minor-1'",
+      remove: "DELETE FROM waiver_acceptance_participants WHERE id = 'participant-minor-1'",
+      message: /waiver acceptance participants are immutable/i
+    },
+    {
+      update: "UPDATE notification_delivery_events SET event_type = 'failed', error_code = 'changed' WHERE id = 'delivery-1'",
+      remove: "DELETE FROM notification_delivery_events WHERE id = 'delivery-1'",
+      message: /notification delivery events are immutable/i
+    }
+  ];
+  for (const mutation of immutableLedgerMutations) {
+    await assert.rejects(db.prepare(mutation.update).run(), mutation.message);
+    await assert.rejects(db.prepare(mutation.remove).run(), mutation.message);
+  }
+
   await db.batch([
     acceptanceInsert(db, "acceptance-privacy", "privacy_media"),
     acceptanceInsert(db, "acceptance-withdrawn", "participation_waiver", "withdrawn")
@@ -926,7 +950,7 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
         )
         .bind(acceptanceEventId)
         .run(),
-      /accepted participation waiver/i
+      /accepted participation waiver|waiver acceptance participants are immutable/i
     );
     await assert.rejects(
       notificationJobInsert(db, `receipt-${suffix}`, "waiver_receipt", acceptanceEventId).run(),
@@ -991,7 +1015,8 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
     "0003_player_accounts_and_legal_acceptance.sql",
     "0004_environment_metadata.sql",
     "0005_sponsor_inquiries.sql",
-    "0006_participation_waiver_and_receipts.sql"
+    "0006_participation_waiver_and_receipts.sql",
+    "0008_immutable_waiver_ledgers.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -1099,6 +1124,10 @@ test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (
   assert.ok(waiverMigration, "waiver migration is loaded");
   await applySql(db, waiverMigration);
   await applySql(db, waiverMigration);
+  const immutableLedgerMigration = migrations[6];
+  assert.ok(immutableLedgerMigration, "immutable ledger migration is loaded");
+  await applySql(db, immutableLedgerMigration);
+  await applySql(db, immutableLedgerMigration);
 
   const jobs = await db
     .prepare("SELECT id, kind, status, attempts FROM notification_jobs ORDER BY id")
