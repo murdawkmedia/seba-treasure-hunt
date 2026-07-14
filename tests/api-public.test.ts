@@ -48,6 +48,67 @@ test("serves public case data without leaking exact waypoint navigation", async 
   assert.equal("exactUrl" in waypointBody.data[0], false);
 });
 
+test("public API projections exclude private waiver, minor, report, and location evidence", async () => {
+  const store = new FakeStore();
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  store.profiles.set("hunter-1", { subject: "hunter-1", fullName: "Alex Hunter" });
+  const review = await store.recordWaiverReview("hunter-1", {
+    version: "2026.1",
+    hash: "a".repeat(64)
+  });
+  const accepted = await store.acceptParticipationWaiver("hunter-1", {
+    reviewEventId: review.id,
+    idempotencyKey: "public-scan-acceptance",
+    adultName: "Alex Hunter",
+    minors: [{ fullName: "Sam Hunter", birthYear: 2014 }],
+    guardianAttested: true,
+    documentVersion: "2026.1",
+    documentHash: "a".repeat(64)
+  });
+  store.reports.push({
+    id: "private-report",
+    details: "Private report evidence phrase",
+    latitude: 53.123456,
+    longitude: -114.123456,
+    status: "received"
+  });
+  store.notes.push({
+    id: "pending-private-note",
+    body: "Pending private moderation phrase",
+    status: "pending"
+  });
+  const { app } = makeApp(store);
+  const paths = [
+    "/api/v1/status",
+    "/api/v1/updates",
+    "/api/v1/rules/current",
+    "/api/v1/zones",
+    "/api/v1/waypoints",
+    "/api/v1/board",
+    "/api/v1/legal/waiver"
+  ];
+  const publicOutput = (await Promise.all(paths.map(async (path) => {
+    const response = await app.request(`https://www.timlostsomething.com${path}`);
+    assert.equal(response.status, 200, path);
+    return response.text();
+  }))).join("\n");
+
+  for (const privateValue of [
+    "hunter@example.test",
+    "Alex Hunter",
+    "Sam Hunter",
+    "2014",
+    accepted.value.id,
+    accepted.value.receipt.jobId,
+    "53.123456",
+    "-114.123456",
+    "Private report evidence phrase",
+    "Pending private moderation phrase"
+  ]) {
+    assert.equal(publicOutput.includes(privateValue), false, privateValue);
+  }
+});
+
 test("exposes only browser-safe runtime configuration", async () => {
   const store = new FakeStore();
   const app = createApi({

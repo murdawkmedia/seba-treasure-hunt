@@ -43,6 +43,21 @@ test("guardian data and legal receipt delivery are disclosed without making mino
   assert.match(privacy, /Minor participant snapshots[\s\S]{0,260}never public[\s\S]{0,180}never included in player exports/i);
 });
 
+test("public browser surfaces contain no legal ledger, participant, receipt, or report fixtures", () => {
+  const publicSources = publicFiles.map(read).join("\n");
+  for (const privatePattern of [
+    /Sam Hunter|Alex Hunter/i,
+    /hunter@example\.test/i,
+    /waiver-receipt-(?:job|[0-9a-f]{8})|providerMessageId/i,
+    /acceptance-(?:event|id|[0-9])/i,
+    /birthYear\s*[:=]\s*2014/i,
+    /Private report evidence phrase|Pending private moderation phrase/i,
+    /53\.123456|-114\.123456/,
+  ]) {
+    assert.doesNotMatch(publicSources, privatePattern, `public browser surface matched ${privatePattern}`);
+  }
+});
+
 test("project docs make the sponsor workflow and unresolved validation state actionable", () => {
   const readme = read("README.md");
   const status = read("STATUS.md");
