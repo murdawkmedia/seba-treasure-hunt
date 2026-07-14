@@ -311,14 +311,16 @@ export class FakeStore {
     const privacyAccepted = this.legalEvents.some(
       (event) => event.subject === subject && event.documentType === "privacy_media"
     );
+    const acceptedWaiver = await this.getParticipationWaiver(subject);
+    const legacyAcceptedOverride = subject === "hunter-1" && this.waiverStatus === "accepted";
     return {
       accountState: this.accounts.has(subject) ? "active" : "missing",
       profileComplete: this.profiles.has(subject),
       privacyMediaRequired: !privacyAccepted,
       privacyMediaVersion: privacyAccepted ? "2026.2" : null,
-      waiverStatus: this.waiverStatus,
-      waiverVersion: this.waiverStatus === "accepted" ? "test-waiver" : null,
-      participationUnlocked: this.participationUnlocked
+      waiverStatus: acceptedWaiver || legacyAcceptedOverride ? "accepted" : "pending",
+      waiverVersion: acceptedWaiver?.documentVersion ?? (legacyAcceptedOverride ? "test-waiver" : null),
+      participationUnlocked: Boolean(acceptedWaiver) || (legacyAcceptedOverride && this.participationUnlocked)
     };
   }
 
@@ -384,7 +386,7 @@ export class FakeStore {
   }
 
   async getParticipationWaiver(subject: string) {
-    const record = [...this.waiverAcceptances.values()].find((entry) => entry.subject === subject);
+    const record = [...this.waiverAcceptances.values()].reverse().find((entry) => entry.subject === subject);
     return record ? structuredClone(record) : null;
   }
 
@@ -718,6 +720,17 @@ export class FakeEnvironment {
 
   async assertWritable() {
     this.checks += 1;
+  }
+}
+
+export class FakeLegalReceiptSender {
+  calls: string[] = [];
+
+  constructor(private readonly result: "sent" | "failed" = "sent") {}
+
+  async deliver(acceptanceId: string) {
+    this.calls.push(acceptanceId);
+    return { status: this.result } as const;
   }
 }
 
