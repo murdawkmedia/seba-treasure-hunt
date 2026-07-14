@@ -61,25 +61,13 @@ const generatedPage = `<!doctype html>
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/hunter.css" />
 </head>
-<body class="hunter-page waiver-page">
-  <a class="skip-link" href="#main">Skip to the waiver</a>
-  <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
-    <span class="case-strip__mark" data-status-mark aria-hidden="true">?</span>
-    <span class="case-strip__copy"><strong class="case-strip__label" data-status-label>Status unavailable</strong><span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span><span class="case-strip__next" data-status-next hidden></span></span>
-    <a class="case-strip__link" href="/updates">Official updates</a>
-  </section>
-  <header class="hunter-header">
-    <div class="hunter-header__inner">
-      <a class="hunter-brand" href="/">Tim Lost Something?<span>This year: Tim lost his ID</span></a>
-      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav"><span class="sr-only">Toggle campaign menu</span><span aria-hidden="true">&#9776;</span></button>
-      <nav class="hunter-nav" id="nav" aria-label="Campaign"><a href="/start">Start</a><a href="/route">12-waypoint route</a><a href="/updates">Updates</a><a href="/clue-board">Clue board</a><a href="/report">Report</a><a href="/rules">Rules</a><a href="/dashboard">Dashboard</a><a class="nav-sponsors" href="/sponsors">Sponsors</a></nav>
-    </div>
-  </header>
+<body class="campaign-page hunter-page waiver-page" data-campaign-route="waiver">
+  <!-- CAMPAIGN_SHELL {"route":"waiver","skipLabel":"Skip to the participation waiver","skipTarget":"main"} -->
   <main id="main" tabindex="-1">
     <section class="hunter-hero" aria-labelledby="waiver-title"><div class="hunter-hero__inner"><p class="hunter-kicker">Participation legal document</p><h1 id="waiver-title">${escape(source.title)}</h1><p class="hunter-hero__lead">Version ${escape(source.version)} &middot; Effective ${escape(source.effectiveDateLabel)}</p></div></section>
     <article class="hunter-main legal-page"><p>${escape(source.intro)}</p>${body}<div class="action-row waiver-print-action"><button class="hunter-button" type="button" data-print-waiver>Print this waiver</button><a class="hunter-button hunter-button--quiet" href="/dashboard#waiver">Return to registration</a></div></article>
   </main>
-  <footer class="hunter-footer"><div class="hunter-footer__inner"><p><strong>Tim Lost Something?</strong><br />The 2026 Seba Beach Treasure Hunt</p><nav aria-label="Legal and safety"><a href="/privacy">Privacy</a><a href="/waiver" aria-current="page">Waiver</a><a href="/community-guidelines">Community guidelines</a><a href="/rules">Current rules</a><a href="/sponsors">Sponsors</a></nav></div></footer>
+  <!-- CAMPAIGN_FOOTER -->
   <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
   <script type="module" src="/assets/app/waiver.js"></script>

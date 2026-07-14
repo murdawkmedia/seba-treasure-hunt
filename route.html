@@ -196,35 +196,9 @@
     .contact-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
   </style>
 </head>
-<body>
-
-  <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
-    <span class="case-strip__mark" data-status-mark aria-hidden="true">?</span>
-    <span class="case-strip__copy">
-      <strong class="case-strip__label" data-status-label>Status unavailable</strong>
-      <span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span>
-      <span class="case-strip__next" data-status-next hidden></span>
-    </span>
-    <a class="case-strip__link" href="updates.html">Official updates</a>
-  </section>
-
-  <!-- ===================== NAV ===================== -->
-  <header class="topbar">
-    <div class="wrap">
-      <a class="brand" href="index.html"><span aria-hidden="true">💰</span> Tim Lost Something?</a>
-      <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="nav">☰</button>
-      <nav id="nav">
-        <a href="start.html">Start</a>
-        <a href="route.html">The Route 🗺️</a>
-        <a href="updates.html">Updates</a>
-        <a href="clue-board.html">Clue Board</a>
-        <a href="report.html">Report</a>
-        <a href="rules.html">Rules</a>
-        <a href="dashboard.html">Dashboard</a>
-        <a class="nav-sponsors" href="sponsors.html">Sponsors</a>
-      </nav>
-    </div>
-  </header>
+<body class="campaign-page" data-campaign-route="route">
+  <!-- CAMPAIGN_SHELL {"route":"route","skipLabel":"Skip to the route","skipTarget":"main"} -->
+  <main id="main" tabindex="-1">
 
   <!-- ===================== HEADER / HERO ===================== -->
   <section class="route-hero" id="top">
@@ -797,29 +771,8 @@
     </div>
   </section>
 
-  <!-- ===================== FOOTER ===================== -->
-  <footer class="footer" id="footer">
-    <div class="wrap">
-      <a class="sunny-badge-link" href="https://www.sebastays.com/guarantee" target="_blank" rel="noopener" aria-label="Visit the SebaStays Sunny Guarantee (opens in a new tab)">
-        <img class="badge-mini" src="assets/seba-badge.png" alt="Always Sunny in Seba" />
-      </a>
-      <p class="campaign-season-footer">This year: Tim lost his ID.</p>
-      <p>Made with 🏴‍☠️ &amp; ☀️ in Seba Beach, Alberta — on the north shore of Lake Wabamun.</p>
-      <div class="links">
-        <a href="route.html">The Route</a>
-        <a href="interview.html">The Interview</a>
-        <a href="https://sebahub.com" target="_blank" rel="noopener">SebaHub</a>
-        <a href="https://sebastays.com" target="_blank" rel="noopener">SebaStays</a>
-        <a href="https://villagevows.com" target="_blank" rel="noopener">Village Vows</a>
-        <a href="https://www.google.com/maps/search/?api=1&amp;query=Kokanee+Springs+RV+Park+Seba+Beach+Alberta" target="_blank" rel="noopener">Kokanee Springs RV</a>
-        <a href="sponsors.html">Sponsors</a>
-        <a href="/waiver">Waiver</a>
-        <a href="index.html#official-rules">Official Rules</a>
-      </div>
-      <p class="fine">A SebaHub Production. The treasure is real (and so is the missing ID). Follow the Code, park where yer told, and don't set anything on fire. Map data © OpenStreetMap contributors · Imagery © Esri.</p>
-    </div>
-  </footer>
-
+  </main>
+  <!-- CAMPAIGN_FOOTER -->
   <script src="js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
 </body>

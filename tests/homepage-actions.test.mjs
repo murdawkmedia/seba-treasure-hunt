@@ -3,10 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = fs.readFileSync(path.join(repo, "index.html"), "utf8");
-const sponsorLink = /<a\b(?=[^>]*\bhref=["']sponsors\.html["'])[^>]*>[\s\S]*?\bSponsors\b[\s\S]*?<\/a>/i;
+const rendered = () => readRenderedCampaignPage("index.html");
+const sponsorLink = /<a\b(?=[^>]*\bhref=["']\/sponsors["'])[^>]*>[\s\S]*?\bSponsors\b[\s\S]*?<\/a>/i;
 
 const extractRegion = (source, tag, context) => {
   const match = source.match(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, "i"));
@@ -16,32 +18,35 @@ const extractRegion = (source, tag, context) => {
 
 test("the first public screen exposes the live case state and primary actions", () => {
   const heroEnd = html.indexOf("<!-- ===================== DIRECT ANSWER");
-  const firstScreen = html.slice(0, heroEnd);
+  const sourceFirstScreen = html.slice(0, heroEnd);
+  const renderedHtml = rendered();
+  const renderedFirstScreen = renderedHtml.slice(0, renderedHtml.indexOf("<!-- ===================== DIRECT ANSWER"));
 
-  assert.match(firstScreen, /data-case-status/i);
-  assert.match(firstScreen, /Status unavailable/i);
+  assert.match(renderedFirstScreen, /data-case-status/i);
+  assert.match(renderedFirstScreen, /Status unavailable/i);
   assert.match(html, /assets\/app\/status\.js/i);
-  assert.match(firstScreen, /href="start\.html"/i);
-  assert.match(firstScreen, /href="report\.html"/i);
-  assert.match(firstScreen, /href="updates\.html"/i);
-  assert.match(firstScreen, /href="rules\.html"/i);
+  assert.match(sourceFirstScreen, /href="start\.html"/i);
+  assert.match(sourceFirstScreen, /href="report\.html"/i);
+  assert.match(sourceFirstScreen, /href="updates\.html"/i);
+  assert.match(sourceFirstScreen, /href="rules\.html"/i);
 });
 
 test("homepage navigation reaches the living campaign surfaces", () => {
   for (const target of [
-    "start.html",
-    "dashboard.html",
-    "updates.html",
-    "report.html",
-    "clue-board.html",
-    "rules.html"
+    "/start",
+    "/dashboard",
+    "/updates",
+    "/report",
+    "/clue-board",
+    "/rules"
   ]) {
-    assert.match(html, new RegExp(`href=["']${target.replace(".", "\\.")}["']`, "i"));
+    assert.match(rendered(), new RegExp(`href=["']${target.replaceAll("/", "\\/")}["']`, "i"));
   }
 
-  const header = extractRegion(html, "header", "homepage");
+  const renderedHtml = rendered();
+  const header = extractRegion(renderedHtml, "header", "homepage");
   const navigation = extractRegion(header, "nav", "homepage header");
-  const footer = extractRegion(html, "footer", "homepage");
+  const footer = extractRegion(renderedHtml, "footer", "homepage");
   const missing = [];
 
   if (!sponsorLink.test(navigation)) missing.push("homepage campaign navigation");

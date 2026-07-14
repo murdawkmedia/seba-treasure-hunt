@@ -1,11 +1,33 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   CAMPAIGN_MENU,
   CAMPAIGN_PAGES,
   renderCampaignPage,
 } from "../scripts/campaign-shell.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const descriptors = {
+  "index.html": { route: "home", skipLabel: "Skip to the campaign", skipTarget: "main" },
+  "start.html": { route: "start", skipLabel: "Skip to the hunt guide", skipTarget: "main" },
+  "route.html": { route: "route", skipLabel: "Skip to the route", skipTarget: "main" },
+  "interview.html": { route: "interview", skipLabel: "Skip to the interview", skipTarget: "main" },
+  "updates.html": { route: "updates", skipLabel: "Skip to official updates", skipTarget: "main" },
+  "clue-board.html": { route: "clue-board", skipLabel: "Skip to the clue board", skipTarget: "main" },
+  "report.html": { route: "report", skipLabel: "Skip to private reporting", skipTarget: "main" },
+  "rules.html": { route: "rules", skipLabel: "Skip to the current rules", skipTarget: "main" },
+  "dashboard.html": { route: "dashboard", skipLabel: "Skip to Hunter Dashboard", skipTarget: "main" },
+  "sponsors.html": { route: "sponsors", skipLabel: "Skip to sponsor opportunities", skipTarget: "main" },
+  "privacy.html": { route: "privacy", skipLabel: "Skip to the privacy policy", skipTarget: "main" },
+  "waiver.html": { route: "waiver", skipLabel: "Skip to the participation waiver", skipTarget: "main" },
+  "community-guidelines.html": { route: "community-guidelines", skipLabel: "Skip to the community guidelines", skipTarget: "main" },
+};
 
 const filenames = Object.fromEntries(
   Object.entries({
@@ -520,4 +542,58 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
     { route: "dashboard", label: "Dashboard", href: "/dashboard" },
     { route: "sponsors", label: "Sponsors", href: "/sponsors" },
   ]);
+});
+
+test("every registered source page declares exactly its approved shell descriptor", () => {
+  assert.deepEqual(Object.keys(CAMPAIGN_PAGES), Object.keys(descriptors));
+
+  for (const [filename, expected] of Object.entries(descriptors)) {
+    const html = readFileSync(path.join(root, filename), "utf8");
+    const markers = [...html.matchAll(/<!--\s*CAMPAIGN_SHELL\s+([\s\S]*?)\s*-->/g)];
+    assert.equal(markers.length, 1, `${filename} must declare exactly one shell marker`);
+    assert.deepEqual(JSON.parse(markers[0][1]), expected, `${filename} descriptor`);
+    assert.equal(
+      (html.match(/<!--\s*CAMPAIGN_FOOTER\s*-->/g) ?? []).length,
+      1,
+      `${filename} must declare exactly one footer marker`,
+    );
+    assert.equal(
+      (html.match(/<main\b/g) ?? []).length,
+      1,
+      `${filename} must have exactly one primary main landmark`,
+    );
+    assert.match(
+      html,
+      /<main\b(?=[^>]*\bid="main")(?=[^>]*\btabindex="-1")[^>]*>/,
+      `${filename} main landmark must be the focusable skip target`,
+    );
+    assert.match(
+      html,
+      new RegExp(`<body\\b(?=[^>]*\\bclass="[^"]*\\bcampaign-page\\b[^"]*")(?=[^>]*\\bdata-campaign-route="${expected.route}")[^>]*>\\s*<!--\\s*CAMPAIGN_SHELL`),
+      `${filename} marker must immediately follow its declared campaign body`,
+    );
+    assert.match(
+      html,
+      /<!--\s*CAMPAIGN_FOOTER\s*-->\s*<script\b/,
+      `${filename} footer marker must immediately precede its body scripts`,
+    );
+  }
+});
+
+test("build emits complete shells and leaves Ops independent", () => {
+  execFileSync(process.execPath, [path.join(root, "scripts", "build.mjs")], {
+    cwd: root,
+    stdio: "pipe",
+  });
+
+  for (const file of Object.keys(CAMPAIGN_PAGES)) {
+    const html = readFileSync(path.join(root, "dist", file), "utf8");
+    assert.match(html, /class="campaign-header"/, `${file} has rendered header`);
+    assert.doesNotMatch(html, /CAMPAIGN_SHELL|CAMPAIGN_FOOTER/, `${file} has no markers`);
+  }
+
+  const sourceOps = readFileSync(path.join(root, "ops.html"), "utf8");
+  const builtOps = readFileSync(path.join(root, "dist", "ops.html"), "utf8");
+  assert.equal(builtOps, sourceOps, "Ops must be copied unchanged");
+  assert.doesNotMatch(builtOps, /class="campaign-header"/);
 });

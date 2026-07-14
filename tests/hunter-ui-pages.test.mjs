@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 
 const read = (file) =>
   readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -31,7 +32,7 @@ test("the active waiver is discoverable from legal footers, routing, build, and 
     "clue-board.html",
     "sponsors.html",
   ]) {
-    assert.match(read(file), /href="\/waiver"/, `${file} links the active waiver`);
+    assert.match(readRenderedCampaignPage(file), /href="\/waiver"/, `${file} links the active waiver`);
   }
   assert.match(read("src/server/app.ts"), /\["\/waiver", "\/waiver\.html"\]/);
   assert.match(read("scripts/build.mjs"), /"waiver\.html"/);
@@ -59,6 +60,7 @@ test("hunter pages expose campaign navigation, truthful live status, and canonic
   for (const [file, expected] of Object.entries(pages)) {
     assert.equal(existsSync(new URL(`../${file}`, import.meta.url)), true, `${file} exists`);
     const html = read(file);
+    const rendered = readRenderedCampaignPage(file);
     assert.match(html, /<html lang="en-CA">/);
     assert.match(html, /Tim Lost Something\?/);
     assert.match(
@@ -70,14 +72,14 @@ test("hunter pages expose campaign navigation, truthful live status, and canonic
     assert.match(html, new RegExp(`<meta name="robots" content="${expected.robots}"`));
     assert.match(html, /href="\/css\/hunter\.css"/);
     assert.match(html, /<main id="main" tabindex="-1">/);
-    assert.match(html, /data-case-status/);
-    assert.match(html, /role="status"/);
-    assert.match(html, /aria-live="polite"/);
-    assert.match(html, /Status unavailable/i);
-    assert.match(html, /href="\/updates"/);
-    assert.match(html, /href="\/clue-board"/);
-    assert.match(html, /href="\/report"/);
-    assert.match(html, /href="\/rules"/);
+    assert.match(rendered, /data-case-status/);
+    assert.match(rendered, /role="status"/);
+    assert.match(rendered, /aria-live="polite"/);
+    assert.match(rendered, /Status unavailable/i);
+    assert.match(rendered, /href="\/updates"/);
+    assert.match(rendered, /href="\/clue-board"/);
+    assert.match(rendered, /href="\/report"/);
+    assert.match(rendered, /href="\/rules"/);
   }
 });
 
@@ -198,33 +200,34 @@ test("public hunter UI contains no staff allowlist or deferred campaign claims",
 
 test("hunter page menus expose one labelled toggle and retain campaign destinations", () => {
   for (const file of hunterMenuPages) {
-    const html = read(file);
-    assert.equal((html.match(/\bid="nav"/g) ?? []).length, 1, `${file} has one nav id`);
-    assert.equal((html.match(/class="menu-toggle"/g) ?? []).length, 1, `${file} has one menu toggle`);
-    assert.match(html, /<button\b(?=[^>]*class="menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="nav")[^>]*>/, `${file} toggle semantics`);
+    const html = readRenderedCampaignPage(file);
+    assert.equal((html.match(/\bid="campaign-nav"/g) ?? []).length, 1, `${file} has one nav id`);
+    assert.equal((html.match(/class="campaign-menu-toggle"/g) ?? []).length, 1, `${file} has one menu toggle`);
+    assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/, `${file} toggle semantics`);
     assert.match(html, /<span class="sr-only">Toggle campaign menu<\/span>/, `${file} toggle label`);
-    assert.match(html, /<nav\b(?=[^>]*class="hunter-nav")(?=[^>]*id="nav")(?=[^>]*aria-label="Campaign")[^>]*>/, `${file} campaign nav`);
+    assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Campaign")[^>]*>/, `${file} campaign nav`);
     for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard", "/sponsors"]) {
       assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `${file} retains ${href}`);
     }
-    assert.match(html, /<script src="\/js\/site\.js"><\/script>/, `${file} loads shared menu behavior`);
+    assert.match(read(file), /<script src="\/js\/site\.js"><\/script>/, `${file} loads shared menu behavior`);
   }
 });
 
 test("the clue board keeps its distinct shell without becoming a navigation exception", () => {
-  const html = read("clue-board.html");
+  const html = readRenderedCampaignPage("clue-board.html");
+  const source = read("clue-board.html");
   const board = read("css/board.css");
 
-  assert.equal((html.match(/\bid="nav"/g) ?? []).length, 1, "clue-board.html has one nav id");
-  assert.equal((html.match(/\bclass="[^"]*\bmenu-toggle\b[^"]*"/g) ?? []).length, 1, "clue-board.html has one menu toggle");
-  assert.match(html, /<button\b(?=[^>]*class="[^"]*\bmenu-toggle\b[^"]*")(?=[^>]*type="button")(?=[^>]*aria-label="Toggle campaign menu")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="nav")[^>]*>/);
-  assert.match(html, /<nav\b(?=[^>]*id="nav")(?=[^>]*aria-label="Campaign")[^>]*>/);
-  for (const href of ["/route", "/updates", "/report", "/sponsors", "/dashboard#sign-in"]) {
+  assert.equal((html.match(/\bid="campaign-nav"/g) ?? []).length, 1, "clue-board.html has one nav id");
+  assert.equal((html.match(/\bclass="campaign-menu-toggle"/g) ?? []).length, 1, "clue-board.html has one menu toggle");
+  assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/);
+  assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Campaign")[^>]*>/);
+  for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard", "/sponsors"]) {
     assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `clue-board.html retains ${href}`);
   }
-  assert.match(html, /<script src="\/js\/site\.js"><\/script>/);
-  assert.match(html, /<div\b(?=[^>]*class="case-signal")(?=[^>]*role="status")(?=[^>]*aria-live="polite")[^>]*>/);
-  assert.doesNotMatch(html, /class="case-signal"[^>]*aria-hidden="true"/);
+  assert.doesNotMatch(html, />Interview<\/a>/);
+  assert.match(source, /<script src="\/js\/site\.js"><\/script>/);
+  assert.match(html, /<section\b(?=[^>]*class="case-strip")(?=[^>]*role="status")(?=[^>]*aria-live="polite")[^>]*>/);
 
   assert.match(board, /\.case-signal\s*\{[^}]*position:\s*sticky[^}]*z-index:\s*1200[^}]*top:\s*0[^}]*min-height:\s*var\(--case-strip-min-height\)/s);
   assert.doesNotMatch(board, /\.case-signal\s*\{[^}]*height:\s*var\(--case-strip-height\)/s);

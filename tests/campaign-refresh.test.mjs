@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -32,19 +33,24 @@ test("all pages use the campaign brand and canonical domain", () => {
   }
 });
 
-test("all four Sunny badges link accessibly to the guarantee", () => {
-  const html = pages.map(read).join("\n");
-  const links =
-    html.match(
-      /href="https:\/\/www\.sebastays\.com\/guarantee"/g,
-    ) ?? [];
-  const labels =
-    html.match(
-      /aria-label="Visit the SebaStays Sunny Guarantee \(opens in a new tab\)"/g,
-    ) ?? [];
+test("every remaining Sunny badge links accessibly to the guarantee", () => {
+  const html = pages.map(readRenderedCampaignPage).join("\n");
+  const badges = [
+    ...html.matchAll(
+      /<a\b(?=[^>]*\bclass="[^"]*\bsunny-badge-link\b[^"]*")[^>]*>/g,
+    ),
+  ].map((match) => match[0]);
 
-  assert.equal(links.length, 4);
-  assert.equal(labels.length, 4);
+  assert.ok(badges.length > 0, "at least one campaign Sunny badge remains");
+  for (const badge of badges) {
+    assert.match(badge, /\bhref="https:\/\/www\.sebastays\.com\/guarantee"/);
+    assert.match(badge, /\btarget="_blank"/);
+    assert.match(badge, /\brel="noopener"/);
+    assert.match(
+      badge,
+      /\baria-label="Visit the SebaStays Sunny Guarantee \(opens in a new tab\)"/,
+    );
+  }
 });
 
 test("SEO and answer-engine surfaces are present and parseable", () => {

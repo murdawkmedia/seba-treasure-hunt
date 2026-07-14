@@ -26,31 +26,10 @@
   <link rel="stylesheet" href="/css/board.css" />
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
 </head>
-<body class="board-page">
-  <a class="skip-link" href="#main">Skip to the clue board</a>
+<body class="campaign-page board-page" data-campaign-route="clue-board">
+  <!-- CAMPAIGN_SHELL {"route":"clue-board","skipLabel":"Skip to the clue board","skipTarget":"main"} -->
 
-  <div class="case-signal" id="case-signal" data-state="unavailable" role="status" aria-live="polite">
-    <span class="case-signal__mark" aria-hidden="true"></span>
-    <strong id="case-signal-label">Checking official case status</strong>
-    <span class="case-signal__detail" id="case-signal-detail">Exact directions remain locked until status is confirmed.</span>
-  </div>
-
-  <header class="board-topbar">
-    <a class="board-brand" href="/" aria-label="Tim Lost Something? home">
-      <span class="board-brand__seal" aria-hidden="true">T?</span>
-      <span><strong>Tim Lost Something?</strong><small>The Seba Beach Treasure Hunt</small></span>
-    </a>
-    <button class="menu-toggle board-menu-toggle" type="button" aria-label="Toggle campaign menu" aria-expanded="false" aria-controls="nav"><span aria-hidden="true">&#9776;</span></button>
-    <nav class="board-nav" id="nav" aria-label="Campaign">
-      <a href="/route">Route</a>
-      <a href="/updates">Updates</a>
-      <a href="/report">Report a find</a>
-      <a class="nav-sponsors" href="/sponsors">Sponsors</a>
-      <a class="board-topbar__account" href="/dashboard#sign-in">Hunter sign in</a>
-    </nav>
-  </header>
-
-  <main id="main">
+  <main id="main" tabindex="-1">
     <section class="board-hero" aria-labelledby="board-title">
       <div class="board-hero__copy">
         <p class="board-eyebrow">Case file / community ledger</p>
@@ -174,11 +153,7 @@
     </form>
   </dialog>
 
-  <footer class="board-footer">
-    <p><a href="/">Tim Lost Something?</a> <span aria-hidden="true">/</span> This year: Tim lost his ID.</p>
-    <nav aria-label="Legal"><a href="/rules">Rules</a><a href="/waiver">Waiver</a><a href="/community-guidelines">Community guidelines</a><a href="/privacy">Privacy</a><a href="/sponsors">Sponsors</a></nav>
-  </footer>
-
+  <!-- CAMPAIGN_FOOTER -->
   <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/board.js"></script>
 </body>

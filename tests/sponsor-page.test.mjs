@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
@@ -59,24 +60,25 @@ test("the sponsor hero uses dedicated campaign artwork, never an enlarged favico
 });
 
 test("the sponsor page shell preserves status, navigation, accessibility, and client hooks", () => {
-  const html = read("sponsors.html");
+  const html = readRenderedCampaignPage("sponsors.html");
+  const source = read("sponsors.html");
   assert.match(html, /<a class="skip-link" href="#main">/);
   assert.match(html, /<main id="main" tabindex="-1">/);
   for (const hook of ["data-case-status", "data-status-mark", "data-status-label", "data-status-detail", "data-status-next"]) {
     assert.match(html, new RegExp(`\\b${hook}\\b`));
   }
   const header = extractRegion(html, "header", "sponsors.html");
-  assert.match(header, /class="[^"]*\bhunter-brand\b[^"]*"/);
-  assert.match(header, /<nav\b(?=[^>]*\bclass="hunter-nav")(?=[^>]*\baria-label="Campaign")[^>]*>/);
+  assert.match(header, /class="[^"]*\bcampaign-brand\b[^"]*"/);
+  assert.match(header, /<nav\b(?=[^>]*\bclass="campaign-nav")(?=[^>]*\baria-label="Campaign")[^>]*>/);
   assert.match(header, /<a\b(?=[^>]*class="[^"]*\bnav-sponsors\b[^"]*")(?=[^>]*href="\/sponsors")(?=[^>]*aria-current="page")[^>]*>Sponsors<\/a>/);
   const footer = extractRegion(html, "footer", "sponsors.html");
-  for (const destination of ["/sponsors", "/privacy", "/rules", "/sponsors#inquiry"]) {
+  for (const destination of ["/privacy", "/waiver", "/community-guidelines", "/rules", "/sponsors"]) {
     assert.match(footer, new RegExp(`href=["']${destination.replaceAll("/", "\\/")}["']`));
   }
-  assert.match(html, /<script src="\/js\/site\.js"><\/script>/);
-  assert.match(html, /<script type="module" src="\/assets\/app\/status\.js"><\/script>/);
-  assert.match(html, /<script type="module" src="\/assets\/app\/sponsors\.js"><\/script>/);
-  assert.match(html, /<script src="https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js\?render=explicit" defer><\/script>/);
+  assert.match(source, /<script src="\/js\/site\.js"><\/script>/);
+  assert.match(source, /<script type="module" src="\/assets\/app\/status\.js"><\/script>/);
+  assert.match(source, /<script type="module" src="\/assets\/app\/sponsors\.js"><\/script>/);
+  assert.match(source, /<script src="https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js\?render=explicit" defer><\/script>/);
 });
 
 test("the sponsor story follows the approved hierarchy without public package pricing", () => {
@@ -271,7 +273,7 @@ test("every public page reaches Sponsors from navigation and footer", () => {
       continue;
     }
 
-    const html = read(name);
+    const html = readRenderedCampaignPage(name);
     const header = extractRegion(html, "header", name);
     const navigation = extractRegion(header, "nav", `${name} header`);
     const footer = extractRegion(html, "footer", name);
@@ -281,7 +283,7 @@ test("every public page reaches Sponsors from navigation and footer", () => {
 
     const headerSponsor = sponsorAnchor(navigation);
     const footerSponsor = sponsorAnchor(footer);
-    const expectedHref = ["index.html", "route.html", "interview.html"].includes(name) ? "sponsors.html" : "/sponsors";
+    const expectedHref = "/sponsors";
     if (!new RegExp(`href=["']${expectedHref.replaceAll("/", "\\/").replace(".", "\\.")}["']`, "i").test(headerSponsor)) {
       missing.push(`${name}: correct Sponsors header destination`);
     }

@@ -1,8 +1,9 @@
 import { build } from "esbuild";
-import { cp, mkdir, readdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { CAMPAIGN_PAGES, renderCampaignPage } from "./campaign-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -36,6 +37,12 @@ const staticFiles = [
 ];
 const staticDirectories = ["assets", "css", "js"];
 
+const renderedCampaignPages = new Map();
+for (const file of Object.keys(CAMPAIGN_PAGES)) {
+  const html = await readFile(path.join(root, file), "utf8");
+  renderedCampaignPages.set(file, renderCampaignPage(html, file));
+}
+
 await Promise.all([
   rm(dist, { recursive: true, force: true }),
   rm(mediaDist, { recursive: true, force: true })
@@ -43,7 +50,12 @@ await Promise.all([
 await Promise.all([mkdir(dist, { recursive: true }), mkdir(mediaDist, { recursive: true })]);
 
 for (const file of staticFiles) {
-  await cp(path.join(root, file), path.join(dist, file));
+  const target = path.join(dist, file);
+  if (renderedCampaignPages.has(file)) {
+    await writeFile(target, renderedCampaignPages.get(file), "utf8");
+  } else {
+    await cp(path.join(root, file), target);
+  }
 }
 for (const directory of staticDirectories) {
   await cp(path.join(root, directory), path.join(dist, directory), { recursive: true });

@@ -56,35 +56,8 @@
   <link rel="stylesheet" href="/css/sponsors.css" />
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
 </head>
-<body class="hunter-page sponsor-page">
-  <a class="skip-link" href="#main">Skip to sponsor opportunities</a>
-
-  <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
-    <span class="case-strip__mark" data-status-mark aria-hidden="true">?</span>
-    <span class="case-strip__copy">
-      <strong class="case-strip__label" data-status-label>Status unavailable</strong>
-      <span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span>
-      <span class="case-strip__next" data-status-next hidden></span>
-    </span>
-    <a class="case-strip__link" href="/updates">Official updates</a>
-  </section>
-
-  <header class="hunter-header topbar sponsor-topbar">
-    <div class="hunter-header__inner wrap">
-      <a class="hunter-brand brand" href="/">Tim Lost Something?<span>This year: Tim lost his ID</span></a>
-      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav"><span class="sr-only">Toggle campaign menu</span><span aria-hidden="true">&#9776;</span></button>
-      <nav class="hunter-nav" aria-label="Campaign" id="nav">
-        <a href="/start">Start</a>
-        <a href="/route">12-waypoint route</a>
-        <a href="/updates">Updates</a>
-        <a href="/clue-board">Clue board</a>
-        <a href="/report">Report</a>
-        <a href="/rules">Rules</a>
-        <a href="/dashboard">Dashboard</a>
-        <a class="nav-sponsors" href="/sponsors" aria-current="page">Sponsors</a>
-      </nav>
-    </div>
-  </header>
+<body class="campaign-page hunter-page sponsor-page" data-campaign-route="sponsors">
+  <!-- CAMPAIGN_SHELL {"route":"sponsors","skipLabel":"Skip to sponsor opportunities","skipTarget":"main"} -->
 
   <main id="main" tabindex="-1">
     <section class="sponsor-hero" id="sponsor-hero" aria-labelledby="sponsor-title">
@@ -313,22 +286,7 @@
     </section>
   </main>
 
-  <footer class="hunter-footer sponsor-footer">
-    <div class="hunter-footer__inner">
-      <div>
-        <a class="hunter-brand" href="/">Tim Lost Something?<span>A Seba Beach mystery</span></a>
-        <p>Sponsor conversations start privately and become public only with approval.</p>
-      </div>
-      <nav aria-label="Sponsor page footer">
-        <a href="/sponsors">Sponsors</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/waiver">Waiver</a>
-        <a href="/rules">Rules</a>
-        <a href="/sponsors#inquiry">Private sponsor inquiry</a>
-      </nav>
-    </div>
-  </footer>
-
+  <!-- CAMPAIGN_FOOTER -->
   <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
   <script type="module" src="/assets/app/sponsors.js"></script>
