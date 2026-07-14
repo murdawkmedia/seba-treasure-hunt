@@ -62,7 +62,7 @@ export class ResendTransactionalMailer implements TransactionalMailer {
         body: JSON.stringify(payload)
       });
     } catch {
-      throw mailError("provider_unavailable");
+      throw mailError("provider_delivery_uncertain");
     }
 
     if (!response.ok) {

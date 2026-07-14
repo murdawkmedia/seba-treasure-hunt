@@ -238,16 +238,31 @@ test("Resend maps a missing response id to a fixed safe error", async () => {
   );
 });
 
-test("Resend maps a network failure to provider_unavailable without fallback", async () => {
-  const mailer = new ResendTransactionalMailer({
+test("Resend maps an ambiguous network failure to delivery uncertain without fallback", async () => {
+  let graphCalls = 0;
+  let resendCalls = 0;
+  const resend = new ResendTransactionalMailer({
     apiKey: "active-resend-key",
     fetch: async () => {
+      resendCalls += 1;
       throw new Error("network detail that must stay private");
     }
+  });
+  const mailer = createTransactionalMailer({
+    provider: "resend",
+    graph: {
+      async send() {
+        graphCalls += 1;
+        return graphAcceptance;
+      }
+    },
+    resend
   });
 
   await assert.rejects(
     () => mailer.send(message),
-    (error) => assertMailError(error, "provider_unavailable")
+    (error) => assertMailError(error, "provider_delivery_uncertain")
   );
+  assert.equal(resendCalls, 1);
+  assert.equal(graphCalls, 0);
 });
