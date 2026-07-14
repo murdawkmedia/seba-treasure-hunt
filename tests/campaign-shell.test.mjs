@@ -238,6 +238,19 @@ test("fails closed when the declared skip target does not exist as an id", () =>
   );
 });
 
+test("fails closed when the declared skip target id is duplicated", () => {
+  assert.throws(
+    () =>
+      renderCampaignPage(
+        source({
+          targetMarkup: '<main id="main"></main><aside id="main"></aside>',
+        }),
+        "route.html",
+      ),
+    /skip target.*exactly one live element/i,
+  );
+});
+
 test("does not accept a skip target id that exists only in a comment or script", () => {
   for (const targetMarkup of [
     '<!-- <main id="main"></main> -->',
@@ -307,6 +320,79 @@ test("treats plaintext descendants and the generated footer as text", () => {
         "route.html",
       ),
     /exactly one canonical campaign-footer/i,
+  );
+});
+
+for (const [name, character] of [
+  ["NBSP", "\u00a0"],
+  ["vertical tab", "\u000b"],
+]) {
+  test(`does not treat ${name} after a tag name as HTML whitespace`, () => {
+    assert.throws(
+      () =>
+        renderCampaignPage(
+          source({ targetMarkup: `<main${character}id="main"></main>` }),
+          "route.html",
+        ),
+      /malformed campaign page html|skip target/i,
+    );
+  });
+
+  test(`does not treat ${name} between attributes as HTML whitespace`, () => {
+    assert.throws(
+      () =>
+        renderCampaignPage(
+          source({ targetMarkup: `<main data-value=one${character}id=main></main>` }),
+          "route.html",
+        ),
+      /malformed campaign page html|skip target/i,
+    );
+  });
+
+  test(`does not accept a script end tag padded with ${name}`, () => {
+    assert.throws(
+      () =>
+        renderCampaignPage(
+          source({
+            targetMarkup: `<script>const ignored = true;</script${character}><main id="main"></main>`,
+          }),
+          "route.html",
+        ),
+      /unterminated <script>|skip target/i,
+    );
+  });
+
+  test(`does not accept a template end tag padded with ${name}`, () => {
+    assert.throws(
+      () =>
+        renderCampaignPage(
+          source({
+            targetMarkup: `<template><div></div></template${character}><main id="main"></main>`,
+          }),
+          "route.html",
+        ),
+      /malformed campaign page html|unterminated <template>|skip target/i,
+    );
+  });
+
+  test(`does not split class tokens on ${name}`, () => {
+    assert.doesNotThrow(() =>
+      renderCampaignPage(
+        source({ beforeFooter: `<div class="safe${character}topbar"></div>` }),
+        "route.html",
+      ),
+    );
+  });
+}
+
+test("splits class tokens on HTML form-feed whitespace", () => {
+  assert.throws(
+    () =>
+      renderCampaignPage(
+        source({ beforeFooter: '<div class="safe\ftopbar"></div>' }),
+        "route.html",
+      ),
+    /legacy public shell class/i,
   );
 });
 
@@ -387,6 +473,23 @@ test("fails closed on malformed relevant start-tag attributes", () => {
       ),
     /malformed campaign page html/i,
   );
+});
+
+test("freezes every exported campaign menu item", () => {
+  for (const item of CAMPAIGN_MENU) assert.ok(Object.isFrozen(item));
+});
+
+test("attempted menu mutation cannot change navigation output", () => {
+  const item = CAMPAIGN_MENU[0];
+  const originalHref = item.href;
+  const before = renderCampaignPage(source({ route: "start" }), "start.html");
+  const changed = Reflect.set(item, "href", '/start"><script>alert(1)</script>');
+  if (changed) Reflect.set(item, "href", originalHref);
+  const after = renderCampaignPage(source({ route: "start" }), "start.html");
+
+  assert.equal(changed, false);
+  assert.equal(item.href, originalHref);
+  assert.equal(after, before);
 });
 
 test("registry and menu expose exactly the approved frozen contracts", () => {

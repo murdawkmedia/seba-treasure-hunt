@@ -1,12 +1,12 @@
 export const CAMPAIGN_MENU = Object.freeze([
-  { route: "start", label: "Start", href: "/start" },
-  { route: "route", label: "12-waypoint Route", href: "/route" },
-  { route: "updates", label: "Updates", href: "/updates" },
-  { route: "clue-board", label: "Clue Board", href: "/clue-board" },
-  { route: "report", label: "Report", href: "/report" },
-  { route: "rules", label: "Rules", href: "/rules" },
-  { route: "dashboard", label: "Dashboard", href: "/dashboard" },
-  { route: "sponsors", label: "Sponsors", href: "/sponsors" },
+  Object.freeze({ route: "start", label: "Start", href: "/start" }),
+  Object.freeze({ route: "route", label: "12-waypoint Route", href: "/route" }),
+  Object.freeze({ route: "updates", label: "Updates", href: "/updates" }),
+  Object.freeze({ route: "clue-board", label: "Clue Board", href: "/clue-board" }),
+  Object.freeze({ route: "report", label: "Report", href: "/report" }),
+  Object.freeze({ route: "rules", label: "Rules", href: "/rules" }),
+  Object.freeze({ route: "dashboard", label: "Dashboard", href: "/dashboard" }),
+  Object.freeze({ route: "sponsors", label: "Sponsors", href: "/sponsors" }),
 ]);
 
 export const CAMPAIGN_PAGES = Object.freeze({
@@ -28,6 +28,7 @@ export const CAMPAIGN_PAGES = Object.freeze({
 const allowedRoutes = new Set(Object.values(CAMPAIGN_PAGES));
 const safeSkipLabel = /^[A-Za-z0-9 ?'&-]{4,80}$/;
 const safeTarget = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+const htmlWhitespace = /[\t\n\f\r ]/;
 const legacyShellClasses = new Set([
   "topbar",
   "footer",
@@ -142,6 +143,10 @@ function malformedHtml(detail) {
   throw new Error(`Malformed campaign page HTML: ${detail}`);
 }
 
+function isHtmlWhitespace(character) {
+  return character !== undefined && htmlWhitespace.test(character);
+}
+
 function findTagEnd(source, start) {
   let quote = "";
   for (let index = start + 1; index < source.length; index += 1) {
@@ -166,22 +171,22 @@ function parseStartTag(rawTag) {
   const attributes = [];
   const attributeNames = new Set();
   let cursor = nameMatch[0].length;
-  if (cursor < rawTag.length && !/[\s/]/.test(rawTag[cursor])) {
+  if (cursor < rawTag.length && !isHtmlWhitespace(rawTag[cursor]) && rawTag[cursor] !== "/") {
     malformedHtml(`invalid <${nameMatch[0]}> tag name`);
   }
 
   while (cursor < rawTag.length) {
-    while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+    while (isHtmlWhitespace(rawTag[cursor])) cursor += 1;
     if (cursor >= rawTag.length) break;
     if (rawTag[cursor] === "/") {
       cursor += 1;
-      while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+      while (isHtmlWhitespace(rawTag[cursor])) cursor += 1;
       if (cursor !== rawTag.length) malformedHtml("content after a self-closing slash");
       break;
     }
 
     const nameStart = cursor;
-    while (cursor < rawTag.length && !/[\s"'`=<>/]/.test(rawTag[cursor])) {
+    while (cursor < rawTag.length && !/[\t\n\f\r "'`=<>/]/.test(rawTag[cursor])) {
       cursor += 1;
     }
     if (cursor === nameStart) malformedHtml("invalid attribute name");
@@ -189,11 +194,11 @@ function parseStartTag(rawTag) {
     if (attributeNames.has(name)) malformedHtml(`duplicate ${name} attribute`);
     attributeNames.add(name);
 
-    while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+    while (isHtmlWhitespace(rawTag[cursor])) cursor += 1;
     let value = null;
     if (rawTag[cursor] === "=") {
       cursor += 1;
-      while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+      while (isHtmlWhitespace(rawTag[cursor])) cursor += 1;
       if (cursor >= rawTag.length) malformedHtml(`missing ${name} attribute value`);
 
       const quote = rawTag[cursor];
@@ -204,12 +209,16 @@ function parseStartTag(rawTag) {
         if (cursor >= rawTag.length) malformedHtml(`unterminated ${name} attribute`);
         value = rawTag.slice(valueStart, cursor);
         cursor += 1;
-        if (cursor < rawTag.length && !/[\s/]/.test(rawTag[cursor])) {
+        if (
+          cursor < rawTag.length &&
+          !isHtmlWhitespace(rawTag[cursor]) &&
+          rawTag[cursor] !== "/"
+        ) {
           malformedHtml(`missing space after ${name} attribute`);
         }
       } else {
         const valueStart = cursor;
-        while (cursor < rawTag.length && !/\s/.test(rawTag[cursor])) {
+        while (cursor < rawTag.length && !isHtmlWhitespace(rawTag[cursor])) {
           if (/["'`=<>]/.test(rawTag[cursor])) {
             malformedHtml(`invalid unquoted ${name} attribute`);
           }
@@ -252,8 +261,7 @@ function scanTagSegment(source, initialCursor = 0, stopTag = "") {
       const end = findTagEnd(source, start);
       const closingTag = source
         .slice(start + 2, end)
-        .trim()
-        .match(/^([A-Za-z][A-Za-z0-9:-]*)$/);
+        .match(/^[\t\n\f\r ]*([A-Za-z][A-Za-z0-9:-]*)[\t\n\f\r ]*$/);
       if (!closingTag) malformedHtml("invalid closing tag");
       cursor = end + 1;
       if (stopTag && closingTag[1].toLowerCase() === stopTag) {
@@ -282,7 +290,7 @@ function scanTagSegment(source, initialCursor = 0, stopTag = "") {
     if (tag.name === "template") {
       cursor = scanTagSegment(source, cursor, "template").cursor;
     } else if (rawTextElements.has(tag.name)) {
-      const closingTag = new RegExp(`</${tag.name}\\s*>`, "gi");
+      const closingTag = new RegExp(`</${tag.name}[\\t\\n\\f\\r ]*>`, "gi");
       closingTag.lastIndex = cursor;
       const closingMatch = closingTag.exec(source);
       if (!closingMatch) malformedHtml(`unterminated <${tag.name}> element`);
@@ -303,7 +311,7 @@ function collectClasses(source) {
   for (const { attributes } of scanStartTags(source)) {
     for (const attribute of attributes) {
       if (attribute.name === "class") {
-        classes.push(...attribute.value.split(/\s+/).filter(Boolean));
+        classes.push(...attribute.value.split(/[\t\n\f\r ]+/).filter(Boolean));
       }
     }
   }
@@ -404,9 +412,17 @@ export function renderCampaignPage(source, filename) {
     throw new Error("Invalid campaign skip target");
   }
 
-  if (!collectElementIds(source).includes(descriptor.skipTarget)) {
+  const targetCount = collectElementIds(source).filter(
+    (id) => id === descriptor.skipTarget,
+  ).length;
+  if (targetCount === 0) {
     throw new Error(
       `Campaign skip target ${descriptor.skipTarget} does not exist in ${filename}`,
+    );
+  }
+  if (targetCount !== 1) {
+    throw new Error(
+      `Campaign skip target ${descriptor.skipTarget} must identify exactly one live element in ${filename}`,
     );
   }
 
