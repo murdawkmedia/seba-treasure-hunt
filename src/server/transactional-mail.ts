@@ -14,12 +14,20 @@ export type ProviderReferenceKind =
   | "client_request_id"
   | "resend_message_id";
 
-export interface TransactionalMailAcceptance {
-  provider: "microsoft_graph" | "resend";
+interface TransactionalMailAcceptanceBase {
   providerReference: string;
-  providerReferenceKind: ProviderReferenceKind;
   acceptedAt: string;
 }
+
+export type TransactionalMailAcceptance =
+  | (TransactionalMailAcceptanceBase & {
+      provider: "microsoft_graph";
+      providerReferenceKind: "graph_request_id" | "client_request_id";
+    })
+  | (TransactionalMailAcceptanceBase & {
+      provider: "resend";
+      providerReferenceKind: "resend_message_id";
+    });
 
 export type TransactionalMailErrorCode =
   | "provider_unavailable"

@@ -199,9 +199,9 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
       return this.fail(job, "provider_unavailable");
     }
 
-    const message = renderWaiverReceipt(envelope, campaignBaseUrl);
     let acceptance;
     try {
+      const message = renderWaiverReceipt(envelope, campaignBaseUrl);
       acceptance = await mailer.send({
         to: envelope.verifiedEmail,
         from: { name: senderName, address: senderAddress },

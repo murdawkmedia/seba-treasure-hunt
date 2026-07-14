@@ -145,6 +145,29 @@ const waiverReceiptErrorCodes = new Set<WaiverReceiptErrorCode>([
   "provider_delivery_uncertain"
 ]);
 
+const safeProviderReference = /^[\x20-\x7e]{1,128}$/;
+
+const validProviderAcceptance = (
+  result: Extract<WaiverReceiptCompletion, { status: "sent" }>
+) => {
+  const providerKindMatches =
+    (result.provider === "microsoft_graph" &&
+      (result.providerReferenceKind === "graph_request_id" ||
+        result.providerReferenceKind === "client_request_id")) ||
+    (result.provider === "resend" && result.providerReferenceKind === "resend_message_id");
+  const referenceIsSafe =
+    typeof result.providerReference === "string" &&
+    result.providerReference === result.providerReference.trim() &&
+    safeProviderReference.test(result.providerReference);
+  const parsedAcceptedAt =
+    typeof result.acceptedAt === "string" ? new Date(result.acceptedAt) : null;
+  const acceptedAtIsCanonical =
+    parsedAcceptedAt !== null &&
+    Number.isFinite(parsedAcceptedAt.getTime()) &&
+    parsedAcceptedAt.toISOString() === result.acceptedAt;
+  return providerKindMatches && referenceIsSafe && acceptedAtIsCanonical;
+};
+
 const waiverReviewFromRow = (row: Row): WaiverReviewRecord => ({
   id: value(row.id),
   subject: value(row.hunter_subject),
@@ -1355,6 +1378,13 @@ export class D1DataStore implements DataStore {
   ): Promise<void> {
     if (result.status === "failed" && !waiverReceiptErrorCodes.has(result.errorCode)) {
       throw new ApiError(422, "waiver_receipt_error_invalid", "The receipt error code is invalid.");
+    }
+    if (result.status === "sent" && !validProviderAcceptance(result)) {
+      throw new ApiError(
+        422,
+        "waiver_receipt_acceptance_invalid",
+        "The receipt provider acceptance is invalid."
+      );
     }
     const timestamp = now();
     if (result.status === "sent") {

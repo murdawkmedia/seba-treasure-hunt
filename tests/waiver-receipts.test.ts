@@ -43,6 +43,7 @@ class ReceiptStore {
     leaseToken: "opaque-lease-1",
   }];
   envelope: WaiverReceiptEnvelope | null = envelope;
+  activeLease: WaiverReceiptJob | null = null;
   completions: Array<
     | ({ jobId: string; status: "sent" } & TransactionalMailAcceptance)
     | {
@@ -53,7 +54,9 @@ class ReceiptStore {
   > = [];
 
   async claimWaiverReceiptJob() {
-    return this.claims.shift() ?? null;
+    const claimed = this.claims.shift() ?? null;
+    this.activeLease = claimed;
+    return claimed;
   }
 
   async getWaiverReceiptEnvelope() {
@@ -70,6 +73,7 @@ class ReceiptStore {
         },
   ) {
     this.completions.push({ jobId: job.id, ...result });
+    if (this.activeLease?.leaseToken === job.leaseToken) this.activeLease = null;
   }
 }
 
@@ -275,6 +279,34 @@ test("managed waiver receipts completes the exact claimed lease generation", asy
   await sender.deliver(envelope.acceptance.id);
 
   assert.deepEqual(completedClaims, [claimed]);
+});
+
+test("managed waiver receipts records a safe failure and releases its lease when rendering throws", async () => {
+  const store = new ReceiptStore();
+  store.envelope = {
+    ...envelope,
+    acceptance: {
+      ...envelope.acceptance,
+      participants: null as unknown as WaiverReceiptEnvelope["acceptance"]["participants"],
+    },
+  };
+  let mailCalls = 0;
+  const sender = new ManagedWaiverReceipts(
+    store as unknown as DataStore,
+    config({
+      async send() {
+        mailCalls += 1;
+        return accepted;
+      },
+    }),
+  );
+
+  assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "failed" });
+  assert.equal(mailCalls, 0);
+  assert.equal(store.activeLease, null);
+  assert.deepEqual(store.completions, [
+    { jobId: "job-1", status: "failed", errorCode: "provider_unavailable" },
+  ]);
 });
 
 test("managed waiver receipts fails retryably when shared mail configuration is missing", async () => {

@@ -9,8 +9,15 @@ import { D1DataStore } from "../src/server/d1-store";
 import { ApiError } from "../src/server/errors";
 import { participationWaiverDocument, privacyMediaDocument } from "../src/server/legal-documents";
 import { ManagedWaiverReceipts } from "../src/server/waiver-receipts";
-import type { TransactionalMessage } from "../src/server/transactional-mail";
-import type { DataStore, SponsorInquiryInput } from "../src/server/types";
+import type {
+  TransactionalMailAcceptance,
+  TransactionalMessage
+} from "../src/server/transactional-mail";
+import type {
+  DataStore,
+  SponsorInquiryInput,
+  WaiverReceiptCompletion
+} from "../src/server/types";
 import {
   FakeEnvironment,
   FakeRateLimits,
@@ -995,13 +1002,112 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   await store.queueWaiverReceiptResend("hunter-current-1", accepted.value.id);
   const mismatchedGraphClaim = await store.claimWaiverReceiptJob(accepted.value.id);
   assert.ok(mismatchedGraphClaim);
-  await store.completeWaiverReceiptJob(mismatchedGraphClaim, {
-    status: "sent",
+  const completionState = async () => {
+    const jobState = await db
+      .prepare(
+        `SELECT status, attempts, next_attempt_at, last_error_code, updated_at
+         FROM notification_jobs WHERE id = ?`
+      )
+      .bind(mismatchedGraphClaim.id)
+      .first<Record<string, unknown>>();
+    const leaseState = await db
+      .prepare(
+        `SELECT lease_token, attempt_generation, lease_until, claimed_at
+         FROM notification_job_leases WHERE notification_job_id = ?`
+      )
+      .bind(mismatchedGraphClaim.id)
+      .first<Record<string, unknown>>();
+    const deliveryState = await db
+      .prepare(
+        `SELECT id, event_type, provider, provider_message_id, provider_reference,
+                provider_reference_kind, error_code, occurred_at
+         FROM notification_delivery_events
+         WHERE notification_job_id = ? ORDER BY occurred_at, id`
+      )
+      .bind(mismatchedGraphClaim.id)
+      .all<Record<string, unknown>>();
+    return { jobState, leaseState, deliveryState: deliveryState.results };
+  };
+  const beforeInvalidCompletion = await completionState();
+  // @ts-expect-error Graph acceptance cannot use a Resend-only reference kind.
+  const mismatchedGraphAcceptance: TransactionalMailAcceptance = {
     provider: "microsoft_graph",
     providerReference: "graph-kind-mismatch",
     providerReferenceKind: "resend_message_id",
     acceptedAt: "2026-07-14T18:10:00.000Z"
-  });
+  };
+  const invalidCompletions: Array<{ name: string; result: WaiverReceiptCompletion }> = [
+    {
+      name: "mismatched provider and reference kind",
+      result: { status: "sent", ...mismatchedGraphAcceptance }
+    },
+    {
+      name: "empty provider reference",
+      result: {
+        status: "sent",
+        provider: "microsoft_graph",
+        providerReference: "",
+        providerReferenceKind: "graph_request_id",
+        acceptedAt: "2026-07-14T18:10:00.000Z"
+      }
+    },
+    {
+      name: "oversized provider reference",
+      result: {
+        status: "sent",
+        provider: "resend",
+        providerReference: "r".repeat(129),
+        providerReferenceKind: "resend_message_id",
+        acceptedAt: "2026-07-14T18:10:00.000Z"
+      }
+    },
+    {
+      name: "unsafe provider reference",
+      result: {
+        status: "sent",
+        provider: "microsoft_graph",
+        providerReference: "graph-reference\nprivate-detail",
+        providerReferenceKind: "client_request_id",
+        acceptedAt: "2026-07-14T18:10:00.000Z"
+      }
+    },
+    {
+      name: "non-string provider reference",
+      result: {
+        status: "sent",
+        provider: "microsoft_graph",
+        providerReference: null,
+        providerReferenceKind: "graph_request_id",
+        acceptedAt: "2026-07-14T18:10:00.000Z"
+      } as unknown as WaiverReceiptCompletion
+    },
+    {
+      name: "non-canonical provider timestamp",
+      result: {
+        status: "sent",
+        provider: "microsoft_graph",
+        providerReference: "graph-request-invalid-time",
+        providerReferenceKind: "graph_request_id",
+        acceptedAt: "2026-07-14T18:10:00Z"
+      }
+    }
+  ];
+  for (const invalid of invalidCompletions) {
+    await assert.rejects(
+      () => store.completeWaiverReceiptJob(mismatchedGraphClaim, invalid.result),
+      (error: unknown) =>
+        error instanceof ApiError &&
+        error.status === 422 &&
+        error.code === "waiver_receipt_acceptance_invalid" &&
+        error.message === "The receipt provider acceptance is invalid.",
+      invalid.name
+    );
+    assert.deepEqual(
+      await completionState(),
+      beforeInvalidCompletion,
+      `${invalid.name} leaves the job, lease, and immutable delivery ledger unchanged`
+    );
+  }
   const sentEvidence = await db
     .prepare(
       `SELECT provider, provider_message_id, provider_reference, provider_reference_kind, occurred_at
@@ -1031,13 +1137,6 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
       provider_reference: "resend-message-2",
       provider_reference_kind: "resend_message_id",
       occurred_at: "2026-07-14T18:05:00.000Z"
-    },
-    {
-      provider: "microsoft_graph",
-      provider_message_id: null,
-      provider_reference: "graph-kind-mismatch",
-      provider_reference_kind: "resend_message_id",
-      occurred_at: "2026-07-14T18:10:00.000Z"
     }
   ]);
   const afterResendCount = await db
