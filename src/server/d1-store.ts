@@ -946,14 +946,22 @@ export class D1DataStore implements DataStore {
         .prepare(
           `INSERT INTO legal_acceptance_events
            (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
-           VALUES (?, ?, 'participation_waiver', ?, ?, 'accepted', ?)`
+           SELECT ?, r.hunter_subject, 'participation_waiver',
+                  r.document_version, r.document_hash, 'accepted', ?
+           FROM legal_document_review_events r
+           JOIN player_accounts a
+             ON a.subject = r.hunter_subject AND a.account_state = 'active'
+           WHERE r.id = ? AND r.hunter_subject = ?
+             AND r.document_type = 'participation_waiver'
+             AND r.document_version = ? AND r.document_hash = ?`
         )
         .bind(
           acceptanceId,
+          timestamp,
+          input.reviewEventId,
           subject,
           participationWaiverDocument.version,
-          participationWaiverDocument.hash,
-          timestamp
+          participationWaiverDocument.hash
         ),
       this.db
         .prepare(
@@ -1016,14 +1024,16 @@ export class D1DataStore implements DataStore {
   async getParticipationWaiver(subject: string): Promise<WaiverAcceptanceRecord | null> {
     const row = await this.db
       .prepare(
-        `SELECT id FROM legal_acceptance_events
+        `SELECT id, action FROM legal_acceptance_events
          WHERE hunter_subject = ? AND document_type = 'participation_waiver'
-           AND document_version = ? AND document_hash = ? AND action = 'accepted'
+           AND document_version = ? AND document_hash = ?
          ORDER BY accepted_at DESC, id DESC LIMIT 1`
       )
       .bind(subject, participationWaiverDocument.version, participationWaiverDocument.hash)
       .first<Row>();
-    return row ? this.waiverAcceptanceById(value(row.id), subject, true) : null;
+    return row?.action === "accepted"
+      ? this.waiverAcceptanceById(value(row.id), subject, true)
+      : null;
   }
 
   async getOpsWaiverDetail(subject: string): Promise<WaiverAcceptanceRecord | null> {
@@ -1044,29 +1054,88 @@ export class D1DataStore implements DataStore {
     return verifiedEmail ? { acceptance, verifiedEmail } : null;
   }
 
+  private async requeueWaiverReceiptJob(
+    acceptance: WaiverAcceptanceRecord,
+    additionalStatements: (requeueToken: string) => D1PreparedStatement[] = () => []
+  ): Promise<boolean> {
+    const timestamp = now();
+    const requeueToken = id();
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO notification_job_leases
+           (notification_job_id, lease_token, attempt_generation, lease_until, claimed_at)
+           SELECT j.id, ?, j.attempts, ?, ?
+           FROM notification_jobs j
+           WHERE j.id = ? AND j.kind = 'waiver_receipt' AND j.target_record_id = ?
+             AND NOT EXISTS (
+               SELECT 1 FROM notification_job_leases active
+               WHERE active.notification_job_id = j.id AND active.lease_until > ?
+             )
+           ON CONFLICT(notification_job_id) DO UPDATE SET
+             lease_token = excluded.lease_token,
+             attempt_generation = excluded.attempt_generation,
+             lease_until = excluded.lease_until,
+             claimed_at = excluded.claimed_at
+           WHERE notification_job_leases.lease_until <= ?`
+        )
+        .bind(
+          requeueToken,
+          timestamp,
+          timestamp,
+          acceptance.receipt.jobId,
+          acceptance.id,
+          timestamp,
+          timestamp
+        ),
+      this.db
+        .prepare(
+          `UPDATE notification_jobs
+           SET status = 'pending', next_attempt_at = NULL, last_error_code = NULL, updated_at = ?
+           WHERE id = ? AND kind = 'waiver_receipt' AND target_record_id = ?
+             AND EXISTS (
+               SELECT 1 FROM notification_job_leases lease
+               WHERE lease.notification_job_id = notification_jobs.id AND lease.lease_token = ?
+             )`
+        )
+        .bind(timestamp, acceptance.receipt.jobId, acceptance.id, requeueToken),
+      this.db
+        .prepare(
+          `INSERT INTO notification_delivery_events
+           (id, notification_job_id, event_type, occurred_at)
+           SELECT ?, ?, 'requeued', ?
+           WHERE EXISTS (
+             SELECT 1 FROM notification_job_leases lease
+             JOIN notification_jobs job ON job.id = lease.notification_job_id
+             WHERE lease.notification_job_id = ? AND lease.lease_token = ?
+               AND job.status = 'pending' AND job.next_attempt_at IS NULL
+           )`
+        )
+        .bind(
+          id(),
+          acceptance.receipt.jobId,
+          timestamp,
+          acceptance.receipt.jobId,
+          requeueToken
+        ),
+      ...additionalStatements(requeueToken),
+      this.db
+        .prepare(
+          `DELETE FROM notification_job_leases
+           WHERE notification_job_id = ? AND lease_token = ?`
+        )
+        .bind(acceptance.receipt.jobId, requeueToken)
+    ]);
+    return Number(results[0]?.meta?.changes ?? 0) === 1;
+  }
+
   async queueWaiverReceiptResend(
     subject: string,
     acceptanceId: string
   ): Promise<WaiverAcceptanceRecord | null> {
     const acceptance = await this.waiverAcceptanceById(acceptanceId, subject, true);
     if (!acceptance) return null;
-    const timestamp = now();
-    await this.db.batch([
-      this.db
-        .prepare(
-          `UPDATE notification_jobs
-           SET status = 'pending', next_attempt_at = NULL, last_error_code = NULL, updated_at = ?
-           WHERE id = ? AND kind = 'waiver_receipt' AND target_record_id = ?`
-        )
-        .bind(timestamp, acceptance.receipt.jobId, acceptanceId),
-      this.db
-        .prepare(
-          `INSERT INTO notification_delivery_events
-           (id, notification_job_id, event_type, occurred_at)
-           VALUES (?, ?, 'requeued', ?)`
-        )
-        .bind(id(), acceptance.receipt.jobId, timestamp)
-    ]);
+    await this.requeueWaiverReceiptJob(acceptance);
     return this.waiverAcceptanceById(acceptanceId, subject, true);
   }
 
@@ -1086,30 +1155,74 @@ export class D1DataStore implements DataStore {
     if (!row) return null;
     const attempts = Number(row.attempts) + 1;
     const leaseUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    const claimed = await this.db
-      .prepare(
-        `UPDATE notification_jobs
-         SET status = 'pending', attempts = ?, next_attempt_at = ?, updated_at = ?, last_error_code = NULL
-         WHERE id = ? AND kind = 'waiver_receipt' AND attempts = ?
-           AND status IN ('pending', 'failed')
-           AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`
-      )
-      .bind(attempts, leaseUntil, timestamp, value(row.id), Number(row.attempts), timestamp)
-      .run();
-    if (Number(claimed.meta?.changes ?? 0) !== 1) return null;
-    await this.db
-      .prepare(
-        `INSERT INTO notification_delivery_events
-         (id, notification_job_id, event_type, occurred_at)
-         VALUES (?, ?, 'attempted', ?)`
-      )
-      .bind(id(), value(row.id), timestamp)
-      .run();
-    return { id: value(row.id), acceptanceId, attempts };
+    const leaseToken = id();
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO notification_job_leases
+           (notification_job_id, lease_token, attempt_generation, lease_until, claimed_at)
+           SELECT j.id, ?, ?, ?, ?
+           FROM notification_jobs j
+           WHERE j.id = ? AND j.kind = 'waiver_receipt' AND j.attempts = ?
+             AND j.status IN ('pending', 'failed')
+             AND (j.next_attempt_at IS NULL OR j.next_attempt_at <= ?)
+           ON CONFLICT(notification_job_id) DO UPDATE SET
+             lease_token = excluded.lease_token,
+             attempt_generation = excluded.attempt_generation,
+             lease_until = excluded.lease_until,
+             claimed_at = excluded.claimed_at
+           WHERE notification_job_leases.lease_until <= ?`
+        )
+        .bind(
+          leaseToken,
+          attempts,
+          leaseUntil,
+          timestamp,
+          value(row.id),
+          Number(row.attempts),
+          timestamp,
+          timestamp
+        ),
+      this.db
+        .prepare(
+          `UPDATE notification_jobs
+           SET status = 'pending', attempts = ?, next_attempt_at = ?, updated_at = ?, last_error_code = NULL
+           WHERE id = ? AND kind = 'waiver_receipt' AND attempts = ?
+             AND EXISTS (
+               SELECT 1 FROM notification_job_leases lease
+               WHERE lease.notification_job_id = notification_jobs.id
+                 AND lease.lease_token = ? AND lease.attempt_generation = ?
+             )`
+        )
+        .bind(
+          attempts,
+          leaseUntil,
+          timestamp,
+          value(row.id),
+          Number(row.attempts),
+          leaseToken,
+          attempts
+        ),
+      this.db
+        .prepare(
+          `INSERT INTO notification_delivery_events
+           (id, notification_job_id, event_type, occurred_at)
+           SELECT ?, ?, 'attempted', ?
+           WHERE EXISTS (
+             SELECT 1 FROM notification_job_leases lease
+             JOIN notification_jobs job ON job.id = lease.notification_job_id
+             WHERE lease.notification_job_id = ? AND lease.lease_token = ?
+               AND lease.attempt_generation = ? AND job.attempts = ?
+           )`
+        )
+        .bind(id(), value(row.id), timestamp, value(row.id), leaseToken, attempts, attempts)
+    ]);
+    if (Number(results[0]?.meta?.changes ?? 0) !== 1) return null;
+    return { id: value(row.id), acceptanceId, attempts, leaseToken };
   }
 
   async completeWaiverReceiptJob(
-    jobId: string,
+    job: WaiverReceiptJob,
     result:
       | { status: "sent"; providerMessageId: string }
       | { status: "failed"; errorCode: WaiverReceiptErrorCode }
@@ -1124,17 +1237,44 @@ export class D1DataStore implements DataStore {
           .prepare(
             `UPDATE notification_jobs
              SET status = 'sent', next_attempt_at = NULL, last_error_code = NULL, updated_at = ?
-             WHERE id = ? AND kind = 'waiver_receipt'`
+             WHERE id = ? AND kind = 'waiver_receipt' AND attempts = ?
+               AND EXISTS (
+                 SELECT 1 FROM notification_job_leases lease
+                 WHERE lease.notification_job_id = notification_jobs.id
+                   AND lease.lease_token = ? AND lease.attempt_generation = ?
+               )`
           )
-          .bind(timestamp, jobId),
+          .bind(timestamp, job.id, job.attempts, job.leaseToken, job.attempts),
         this.db
           .prepare(
             `INSERT INTO notification_delivery_events
              (id, notification_job_id, event_type, provider, provider_message_id, occurred_at)
              SELECT ?, ?, 'sent', 'resend', ?, ?
-             WHERE EXISTS (SELECT 1 FROM notification_jobs WHERE id = ? AND kind = 'waiver_receipt')`
+             WHERE EXISTS (
+               SELECT 1 FROM notification_job_leases lease
+               JOIN notification_jobs queued ON queued.id = lease.notification_job_id
+               WHERE lease.notification_job_id = ? AND lease.lease_token = ?
+                 AND lease.attempt_generation = ? AND queued.attempts = ?
+                 AND queued.status = 'sent' AND queued.updated_at = ?
+             )`
           )
-          .bind(id(), jobId, result.providerMessageId, timestamp, jobId)
+          .bind(
+            id(),
+            job.id,
+            result.providerMessageId,
+            timestamp,
+            job.id,
+            job.leaseToken,
+            job.attempts,
+            job.attempts,
+            timestamp
+          ),
+        this.db
+          .prepare(
+            `DELETE FROM notification_job_leases
+             WHERE notification_job_id = ? AND lease_token = ? AND attempt_generation = ?`
+          )
+          .bind(job.id, job.leaseToken, job.attempts)
       ]);
       return;
     }
@@ -1143,17 +1283,51 @@ export class D1DataStore implements DataStore {
         .prepare(
           `UPDATE notification_jobs
            SET status = 'failed', last_error_code = ?, updated_at = ?
-           WHERE id = ? AND kind = 'waiver_receipt'`
+           WHERE id = ? AND kind = 'waiver_receipt' AND attempts = ?
+             AND EXISTS (
+               SELECT 1 FROM notification_job_leases lease
+               WHERE lease.notification_job_id = notification_jobs.id
+                 AND lease.lease_token = ? AND lease.attempt_generation = ?
+             )`
         )
-        .bind(result.errorCode, timestamp, jobId),
+        .bind(
+          result.errorCode,
+          timestamp,
+          job.id,
+          job.attempts,
+          job.leaseToken,
+          job.attempts
+        ),
       this.db
         .prepare(
           `INSERT INTO notification_delivery_events
            (id, notification_job_id, event_type, error_code, occurred_at)
            SELECT ?, ?, 'failed', ?, ?
-           WHERE EXISTS (SELECT 1 FROM notification_jobs WHERE id = ? AND kind = 'waiver_receipt')`
+           WHERE EXISTS (
+             SELECT 1 FROM notification_job_leases lease
+             JOIN notification_jobs queued ON queued.id = lease.notification_job_id
+             WHERE lease.notification_job_id = ? AND lease.lease_token = ?
+               AND lease.attempt_generation = ? AND queued.attempts = ?
+               AND queued.status = 'failed' AND queued.updated_at = ?
+           )`
         )
-        .bind(id(), jobId, result.errorCode, timestamp, jobId)
+        .bind(
+          id(),
+          job.id,
+          result.errorCode,
+          timestamp,
+          job.id,
+          job.leaseToken,
+          job.attempts,
+          job.attempts,
+          timestamp
+        ),
+      this.db
+        .prepare(
+          `DELETE FROM notification_job_leases
+           WHERE notification_job_id = ? AND lease_token = ? AND attempt_generation = ?`
+        )
+        .bind(job.id, job.leaseToken, job.attempts)
     ]);
   }
 
@@ -1853,20 +2027,24 @@ export class D1DataStore implements DataStore {
         FROM ranked_legal WHERE rank = 1 GROUP BY hunter_subject
       ), ranked_current_waiver AS (
         SELECT l.hunter_subject, l.id AS waiver_id, l.document_version AS waiver_version,
-               l.accepted_at,
-               (SELECT COUNT(*) FROM waiver_acceptance_participants wp
-                WHERE wp.acceptance_event_id = l.id AND wp.participant_role = 'minor') AS minor_count,
-               j.status AS receipt_status,
+               l.action, l.accepted_at,
                ROW_NUMBER() OVER (
                  PARTITION BY l.hunter_subject ORDER BY l.accepted_at DESC, l.id DESC
                ) AS rank
         FROM legal_acceptance_events l
-        JOIN notification_jobs j ON j.target_record_id = l.id AND j.kind = 'waiver_receipt'
-        WHERE l.document_type = 'participation_waiver' AND l.action = 'accepted'
+        WHERE l.document_type = 'participation_waiver'
           AND l.document_version = ? AND l.document_hash = ?
       ), current_waiver AS (
-        SELECT hunter_subject, waiver_id, waiver_version, accepted_at, minor_count, receipt_status
-        FROM ranked_current_waiver WHERE rank = 1
+        SELECT waiver.hunter_subject, waiver.waiver_id, waiver.waiver_version,
+               waiver.accepted_at,
+               (SELECT COUNT(*) FROM waiver_acceptance_participants wp
+                WHERE wp.acceptance_event_id = waiver.waiver_id
+                  AND wp.participant_role = 'minor') AS minor_count,
+               job.status AS receipt_status
+        FROM ranked_current_waiver waiver
+        JOIN notification_jobs job
+          ON job.target_record_id = waiver.waiver_id AND job.kind = 'waiver_receipt'
+        WHERE waiver.rank = 1 AND waiver.action = 'accepted'
       )`;
     const cursorWhere = cursor
       ? "AND (a.updated_at < ? OR (a.updated_at = ? AND a.subject < ?))"

@@ -30,7 +30,12 @@ const envelope: WaiverReceiptEnvelope = {
 };
 
 class ReceiptStore {
-  claims: WaiverReceiptJob[] = [{ id: "job-1", acceptanceId: envelope.acceptance.id, attempts: 1 }];
+  claims: WaiverReceiptJob[] = [{
+    id: "job-1",
+    acceptanceId: envelope.acceptance.id,
+    attempts: 1,
+    leaseToken: "opaque-lease-1",
+  }];
   envelope: WaiverReceiptEnvelope | null = envelope;
   completions: Array<
     | { jobId: string; status: "sent"; providerMessageId: string }
@@ -46,12 +51,12 @@ class ReceiptStore {
   }
 
   async completeWaiverReceiptJob(
-    jobId: string,
+    job: WaiverReceiptJob,
     result:
       | { status: "sent"; providerMessageId: string }
       | { status: "failed"; errorCode: WaiverReceiptErrorCode },
   ) {
-    this.completions.push({ jobId, ...result });
+    this.completions.push({ jobId: job.id, ...result });
   }
 }
 
@@ -145,9 +150,37 @@ test("managed waiver receipts suppresses an unavailable lease and can send a del
   assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "sent" });
   assert.equal(networkCalls, 1, "a missing claim never reaches the provider");
 
-  store.claims.push({ id: "job-1", acceptanceId: envelope.acceptance.id, attempts: 2 });
+  store.claims.push({
+    id: "job-1",
+    acceptanceId: envelope.acceptance.id,
+    attempts: 2,
+    leaseToken: "opaque-lease-2",
+  });
   assert.deepEqual(await sender.deliver(envelope.acceptance.id), { status: "sent" });
   assert.equal(networkCalls, 2, "a deliberately requeued job may be sent after success");
+});
+
+test("managed waiver receipts completes the exact claimed lease generation", async () => {
+  const claimed = {
+    id: "job-1",
+    acceptanceId: envelope.acceptance.id,
+    attempts: 7,
+    leaseToken: "opaque-lease-7",
+  };
+  const store = new ReceiptStore();
+  store.claims = [claimed];
+  const completedClaims: unknown[] = [];
+  store.completeWaiverReceiptJob = async (job: unknown) => {
+    completedClaims.push(job);
+  };
+  const sender = new ManagedWaiverReceipts(
+    store as unknown as DataStore,
+    config(async () => Response.json({ id: "message-7" })),
+  );
+
+  await sender.deliver(envelope.acceptance.id);
+
+  assert.deepEqual(completedClaims, [claimed]);
 });
 
 test("managed waiver receipts fails retryably when dedicated sender configuration is missing", async () => {

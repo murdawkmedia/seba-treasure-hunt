@@ -335,7 +335,8 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     "0003_player_accounts_and_legal_acceptance.sql",
     "0004_environment_metadata.sql",
     "0005_sponsor_inquiries.sql",
-    "0006_participation_waiver_and_receipts.sql"
+    "0006_participation_waiver_and_receipts.sql",
+    "0007_waiver_receipt_leases.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -425,6 +426,84 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.equal(second.replayed, false, "the same key is independent for another subject");
   assert.notEqual(second.value.id, accepted.value.id);
 
+  await preparePlayer("hunter-race-delete");
+  const racedReview = await store.recordWaiverReview("hunter-race-delete", {
+    version: participationWaiverDocument.version,
+    hash: participationWaiverDocument.hash
+  });
+  let deletionInjected = false;
+  const racingDb = {
+    prepare(sql: string) {
+      const statement = db.prepare(sql);
+      if (
+        !sql.trimStart().startsWith("SELECT") ||
+        !sql.includes("FROM legal_document_review_events r")
+      ) {
+        return statement;
+      }
+      return {
+        bind(...bindings: unknown[]) {
+          const bound = statement.bind(...bindings);
+          return {
+            async first<T>() {
+              const row = await bound.first<T>();
+              if (row && !deletionInjected) {
+                deletionInjected = true;
+                await db
+                  .prepare("UPDATE player_accounts SET account_state = 'deleted' WHERE subject = ?")
+                  .bind("hunter-race-delete")
+                  .run();
+              }
+              return row;
+            }
+          };
+        }
+      };
+    },
+    batch(statements: D1PreparedStatement[]) {
+      return db.batch(statements);
+    }
+  };
+  const racingStore = new D1DataStore(racingDb as unknown as D1Database);
+  await assert.rejects(
+    racingStore.acceptParticipationWaiver("hunter-race-delete", {
+      ...input,
+      reviewEventId: racedReview.id,
+      idempotencyKey: "race-delete-key",
+      adultName: "Race Adult",
+      minors: []
+    }),
+    /accepted participation waiver/i
+  );
+  const racedWrites = await Promise.all([
+    db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM legal_acceptance_events WHERE hunter_subject = ? AND document_type = 'participation_waiver'"
+      )
+      .bind("hunter-race-delete")
+      .first<{ count: number }>(),
+    db
+      .prepare("SELECT COUNT(*) AS count FROM idempotency_keys WHERE scope = ?")
+      .bind("waiver_acceptance:hunter-race-delete")
+      .first<{ count: number }>()
+  ]);
+  assert.deepEqual(racedWrites.map((row) => row?.count), [0, 0]);
+
+  await db
+    .prepare(
+      `INSERT INTO legal_acceptance_events
+       (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
+       VALUES (?, ?, 'participation_waiver', ?, ?, 'withdrawn', ?)`
+    )
+    .bind(
+      "withdrawn-current-waiver",
+      "hunter-current-2",
+      participationWaiverDocument.version,
+      participationWaiverDocument.hash,
+      new Date(Date.now() + 1000).toISOString()
+    )
+    .run();
+
   const counts = await Promise.all([
     db.prepare("SELECT COUNT(*) AS count FROM legal_acceptance_events WHERE hunter_subject = ? AND document_type = 'participation_waiver'").bind("hunter-current-1").first<{ count: number }>(),
     db.prepare("SELECT COUNT(*) AS count FROM waiver_acceptance_participants WHERE acceptance_event_id = ?").bind(accepted.value.id).first<{ count: number }>(),
@@ -452,12 +531,36 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.equal(serializedPlayer.includes("Jordan Minor"), false);
   assert.equal(serializedPlayer.includes("birthYear"), false);
   assert.equal(serializedPlayer.includes("participants"), false);
+  const withdrawnPlayer = players.items.find((item) => item.id === "hunter-current-2");
+  assert.equal(withdrawnPlayer?.waiverStatus, "required");
+  assert.equal(withdrawnPlayer?.waiverVersion, null);
+  assert.equal(withdrawnPlayer?.acceptedAt, null);
+  assert.equal(withdrawnPlayer?.receiptStatus, null);
+  assert.equal(withdrawnPlayer?.participationUnlocked, false);
+  assert.equal(await store.getParticipationWaiver("hunter-current-2"), null);
 
   const claimed = await store.claimWaiverReceiptJob(accepted.value.id);
   assert.equal(claimed?.acceptanceId, accepted.value.id);
   assert.equal(claimed?.attempts, 1);
+  assert.match(claimed?.leaseToken ?? "", /^[0-9a-f-]{36}$/i);
   assert.equal(await store.claimWaiverReceiptJob(accepted.value.id), null, "the five-minute lease suppresses another claim");
-  await store.completeWaiverReceiptJob(claimed!.id, {
+  await store.queueWaiverReceiptResend("hunter-current-1", accepted.value.id);
+  const activeLeaseState = await db
+    .prepare(
+      `SELECT j.attempts, j.next_attempt_at,
+              (SELECT COUNT(*) FROM notification_job_leases l
+               WHERE l.notification_job_id = j.id) AS lease_count,
+              (SELECT COUNT(*) FROM notification_delivery_events d
+               WHERE d.notification_job_id = j.id AND d.event_type = 'requeued') AS requeue_count
+       FROM notification_jobs j WHERE j.id = ?`
+    )
+    .bind(claimed!.id)
+    .first<{ attempts: number; next_attempt_at: string | null; lease_count: number; requeue_count: number }>();
+  assert.equal(activeLeaseState?.attempts, 1);
+  assert.ok(activeLeaseState?.next_attempt_at, "resend does not clear an active lease");
+  assert.equal(activeLeaseState?.lease_count, 1);
+  assert.equal(activeLeaseState?.requeue_count, 0);
+  await store.completeWaiverReceiptJob(claimed!, {
     status: "failed",
     errorCode: "provider_rejected"
   });
@@ -467,13 +570,22 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.equal(resent?.receipt.status, "pending");
   const reclaimed = await store.claimWaiverReceiptJob(accepted.value.id);
   assert.equal(reclaimed?.attempts, 2);
-  await store.completeWaiverReceiptJob(reclaimed!.id, {
+  await store.completeWaiverReceiptJob(reclaimed!, {
     status: "sent",
     providerMessageId: "provider-message-1"
   });
   const sent = await store.getParticipationWaiver("hunter-current-1");
   assert.equal(sent?.receipt.status, "sent");
   assert.ok(sent?.receipt.sentAt);
+  await store.completeWaiverReceiptJob(claimed!, {
+    status: "failed",
+    errorCode: "provider_unavailable"
+  });
+  assert.equal(
+    (await store.getParticipationWaiver("hunter-current-1"))?.receipt.status,
+    "sent",
+    "a stale completion cannot overwrite a newer successful generation"
+  );
   const evidence = await db
     .prepare("SELECT provider_message_id, error_code FROM notification_delivery_events WHERE notification_job_id = ? ORDER BY occurred_at DESC, id DESC")
     .bind(claimed!.id)
@@ -481,6 +593,11 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.deepEqual(
     evidence.results.filter((event) => event.provider_message_id !== null),
     [{ provider_message_id: "provider-message-1", error_code: null }]
+  );
+  assert.equal(
+    evidence.results.filter((event) => event.error_code !== null).length,
+    1,
+    "the stale completion appends no losing delivery event"
   );
 
   await store.queueWaiverReceiptResend("hunter-current-1", accepted.value.id);

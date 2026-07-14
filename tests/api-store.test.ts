@@ -185,6 +185,12 @@ test("D1 waiver acceptance writes one atomic immutable snapshot and subject-scop
   assert.equal(database.batchCalls[0]?.length, 7);
   const sql = database.batchCalls[0]!.map((statement) => statement.sql).join("\n");
   assert.match(sql, /INSERT INTO legal_acceptance_events/);
+  const acceptance = database.batchCalls[0]!.find((statement) =>
+    statement.sql.includes("INSERT INTO legal_acceptance_events")
+  );
+  assert.match(acceptance?.sql ?? "", /SELECT[\s\S]+FROM legal_document_review_events/i);
+  assert.match(acceptance?.sql ?? "", /account_state = 'active'/i);
+  assert.match(acceptance?.sql ?? "", /r\.id = \?[\s\S]+r\.hunter_subject = \?/i);
   assert.match(sql, /INSERT INTO waiver_acceptance_participants/);
   assert.match(sql, /INSERT INTO notification_jobs/);
   assert.match(sql, /INSERT INTO notification_delivery_events/);

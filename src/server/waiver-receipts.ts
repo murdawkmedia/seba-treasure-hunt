@@ -4,6 +4,7 @@ import type {
   LegalReceiptSender,
   WaiverReceiptEnvelope,
   WaiverReceiptErrorCode,
+  WaiverReceiptJob,
 } from "./types";
 
 export interface WaiverReceiptMessage {
@@ -162,8 +163,8 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
     private readonly config: ManagedWaiverReceiptConfig,
   ) {}
 
-  private async fail(jobId: string, errorCode: WaiverReceiptErrorCode) {
-    await this.store.completeWaiverReceiptJob(jobId, { status: "failed", errorCode });
+  private async fail(job: WaiverReceiptJob, errorCode: WaiverReceiptErrorCode) {
+    await this.store.completeWaiverReceiptJob(job, { status: "failed", errorCode });
     return { status: "failed" as const };
   }
 
@@ -175,11 +176,11 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
     const from = this.config.from?.trim() ?? "";
     const replyTo = this.config.replyTo?.trim() ?? "";
     if (!apiKey || !from || !replyTo || !this.config.canonicalOrigin.trim()) {
-      return this.fail(job.id, "provider_unavailable");
+      return this.fail(job, "provider_unavailable");
     }
 
     const envelope = await this.store.getWaiverReceiptEnvelope(acceptanceId);
-    if (!envelope) return this.fail(job.id, "provider_unavailable");
+    if (!envelope) return this.fail(job, "provider_unavailable");
     const message = renderWaiverReceipt(envelope, this.config.canonicalOrigin);
     let response: Response;
     try {
@@ -199,9 +200,9 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
         }),
       });
     } catch {
-      return this.fail(job.id, "provider_unavailable");
+      return this.fail(job, "provider_unavailable");
     }
-    if (!response.ok) return this.fail(job.id, "provider_rejected");
+    if (!response.ok) return this.fail(job, "provider_rejected");
 
     let providerMessageId: string | null = null;
     try {
@@ -211,9 +212,9 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
     } catch {
       providerMessageId = null;
     }
-    if (!providerMessageId) return this.fail(job.id, "provider_response_invalid");
+    if (!providerMessageId) return this.fail(job, "provider_response_invalid");
 
-    await this.store.completeWaiverReceiptJob(job.id, {
+    await this.store.completeWaiverReceiptJob(job, {
       status: "sent",
       providerMessageId,
     });

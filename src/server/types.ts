@@ -87,6 +87,7 @@ export interface WaiverReceiptJob {
   id: string;
   acceptanceId: string;
   attempts: number;
+  leaseToken: string;
 }
 
 export type WaiverReceiptErrorCode =
@@ -204,7 +205,7 @@ export interface DataStore {
   claimWaiverReceiptJob(acceptanceId: string): Promise<WaiverReceiptJob | null>;
   getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null>;
   completeWaiverReceiptJob(
-    jobId: string,
+    job: WaiverReceiptJob,
     result:
       | { status: "sent"; providerMessageId: string }
       | { status: "failed"; errorCode: WaiverReceiptErrorCode }

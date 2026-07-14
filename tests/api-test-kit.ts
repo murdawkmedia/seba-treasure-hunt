@@ -12,6 +12,8 @@ import type {
   WaiverAcceptanceRecord,
   WaiverDocumentIdentity,
   WaiverReceiptEnvelope,
+  WaiverReceiptErrorCode,
+  WaiverReceiptJob,
   WaiverReviewRecord
 } from "../src/server/types";
 import { ApiError } from "../src/server/errors";
@@ -402,7 +404,12 @@ export class FakeStore {
     const record = this.waiverAcceptances.get(acceptanceId);
     if (!record || record.receipt.status === "sent") return null;
     record.receipt.attempts += 1;
-    return { id: record.receipt.jobId, acceptanceId, attempts: record.receipt.attempts };
+    return {
+      id: record.receipt.jobId,
+      acceptanceId,
+      attempts: record.receipt.attempts,
+      leaseToken: `fake-lease-${record.receipt.attempts}`
+    };
   }
 
   async getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null> {
@@ -415,10 +422,12 @@ export class FakeStore {
   }
 
   async completeWaiverReceiptJob(
-    jobId: string,
-    result: { status: "sent"; providerMessageId: string } | { status: "failed"; errorCode: string }
+    job: WaiverReceiptJob,
+    result:
+      | { status: "sent"; providerMessageId: string }
+      | { status: "failed"; errorCode: WaiverReceiptErrorCode }
   ) {
-    const record = [...this.waiverAcceptances.values()].find((entry) => entry.receipt.jobId === jobId);
+    const record = [...this.waiverAcceptances.values()].find((entry) => entry.receipt.jobId === job.id);
     if (!record) return;
     record.receipt.status = result.status;
     record.receipt.sentAt = result.status === "sent" ? "2026-07-13T18:06:00.000Z" : null;
