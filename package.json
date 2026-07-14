@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "assets:favicons": "node scripts/generate-favicons.mjs",
+    "legal:generate": "node scripts/generate-waiver.mjs",
+    "legal:verify": "node scripts/generate-waiver.mjs --check",
     "build": "node scripts/build.mjs",
     "dev": "npm run build && wrangler pages dev dist --persist-to .wrangler/state",
     "test": "node --test tests/*.test.mjs && tsx --test \"tests/**/*.test.ts\"",

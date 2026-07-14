@@ -2,10 +2,17 @@ import { build } from "esbuild";
 import { cp, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
 const mediaDist = path.join(root, "dist-media");
+
+// Equivalent to `npm run legal:verify`, without invoking a platform shell.
+execFileSync(process.execPath, [path.join(root, "scripts", "generate-waiver.mjs"), "--check"], {
+  cwd: root,
+  stdio: "inherit"
+});
 
 const staticFiles = [
   "index.html",
@@ -17,6 +24,7 @@ const staticFiles = [
   "report.html",
   "rules.html",
   "privacy.html",
+  "waiver.html",
   "community-guidelines.html",
   "clue-board.html",
   "sponsors.html",

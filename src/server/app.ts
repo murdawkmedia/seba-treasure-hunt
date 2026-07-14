@@ -49,6 +49,7 @@ const cleanRoutes = new Map([
   ["/sponsors", "/sponsors.html"],
   ["/rules", "/rules.html"],
   ["/privacy", "/privacy.html"],
+  ["/waiver", "/waiver.html"],
   ["/community-guidelines", "/community-guidelines.html"],
   ["/clue-board", "/clue-board.html"],
   ["/ops", "/ops.html"]
