@@ -4,6 +4,11 @@ import { pathToFileURL } from "node:url";
 const delegatedScope = "offline_access https://graph.microsoft.com/Mail.Send";
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
 const canonicalGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const maxDeviceLifetimeSeconds = 30 * 60;
+const maxPollIntervalSeconds = 30;
+const defaultPollIntervalSeconds = 5;
+const defaultClipboardTimeoutMs = 10_000;
+const defaultClipboardCleanupGraceMs = 1_000;
 
 function fixedError() {
   return new Error("Microsoft device authorization could not be completed.");
@@ -11,6 +16,12 @@ function fixedError() {
 
 function nonEmpty(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function normalizedGuid(value) {
+  if (!nonEmpty(value)) return null;
+  const normalized = value.trim();
+  return canonicalGuid.test(normalized) ? normalized : null;
 }
 
 function safeUserCode(value) {
@@ -56,63 +67,141 @@ async function decodedResponse(response) {
   }
 }
 
-export async function writeWindowsClipboard(value, spawnImpl = spawn) {
-  const child = spawnImpl(
-    "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "$value = [Console]::In.ReadToEnd(); Set-Clipboard -Value $value"
-    ],
-    { windowsHide: true, stdio: ["pipe", "ignore", "ignore"] }
-  );
+function boundedMilliseconds(value, fallback) {
+  const selected = value ?? fallback;
+  return Number.isInteger(selected) && selected >= 1 && selected <= 60_000
+    ? selected
+    : null;
+}
 
-  await new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      callback(value);
-    };
-    child.once("error", () => finish(reject, fixedError()));
-    child.once("close", (code) => {
-      if (code === 0) finish(resolve);
-      else finish(reject, fixedError());
-    });
-    child.stdin?.once?.("error", () => finish(reject, fixedError()));
-    child.stdin.end(value);
+export async function writeWindowsClipboard(value, options = {}) {
+  const {
+    spawnImpl = spawn,
+    setTimeoutImpl = setTimeout,
+    clearTimeoutImpl = clearTimeout
+  } = options;
+  const timeoutMs = boundedMilliseconds(options.timeoutMs, defaultClipboardTimeoutMs);
+  const cleanupGraceMs = boundedMilliseconds(
+    options.cleanupGraceMs,
+    defaultClipboardCleanupGraceMs
+  );
+  if (
+    !nonEmpty(value) ||
+    typeof spawnImpl !== "function" ||
+    typeof setTimeoutImpl !== "function" ||
+    typeof clearTimeoutImpl !== "function" ||
+    timeoutMs === null ||
+    cleanupGraceMs === null
+  ) {
+    throw fixedError();
+  }
+
+  let child;
+  try {
+    child = spawnImpl(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$value = [Console]::In.ReadToEnd(); Set-Clipboard -Value $value"
+      ],
+      { windowsHide: true, stdio: ["pipe", "ignore", "ignore"] }
+    );
+  } catch {
+    throw fixedError();
+  }
+  if (
+    !child ||
+    typeof child.once !== "function" ||
+    typeof child.kill !== "function" ||
+    !child.stdin ||
+    typeof child.stdin.end !== "function" ||
+    typeof child.stdin.destroy !== "function" ||
+    typeof child.stdin.once !== "function"
+  ) {
+    try { child?.stdin?.destroy?.(); } catch {}
+    try { child?.kill?.("SIGKILL"); } catch {}
+    throw fixedError();
+  }
+
+  let closed = false;
+  let closeCleanup;
+  const closeObserved = new Promise((resolve) => {
+    closeCleanup = resolve;
   });
+  let outcomeResolved = false;
+  let resolveOutcome;
+  const outcome = new Promise((resolve) => {
+    resolveOutcome = resolve;
+  });
+  const settle = (value) => {
+    if (outcomeResolved) return;
+    outcomeResolved = true;
+    resolveOutcome(value);
+  };
+  child.once("close", (code) => {
+    closed = true;
+    closeCleanup();
+    settle({ kind: "close", code });
+  });
+  child.once("error", () => settle({ kind: "spawn_error" }));
+  child.stdin.once("error", () => settle({ kind: "stdin_error" }));
+
+  const timeoutHandle = setTimeoutImpl(
+    () => settle({ kind: "timeout" }),
+    timeoutMs
+  );
+  try {
+    child.stdin.end(value);
+  } catch {
+    settle({ kind: "stdin_error" });
+  }
+
+  const result = await outcome;
+  clearTimeoutImpl(timeoutHandle);
+  if (result.kind === "close" && result.code === 0) return;
+
+  try { child.stdin.destroy(); } catch {}
+  try { child.kill("SIGKILL"); } catch {}
+  if (!closed) {
+    let graceHandle;
+    const graceExpired = new Promise((resolve) => {
+      graceHandle = setTimeoutImpl(resolve, cleanupGraceMs);
+    });
+    await Promise.race([closeObserved, graceExpired]);
+    clearTimeoutImpl(graceHandle);
+  }
+  throw fixedError();
 }
 
 export async function runGraphDeviceLogin(options) {
   const {
     clientId,
     tenantId,
-    deviceCodeEndpoint,
-    tokenEndpoint,
     fetchImpl = fetch,
     sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    now = () => performance.now(),
     stdout = process.stdout,
     writeClipboard = writeWindowsClipboard
   } = options;
 
-  if (
-    !canonicalGuid.test(clientId ?? "") ||
-    !canonicalGuid.test(tenantId ?? "") ||
-    !nonEmpty(deviceCodeEndpoint) ||
-    !nonEmpty(tokenEndpoint)
-  ) {
+  const normalizedClientId = normalizedGuid(clientId);
+  const normalizedTenantId = normalizedGuid(tenantId);
+  if (!normalizedClientId || !normalizedTenantId || typeof now !== "function") {
     throw fixedError();
   }
+  const authority = `https://login.microsoftonline.com/${normalizedTenantId}/oauth2/v2.0`;
+  const deviceCodeUrl = `${authority}/devicecode`;
+  const tokenUrl = `${authority}/token`;
 
   let deviceResponse;
   try {
-    deviceResponse = await fetchImpl(deviceCodeEndpoint, {
+    deviceResponse = await fetchImpl(deviceCodeUrl, {
       method: "POST",
       redirect: "manual",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ client_id: clientId, scope: delegatedScope })
+      body: new URLSearchParams({ client_id: normalizedClientId, scope: delegatedScope })
     });
   } catch {
     throw fixedError();
@@ -124,13 +213,28 @@ export async function runGraphDeviceLogin(options) {
   const device = await decodedResponse(deviceResponse);
   const verificationUri = safeVerificationUri(device?.verification_uri);
   const userCode = safeUserCode(device?.user_code);
+  const expiresInSeconds = device?.expires_in;
+  const configuredInterval = device?.interval;
+  const intervalSeconds = configuredInterval === undefined
+    ? defaultPollIntervalSeconds
+    : configuredInterval;
+  const startedAt = now();
+  const expiresAt = startedAt + expiresInSeconds * 1000;
   if (
     !device ||
     !nonEmpty(device.device_code) ||
+    device.device_code.length > 4096 ||
     !userCode ||
     !verificationUri ||
-    !Number.isFinite(device.expires_in) ||
-    device.expires_in <= 0
+    !Number.isInteger(expiresInSeconds) ||
+    expiresInSeconds < 1 ||
+    expiresInSeconds > maxDeviceLifetimeSeconds ||
+    !Number.isInteger(intervalSeconds) ||
+    intervalSeconds < 1 ||
+    intervalSeconds > maxPollIntervalSeconds ||
+    !Number.isFinite(startedAt) ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= startedAt
   ) {
     throw fixedError();
   }
@@ -139,22 +243,28 @@ export async function runGraphDeviceLogin(options) {
   stdout.write(`User code: ${userCode}\n`);
   stdout.write("Status: Waiting for Microsoft authorization.\n");
 
-  const expiresAt = Date.now() + Math.floor(device.expires_in * 1000);
-  let intervalSeconds = Number.isFinite(device.interval)
-    ? Math.max(1, Math.floor(device.interval))
-    : 5;
+  let currentIntervalSeconds = intervalSeconds;
+  let lastObserved = startedAt;
 
-  while (Date.now() < expiresAt) {
-    await sleep(intervalSeconds * 1000);
+  while (true) {
+    const beforeSleep = now();
+    if (!Number.isFinite(beforeSleep) || beforeSleep < lastObserved) throw fixedError();
+    if (beforeSleep >= expiresAt) break;
+    const remainingMs = expiresAt - beforeSleep;
+    await sleep(Math.min(currentIntervalSeconds * 1000, remainingMs));
+    const afterSleep = now();
+    if (!Number.isFinite(afterSleep) || afterSleep < beforeSleep) throw fixedError();
+    lastObserved = afterSleep;
+    if (afterSleep >= expiresAt) break;
     let tokenResponse;
     try {
-      tokenResponse = await fetchImpl(tokenEndpoint, {
+      tokenResponse = await fetchImpl(tokenUrl, {
         method: "POST",
         redirect: "manual",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           grant_type: deviceGrant,
-          client_id: clientId,
+          client_id: normalizedClientId,
           device_code: device.device_code,
           scope: delegatedScope
         })
@@ -165,13 +275,17 @@ export async function runGraphDeviceLogin(options) {
     const token = await decodedResponse(tokenResponse);
     if (token?.error === "authorization_pending") continue;
     if (token?.error === "slow_down") {
-      intervalSeconds += 5;
+      currentIntervalSeconds = Math.min(
+        maxPollIntervalSeconds,
+        currentIntervalSeconds + 5
+      );
       continue;
     }
     if (
       !tokenResponse.ok ||
       !token ||
-      token.token_type?.trim().toLowerCase() !== "bearer" ||
+      typeof token.token_type !== "string" ||
+      token.token_type.trim().toLowerCase() !== "bearer" ||
       !nonEmpty(token.refresh_token)
     ) {
       throw fixedError();
@@ -181,7 +295,14 @@ export async function runGraphDeviceLogin(options) {
     token.refresh_token = null;
     token.access_token = null;
     try {
-      await writeClipboard(refreshToken);
+      try {
+        await writeClipboard(refreshToken);
+      } catch {
+        stdout.write(
+          "Status: Clipboard copy could not be confirmed. Clear the Windows clipboard before retrying.\n"
+        );
+        throw fixedError();
+      }
     } finally {
       refreshToken = "";
     }
@@ -202,9 +323,7 @@ async function main() {
   }
   await runGraphDeviceLogin({
     clientId,
-    tenantId,
-    deviceCodeEndpoint: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/devicecode`,
-    tokenEndpoint: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`
+    tenantId
   });
 }
 
