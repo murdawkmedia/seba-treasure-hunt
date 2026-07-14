@@ -153,7 +153,7 @@ test("waiver QA scans private fixture values across source and served public out
     "waiver-acceptance-qa-private-001",
     "receipt-job-qa-private-001",
     "resend-provider-qa-private-001",
-    "sk_test_qa_private_credential",
+    "qa-private-credential-sentinel",
     "53.123456,-114.654321",
     "qa-private-note-evidence",
     "qa-private-report-evidence",

@@ -73,7 +73,7 @@ const privateFixtures = Object.freeze({
   acceptanceId: "waiver-acceptance-qa-private-001",
   receiptJobId: "receipt-job-qa-private-001",
   providerId: "resend-provider-qa-private-001",
-  credential: "sk_test_qa_private_credential",
+  credential: "qa-private-credential-sentinel",
   coordinates: "53.123456,-114.654321",
   noteEvidence: "qa-private-note-evidence",
   reportEvidence: "qa-private-report-evidence",
