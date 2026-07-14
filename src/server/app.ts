@@ -1075,7 +1075,9 @@ export const createApi = (deps: ApiDependencies) => {
       documentVersion: document.version,
       documentHash: document.hash
     });
-    if (!capture.replayed) scheduleWaiverReceipt(c, deps.waiverReceipts, capture.value.id);
+    if (capture.value.receipt.status !== "sent") {
+      scheduleWaiverReceipt(c, deps.waiverReceipts, capture.value.id);
+    }
     return success(
       c,
       {

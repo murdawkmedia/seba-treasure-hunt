@@ -119,6 +119,7 @@ test("accepts the reviewed waiver for an adult and supervised minors idempotentl
   assert.equal(first.acceptance.participants[1].fullName, "Sam Hunter");
   assert.deepEqual(receipts.calls, [first.acceptance.id]);
 
+  store.waiverAcceptances.get(first.acceptance.id)!.receipt.status = "sent";
   const replay = await request();
   assert.equal(replay.status, 200);
   const repeated = (await responseJson(replay)).data;
@@ -134,6 +135,60 @@ test("accepts the reviewed waiver for an adult and supervised minors idempotentl
     "waiver_accept",
     "waiver_accept",
   ]);
+});
+
+test("an idempotent acceptance replay re-drives an interrupted receipt unless it was already sent", async () => {
+  const store = new FakeStore();
+  await completePlayer(store);
+  const firstApp = createApi({
+    store,
+    identity: new FakeIdentity(),
+    turnstile: new FakeTurnstile(),
+    uploads: new FakeUploads(),
+    rateLimits: new FakeRateLimits(),
+    environment: new FakeEnvironment(),
+  });
+  const reviewEventId = await recordReview(firstApp);
+  const body = {
+    reviewEventId,
+    ...documentIdentity,
+    waiverAccepted: true,
+    guardianAttested: true,
+    minors: [],
+  };
+  const request = (app: ReturnType<typeof createApi>) => app.request(`${origin}/api/v1/me/waiver/accept`, {
+    method: "POST",
+    ...json(body, { ...hunterHeaders, "idempotency-key": "accept-interrupted-receipt" }),
+  });
+
+  const accepted = await request(firstApp);
+  assert.equal(accepted.status, 201);
+  const acceptanceId = (await responseJson(accepted)).data.acceptance.id as string;
+
+  const receipts = new FakeLegalReceiptSender();
+  const retryApp = createApi({
+    store,
+    identity: new FakeIdentity(),
+    turnstile: new FakeTurnstile(),
+    uploads: new FakeUploads(),
+    rateLimits: new FakeRateLimits(),
+    waiverReceipts: receipts,
+    environment: new FakeEnvironment(),
+  });
+
+  const pendingReplay = await request(retryApp);
+  assert.equal(pendingReplay.status, 200);
+  assert.deepEqual(receipts.calls, [acceptanceId]);
+
+  store.waiverAcceptances.get(acceptanceId)!.receipt.status = "failed";
+  const failedReplay = await request(retryApp);
+  assert.equal(failedReplay.status, 200);
+  assert.deepEqual(receipts.calls, [acceptanceId, acceptanceId]);
+
+  store.waiverAcceptances.get(acceptanceId)!.receipt.status = "sent";
+  const sentReplay = await request(retryApp);
+  assert.equal(sentReplay.status, 200);
+  assert.deepEqual(receipts.calls, [acceptanceId, acceptanceId]);
 });
 
 test("rejects stale, unreviewed, and ineligible waiver acceptance", async () => {
