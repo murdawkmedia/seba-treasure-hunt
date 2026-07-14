@@ -602,7 +602,11 @@ export class FakeStore {
     return { replayed: false };
   }
 
-  async listPlayers() {
+  async listPlayers(): Promise<{
+    counts: { verifiedAccounts: number; completedProfiles: number; huntEmail: number; marketing: number };
+    items: Record<string, unknown>[];
+    nextCursor: null;
+  }> {
     return {
       counts: {
         verifiedAccounts: this.accounts.size,
