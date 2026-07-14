@@ -59,6 +59,8 @@ const rawTextElements = new Set([
   "iframe",
   "noembed",
   "noframes",
+  // Campaign output runs JavaScript, so noscript descendants are not live DOM.
+  "noscript",
   "script",
   "style",
   "textarea",
@@ -230,9 +232,9 @@ function parseStartTag(rawTag) {
   return { attributes, name: nameMatch[0].toLowerCase() };
 }
 
-function scanStartTags(source) {
+function scanTagSegment(source, initialCursor = 0, stopTag = "") {
   const tags = [];
-  let cursor = 0;
+  let cursor = initialCursor;
 
   while (cursor < source.length) {
     const start = source.indexOf("<", cursor);
@@ -246,7 +248,20 @@ function scanStartTags(source) {
     }
 
     const next = source[start + 1] ?? "";
-    if (next === "!" || next === "?" || next === "/") {
+    if (next === "/") {
+      const end = findTagEnd(source, start);
+      const closingTag = source
+        .slice(start + 2, end)
+        .trim()
+        .match(/^([A-Za-z][A-Za-z0-9:-]*)$/);
+      if (!closingTag) malformedHtml("invalid closing tag");
+      cursor = end + 1;
+      if (stopTag && closingTag[1].toLowerCase() === stopTag) {
+        return { cursor, tags };
+      }
+      continue;
+    }
+    if (next === "!" || next === "?") {
       cursor = findTagEnd(source, start) + 1;
       continue;
     }
@@ -260,7 +275,13 @@ function scanStartTags(source) {
     tags.push(tag);
     cursor = end + 1;
 
-    if (rawTextElements.has(tag.name)) {
+    if (tag.name === "plaintext") {
+      cursor = source.length;
+      break;
+    }
+    if (tag.name === "template") {
+      cursor = scanTagSegment(source, cursor, "template").cursor;
+    } else if (rawTextElements.has(tag.name)) {
       const closingTag = new RegExp(`</${tag.name}\\s*>`, "gi");
       closingTag.lastIndex = cursor;
       const closingMatch = closingTag.exec(source);
@@ -269,7 +290,12 @@ function scanStartTags(source) {
     }
   }
 
-  return tags;
+  if (stopTag) malformedHtml(`unterminated <${stopTag}> element`);
+  return { cursor, tags };
+}
+
+function scanStartTags(source) {
+  return scanTagSegment(source).tags;
 }
 
 function collectClasses(source) {

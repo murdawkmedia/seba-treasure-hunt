@@ -263,6 +263,53 @@ test("does not treat markup-looking attribute or raw-text content as a skip targ
   }
 });
 
+for (const [context, targetMarkup] of [
+  ["plaintext", '<plaintext><main id="main"></main>'],
+  ["template", '<template><main id="main"></main></template>'],
+  ["script-enabled noscript", '<noscript><main id="main"></main></noscript>'],
+]) {
+  test(`does not accept a skip target inside ${context} content`, () => {
+    assert.throws(
+      () => renderCampaignPage(source({ targetMarkup }), "route.html"),
+      /skip target.*does not exist/i,
+    );
+  });
+}
+
+for (const [context, hiddenMarkup] of [
+  [
+    "nested template",
+    '<template><div class="topbar" id="campaign-nav"></div><template><div class="campaign-footer"></div></template></template>',
+  ],
+  [
+    "script-enabled noscript",
+    '<noscript><div class="topbar campaign-footer" id="campaign-nav"></div></noscript>',
+  ],
+]) {
+  test(`ignores ${context} classes and ids, then recognizes a live target after it`, () => {
+    assert.doesNotThrow(() =>
+      renderCampaignPage(
+        source({ targetMarkup: `${hiddenMarkup}<main id="main"></main>` }),
+        "route.html",
+      ),
+    );
+  });
+}
+
+test("treats plaintext descendants and the generated footer as text", () => {
+  assert.throws(
+    () =>
+      renderCampaignPage(
+        source({
+          targetMarkup:
+            '<plaintext id="main"><div class="topbar campaign-footer" id="campaign-nav"></div>',
+        }),
+        "route.html",
+      ),
+    /exactly one canonical campaign-footer/i,
+  );
+});
+
 test("rejects legacy public shell classes", () => {
   for (const className of [
     "topbar",
