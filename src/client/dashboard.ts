@@ -4,7 +4,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const text = (value: unknown, fallback = "Not supplied"): string =>
   typeof value === "string" && value.trim() ? value.trim() : fallback;
 
-interface HunterAuthHook {
+export interface HunterAuthHook {
   getToken: () => Promise<string | null>;
 }
 
@@ -116,6 +116,90 @@ export function buildWaiverPayload(draft: WaiverDraft): Record<string, unknown> 
       birthYear: Number(minor.birthYear.trim()),
     })),
   };
+}
+
+export interface WaiverAcceptanceProjection {
+  acceptance: Record<string, unknown>;
+  document: Record<string, unknown>;
+}
+
+export class WaiverRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+    message: string,
+  ) {
+    super(message);
+    this.name = "WaiverRequestError";
+  }
+}
+
+interface WaiverReviewWorkflow {
+  fetchDocument: () => Promise<Record<string, unknown>>;
+  renderAndReveal: (documentValue: Record<string, unknown>) => void | Promise<void>;
+  recordReview: (documentValue: Record<string, unknown>) => Promise<string>;
+  setAcceptanceEnabled: (enabled: boolean) => void;
+}
+
+export async function performWaiverReview(
+  workflow: WaiverReviewWorkflow,
+): Promise<{ document: Record<string, unknown>; reviewEventId: string }> {
+  workflow.setAcceptanceEnabled(false);
+  const documentValue = await workflow.fetchDocument();
+  await workflow.renderAndReveal(documentValue);
+  try {
+    const reviewEventId = await workflow.recordReview(documentValue);
+    if (!reviewEventId.trim()) throw new Error("Your waiver review could not be confirmed.");
+    workflow.setAcceptanceEnabled(true);
+    return { document: documentValue, reviewEventId };
+  } catch (error) {
+    workflow.setAcceptanceEnabled(false);
+    throw error;
+  }
+}
+
+interface WaiverAcceptanceWorkflow {
+  accept: () => Promise<unknown>;
+  loadProjection: () => Promise<WaiverAcceptanceProjection>;
+  fetchDashboard: () => Promise<Record<string, unknown>>;
+  renderDashboard: (dashboard: Record<string, unknown>) => void | Promise<void>;
+  renderProjection: (projection: WaiverAcceptanceProjection) => void | Promise<void>;
+  resetOutdatedState: () => void;
+}
+
+export async function performWaiverAcceptance(
+  workflow: WaiverAcceptanceWorkflow,
+): Promise<WaiverAcceptanceProjection> {
+  try {
+    await workflow.accept();
+    const projection = await workflow.loadProjection();
+    const dashboard = await workflow.fetchDashboard();
+    await workflow.renderDashboard(dashboard);
+    await workflow.renderProjection(projection);
+    return projection;
+  } catch (error) {
+    if (error instanceof WaiverRequestError &&
+      error.status === 409 &&
+      error.code === "waiver_document_outdated") {
+      workflow.resetOutdatedState();
+    }
+    throw error;
+  }
+}
+
+export function exactAcceptedWaiverDocument(
+  acceptance: Record<string, unknown>,
+  documentValue: Record<string, unknown>,
+): Record<string, unknown> | null {
+  return waiverDocumentMatchesAcceptance(documentValue, acceptance) ? documentValue : null;
+}
+
+export async function performAcceptedWaiverView(
+  acceptedDocument: Record<string, unknown> | null,
+  render: (documentValue: Record<string, unknown>) => void | Promise<void>,
+): Promise<void> {
+  if (!acceptedDocument) throw new Error("The exact accepted waiver document is unavailable.");
+  await render(acceptedDocument);
 }
 
 const unavailableConfig = (): PublicConfig => ({
@@ -534,10 +618,20 @@ async function initializeProfileForm(
   });
 }
 
+async function fetchDashboardData(auth: HunterAuthHook | null): Promise<Record<string, unknown>> {
+  const response = await fetchDashboard(auth);
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok || !isRecord(payload) || !isRecord(payload.data)) {
+    throw new Error(profileErrorMessage(payload, "Your dashboard could not be refreshed."));
+  }
+  return payload.data;
+}
+
 let activeWaiverDocument: Record<string, unknown> | null = null;
 let waiverReviewEventId = "";
 let retainedWaiverIdempotencyKey: string | null = null;
 let currentWaiverAcceptance: Record<string, unknown> | null = null;
+let acceptedWaiverDocument: Record<string, unknown> | null = null;
 let minorRowSequence = 0;
 
 function envelopeData(value: unknown): unknown {
@@ -641,7 +735,13 @@ function reviewIdFrom(value: unknown): string {
   return "";
 }
 
-async function waiverWrite(
+function waiverErrorCode(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const error = isRecord(payload.error) ? payload.error : payload;
+  return typeof error.code === "string" && error.code.trim() ? error.code.trim() : null;
+}
+
+export async function waiverWrite(
   auth: HunterAuthHook | null,
   route: string,
   body?: Record<string, unknown>,
@@ -658,7 +758,13 @@ async function waiverWrite(
     signal: AbortSignal.timeout(12_000),
   });
   const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(profileErrorMessage(payload, "The waiver request could not be completed."));
+  if (!response.ok) {
+    throw new WaiverRequestError(
+      response.status,
+      waiverErrorCode(payload),
+      profileErrorMessage(payload, "The waiver request could not be completed."),
+    );
+  }
   return payload;
 }
 
@@ -809,6 +915,15 @@ function acceptanceRecordFrom(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+export function parseWaiverAcceptanceProjection(value: unknown): WaiverAcceptanceProjection | null {
+  const data = envelopeData(value);
+  if (!isRecord(data)) return null;
+  const acceptance = acceptanceRecordFrom(data.acceptance);
+  const documentValue = waiverDocumentFrom(data.document);
+  if (!acceptance || !documentValue || !exactAcceptedWaiverDocument(acceptance, documentValue)) return null;
+  return { acceptance, document: documentValue };
+}
+
 function acceptanceVersion(acceptance: Record<string, unknown>): string {
   return text(acceptance.documentVersion ?? acceptance.version, "Unavailable");
 }
@@ -875,12 +990,20 @@ function renderStoredAcceptance(acceptance: Record<string, unknown>): void {
   const print = document.querySelector<HTMLButtonElement>("[data-print-waiver]");
   const legalBody = document.querySelector<HTMLElement>("[data-waiver-legal-body]");
   if (print) {
-    print.disabled = !(activeWaiverDocument && legalBody && !legalBody.hidden &&
-      waiverDocumentMatchesAcceptance(activeWaiverDocument, acceptance));
+    print.disabled = !(acceptedWaiverDocument && legalBody && !legalBody.hidden &&
+      waiverDocumentMatchesAcceptance(acceptedWaiverDocument, acceptance));
   }
 }
 
-async function loadCurrentWaiverAcceptance(auth: HunterAuthHook | null): Promise<Record<string, unknown> | null> {
+function renderWaiverAcceptanceProjection(projection: WaiverAcceptanceProjection): void {
+  currentWaiverAcceptance = projection.acceptance;
+  acceptedWaiverDocument = projection.document;
+  renderStoredAcceptance(projection.acceptance);
+}
+
+async function fetchWaiverAcceptanceProjection(
+  auth: HunterAuthHook | null,
+): Promise<WaiverAcceptanceProjection | null> {
   const response = await fetch("/api/v1/me/waiver", {
     headers: await authHeaders(auth),
     cache: "no-store",
@@ -889,9 +1012,30 @@ async function loadCurrentWaiverAcceptance(auth: HunterAuthHook | null): Promise
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new Error(profileErrorMessage(payload, "Your waiver status could not be loaded."));
-  const acceptance = acceptanceRecordFrom(payload);
-  if (acceptance) renderStoredAcceptance(acceptance);
-  return acceptance;
+  return parseWaiverAcceptanceProjection(payload);
+}
+
+async function loadCurrentWaiverAcceptance(
+  auth: HunterAuthHook | null,
+): Promise<WaiverAcceptanceProjection | null> {
+  const projection = await fetchWaiverAcceptanceProjection(auth);
+  if (projection) renderWaiverAcceptanceProjection(projection);
+  return projection;
+}
+
+function resetOutdatedWaiverState(): void {
+  activeWaiverDocument = null;
+  waiverReviewEventId = "";
+  retainedWaiverIdempotencyKey = null;
+  const acceptanceInput = document.querySelector<HTMLInputElement>('input[name="waiverAccepted"]');
+  const acceptanceCopy = document.querySelector<HTMLElement>("[data-waiver-acceptance-statement]");
+  if (acceptanceInput) {
+    acceptanceInput.checked = false;
+    acceptanceInput.disabled = true;
+  }
+  if (acceptanceCopy) {
+    acceptanceCopy.textContent = "The waiver changed. Open and review the current document before accepting it.";
+  }
 }
 
 async function initializeWaiverExperience(
@@ -923,22 +1067,33 @@ async function initializeWaiverExperience(
       }
       reviewLink.setAttribute("aria-busy", "true");
       try {
-        const documentValue = await fetchCurrentWaiverDocument();
-        const reviewPayload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
-          version: documentValue.version,
-          hash: documentValue.hash,
+        const reviewed = await performWaiverReview({
+          fetchDocument: fetchCurrentWaiverDocument,
+          renderAndReveal: (documentValue) => {
+            activeWaiverDocument = documentValue;
+            waiverReviewEventId = "";
+            renderWaiverDocument(documentValue);
+            if (legalBody) legalBody.hidden = false;
+            reviewLink.setAttribute("aria-expanded", "true");
+            if (acceptanceCopy && typeof documentValue.acceptanceStatement === "string") {
+              acceptanceCopy.textContent = documentValue.acceptanceStatement;
+            }
+          },
+          recordReview: async (documentValue) => {
+            const reviewPayload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
+              version: documentValue.version,
+              hash: documentValue.hash,
+            });
+            return reviewIdFrom(reviewPayload);
+          },
+          setAcceptanceEnabled: (enabled) => {
+            if (!acceptanceInput) return;
+            acceptanceInput.disabled = !enabled;
+            if (!enabled) acceptanceInput.checked = false;
+          },
         });
-        const reviewId = reviewIdFrom(reviewPayload);
-        if (!reviewId) throw new Error("Your waiver review could not be confirmed.");
-        activeWaiverDocument = documentValue;
-        waiverReviewEventId = reviewId;
-        renderWaiverDocument(documentValue);
-        if (legalBody) legalBody.hidden = false;
-        reviewLink.setAttribute("aria-expanded", "true");
-        if (acceptanceCopy && typeof documentValue.acceptanceStatement === "string") {
-          acceptanceCopy.textContent = documentValue.acceptanceStatement;
-        }
-        if (acceptanceInput) acceptanceInput.disabled = false;
+        activeWaiverDocument = reviewed.document;
+        waiverReviewEventId = reviewed.reviewEventId;
         showWaiverErrors({});
         setWaiverResult("The current waiver review is recorded. You may now accept it.", "success");
       } catch (error) {
@@ -959,17 +1114,29 @@ async function initializeWaiverExperience(
       retainedWaiverIdempotencyKey ??= crypto.randomUUID();
       let acceptanceStored = false;
       try {
-        const payload = await waiverWrite(
-          auth,
-          "/api/v1/me/waiver/accept",
-          buildWaiverPayload(draft),
-          retainedWaiverIdempotencyKey,
-        );
-        acceptanceStored = true;
-        retainedWaiverIdempotencyKey = null;
-        const acceptance = await loadCurrentWaiverAcceptance(auth).catch(() => acceptanceRecordFrom(payload));
-        if (!acceptance) throw new Error("Your acceptance was stored, but its confirmation could not be loaded. Refresh to retrieve it.");
-        renderStoredAcceptance(acceptance);
+        await performWaiverAcceptance({
+          accept: async () => {
+            await waiverWrite(
+              auth,
+              "/api/v1/me/waiver/accept",
+              buildWaiverPayload(draft),
+              retainedWaiverIdempotencyKey ?? undefined,
+            );
+            acceptanceStored = true;
+            retainedWaiverIdempotencyKey = null;
+          },
+          loadProjection: async () => {
+            const projection = await fetchWaiverAcceptanceProjection(auth);
+            if (!projection) {
+              throw new Error("Your acceptance was stored, but its confirmation could not be loaded. Refresh to retrieve it.");
+            }
+            return projection;
+          },
+          fetchDashboard: () => fetchDashboardData(auth),
+          renderDashboard,
+          renderProjection: renderWaiverAcceptanceProjection,
+          resetOutdatedState: resetOutdatedWaiverState,
+        });
         setWaiverResult("Waiver accepted and registration stored.", "success");
       } catch (error) {
         setWaiverResult(error instanceof Error ? error.message : "The waiver could not be accepted.", "error", true);
@@ -981,16 +1148,13 @@ async function initializeWaiverExperience(
     document.querySelector<HTMLButtonElement>("[data-view-accepted-waiver]")?.addEventListener("click", async () => {
       if (!currentWaiverAcceptance) return;
       try {
-        const documentValue = await fetchCurrentWaiverDocument();
-        if (!waiverDocumentMatchesAcceptance(documentValue, currentWaiverAcceptance)) {
-          throw new Error(`The accepted waiver version ${acceptanceVersion(currentWaiverAcceptance)} is not the current public version.`);
-        }
-        activeWaiverDocument = documentValue;
-        renderWaiverDocument(documentValue);
-        if (legalBody) legalBody.hidden = false;
-        reviewLink?.setAttribute("aria-expanded", "true");
-        const print = document.querySelector<HTMLButtonElement>("[data-print-waiver]");
-        if (print) print.disabled = false;
+        await performAcceptedWaiverView(acceptedWaiverDocument, (documentValue) => {
+          renderWaiverDocument(documentValue);
+          if (legalBody) legalBody.hidden = false;
+          reviewLink?.setAttribute("aria-expanded", "true");
+          const print = document.querySelector<HTMLButtonElement>("[data-print-waiver]");
+          if (print) print.disabled = false;
+        });
       } catch (error) {
         setWaiverResult(error instanceof Error ? error.message : "The accepted waiver could not be loaded.", "error", true);
       }
