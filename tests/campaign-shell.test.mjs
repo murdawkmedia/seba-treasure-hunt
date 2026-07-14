@@ -250,6 +250,19 @@ test("does not accept a skip target id that exists only in a comment or script",
   }
 });
 
+test("does not treat markup-looking attribute or raw-text content as a skip target", () => {
+  for (const targetMarkup of [
+    '<div data-template=\'<main id="main">\'></div>',
+    '<style>.example::before { content: \'<main id="main">\'; }</style>',
+    '<textarea><main id="main"></textarea>',
+  ]) {
+    assert.throws(
+      () => renderCampaignPage(source({ targetMarkup }), "route.html"),
+      /skip target.*does not exist/i,
+    );
+  }
+});
+
 test("rejects legacy public shell classes", () => {
   for (const className of [
     "topbar",
@@ -297,6 +310,36 @@ test("rejects duplicate canonical shell internals and campaign nav id", () => {
       name,
     );
   }
+});
+
+test("recognizes unquoted legacy classes and canonical class or id duplicates", () => {
+  for (const { markup, expected } of [
+    { markup: "<div class=topbar></div>", expected: /legacy public shell class/i },
+    {
+      markup: "<div class=campaign-footer></div>",
+      expected: /exactly one canonical campaign-footer/i,
+    },
+    {
+      markup: "<div id=campaign-nav></div>",
+      expected: /exactly one canonical #campaign-nav/i,
+    },
+  ]) {
+    assert.throws(
+      () => renderCampaignPage(source({ beforeFooter: markup }), "route.html"),
+      expected,
+    );
+  }
+});
+
+test("fails closed on malformed relevant start-tag attributes", () => {
+  assert.throws(
+    () =>
+      renderCampaignPage(
+        source({ beforeFooter: '<div class="campaign-footer></div>' }),
+        "route.html",
+      ),
+    /malformed campaign page html/i,
+  );
 });
 
 test("registry and menu expose exactly the approved frozen contracts", () => {

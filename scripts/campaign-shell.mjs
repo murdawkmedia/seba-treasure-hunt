@@ -55,6 +55,16 @@ const canonicalShellRoots = [
   "campaign-footer",
 ];
 const canonicalShellIds = ["campaign-nav"];
+const rawTextElements = new Set([
+  "iframe",
+  "noembed",
+  "noframes",
+  "script",
+  "style",
+  "textarea",
+  "title",
+  "xmp",
+]);
 
 const footerLinks = [
   { route: "privacy", label: "Privacy", href: "/privacy" },
@@ -126,25 +136,161 @@ function renderCampaignFooter(route) {
 </footer>`;
 }
 
+function malformedHtml(detail) {
+  throw new Error(`Malformed campaign page HTML: ${detail}`);
+}
+
+function findTagEnd(source, start) {
+  let quote = "";
+  for (let index = start + 1; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (character === quote) quote = "";
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return index;
+    } else if (character === "<") {
+      malformedHtml("unexpected < inside a tag");
+    }
+  }
+  malformedHtml("unterminated tag or quoted attribute");
+}
+
+function parseStartTag(rawTag) {
+  const nameMatch = rawTag.match(/^([A-Za-z][A-Za-z0-9:-]*)/);
+  if (!nameMatch) malformedHtml("invalid start tag name");
+
+  const attributes = [];
+  const attributeNames = new Set();
+  let cursor = nameMatch[0].length;
+  if (cursor < rawTag.length && !/[\s/]/.test(rawTag[cursor])) {
+    malformedHtml(`invalid <${nameMatch[0]}> tag name`);
+  }
+
+  while (cursor < rawTag.length) {
+    while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+    if (cursor >= rawTag.length) break;
+    if (rawTag[cursor] === "/") {
+      cursor += 1;
+      while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+      if (cursor !== rawTag.length) malformedHtml("content after a self-closing slash");
+      break;
+    }
+
+    const nameStart = cursor;
+    while (cursor < rawTag.length && !/[\s"'`=<>/]/.test(rawTag[cursor])) {
+      cursor += 1;
+    }
+    if (cursor === nameStart) malformedHtml("invalid attribute name");
+    const name = rawTag.slice(nameStart, cursor).toLowerCase();
+    if (attributeNames.has(name)) malformedHtml(`duplicate ${name} attribute`);
+    attributeNames.add(name);
+
+    while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+    let value = null;
+    if (rawTag[cursor] === "=") {
+      cursor += 1;
+      while (/\s/.test(rawTag[cursor] ?? "")) cursor += 1;
+      if (cursor >= rawTag.length) malformedHtml(`missing ${name} attribute value`);
+
+      const quote = rawTag[cursor];
+      if (quote === '"' || quote === "'") {
+        cursor += 1;
+        const valueStart = cursor;
+        while (cursor < rawTag.length && rawTag[cursor] !== quote) cursor += 1;
+        if (cursor >= rawTag.length) malformedHtml(`unterminated ${name} attribute`);
+        value = rawTag.slice(valueStart, cursor);
+        cursor += 1;
+        if (cursor < rawTag.length && !/[\s/]/.test(rawTag[cursor])) {
+          malformedHtml(`missing space after ${name} attribute`);
+        }
+      } else {
+        const valueStart = cursor;
+        while (cursor < rawTag.length && !/\s/.test(rawTag[cursor])) {
+          if (/["'`=<>]/.test(rawTag[cursor])) {
+            malformedHtml(`invalid unquoted ${name} attribute`);
+          }
+          cursor += 1;
+        }
+        value = rawTag.slice(valueStart, cursor);
+        if (!value) malformedHtml(`missing ${name} attribute value`);
+      }
+    }
+
+    if ((name === "class" || name === "id") && value === null) {
+      malformedHtml(`${name} attribute requires a value`);
+    }
+    if ((name === "class" || name === "id") && value.includes("&")) {
+      malformedHtml(`character references are not allowed in ${name}`);
+    }
+    attributes.push({ name, value });
+  }
+
+  return { attributes, name: nameMatch[0].toLowerCase() };
+}
+
+function scanStartTags(source) {
+  const tags = [];
+  let cursor = 0;
+
+  while (cursor < source.length) {
+    const start = source.indexOf("<", cursor);
+    if (start === -1) break;
+
+    if (source.startsWith("<!--", start)) {
+      const end = source.indexOf("-->", start + 4);
+      if (end === -1) malformedHtml("unterminated comment");
+      cursor = end + 3;
+      continue;
+    }
+
+    const next = source[start + 1] ?? "";
+    if (next === "!" || next === "?" || next === "/") {
+      cursor = findTagEnd(source, start) + 1;
+      continue;
+    }
+    if (!/[A-Za-z]/.test(next)) {
+      cursor = start + 1;
+      continue;
+    }
+
+    const end = findTagEnd(source, start);
+    const tag = parseStartTag(source.slice(start + 1, end));
+    tags.push(tag);
+    cursor = end + 1;
+
+    if (rawTextElements.has(tag.name)) {
+      const closingTag = new RegExp(`</${tag.name}\\s*>`, "gi");
+      closingTag.lastIndex = cursor;
+      const closingMatch = closingTag.exec(source);
+      if (!closingMatch) malformedHtml(`unterminated <${tag.name}> element`);
+      cursor = closingMatch.index + closingMatch[0].length;
+    }
+  }
+
+  return tags;
+}
+
 function collectClasses(source) {
   const classes = [];
-  for (const match of source.matchAll(/\bclass\s*=\s*(["'])([\s\S]*?)\1/gi)) {
-    classes.push(...match[2].split(/\s+/).filter(Boolean));
+  for (const { attributes } of scanStartTags(source)) {
+    for (const attribute of attributes) {
+      if (attribute.name === "class") {
+        classes.push(...attribute.value.split(/\s+/).filter(Boolean));
+      }
+    }
   }
   return classes;
 }
 
 function collectElementIds(source) {
-  const renderedMarkup = source
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
   const ids = [];
-
-  for (const tag of renderedMarkup.match(/<[A-Za-z][^>]*>/g) ?? []) {
-    const id = tag.match(/\sid\s*=\s*(["'])(.*?)\1/i);
-    if (id) ids.push(id[2]);
+  for (const { attributes } of scanStartTags(source)) {
+    for (const attribute of attributes) {
+      if (attribute.name === "id") ids.push(attribute.value);
+    }
   }
-
   return ids;
 }
 
