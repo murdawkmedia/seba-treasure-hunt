@@ -74,7 +74,22 @@ class PlayerStore extends FakeStore {
   async listPlayers() {
     return {
       counts: { verifiedAccounts: this.accounts.size, completedProfiles: this.profiles.size, huntEmail: 0, marketing: 0 },
-      items: [...this.accounts.values()],
+      items: [...this.accounts.values()].map((account) => {
+        const waiver = this.legalEvents.find(
+          (event) => event.subject === account.subject && event.documentType === "participation_waiver",
+        );
+        return {
+          ...account,
+          ...(waiver
+            ? {
+                waiverVersion: waiver.version,
+                acceptedAt: waiver.acceptedAt,
+                minorCount: waiver.minorCount,
+                receiptStatus: waiver.receiptStatus,
+              }
+            : {}),
+        };
+      }),
       nextCursor: null,
     };
   }
@@ -217,4 +232,45 @@ test("Ops exposes the player lifecycle ledger and retains the subscriber alias",
   assert.equal(players.status, 200);
   assert.equal(subscribers.status, 200);
   assert.equal((await responseJson(players)).data.counts.verifiedAccounts, 1);
+});
+
+test("Ops waiver player projection exposes legal summary without participant snapshots", async () => {
+  const { app, store } = makeApp();
+  await syncVerifiedHunter(app);
+  store.legalEvents.push({
+    subject: "hunter-1",
+    documentType: "participation_waiver",
+    version: "2026.1",
+    acceptedAt: "2026-07-13T20:02:00.000Z",
+    minorCount: 2,
+    receiptStatus: "sent",
+    participants: [
+      { fullName: "Private Adult" },
+      { fullName: "Private Minor", birthYear: 2014 },
+    ],
+  });
+
+  const response = await app.request("https://www.timlostsomething.com/api/v1/ops/players", {
+    headers: { authorization: "Bearer staff-token" },
+  });
+  const body = await responseJson(response);
+  const player = body.data.items[0];
+
+  assert.deepEqual(
+    {
+      waiverVersion: player.waiverVersion,
+      acceptedAt: player.acceptedAt,
+      minorCount: player.minorCount,
+      receiptStatus: player.receiptStatus,
+    },
+    {
+      waiverVersion: "2026.1",
+      acceptedAt: "2026-07-13T20:02:00.000Z",
+      minorCount: 2,
+      receiptStatus: "sent",
+    },
+  );
+  assert.equal("participants" in player, false);
+  assert.equal(JSON.stringify(player).includes("Private Minor"), false);
+  assert.equal(JSON.stringify(player).includes("birthYear"), false);
 });

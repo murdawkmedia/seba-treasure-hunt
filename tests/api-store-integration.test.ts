@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 import { D1DataStore } from "../src/server/d1-store";
 import { ApiError } from "../src/server/errors";
+import { participationWaiverDocument, privacyMediaDocument } from "../src/server/legal-documents";
 import type { SponsorInquiryInput } from "../src/server/types";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -325,6 +326,177 @@ test("real D1 preserves sponsor inquiry atomicity, search, pagination, and histo
     assert.equal(persisted?.state, expectedState);
     assert.notEqual(persisted?.state, "new");
   });
+});
+
+test("real D1 persists current waiver acceptance, safe projections, and receipt lifecycle", async (t) => {
+  const migrationFiles = [
+    "0001_hunter_platform.sql",
+    "0002_consent_ledger_index.sql",
+    "0003_player_accounts_and_legal_acceptance.sql",
+    "0004_environment_metadata.sql",
+    "0005_sponsor_inquiries.sql",
+    "0006_participation_waiver_and_receipts.sql"
+  ];
+  const migrations = await Promise.all(
+    migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
+  );
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: "waiver-store-test" }
+  });
+  t.after(() => miniflare.dispose());
+  const miniflareDb = await miniflare.getD1Database("DB");
+  const db = miniflareDb as unknown as D1Database;
+  for (const sql of migrations) await applySql(db, sql);
+  const store = new D1DataStore(db);
+
+  const preparePlayer = async (subject: string) => {
+    await store.upsertPlayerAccount(subject, `${subject}@example.test`);
+    await store.upsertProfile(subject, {
+      verifiedEmail: `${subject}@example.test`,
+      fullName: `Adult ${subject}`,
+      townArea: "Seba Beach",
+      interests: ["treasure-hunt"],
+      discoverySource: "friend",
+      consents: { huntEmail: false, marketing: false },
+      privacyMediaVersion: privacyMediaDocument.version,
+      privacyMediaHash: privacyMediaDocument.hash
+    });
+  };
+
+  await preparePlayer("hunter-current-1");
+  assert.deepEqual(await store.getPlayerAccess("hunter-current-1"), {
+    accountState: "active",
+    profileComplete: true,
+    privacyMediaRequired: false,
+    privacyMediaVersion: privacyMediaDocument.version,
+    waiverStatus: "required",
+    waiverVersion: null,
+    participationUnlocked: false
+  });
+
+  await assert.rejects(
+    store.recordWaiverReview("hunter-current-1", {
+      version: "stale-version",
+      hash: participationWaiverDocument.hash
+    }),
+    (error: unknown) => error instanceof ApiError && error.code === "waiver_document_stale"
+  );
+
+  const review = await store.recordWaiverReview("hunter-current-1", {
+    version: participationWaiverDocument.version,
+    hash: participationWaiverDocument.hash
+  });
+  assert.equal(await store.getWaiverReview("someone-else", review.id), null);
+
+  const input = {
+    reviewEventId: review.id,
+    idempotencyKey: "same-browser-key",
+    adultName: "Alex Adult",
+    minors: [
+      { fullName: "Casey Minor", birthYear: 2014 },
+      { fullName: "Jordan Minor", birthYear: 2016 }
+    ],
+    guardianAttested: true,
+    documentVersion: participationWaiverDocument.version,
+    documentHash: participationWaiverDocument.hash
+  };
+  const accepted = await store.acceptParticipationWaiver("hunter-current-1", input);
+  const replay = await store.acceptParticipationWaiver("hunter-current-1", input);
+  assert.equal(accepted.replayed, false);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.value.id, accepted.value.id);
+  assert.match(accepted.value.referenceCode, /^TLS-W-[A-F0-9]{8}$/);
+  assert.equal(accepted.value.referenceCode.includes("HUNTER"), false);
+
+  await preparePlayer("hunter-current-2");
+  const secondReview = await store.recordWaiverReview("hunter-current-2", {
+    version: participationWaiverDocument.version,
+    hash: participationWaiverDocument.hash
+  });
+  const second = await store.acceptParticipationWaiver("hunter-current-2", {
+    ...input,
+    reviewEventId: secondReview.id,
+    adultName: "Second Adult",
+    minors: []
+  });
+  assert.equal(second.replayed, false, "the same key is independent for another subject");
+  assert.notEqual(second.value.id, accepted.value.id);
+
+  const counts = await Promise.all([
+    db.prepare("SELECT COUNT(*) AS count FROM legal_acceptance_events WHERE hunter_subject = ? AND document_type = 'participation_waiver'").bind("hunter-current-1").first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) AS count FROM waiver_acceptance_participants WHERE acceptance_event_id = ?").bind(accepted.value.id).first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) AS count FROM notification_jobs WHERE target_record_id = ? AND kind = 'waiver_receipt'").bind(accepted.value.id).first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) AS count FROM notification_delivery_events WHERE notification_job_id = ? AND event_type = 'queued'").bind(accepted.value.receipt.jobId).first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) AS count FROM idempotency_keys WHERE scope = ? AND idempotency_key = ?").bind("waiver_acceptance:hunter-current-1", input.idempotencyKey).first<{ count: number }>()
+  ]);
+  assert.deepEqual(counts.map((row) => row?.count), [1, 3, 1, 1, 1]);
+  assert.equal((await store.getPlayerAccess("hunter-current-1")).participationUnlocked, true);
+
+  const detail = await store.getParticipationWaiver("hunter-current-1");
+  assert.deepEqual(detail?.participants, accepted.value.participants);
+  const envelope = await store.getWaiverReceiptEnvelope(accepted.value.id);
+  assert.equal(envelope?.verifiedEmail, "hunter-current-1@example.test");
+  assert.equal(envelope?.acceptance.referenceCode, accepted.value.referenceCode);
+
+  const players = await store.listPlayers({ limit: 10 });
+  const firstPlayer = players.items.find((item) => item.id === "hunter-current-1");
+  assert.equal(firstPlayer?.waiverVersion, participationWaiverDocument.version);
+  assert.equal(firstPlayer?.acceptedAt, accepted.value.acceptedAt);
+  assert.equal(firstPlayer?.minorCount, 2);
+  assert.equal(firstPlayer?.receiptStatus, "pending");
+  const serializedPlayer = JSON.stringify(firstPlayer);
+  assert.equal(serializedPlayer.includes("Casey Minor"), false);
+  assert.equal(serializedPlayer.includes("Jordan Minor"), false);
+  assert.equal(serializedPlayer.includes("birthYear"), false);
+  assert.equal(serializedPlayer.includes("participants"), false);
+
+  const claimed = await store.claimWaiverReceiptJob(accepted.value.id);
+  assert.equal(claimed?.acceptanceId, accepted.value.id);
+  assert.equal(claimed?.attempts, 1);
+  assert.equal(await store.claimWaiverReceiptJob(accepted.value.id), null, "the five-minute lease suppresses another claim");
+  await store.completeWaiverReceiptJob(claimed!.id, {
+    status: "failed",
+    errorCode: "provider_rejected"
+  });
+  assert.equal((await store.getParticipationWaiver("hunter-current-1"))?.receipt.status, "failed");
+
+  const resent = await store.queueWaiverReceiptResend("hunter-current-1", accepted.value.id);
+  assert.equal(resent?.receipt.status, "pending");
+  const reclaimed = await store.claimWaiverReceiptJob(accepted.value.id);
+  assert.equal(reclaimed?.attempts, 2);
+  await store.completeWaiverReceiptJob(reclaimed!.id, {
+    status: "sent",
+    providerMessageId: "provider-message-1"
+  });
+  const sent = await store.getParticipationWaiver("hunter-current-1");
+  assert.equal(sent?.receipt.status, "sent");
+  assert.ok(sent?.receipt.sentAt);
+  const evidence = await db
+    .prepare("SELECT provider_message_id, error_code FROM notification_delivery_events WHERE notification_job_id = ? ORDER BY occurred_at DESC, id DESC")
+    .bind(claimed!.id)
+    .all<{ provider_message_id: string | null; error_code: string | null }>();
+  assert.deepEqual(
+    evidence.results.filter((event) => event.provider_message_id !== null),
+    [{ provider_message_id: "provider-message-1", error_code: null }]
+  );
+
+  await store.queueWaiverReceiptResend("hunter-current-1", accepted.value.id);
+  const afterResendCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM legal_acceptance_events WHERE id = ?")
+    .bind(accepted.value.id)
+    .first<{ count: number }>();
+  assert.equal(afterResendCount?.count, 1, "resending never creates another legal acceptance");
+
+  await store.applyIdentityEvent({
+    id: "deleted-waiver-player",
+    type: "user.deleted",
+    data: { subject: "hunter-current-1", verifiedEmail: null }
+  });
+  const playersAfterDeletion = await store.listPlayers({ limit: 10 });
+  assert.equal(playersAfterDeletion.items.some((item) => item.id === "hunter-current-1"), false);
 });
 
 test("the real D1 waiver migration is replayable and enforces one receipt job", async (t) => {

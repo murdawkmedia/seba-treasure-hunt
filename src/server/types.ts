@@ -89,6 +89,11 @@ export interface WaiverReceiptJob {
   attempts: number;
 }
 
+export type WaiverReceiptErrorCode =
+  | "provider_unavailable"
+  | "provider_rejected"
+  | "provider_response_invalid";
+
 export interface WaiverReceiptEnvelope {
   acceptance: WaiverAcceptanceRecord;
   verifiedEmail: string;
@@ -186,21 +191,23 @@ export interface DataStore {
   getPlayerAccount(subject: string): Promise<Record<string, unknown> | null>;
   upsertPlayerAccount(subject: string, verifiedEmail: string): Promise<Record<string, unknown>>;
   getPlayerAccess(subject: string): Promise<PlayerAccessState>;
-  recordWaiverReview?(subject: string, document: WaiverDocumentIdentity): Promise<WaiverReviewRecord>;
-  getWaiverReview?(subject: string, reviewEventId: string): Promise<WaiverReviewRecord | null>;
-  acceptParticipationWaiver?(
+  recordWaiverReview(subject: string, document: WaiverDocumentIdentity): Promise<WaiverReviewRecord>;
+  getWaiverReview(subject: string, reviewEventId: string): Promise<WaiverReviewRecord | null>;
+  acceptParticipationWaiver(
     subject: string,
     input: WaiverAcceptanceInput
   ): Promise<{ value: WaiverAcceptanceRecord; replayed: boolean }>;
-  getParticipationWaiver?(subject: string): Promise<WaiverAcceptanceRecord | null>;
-  queueWaiverReceiptResend?(subject: string, acceptanceId: string): Promise<WaiverAcceptanceRecord | null>;
-  claimWaiverReceiptJob?(acceptanceId: string): Promise<WaiverReceiptJob | null>;
-  getWaiverReceiptEnvelope?(acceptanceId: string): Promise<WaiverReceiptEnvelope | null>;
-  completeWaiverReceiptJob?(
+  getParticipationWaiver(subject: string): Promise<WaiverAcceptanceRecord | null>;
+  queueWaiverReceiptResend(subject: string, acceptanceId: string): Promise<WaiverAcceptanceRecord | null>;
+  claimWaiverReceiptJob(acceptanceId: string): Promise<WaiverReceiptJob | null>;
+  getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null>;
+  completeWaiverReceiptJob(
     jobId: string,
-    result: { status: "sent"; providerMessageId: string } | { status: "failed"; errorCode: string }
+    result:
+      | { status: "sent"; providerMessageId: string }
+      | { status: "failed"; errorCode: WaiverReceiptErrorCode }
   ): Promise<void>;
-  getOpsWaiverDetail?(subject: string): Promise<WaiverAcceptanceRecord | null>;
+  getOpsWaiverDetail(subject: string): Promise<WaiverAcceptanceRecord | null>;
   queueOpsWaiverReceiptResend?(
     subject: string,
     acceptanceId: string,

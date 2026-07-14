@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { D1DataStore } from "../src/server/d1-store";
 import { ApiError } from "../src/server/errors";
+import { participationWaiverDocument } from "../src/server/legal-documents";
 import { FakeStore } from "./api-test-kit";
 
 type Row = Record<string, unknown>;
@@ -120,6 +121,125 @@ const sponsorInput = {
   desiredOutcome: "Discuss a useful local activation.",
   acknowledgementVersion: "2026.1"
 };
+
+const waiverReviewRow: Row = {
+  id: "review-1",
+  hunter_subject: "hunter-1",
+  document_version: participationWaiverDocument.version,
+  document_hash: participationWaiverDocument.hash,
+  reviewed_at: "2026-07-13T20:00:00.000Z"
+};
+
+const waiverAcceptanceRow: Row = {
+  id: "acceptance-12345678-aaaa-bbbb-cccc-1234567890ab",
+  hunter_subject: "hunter-1",
+  document_version: participationWaiverDocument.version,
+  document_hash: participationWaiverDocument.hash,
+  accepted_at: "2026-07-13T20:02:00.000Z",
+  job_id: "receipt-job-1",
+  job_status: "pending",
+  job_attempts: 0,
+  sent_at: null
+};
+
+const waiverParticipantRows: Row[] = [
+  {
+    participant_role: "adult",
+    full_name: "Alex Adult",
+    birth_year: null,
+    guardian_attested: 0
+  },
+  {
+    participant_role: "minor",
+    full_name: "Casey Minor",
+    birth_year: 2014,
+    guardian_attested: 1
+  }
+];
+
+const waiverAcceptanceInput = {
+  reviewEventId: "review-1",
+  idempotencyKey: "waiver-key-1",
+  adultName: "Alex Adult",
+  minors: [{ fullName: "Casey Minor", birthYear: 2014 }],
+  guardianAttested: true,
+  documentVersion: participationWaiverDocument.version,
+  documentHash: participationWaiverDocument.hash
+};
+
+test("D1 waiver acceptance writes one atomic immutable snapshot and subject-scoped replay key", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(null, waiverReviewRow, waiverAcceptanceRow);
+  database.allResults.push(waiverParticipantRows);
+  const store = new D1DataStore(database as never);
+
+  const result = await store.acceptParticipationWaiver("hunter-1", waiverAcceptanceInput);
+
+  assert.equal(result.replayed, false);
+  assert.equal(result.value.referenceCode, "TLS-W-ACCEPTAN");
+  assert.deepEqual(result.value.participants, [
+    { role: "adult", fullName: "Alex Adult", birthYear: null, guardianAttested: false },
+    { role: "minor", fullName: "Casey Minor", birthYear: 2014, guardianAttested: true }
+  ]);
+  assert.equal(database.batchCalls.length, 1);
+  assert.equal(database.batchCalls[0]?.length, 7);
+  const sql = database.batchCalls[0]!.map((statement) => statement.sql).join("\n");
+  assert.match(sql, /INSERT INTO legal_acceptance_events/);
+  assert.match(sql, /INSERT INTO waiver_acceptance_participants/);
+  assert.match(sql, /INSERT INTO notification_jobs/);
+  assert.match(sql, /INSERT INTO notification_delivery_events/);
+  assert.match(sql, /INSERT INTO idempotency_keys/);
+  const idempotency = database.batchCalls[0]!.find((statement) =>
+    statement.sql.includes("INSERT INTO idempotency_keys")
+  );
+  assert.equal(idempotency?.bindings[0], "waiver_acceptance:hunter-1");
+  assert.equal(idempotency?.bindings[1], "waiver-key-1");
+});
+
+test("D1 waiver replay returns the subject-owned winner without duplicating acceptance", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(
+    { record_id: waiverAcceptanceRow.id },
+    waiverAcceptanceRow
+  );
+  database.allResults.push(waiverParticipantRows);
+  const store = new D1DataStore(database as never);
+
+  const result = await store.acceptParticipationWaiver("hunter-1", waiverAcceptanceInput);
+
+  assert.equal(result.replayed, true);
+  assert.equal(result.value.id, waiverAcceptanceRow.id);
+  assert.equal(database.batchCalls.length, 0);
+});
+
+test("D1 waiver acceptance recovers only the exact idempotency unique race", async () => {
+  const database = new ScriptedD1();
+  database.firstResults.push(
+    null,
+    waiverReviewRow,
+    { record_id: waiverAcceptanceRow.id },
+    waiverAcceptanceRow
+  );
+  database.allResults.push(waiverParticipantRows);
+  database.batchError = new Error(
+    "D1_ERROR: UNIQUE constraint failed: idempotency_keys.scope, idempotency_keys.idempotency_key"
+  );
+  const store = new D1DataStore(database as never);
+
+  const result = await store.acceptParticipationWaiver("hunter-1", waiverAcceptanceInput);
+  assert.equal(result.replayed, true);
+
+  const otherDatabase = new ScriptedD1();
+  otherDatabase.firstResults.push(null, waiverReviewRow);
+  otherDatabase.batchError = new Error(
+    "D1_ERROR: UNIQUE constraint failed: notification_jobs.kind, notification_jobs.target_record_id"
+  );
+  const otherStore = new D1DataStore(otherDatabase as never);
+  await assert.rejects(
+    otherStore.acceptParticipationWaiver("hunter-1", waiverAcceptanceInput),
+    /notification_jobs/
+  );
+});
 
 test("D1 profile projection returns the latest consent booleans", async () => {
   const database = new ScriptedD1();

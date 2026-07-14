@@ -1,5 +1,5 @@
 import { ApiError, ConflictError, StatusUnavailableError } from "./errors";
-import { privacyMediaDocument } from "./legal-documents";
+import { participationWaiverDocument, privacyMediaDocument } from "./legal-documents";
 import type {
   CaseStatus,
   DataStore,
@@ -13,6 +13,13 @@ import type {
   SponsorInquiryState,
   SponsorSupportType,
   StoredMedia,
+  WaiverAcceptanceInput,
+  WaiverAcceptanceRecord,
+  WaiverDocumentIdentity,
+  WaiverReceiptErrorCode,
+  WaiverReceiptEnvelope,
+  WaiverReceiptJob,
+  WaiverReviewRecord,
   ZoneState
 } from "./types";
 
@@ -119,6 +126,28 @@ const sponsorColumns = `id, reference_code, contact_name, organization, email, p
 const isSponsorIdempotencyConflict = (error: unknown) =>
   error instanceof Error &&
   /UNIQUE constraint failed:\s*sponsor_inquiries\.idempotency_key/i.test(error.message);
+
+const waiverIdempotencyScope = (subject: string) => `waiver_acceptance:${subject}`;
+const waiverReference = (acceptanceId: string) =>
+  `TLS-W-${acceptanceId.slice(0, 8).toUpperCase()}`;
+const isWaiverIdempotencyConflict = (error: unknown) =>
+  error instanceof Error &&
+  /UNIQUE constraint failed:\s*idempotency_keys\.scope,\s*idempotency_keys\.idempotency_key/i.test(
+    error.message
+  );
+const waiverReceiptErrorCodes = new Set<WaiverReceiptErrorCode>([
+  "provider_unavailable",
+  "provider_rejected",
+  "provider_response_invalid"
+]);
+
+const waiverReviewFromRow = (row: Row): WaiverReviewRecord => ({
+  id: value(row.id),
+  subject: value(row.hunter_subject),
+  documentVersion: value(row.document_version),
+  documentHash: value(row.document_hash),
+  reviewedAt: value(row.reviewed_at)
+});
 
 const mediaFromInput = (input: unknown): StoredMedia[] =>
   Array.isArray(input)
@@ -681,12 +710,24 @@ export class D1DataStore implements DataStore {
            ORDER BY l.accepted_at DESC, l.id DESC LIMIT 1) AS privacy_action,
           (SELECT document_version FROM legal_acceptance_events l
            WHERE l.hunter_subject = a.subject AND l.document_type = 'privacy_media'
-             AND l.action = 'accepted'
+             AND l.document_version = ? AND l.document_hash = ? AND l.action = 'accepted'
            ORDER BY l.accepted_at DESC, l.id DESC LIMIT 1) AS privacy_version
+          ,(SELECT action FROM legal_acceptance_events l
+           WHERE l.hunter_subject = a.subject AND l.document_type = 'participation_waiver'
+             AND l.document_version = ? AND l.document_hash = ?
+           ORDER BY l.accepted_at DESC, l.id DESC LIMIT 1) AS waiver_action
          FROM player_accounts a LEFT JOIN hunter_profiles p ON p.subject = a.subject
          WHERE a.subject = ?`
       )
-      .bind(privacyMediaDocument.version, privacyMediaDocument.hash, subject)
+      .bind(
+        privacyMediaDocument.version,
+        privacyMediaDocument.hash,
+        privacyMediaDocument.version,
+        privacyMediaDocument.hash,
+        participationWaiverDocument.version,
+        participationWaiverDocument.hash,
+        subject
+      )
       .first<Row>();
     if (!row) {
       return {
@@ -700,15 +741,420 @@ export class D1DataStore implements DataStore {
       };
     }
     const privacyAccepted = row.privacy_action === "accepted";
+    const active = row.account_state === "active";
+    const waiverAccepted = row.waiver_action === "accepted";
+    const profileComplete = Boolean(row.profile_subject);
     return {
       accountState: row.account_state as PlayerAccessState["accountState"],
-      profileComplete: Boolean(row.profile_subject),
+      profileComplete,
       privacyMediaRequired: !privacyAccepted,
       privacyMediaVersion: privacyAccepted ? value(row.privacy_version) : null,
-      waiverStatus: "pending",
-      waiverVersion: null,
-      participationUnlocked: false
+      waiverStatus: active ? (waiverAccepted ? "accepted" : "required") : "pending",
+      waiverVersion: waiverAccepted ? participationWaiverDocument.version : null,
+      participationUnlocked: active && profileComplete && privacyAccepted && waiverAccepted
     };
+  }
+
+  private assertCurrentWaiverDocument(document: WaiverDocumentIdentity) {
+    if (
+      document.version !== participationWaiverDocument.version ||
+      document.hash !== participationWaiverDocument.hash
+    ) {
+      throw new ApiError(
+        409,
+        "waiver_document_stale",
+        "The participation waiver changed. Review the current version before accepting."
+      );
+    }
+  }
+
+  async recordWaiverReview(
+    subject: string,
+    document: WaiverDocumentIdentity
+  ): Promise<WaiverReviewRecord> {
+    this.assertCurrentWaiverDocument(document);
+    const account = await this.db
+      .prepare("SELECT account_state FROM player_accounts WHERE subject = ?")
+      .bind(subject)
+      .first<Row>();
+    if (account?.account_state !== "active") {
+      throw new ApiError(409, "player_account_required", "An active player account is required.");
+    }
+    const review: WaiverReviewRecord = {
+      id: id(),
+      subject,
+      documentVersion: document.version,
+      documentHash: document.hash,
+      reviewedAt: now()
+    };
+    await this.db
+      .prepare(
+        `INSERT INTO legal_document_review_events
+         (id, hunter_subject, document_type, document_version, document_hash, reviewed_at)
+         VALUES (?, ?, 'participation_waiver', ?, ?, ?)`
+      )
+      .bind(
+        review.id,
+        subject,
+        review.documentVersion,
+        review.documentHash,
+        review.reviewedAt
+      )
+      .run();
+    return review;
+  }
+
+  async getWaiverReview(subject: string, reviewEventId: string): Promise<WaiverReviewRecord | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id, hunter_subject, document_version, document_hash, reviewed_at
+         FROM legal_document_review_events
+         WHERE id = ? AND hunter_subject = ? AND document_type = 'participation_waiver'
+         LIMIT 1`
+      )
+      .bind(reviewEventId, subject)
+      .first<Row>();
+    return row ? waiverReviewFromRow(row) : null;
+  }
+
+  private async waiverAcceptanceById(
+    acceptanceId: string,
+    subject: string | null = null,
+    currentOnly = false
+  ): Promise<WaiverAcceptanceRecord | null> {
+    const conditions = [
+      "l.id = ?",
+      "l.document_type = 'participation_waiver'",
+      "l.action = 'accepted'"
+    ];
+    const bindings: unknown[] = [acceptanceId];
+    if (subject !== null) {
+      conditions.push("l.hunter_subject = ?");
+      bindings.push(subject);
+    }
+    if (currentOnly) {
+      conditions.push("l.document_version = ?", "l.document_hash = ?");
+      bindings.push(participationWaiverDocument.version, participationWaiverDocument.hash);
+    }
+    const row = await this.db
+      .prepare(
+        `SELECT l.id, l.hunter_subject, l.document_version, l.document_hash, l.accepted_at,
+                j.id AS job_id, j.status AS job_status, j.attempts AS job_attempts,
+                (SELECT occurred_at FROM notification_delivery_events d
+                 WHERE d.notification_job_id = j.id AND d.event_type = 'sent'
+                 ORDER BY d.occurred_at DESC, d.id DESC LIMIT 1) AS sent_at
+         FROM legal_acceptance_events l
+         JOIN notification_jobs j
+           ON j.target_record_id = l.id AND j.kind = 'waiver_receipt'
+         WHERE ${conditions.join(" AND ")}
+         LIMIT 1`
+      )
+      .bind(...bindings)
+      .first<Row>();
+    if (!row) return null;
+    const participants = await this.db
+      .prepare(
+        `SELECT participant_role, full_name, birth_year, guardian_attested
+         FROM waiver_acceptance_participants
+         WHERE acceptance_event_id = ?
+         ORDER BY CASE participant_role WHEN 'adult' THEN 0 ELSE 1 END, id`
+      )
+      .bind(acceptanceId)
+      .all<Row>();
+    return {
+      id: value(row.id),
+      subject: value(row.hunter_subject),
+      documentVersion: value(row.document_version),
+      documentHash: value(row.document_hash),
+      acceptedAt: value(row.accepted_at),
+      referenceCode: waiverReference(value(row.id)),
+      participants: participants.results.map((participant) => ({
+        role: participant.participant_role as "adult" | "minor",
+        fullName: value(participant.full_name),
+        birthYear: numberOrNull(participant.birth_year),
+        guardianAttested: participant.guardian_attested === 1
+      })),
+      receipt: {
+        jobId: value(row.job_id),
+        status: row.job_status as WaiverAcceptanceRecord["receipt"]["status"],
+        attempts: Number(row.job_attempts),
+        sentAt: nullable(row.sent_at)
+      }
+    };
+  }
+
+  private async waiverReplay(
+    subject: string,
+    idempotencyKey: string
+  ): Promise<WaiverAcceptanceRecord | null> {
+    const replay = await this.db
+      .prepare("SELECT record_id FROM idempotency_keys WHERE scope = ? AND idempotency_key = ?")
+      .bind(waiverIdempotencyScope(subject), idempotencyKey)
+      .first<Row>();
+    if (!replay) return null;
+    return this.waiverAcceptanceById(value(replay.record_id), subject);
+  }
+
+  async acceptParticipationWaiver(
+    subject: string,
+    input: WaiverAcceptanceInput
+  ): Promise<{ value: WaiverAcceptanceRecord; replayed: boolean }> {
+    this.assertCurrentWaiverDocument({
+      version: input.documentVersion,
+      hash: input.documentHash
+    });
+    const replay = await this.waiverReplay(subject, input.idempotencyKey);
+    if (replay) return { value: replay, replayed: true };
+
+    const review = await this.db
+      .prepare(
+        `SELECT r.id, r.hunter_subject, r.document_version, r.document_hash, r.reviewed_at
+         FROM legal_document_review_events r
+         JOIN player_accounts a ON a.subject = r.hunter_subject AND a.account_state = 'active'
+         WHERE r.id = ? AND r.hunter_subject = ?
+           AND r.document_type = 'participation_waiver'
+           AND r.document_version = ? AND r.document_hash = ?
+         LIMIT 1`
+      )
+      .bind(
+        input.reviewEventId,
+        subject,
+        participationWaiverDocument.version,
+        participationWaiverDocument.hash
+      )
+      .first<Row>();
+    if (!review) {
+      throw new ApiError(
+        409,
+        "waiver_review_required",
+        "Review the current participation waiver before accepting."
+      );
+    }
+    if (!input.adultName.trim() || (input.minors.length > 0 && !input.guardianAttested)) {
+      throw new ApiError(
+        422,
+        "waiver_participants_invalid",
+        "The adult and guardian attestations are incomplete."
+      );
+    }
+
+    const timestamp = now();
+    const acceptanceId = id();
+    const jobId = id();
+    const statements = [
+      this.db
+        .prepare(
+          `INSERT INTO legal_acceptance_events
+           (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
+           VALUES (?, ?, 'participation_waiver', ?, ?, 'accepted', ?)`
+        )
+        .bind(
+          acceptanceId,
+          subject,
+          participationWaiverDocument.version,
+          participationWaiverDocument.hash,
+          timestamp
+        ),
+      this.db
+        .prepare(
+          `INSERT INTO waiver_acceptance_participants
+           (id, acceptance_event_id, participant_role, full_name, birth_year, guardian_attested, created_at)
+           VALUES (?, ?, 'adult', ?, NULL, 0, ?)`
+        )
+        .bind(id(), acceptanceId, input.adultName.trim(), timestamp),
+      ...input.minors.map((minor) =>
+        this.db
+          .prepare(
+            `INSERT INTO waiver_acceptance_participants
+             (id, acceptance_event_id, participant_role, full_name, birth_year, guardian_attested, created_at)
+             VALUES (?, ?, 'minor', ?, ?, 1, ?)`
+          )
+          .bind(id(), acceptanceId, minor.fullName.trim(), minor.birthYear, timestamp)
+      ),
+      this.db
+        .prepare(
+          `INSERT INTO notification_jobs
+           (id, kind, target_record_id, status, attempts, created_at, updated_at)
+           VALUES (?, 'waiver_receipt', ?, 'pending', 0, ?, ?)`
+        )
+        .bind(jobId, acceptanceId, timestamp, timestamp),
+      this.db
+        .prepare(
+          `INSERT INTO notification_delivery_events
+           (id, notification_job_id, event_type, occurred_at)
+           VALUES (?, ?, 'queued', ?)`
+        )
+        .bind(id(), jobId, timestamp),
+      this.db
+        .prepare(
+          `INSERT INTO idempotency_keys
+           (scope, idempotency_key, record_id, created_at, expires_at)
+           VALUES (?, ?, ?, ?, '9999-12-31T23:59:59.999Z')`
+        )
+        .bind(waiverIdempotencyScope(subject), input.idempotencyKey, acceptanceId, timestamp),
+      this.db
+        .prepare(
+          `UPDATE player_accounts SET updated_at = ?, last_seen_at = ?
+           WHERE subject = ? AND account_state = 'active'`
+        )
+        .bind(timestamp, timestamp, subject)
+    ];
+
+    try {
+      await this.db.batch(statements);
+    } catch (error) {
+      if (!isWaiverIdempotencyConflict(error)) throw error;
+      const winner = await this.waiverReplay(subject, input.idempotencyKey);
+      if (!winner) throw error;
+      return { value: winner, replayed: true };
+    }
+    const accepted = await this.waiverAcceptanceById(acceptanceId, subject);
+    if (!accepted) throw new ConflictError("The waiver acceptance could not be read after saving.");
+    return { value: accepted, replayed: false };
+  }
+
+  async getParticipationWaiver(subject: string): Promise<WaiverAcceptanceRecord | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id FROM legal_acceptance_events
+         WHERE hunter_subject = ? AND document_type = 'participation_waiver'
+           AND document_version = ? AND document_hash = ? AND action = 'accepted'
+         ORDER BY accepted_at DESC, id DESC LIMIT 1`
+      )
+      .bind(subject, participationWaiverDocument.version, participationWaiverDocument.hash)
+      .first<Row>();
+    return row ? this.waiverAcceptanceById(value(row.id), subject, true) : null;
+  }
+
+  async getOpsWaiverDetail(subject: string): Promise<WaiverAcceptanceRecord | null> {
+    return this.getParticipationWaiver(subject);
+  }
+
+  async getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null> {
+    const acceptance = await this.waiverAcceptanceById(acceptanceId);
+    if (!acceptance) return null;
+    const account = await this.db
+      .prepare(
+        `SELECT verified_email FROM player_accounts
+         WHERE subject = ? AND account_state = 'active' LIMIT 1`
+      )
+      .bind(acceptance.subject)
+      .first<Row>();
+    const verifiedEmail = nullable(account?.verified_email);
+    return verifiedEmail ? { acceptance, verifiedEmail } : null;
+  }
+
+  async queueWaiverReceiptResend(
+    subject: string,
+    acceptanceId: string
+  ): Promise<WaiverAcceptanceRecord | null> {
+    const acceptance = await this.waiverAcceptanceById(acceptanceId, subject, true);
+    if (!acceptance) return null;
+    const timestamp = now();
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE notification_jobs
+           SET status = 'pending', next_attempt_at = NULL, last_error_code = NULL, updated_at = ?
+           WHERE id = ? AND kind = 'waiver_receipt' AND target_record_id = ?`
+        )
+        .bind(timestamp, acceptance.receipt.jobId, acceptanceId),
+      this.db
+        .prepare(
+          `INSERT INTO notification_delivery_events
+           (id, notification_job_id, event_type, occurred_at)
+           VALUES (?, ?, 'requeued', ?)`
+        )
+        .bind(id(), acceptance.receipt.jobId, timestamp)
+    ]);
+    return this.waiverAcceptanceById(acceptanceId, subject, true);
+  }
+
+  async claimWaiverReceiptJob(acceptanceId: string): Promise<WaiverReceiptJob | null> {
+    const timestamp = now();
+    const row = await this.db
+      .prepare(
+        `SELECT id, target_record_id, attempts
+         FROM notification_jobs
+         WHERE kind = 'waiver_receipt' AND target_record_id = ?
+           AND status IN ('pending', 'failed')
+           AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+         LIMIT 1`
+      )
+      .bind(acceptanceId, timestamp)
+      .first<Row>();
+    if (!row) return null;
+    const attempts = Number(row.attempts) + 1;
+    const leaseUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const claimed = await this.db
+      .prepare(
+        `UPDATE notification_jobs
+         SET status = 'pending', attempts = ?, next_attempt_at = ?, updated_at = ?, last_error_code = NULL
+         WHERE id = ? AND kind = 'waiver_receipt' AND attempts = ?
+           AND status IN ('pending', 'failed')
+           AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`
+      )
+      .bind(attempts, leaseUntil, timestamp, value(row.id), Number(row.attempts), timestamp)
+      .run();
+    if (Number(claimed.meta?.changes ?? 0) !== 1) return null;
+    await this.db
+      .prepare(
+        `INSERT INTO notification_delivery_events
+         (id, notification_job_id, event_type, occurred_at)
+         VALUES (?, ?, 'attempted', ?)`
+      )
+      .bind(id(), value(row.id), timestamp)
+      .run();
+    return { id: value(row.id), acceptanceId, attempts };
+  }
+
+  async completeWaiverReceiptJob(
+    jobId: string,
+    result:
+      | { status: "sent"; providerMessageId: string }
+      | { status: "failed"; errorCode: WaiverReceiptErrorCode }
+  ): Promise<void> {
+    if (result.status === "failed" && !waiverReceiptErrorCodes.has(result.errorCode)) {
+      throw new ApiError(422, "waiver_receipt_error_invalid", "The receipt error code is invalid.");
+    }
+    const timestamp = now();
+    if (result.status === "sent") {
+      await this.db.batch([
+        this.db
+          .prepare(
+            `UPDATE notification_jobs
+             SET status = 'sent', next_attempt_at = NULL, last_error_code = NULL, updated_at = ?
+             WHERE id = ? AND kind = 'waiver_receipt'`
+          )
+          .bind(timestamp, jobId),
+        this.db
+          .prepare(
+            `INSERT INTO notification_delivery_events
+             (id, notification_job_id, event_type, provider, provider_message_id, occurred_at)
+             SELECT ?, ?, 'sent', 'resend', ?, ?
+             WHERE EXISTS (SELECT 1 FROM notification_jobs WHERE id = ? AND kind = 'waiver_receipt')`
+          )
+          .bind(id(), jobId, result.providerMessageId, timestamp, jobId)
+      ]);
+      return;
+    }
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE notification_jobs
+           SET status = 'failed', last_error_code = ?, updated_at = ?
+           WHERE id = ? AND kind = 'waiver_receipt'`
+        )
+        .bind(result.errorCode, timestamp, jobId),
+      this.db
+        .prepare(
+          `INSERT INTO notification_delivery_events
+           (id, notification_job_id, event_type, error_code, occurred_at)
+           SELECT ?, ?, 'failed', ?, ?
+           WHERE EXISTS (SELECT 1 FROM notification_jobs WHERE id = ? AND kind = 'waiver_receipt')`
+        )
+        .bind(id(), jobId, result.errorCode, timestamp, jobId)
+    ]);
   }
 
   async applyIdentityEvent(event: IdentityLifecycleEvent): Promise<{ replayed: boolean }> {
@@ -1403,10 +1849,24 @@ export class D1DataStore implements DataStore {
         SELECT hunter_subject,
           MAX(CASE WHEN document_type = 'privacy_media' AND rank = 1 THEN document_version END) AS privacy_version,
           MAX(CASE WHEN document_type = 'privacy_media' AND rank = 1 THEN document_hash END) AS privacy_hash,
-          MAX(CASE WHEN document_type = 'privacy_media' AND rank = 1 THEN action END) AS privacy_action,
-          MAX(CASE WHEN document_type = 'participation_waiver' AND rank = 1 THEN document_version END) AS waiver_version,
-          MAX(CASE WHEN document_type = 'participation_waiver' AND rank = 1 THEN action END) AS waiver_action
+          MAX(CASE WHEN document_type = 'privacy_media' AND rank = 1 THEN action END) AS privacy_action
         FROM ranked_legal WHERE rank = 1 GROUP BY hunter_subject
+      ), ranked_current_waiver AS (
+        SELECT l.hunter_subject, l.id AS waiver_id, l.document_version AS waiver_version,
+               l.accepted_at,
+               (SELECT COUNT(*) FROM waiver_acceptance_participants wp
+                WHERE wp.acceptance_event_id = l.id AND wp.participant_role = 'minor') AS minor_count,
+               j.status AS receipt_status,
+               ROW_NUMBER() OVER (
+                 PARTITION BY l.hunter_subject ORDER BY l.accepted_at DESC, l.id DESC
+               ) AS rank
+        FROM legal_acceptance_events l
+        JOIN notification_jobs j ON j.target_record_id = l.id AND j.kind = 'waiver_receipt'
+        WHERE l.document_type = 'participation_waiver' AND l.action = 'accepted'
+          AND l.document_version = ? AND l.document_hash = ?
+      ), current_waiver AS (
+        SELECT hunter_subject, waiver_id, waiver_version, accepted_at, minor_count, receipt_status
+        FROM ranked_current_waiver WHERE rank = 1
       )`;
     const cursorWhere = cursor
       ? "AND (a.updated_at < ? OR (a.updated_at = ? AND a.subject < ?))"
@@ -1418,17 +1878,30 @@ export class D1DataStore implements DataStore {
               p.full_name, p.public_handle, p.town_area,
               COALESCE(c.hunt_email_consent, 0) AS hunt_email_consent,
               COALESCE(c.marketing_consent, 0) AS marketing_consent,
-              l.privacy_version, l.privacy_hash, l.privacy_action, l.waiver_version, l.waiver_action
+              l.privacy_version, l.privacy_hash, l.privacy_action,
+              w.waiver_id, w.waiver_version, w.accepted_at, w.minor_count, w.receipt_status
        FROM player_accounts a
        LEFT JOIN hunter_profiles p ON p.subject = a.subject
        LEFT JOIN current_consents c ON c.hunter_subject = a.subject
        LEFT JOIN current_legal l ON l.hunter_subject = a.subject
+       LEFT JOIN current_waiver w ON w.hunter_subject = a.subject
        WHERE a.account_state = 'active' ${cursorWhere}
        ORDER BY a.updated_at DESC, a.subject DESC LIMIT ?`
     );
     itemStatement = cursor
-      ? itemStatement.bind(cursor.updatedAt, cursor.updatedAt, cursor.subject, limit + 1)
-      : itemStatement.bind(limit + 1);
+      ? itemStatement.bind(
+          participationWaiverDocument.version,
+          participationWaiverDocument.hash,
+          cursor.updatedAt,
+          cursor.updatedAt,
+          cursor.subject,
+          limit + 1
+        )
+      : itemStatement.bind(
+          participationWaiverDocument.version,
+          participationWaiverDocument.hash,
+          limit + 1
+        );
     const [countRow, itemResult] = await Promise.all([
       this.db
         .prepare(
@@ -1442,6 +1915,7 @@ export class D1DataStore implements DataStore {
            LEFT JOIN current_consents c ON c.hunter_subject = a.subject
            WHERE a.account_state = 'active'`
         )
+        .bind(participationWaiverDocument.version, participationWaiverDocument.hash)
         .first<Row>(),
       itemStatement.all<Row>()
     ]);
@@ -1459,6 +1933,7 @@ export class D1DataStore implements DataStore {
           row.privacy_action === "accepted" &&
           row.privacy_version === privacyMediaDocument.version &&
           row.privacy_hash === privacyMediaDocument.hash;
+        const waiverAccepted = Boolean(row.waiver_id);
         return {
           id: row.subject,
           verifiedEmail: row.verified_email,
@@ -1468,9 +1943,12 @@ export class D1DataStore implements DataStore {
           publicHandle: row.public_handle,
           townArea: row.town_area,
           privacyMediaVersion: privacyAccepted ? row.privacy_version : null,
-          waiverStatus: "pending",
-          waiverVersion: null,
-          participationUnlocked: false,
+          waiverStatus: waiverAccepted ? "accepted" : "required",
+          waiverVersion: waiverAccepted ? row.waiver_version : null,
+          acceptedAt: waiverAccepted ? row.accepted_at : null,
+          minorCount: waiverAccepted ? Number(row.minor_count) : 0,
+          receiptStatus: waiverAccepted ? row.receipt_status : null,
+          participationUnlocked: Boolean(row.profile_completed_at) && privacyAccepted && waiverAccepted,
           consents: consentProjection(row),
           createdAt: row.created_at,
           updatedAt: row.updated_at,
