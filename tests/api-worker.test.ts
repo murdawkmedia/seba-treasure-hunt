@@ -93,6 +93,30 @@ test("validation HTML carries a persistent disposable-data notice and noindex he
   assert.match(html, /role="status"/i);
 });
 
+test("validation public config rejects live Clerk publishable keys", async () => {
+  const env = {
+    DEPLOYMENT_ENV: "validation",
+    HUNTER_CLERK_PUBLISHABLE_KEY: "pk_live_hunter",
+    STAFF_CLERK_PUBLISHABLE_KEY: "pk_live_staff",
+    HUNTER_ACCOUNT_PORTAL_URL: "https://www.timlostsomething.com/dashboard",
+    STAFF_ACCOUNT_PORTAL_URL: "https://www.timlostsomething.com/ops",
+    ASSETS: { fetch: async () => new Response("asset") }
+  };
+
+  const response = await worker.fetch(
+    new Request("https://codex-validation.seba-treasure-hunt.pages.dev/api/v1/config"),
+    env as never,
+    context
+  );
+  const body = await responseJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.hunterPublishableKey, null);
+  assert.equal(body.data.staffPublishableKey, null);
+  assert.equal(body.data.hunterAccountPortalUrl, null);
+  assert.equal(body.data.staffAccountPortalUrl, null);
+});
+
 test("production HTML never renders the validation notice", async () => {
   const env = {
     DEPLOYMENT_ENV: "production",

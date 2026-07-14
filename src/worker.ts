@@ -10,7 +10,7 @@ import type { DataStore, PagesEnv } from "./server/types";
 import { R2UploadStorage } from "./server/uploads";
 import { D1RateLimiter } from "./server/rate-limit";
 import { D1EnvironmentGuard } from "./server/environment-guard";
-import { providerKeyForEnvironment } from "./server/provider-environment";
+import { providerKeyForEnvironment, publicUrlForEnvironment } from "./server/provider-environment";
 import { ManagedWaiverReceipts } from "./server/waiver-receipts";
 
 const canonicalOrigin = "https://www.timlostsomething.com";
@@ -59,6 +59,7 @@ const application = (env: PagesEnv) => {
     env.RECOVERY_EMAIL_FROM ?? null,
     env.LEGAL_RECEIPT_EMAIL_FROM ?? null,
     env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null,
+    env.CAMPAIGN_BASE_URL ?? null,
     env.RATE_LIMIT_SALT ?? null,
     env.DEPLOYMENT_ENV ?? null
   ]);
@@ -92,6 +93,19 @@ const application = (env: PagesEnv) => {
     env.STAFF_CLERK_SECRET_KEY,
     env.DEPLOYMENT_ENV
   );
+  const campaignBaseUrl = publicUrlForEnvironment(env.CAMPAIGN_BASE_URL, env.DEPLOYMENT_ENV);
+  const hunterAccountPortalUrl = publicUrlForEnvironment(
+    env.HUNTER_ACCOUNT_PORTAL_URL,
+    env.DEPLOYMENT_ENV
+  );
+  const staffAccountPortalUrl = publicUrlForEnvironment(
+    env.STAFF_ACCOUNT_PORTAL_URL,
+    env.DEPLOYMENT_ENV
+  );
+  const staffInvitationRedirectUrl = publicUrlForEnvironment(
+    env.STAFF_INVITATION_REDIRECT_URL,
+    env.DEPLOYMENT_ENV
+  );
   const store = env.DB ? new D1DataStore(env.DB) : unavailableStore;
   const app = createApi({
     store,
@@ -108,13 +122,13 @@ const application = (env: PagesEnv) => {
     environment: new D1EnvironmentGuard(env.DB ?? null, env.DEPLOYMENT_ENV ?? null),
     webhooks: new ClerkWebhookVerifier(env.CLERK_WEBHOOK_SIGNING_SECRET ?? null),
     playerAccounts: new ManagedPlayerAccounts(hunterSecretKey, {
-      dashboardUrl: `${canonicalOrigin}/dashboard`,
+      dashboardUrl: hunterAccountPortalUrl,
       resendApiKey: env.RESEND_API_KEY ?? null,
       recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
     }),
     staffAccounts: new ManagedStaffAccounts(staffSecretKey, {
-      accountPortalUrl: env.STAFF_ACCOUNT_PORTAL_URL ?? null,
-      invitationRedirectUrl: env.STAFF_INVITATION_REDIRECT_URL ?? null,
+      accountPortalUrl: staffAccountPortalUrl,
+      invitationRedirectUrl: staffInvitationRedirectUrl,
       resendApiKey: env.RESEND_API_KEY ?? null,
       recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
     }),
@@ -123,15 +137,15 @@ const application = (env: PagesEnv) => {
       apiKey: env.RESEND_API_KEY ?? null,
       from: env.LEGAL_RECEIPT_EMAIL_FROM ?? null,
       replyTo: env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null,
-      canonicalOrigin
+      canonicalOrigin: campaignBaseUrl
     }),
     config: {
       deploymentEnvironment: env.DEPLOYMENT_ENV ?? null,
       turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
       hunterPublishableKey,
-      hunterAccountPortalUrl: env.HUNTER_ACCOUNT_PORTAL_URL ?? null,
+      hunterAccountPortalUrl,
       staffPublishableKey,
-      staffAccountPortalUrl: env.STAFF_ACCOUNT_PORTAL_URL ?? null
+      staffAccountPortalUrl
     }
   });
   cache = {

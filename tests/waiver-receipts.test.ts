@@ -69,7 +69,7 @@ const config = (fetcher: typeof fetch) => ({
 });
 
 test("waiver receipt renderer includes the complete legal record and escapes controlled values", () => {
-  const message = renderWaiverReceipt(envelope);
+  const message = renderWaiverReceipt(envelope, "https://www.timlostsomething.com");
   assert.match(message.subject, /Tim Lost Something\?/);
   assert.match(message.text, /SebaHub Tim Lost Something\?/);
   assert.match(message.text, /Alex Hunter/);
@@ -103,10 +103,28 @@ test("waiver receipt renderer includes the complete legal record and escapes con
       ],
     },
   };
-  const escaped = renderWaiverReceipt(controlled);
+  const escaped = renderWaiverReceipt(controlled, "https://www.timlostsomething.com");
   assert.match(escaped.html, /Alex &amp; Hunter &lt;script&gt;/);
   assert.match(escaped.html, /hunter\+&quot;quote&quot;@example\.test/);
   assert.doesNotMatch(escaped.html, /<script|exactUrl|report evidence/i);
+});
+
+test("waiver receipt renderer requires an explicitly configured campaign base URL", () => {
+  assert.throws(() => renderWaiverReceipt(envelope, ""), /campaign base URL/i);
+});
+
+test("waiver receipt renderer uses the configured stable validation origin for every campaign link", () => {
+  const message = renderWaiverReceipt(
+    envelope,
+    "https://codex-validation.seba-treasure-hunt.pages.dev"
+  );
+
+  assert.match(message.text, /https:\/\/codex-validation\.seba-treasure-hunt\.pages\.dev\/waiver/);
+  assert.match(message.text, /https:\/\/codex-validation\.seba-treasure-hunt\.pages\.dev\/rules/);
+  assert.match(message.html, /https:\/\/codex-validation\.seba-treasure-hunt\.pages\.dev\/waiver/);
+  assert.match(message.html, /https:\/\/codex-validation\.seba-treasure-hunt\.pages\.dev\/rules/);
+  assert.doesNotMatch(message.text, /www\.timlostsomething\.com/);
+  assert.doesNotMatch(message.html, /www\.timlostsomething\.com/);
 });
 
 test("managed waiver receipts sends one Resend request and stores only the provider message id", async () => {

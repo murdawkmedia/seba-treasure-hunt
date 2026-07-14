@@ -357,5 +357,6 @@ export interface PagesEnv {
   RECOVERY_EMAIL_FROM?: string;
   LEGAL_RECEIPT_EMAIL_FROM?: string;
   LEGAL_RECEIPT_EMAIL_REPLY_TO?: string;
+  CAMPAIGN_BASE_URL?: string;
   DEPLOYMENT_ENV?: DeploymentEnvironment;
 }

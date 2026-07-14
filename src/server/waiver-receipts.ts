@@ -18,7 +18,7 @@ export interface ManagedWaiverReceiptConfig {
   apiKey: string | null;
   from: string | null;
   replyTo: string | null;
-  canonicalOrigin: string;
+  canonicalOrigin: string | null;
 }
 
 const escapeHtml = (input: string) =>
@@ -73,10 +73,11 @@ const legalHtml = () =>
 
 export const renderWaiverReceipt = (
   envelope: WaiverReceiptEnvelope,
-  canonicalOrigin = "https://www.timlostsomething.com",
+  canonicalOrigin: string,
 ): WaiverReceiptMessage => {
   const { acceptance, verifiedEmail } = envelope;
   const origin = absoluteOrigin(canonicalOrigin);
+  if (!origin) throw new Error("A campaign base URL must be configured.");
   const waiverUrl = `${origin}/waiver`;
   const rulesUrl = `${origin}/rules`;
   const participants = participantText(envelope);
@@ -184,11 +185,12 @@ export class ManagedWaiverReceipts implements LegalReceiptSender {
     const apiKey = this.config.apiKey?.trim() ?? "";
     const from = this.config.from?.trim() ?? "";
     const replyTo = this.config.replyTo?.trim() ?? "";
-    if (!apiKey || !from || !replyTo || !this.config.canonicalOrigin.trim()) {
+    const campaignBaseUrl = this.config.canonicalOrigin?.trim() ?? "";
+    if (!apiKey || !from || !replyTo || !campaignBaseUrl) {
       return this.fail(job, "provider_unavailable");
     }
 
-    const message = renderWaiverReceipt(envelope, this.config.canonicalOrigin);
+    const message = renderWaiverReceipt(envelope, campaignBaseUrl);
     let response: Response;
     try {
       response = await this.config.fetch("https://api.resend.com/emails", {

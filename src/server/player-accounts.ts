@@ -15,7 +15,7 @@ export class ManagedPlayerAccounts implements StaffAccountManager {
   constructor(
     secretKey: string | null,
     private readonly options: {
-      dashboardUrl: string;
+      dashboardUrl: string | null;
       resendApiKey: string | null;
       recoveryEmailFrom: string | null;
     }
@@ -44,7 +44,7 @@ export class ManagedPlayerAccounts implements StaffAccountManager {
   private async sendRecovery(target: Record<string, unknown>) {
     const email = targetEmail(target);
     const { dashboardUrl, resendApiKey, recoveryEmailFrom } = this.options;
-    if (!email || !resendApiKey || !recoveryEmailFrom) throw this.unavailable();
+    if (!email || !dashboardUrl || !resendApiKey || !recoveryEmailFrom) throw this.unavailable();
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
