@@ -101,6 +101,7 @@ export class FakeStore {
   legalEvents: Array<Record<string, unknown>> = [];
   waiverReviews = new Map<string, WaiverReviewRecord>();
   waiverAcceptances = new Map<string, WaiverAcceptanceRecord>();
+  waiverReceiptInProgress = new Set<string>();
   waiverAcceptanceKeys = new Map<string, string>();
   waiverSequence = 0;
   identityEvents = new Set<string>();
@@ -438,15 +439,16 @@ export class FakeStore {
   }
 
   async queueOpsWaiverReceiptResend(subject: string, acceptanceId: string, actorSubject: string) {
+    if (this.waiverReceiptInProgress.has(acceptanceId)) return { status: "in_progress" as const };
     const acceptance = await this.queueWaiverReceiptResend(subject, acceptanceId);
-    if (!acceptance) return null;
+    if (!acceptance) return { status: "not_found" as const };
     this.audits.push({
       action: "player.waiver-receipt.requested",
       actorSubject,
       target: acceptanceId,
       subject
     });
-    return acceptance;
+    return { status: "queued" as const, acceptance };
   }
 
   async upsertProfile(subject: string, input: Record<string, unknown>) {

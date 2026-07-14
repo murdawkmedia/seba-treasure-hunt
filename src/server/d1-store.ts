@@ -4,6 +4,7 @@ import type {
   CaseStatus,
   DataStore,
   IdentityLifecycleEvent,
+  OpsWaiverReceiptResendResult,
   Page,
   PlayerAccessState,
   SponsorContributionRange,
@@ -1056,11 +1057,13 @@ export class D1DataStore implements DataStore {
 
   private async requeueWaiverReceiptJob(
     acceptance: WaiverAcceptanceRecord,
-    additionalStatements: (requeueToken: string) => D1PreparedStatement[] = () => []
+    additionalStatements: (requeueToken: string) => D1PreparedStatement[] = () => [],
+    guardStatements: (requeueToken: string) => D1PreparedStatement[] = () => []
   ): Promise<boolean> {
     const timestamp = now();
     const requeueToken = id();
-    const results = await this.db.batch([
+    const deliveryEventId = id();
+    await this.db.batch([
       this.db
         .prepare(
           `INSERT INTO notification_job_leases
@@ -1088,6 +1091,7 @@ export class D1DataStore implements DataStore {
           timestamp,
           timestamp
         ),
+      ...guardStatements(requeueToken),
       this.db
         .prepare(
           `UPDATE notification_jobs
@@ -1112,7 +1116,7 @@ export class D1DataStore implements DataStore {
            )`
         )
         .bind(
-          id(),
+          deliveryEventId,
           acceptance.receipt.jobId,
           timestamp,
           acceptance.receipt.jobId,
@@ -1126,7 +1130,14 @@ export class D1DataStore implements DataStore {
         )
         .bind(acceptance.receipt.jobId, requeueToken)
     ]);
-    return Number(results[0]?.meta?.changes ?? 0) === 1;
+    const delivery = await this.db
+      .prepare(
+        `SELECT 1 AS requeued FROM notification_delivery_events
+         WHERE id = ? AND notification_job_id = ? AND event_type = 'requeued'`
+      )
+      .bind(deliveryEventId, acceptance.receipt.jobId)
+      .first<Row>();
+    return Boolean(delivery);
   }
 
   async queueWaiverReceiptResend(
@@ -1143,32 +1154,84 @@ export class D1DataStore implements DataStore {
     subject: string,
     acceptanceId: string,
     actorSubject: string
-  ): Promise<WaiverAcceptanceRecord | null> {
+  ): Promise<OpsWaiverReceiptResendResult> {
     const acceptance = await this.waiverAcceptanceById(acceptanceId, subject, true);
-    if (!acceptance) return null;
+    if (!acceptance) return { status: "not_found" };
     const timestamp = now();
-    const requeued = await this.requeueWaiverReceiptJob(acceptance, (requeueToken) => [
-      this.db
+    const requeued = await this.requeueWaiverReceiptJob(
+      acceptance,
+      (requeueToken) => [
+        this.db
+          .prepare(
+            `INSERT INTO audit_events
+             (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+             SELECT ?, ?, 'player.waiver-receipt.requested', 'legal_acceptance', ?, '{}', ?
+             WHERE EXISTS (
+               SELECT 1 FROM notification_job_leases lease
+               WHERE lease.notification_job_id = ? AND lease.lease_token = ?
+             )`
+          )
+          .bind(
+            id(),
+            actorSubject,
+            acceptanceId,
+            timestamp,
+            acceptance.receipt.jobId,
+            requeueToken
+          )
+      ],
+      (requeueToken) => [
+        this.db
+          .prepare(
+            `DELETE FROM notification_job_leases
+             WHERE notification_job_id = ? AND lease_token = ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM legal_acceptance_events current
+                 WHERE current.id = ? AND current.hunter_subject = ?
+                   AND current.document_type = 'participation_waiver'
+                   AND current.document_version = ? AND current.document_hash = ?
+                   AND current.action = 'accepted'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM legal_acceptance_events newer
+                     WHERE newer.hunter_subject = current.hunter_subject
+                       AND newer.document_type = current.document_type
+                       AND newer.document_version = current.document_version
+                       AND newer.document_hash = current.document_hash
+                       AND (
+                         newer.accepted_at > current.accepted_at OR
+                         (newer.accepted_at = current.accepted_at AND newer.id > current.id)
+                       )
+                   )
+               )`
+          )
+          .bind(
+            acceptance.receipt.jobId,
+            requeueToken,
+            acceptanceId,
+            subject,
+            participationWaiverDocument.version,
+            participationWaiverDocument.hash
+          )
+      ]
+    );
+    if (!requeued) {
+      const latest = await this.db
         .prepare(
-          `INSERT INTO audit_events
-           (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
-           SELECT ?, ?, 'player.waiver-receipt.requested', 'legal_acceptance', ?, '{}', ?
-           WHERE EXISTS (
-             SELECT 1 FROM notification_job_leases lease
-             WHERE lease.notification_job_id = ? AND lease.lease_token = ?
-           )`
+          `SELECT id, action FROM legal_acceptance_events
+           WHERE hunter_subject = ? AND document_type = 'participation_waiver'
+             AND document_version = ? AND document_hash = ?
+           ORDER BY accepted_at DESC, id DESC LIMIT 1`
         )
-        .bind(
-          id(),
-          actorSubject,
-          acceptanceId,
-          timestamp,
-          acceptance.receipt.jobId,
-          requeueToken
-        )
-    ]);
-    if (!requeued) return null;
-    return this.waiverAcceptanceById(acceptanceId, subject, true);
+        .bind(subject, participationWaiverDocument.version, participationWaiverDocument.hash)
+        .first<Row>();
+      return latest?.id === acceptanceId && latest.action === "accepted"
+        ? { status: "in_progress" }
+        : { status: "not_found" };
+    }
+    const queued = await this.waiverAcceptanceById(acceptanceId, subject, true);
+    return queued
+      ? { status: "queued", acceptance: queued }
+      : { status: "not_found" };
   }
 
   async claimWaiverReceiptJob(acceptanceId: string): Promise<WaiverReceiptJob | null> {

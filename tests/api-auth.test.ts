@@ -444,6 +444,17 @@ test("keeps waiver summaries minimal and loads legal detail only for deliberate 
   const audit = store.audits.at(-1);
   assert.equal(audit?.action, "player.waiver-receipt.requested");
   assert.equal(JSON.stringify(audit).includes("Sam Hunter"), false);
+
+  store.waiverReceiptInProgress.add(accepted.value.id);
+  const auditCount = store.audits.length;
+  const retryWhileSending = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/players/hunter-1/waiver/receipt",
+    { method: "POST", headers: { ...staffHeaders, origin: "https://www.timlostsomething.com" } }
+  );
+  assert.equal(retryWhileSending.status, 409);
+  assert.equal((await responseJson(retryWhileSending)).error.code, "waiver_receipt_in_progress");
+  assert.equal(store.audits.length, auditCount);
+  assert.deepEqual(waiverReceipts.calls, [accepted.value.id]);
 });
 
 test("a current waiver unlocks hunter tools without weakening reports, moderation, or human checks", async () => {

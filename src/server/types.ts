@@ -100,6 +100,11 @@ export interface WaiverReceiptEnvelope {
   verifiedEmail: string;
 }
 
+export type OpsWaiverReceiptResendResult =
+  | { status: "queued"; acceptance: WaiverAcceptanceRecord }
+  | { status: "in_progress" }
+  | { status: "not_found" };
+
 export type WaiverReceiptDeliveryResult = { status: "sent" | "failed" };
 
 export interface LegalReceiptSender {
@@ -215,7 +220,7 @@ export interface DataStore {
     subject: string,
     acceptanceId: string,
     actorSubject: string
-  ): Promise<WaiverAcceptanceRecord | null>;
+  ): Promise<OpsWaiverReceiptResendResult>;
   applyIdentityEvent(event: IdentityLifecycleEvent): Promise<{ replayed: boolean }>;
   upsertProfile(subject: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getMemberWaypoint(id: number): Promise<Record<string, unknown> | null>;

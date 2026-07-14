@@ -1451,10 +1451,19 @@ export const createApi = (deps: ApiDependencies) => {
     ) {
       throw new ApiError(409, "waiver_document_outdated", "Only the current waiver acceptance can be resent here.");
     }
-    const queued = await deps.store.queueOpsWaiverReceiptResend(subject, detail.id, staff.subject);
-    if (!queued) throw new ApiError(404, "waiver_acceptance_not_found", "No current waiver acceptance was found.");
-    scheduleWaiverReceipt(c, deps.waiverReceipts, queued.id);
-    return success(c, { acceptance: queued }, 202);
+    const result = await deps.store.queueOpsWaiverReceiptResend(subject, detail.id, staff.subject);
+    if (result.status === "not_found") {
+      throw new ApiError(404, "waiver_acceptance_not_found", "No current waiver acceptance was found.");
+    }
+    if (result.status === "in_progress") {
+      throw new ApiError(
+        409,
+        "waiver_receipt_in_progress",
+        "A receipt delivery is already in progress. Try again after it finishes."
+      );
+    }
+    scheduleWaiverReceipt(c, deps.waiverReceipts, result.acceptance.id);
+    return success(c, { acceptance: result.acceptance }, 202);
   });
   app.get("/api/v1/ops/audit", async (c) => {
     await requireStaff(deps, c.req.raw);

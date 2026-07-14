@@ -535,9 +535,9 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     return [requeued?.count ?? 0, audited?.count ?? 0] as const;
   };
 
-  assert.equal(
+  assert.deepEqual(
     await opsResend.call(store, "hunter-current-2", accepted.value.id, "staff-ops-1"),
-    null,
+    { status: "not_found" },
     "an acceptance cannot be retried through a foreign subject"
   );
   assert.deepEqual(await evidenceCounts(), [0, 0]);
@@ -565,9 +565,9 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
                  '2026-07-13T20:20:00.000Z', '2026-07-13T20:20:00.000Z')`
       )
   ]);
-  assert.equal(
+  assert.deepEqual(
     await opsResend.call(store, "hunter-current-2", "stale-acceptance", "staff-ops-1"),
-    null,
+    { status: "not_found" },
     "only the exact current waiver document can be retried"
   );
   const staleJob = await db
@@ -581,7 +581,8 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     accepted.value.id,
     "staff-ops-1"
   );
-  assert.equal(opsQueued?.receipt.status, "pending");
+  assert.equal(opsQueued.status, "queued");
+  assert.equal(opsQueued.acceptance?.receipt.status, "pending");
   assert.deepEqual(await evidenceCounts(), [1, 1]);
   const opsAudit = await db
     .prepare(
@@ -607,6 +608,97 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   ]) {
     assert.equal(serializedAudit.includes(privateValue), false);
   }
+
+  const prepareRaceAcceptance = async (subject: string, key: string) => {
+    await preparePlayer(subject);
+    const review = await store.recordWaiverReview(subject, {
+      version: participationWaiverDocument.version,
+      hash: participationWaiverDocument.hash
+    });
+    return store.acceptParticipationWaiver(subject, {
+      ...input,
+      reviewEventId: review.id,
+      idempotencyKey: key,
+      adultName: "Race Test Adult",
+      minors: []
+    });
+  };
+  const exerciseLegalRace = async (action: "accepted" | "withdrawn", suffix: string) => {
+    const subject = `hunter-ops-race-${suffix}`;
+    const raced = await prepareRaceAcceptance(subject, `ops-race-${suffix}`);
+    let injected = false;
+    const racingDb = {
+      prepare(sql: string) {
+        const statement = db.prepare(sql);
+        if (!sql.includes("FROM legal_acceptance_events l") || !sql.includes("JOIN notification_jobs j")) {
+          return statement;
+        }
+        return {
+          bind(...bindings: unknown[]) {
+            const bound = statement.bind(...bindings);
+            return {
+              async first<T>() {
+                const row = await bound.first<T>();
+                if (
+                  !injected &&
+                  row &&
+                  (row as Record<string, unknown>).id === raced.value.id
+                ) {
+                  injected = true;
+                  await db
+                    .prepare(
+                      `INSERT INTO legal_acceptance_events
+                       (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
+                       VALUES (?, ?, 'participation_waiver', ?, ?, ?, '9999-12-31T23:59:59.999Z')`
+                    )
+                    .bind(
+                      `newer-${suffix}`,
+                      subject,
+                      participationWaiverDocument.version,
+                      participationWaiverDocument.hash,
+                      action
+                    )
+                    .run();
+                }
+                return row;
+              }
+            };
+          }
+        };
+      },
+      batch(statements: D1PreparedStatement[]) {
+        return db.batch(statements);
+      }
+    };
+    const racingStore = new D1DataStore(racingDb as unknown as D1Database);
+    const result = await racingStore.queueOpsWaiverReceiptResend(
+      subject,
+      raced.value.id,
+      "staff-race-test"
+    );
+    assert.deepEqual(result, { status: "not_found" });
+    const evidence = await Promise.all([
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM notification_delivery_events WHERE notification_job_id = ? AND event_type = 'requeued'"
+        )
+        .bind(raced.value.receipt.jobId)
+        .first<{ count: number }>(),
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM audit_events WHERE action = 'player.waiver-receipt.requested' AND target_id = ?"
+        )
+        .bind(raced.value.id)
+        .first<{ count: number }>()
+    ]);
+    assert.deepEqual(
+      evidence.map((row) => row?.count ?? 0),
+      [0, 0],
+      `a concurrent ${action} event prevents both delivery and audit evidence`
+    );
+  };
+  await exerciseLegalRace("withdrawn", "withdrawn");
+  await exerciseLegalRace("accepted", "newer-acceptance");
 
   const detail = await store.getParticipationWaiver("hunter-current-1");
   assert.deepEqual(detail?.participants, accepted.value.participants);
@@ -655,8 +747,8 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
   assert.equal(activeLeaseState?.lease_count, 1);
   assert.equal(activeLeaseState?.requeue_count, 1, "the active lease adds no second requeue event");
   assert.equal(
-    await opsResend.call(store, "hunter-current-1", accepted.value.id, "staff-ops-1"),
-    null,
+    (await opsResend.call(store, "hunter-current-1", accepted.value.id, "staff-ops-1")).status,
+    "in_progress",
     "an Ops retry must not clear or steal an active receipt lease"
   );
   assert.equal(await store.claimWaiverReceiptJob(accepted.value.id), null);
