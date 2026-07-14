@@ -207,6 +207,7 @@ export interface DataStore {
     input: WaiverAcceptanceInput
   ): Promise<{ value: WaiverAcceptanceRecord; replayed: boolean }>;
   getParticipationWaiver(subject: string): Promise<WaiverAcceptanceRecord | null>;
+  requeueWaiverReceiptForAcceptanceReplay(subject: string, acceptanceId: string): Promise<boolean>;
   queueWaiverReceiptResend(subject: string, acceptanceId: string): Promise<WaiverAcceptanceRecord | null>;
   claimWaiverReceiptJob(acceptanceId: string): Promise<WaiverReceiptJob | null>;
   getWaiverReceiptEnvelope(acceptanceId: string): Promise<WaiverReceiptEnvelope | null>;

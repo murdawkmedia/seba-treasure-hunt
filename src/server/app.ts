@@ -1056,7 +1056,10 @@ export const createApi = (deps: ApiDependencies) => {
       documentVersion: document.version,
       documentHash: document.hash
     });
-    if (capture.value.receipt.status !== "sent") {
+    const shouldDeliverReceipt = capture.replayed
+      ? await deps.store.requeueWaiverReceiptForAcceptanceReplay(hunter.subject, capture.value.id)
+      : true;
+    if (shouldDeliverReceipt) {
       scheduleWaiverReceipt(c, deps.waiverReceipts, capture.value.id);
     }
     return success(

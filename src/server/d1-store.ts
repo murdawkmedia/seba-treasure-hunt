@@ -1077,7 +1077,8 @@ export class D1DataStore implements DataStore {
   private async requeueWaiverReceiptJob(
     acceptance: WaiverAcceptanceRecord,
     additionalStatements: (requeueToken: string) => D1PreparedStatement[] = () => [],
-    guardStatements: (requeueToken: string) => D1PreparedStatement[] = () => []
+    guardStatements: (requeueToken: string) => D1PreparedStatement[] = () => [],
+    unsentOnly = false
   ): Promise<boolean> {
     const timestamp = now();
     const requeueToken = id();
@@ -1090,6 +1091,7 @@ export class D1DataStore implements DataStore {
            SELECT j.id, ?, j.attempts, ?, ?
            FROM notification_jobs j
            WHERE j.id = ? AND j.kind = 'waiver_receipt' AND j.target_record_id = ?
+             AND (? = 0 OR j.status IN ('pending', 'failed'))
              AND NOT EXISTS (
                SELECT 1 FROM notification_job_leases active
                WHERE active.notification_job_id = j.id AND active.lease_until > ?
@@ -1107,6 +1109,7 @@ export class D1DataStore implements DataStore {
           timestamp,
           acceptance.receipt.jobId,
           acceptance.id,
+          unsentOnly ? 1 : 0,
           timestamp,
           timestamp
         ),
@@ -1157,6 +1160,15 @@ export class D1DataStore implements DataStore {
       .bind(deliveryEventId, acceptance.receipt.jobId)
       .first<Row>();
     return Boolean(delivery);
+  }
+
+  async requeueWaiverReceiptForAcceptanceReplay(
+    subject: string,
+    acceptanceId: string
+  ): Promise<boolean> {
+    const acceptance = await this.waiverAcceptanceById(acceptanceId, subject, true);
+    if (!acceptance) return false;
+    return this.requeueWaiverReceiptJob(acceptance, () => [], () => [], true);
   }
 
   async queueWaiverReceiptResend(

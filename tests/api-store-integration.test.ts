@@ -4,10 +4,20 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import { createApi } from "../src/server/app";
 import { D1DataStore } from "../src/server/d1-store";
 import { ApiError } from "../src/server/errors";
 import { participationWaiverDocument, privacyMediaDocument } from "../src/server/legal-documents";
+import { ManagedWaiverReceipts } from "../src/server/waiver-receipts";
 import type { DataStore, SponsorInquiryInput } from "../src/server/types";
+import {
+  FakeEnvironment,
+  FakeRateLimits,
+  FakeTurnstile,
+  FakeUploads,
+  json,
+  responseJson
+} from "./api-test-kit";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const migration = await readFile(
@@ -432,6 +442,134 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     JSON.stringify(viewAudit),
     /hunter-current-1@example\.test|Alex Adult|Casey Minor|Jordan Minor|2014|2016/
   );
+
+  await preparePlayer("hunter-replay-backoff");
+  const replayBackoffReview = await store.recordWaiverReview("hunter-replay-backoff", {
+    version: participationWaiverDocument.version,
+    hash: participationWaiverDocument.hash
+  });
+  const replayBackoffInput = {
+    ...input,
+    reviewEventId: replayBackoffReview.id,
+    idempotencyKey: "replay-after-interrupted-schedule",
+    adultName: "Replay Test Adult",
+    minors: []
+  };
+  const replayBackoffAcceptance = await store.acceptParticipationWaiver(
+    "hunter-replay-backoff",
+    replayBackoffInput
+  );
+  await db
+    .prepare(
+      `UPDATE notification_jobs
+       SET status = 'failed', next_attempt_at = '9999-12-31T23:59:59.999Z',
+           last_error_code = 'provider_unavailable'
+       WHERE id = ?`
+    )
+    .bind(replayBackoffAcceptance.value.receipt.jobId)
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO notification_job_leases
+       (notification_job_id, lease_token, attempt_generation, lease_until, claimed_at)
+       VALUES (?, 'active-replay-lease', 0, '9999-12-31T23:59:59.999Z', ?)`
+    )
+    .bind(replayBackoffAcceptance.value.receipt.jobId, new Date().toISOString())
+    .run();
+  let replayDeliveryCalls = 0;
+  const receiptSender = new ManagedWaiverReceipts(store, {
+    fetch: async () => {
+      replayDeliveryCalls += 1;
+      return Response.json({ id: "replay-delivery-1" });
+    },
+    apiKey: "test-only-key",
+    from: "Tim Lost Something? <legal@example.test>",
+    replyTo: "help@example.test",
+    canonicalOrigin: "https://www.timlostsomething.com/"
+  });
+  const replayApi = createApi({
+    store,
+    identity: {
+      async authenticateHunter(request) {
+        return request.headers.get("authorization") === "Bearer replay-hunter"
+          ? {
+              kind: "hunter" as const,
+              subject: "hunter-replay-backoff",
+              email: "hunter-replay-backoff@example.test"
+            }
+          : null;
+      },
+      async authenticateStaff() {
+        return null;
+      }
+    },
+    turnstile: new FakeTurnstile(),
+    uploads: new FakeUploads(),
+    rateLimits: new FakeRateLimits(),
+    waiverReceipts: receiptSender,
+    environment: new FakeEnvironment()
+  });
+  const requestReplay = () =>
+    replayApi.request("https://www.timlostsomething.com/api/v1/me/waiver/accept", {
+      method: "POST",
+      ...json(
+        {
+          reviewEventId: replayBackoffReview.id,
+          version: participationWaiverDocument.version,
+          hash: participationWaiverDocument.hash,
+          waiverAccepted: true,
+          guardianAttested: true,
+          minors: replayBackoffInput.minors
+        },
+        {
+          authorization: "Bearer replay-hunter",
+          origin: "https://www.timlostsomething.com",
+          "idempotency-key": replayBackoffInput.idempotencyKey
+        }
+      )
+    });
+
+  const activeLeaseReplay = await requestReplay();
+  assert.equal(
+    activeLeaseReplay.status,
+    200,
+    JSON.stringify(await responseJson(activeLeaseReplay.clone()))
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(replayDeliveryCalls, 0, "an active receipt lease suppresses replay delivery");
+  const replayActiveLeaseState = await db
+    .prepare(
+      `SELECT j.status, j.next_attempt_at, lease.lease_token
+       FROM notification_jobs j
+       JOIN notification_job_leases lease ON lease.notification_job_id = j.id
+       WHERE j.id = ?`
+    )
+    .bind(replayBackoffAcceptance.value.receipt.jobId)
+    .first<{ status: string; next_attempt_at: string; lease_token: string }>();
+  assert.deepEqual(replayActiveLeaseState, {
+    status: "failed",
+    next_attempt_at: "9999-12-31T23:59:59.999Z",
+    lease_token: "active-replay-lease"
+  });
+
+  await db
+    .prepare("DELETE FROM notification_job_leases WHERE notification_job_id = ?")
+    .bind(replayBackoffAcceptance.value.receipt.jobId)
+    .run();
+  const replayResponse = await requestReplay();
+  assert.equal(replayResponse.status, 200, JSON.stringify(await responseJson(replayResponse.clone())));
+  for (let attempt = 0; attempt < 40 && replayDeliveryCalls === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(replayDeliveryCalls, 1, "a deliberate idempotent replay bypasses stale receipt backoff");
+  assert.equal(
+    (await store.getParticipationWaiver("hunter-replay-backoff"))?.receipt.status,
+    "sent"
+  );
+  const sentReplay = await requestReplay();
+  assert.equal(sentReplay.status, 200, JSON.stringify(await responseJson(sentReplay.clone())));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(replayDeliveryCalls, 1, "a sent receipt remains silent on acceptance replay");
 
   await preparePlayer("hunter-current-2");
   const secondReview = await store.recordWaiverReview("hunter-current-2", {

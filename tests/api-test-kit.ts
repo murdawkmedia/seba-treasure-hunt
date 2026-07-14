@@ -393,6 +393,21 @@ export class FakeStore {
     return record ? structuredClone(record) : null;
   }
 
+  async requeueWaiverReceiptForAcceptanceReplay(subject: string, acceptanceId: string) {
+    const record = this.waiverAcceptances.get(acceptanceId);
+    if (
+      !record ||
+      record.subject !== subject ||
+      record.receipt.status === "sent" ||
+      this.waiverReceiptInProgress.has(acceptanceId)
+    ) {
+      return false;
+    }
+    record.receipt.status = "pending";
+    record.receipt.sentAt = null;
+    return true;
+  }
+
   async queueWaiverReceiptResend(subject: string, acceptanceId: string) {
     const record = this.waiverAcceptances.get(acceptanceId);
     if (!record || record.subject !== subject) return null;
