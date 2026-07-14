@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current state
 
-The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `765102d` (deployment `85ccc8e5-0cd9-428b-af65-ad32f5494a67`).
+The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `5deee85` (deployment `c09b79d9-6a2a-459c-8cd6-a80f4633a2af`).
 
 Validation now presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the new guardian/receipt/Ops surfaces at `https://codex-validation.seba-treasure-hunt.pages.dev`. Its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; its deployment ID, DNS, domains and data were not changed. The verified Murdawk Media Resend sender remains active, the campaign lead mailbox is the encrypted receipt Reply-To, and the new SebaHub Resend credential is stored separately as a pending encrypted Preview secret. No account or submission has been created, and no email has been sent.
 
@@ -33,6 +33,7 @@ Validation inquiries are disposable and must not be promoted to production.
 - Idempotent acceptance replay atomically requeues interrupted pending/failed receipts when no lease is active; sent receipts remain silent. Receipt rendering fails before provider access if the stored waiver version/hash does not exactly match the generated legal source.
 - Complete plain-text and HTML waiver receipts containing the accepted legal body, covered participants, reference, version, effective/accepted dates and verified account email.
 - Dedicated Resend configuration through `RESEND_API_KEY`, `LEGAL_RECEIPT_EMAIL_FROM` and `LEGAL_RECEIPT_EMAIL_REPLY_TO`; missing configuration fails retryably. No real receipt has been sent.
+- Player and staff recovery messages use the same encrypted campaign Reply-To as legal receipts, so all transactional replies reach one operations mailbox.
 - Participant receipt resend plus private staff waiver detail and audited Ops retry. Concurrent withdrawal/newer acceptance is rechecked inside the fenced retry batch; an active delivery returns `409 waiver_receipt_in_progress`.
 - Every private staff waiver-detail view appends a privacy-safe audit event before names or birth years are returned. Browser write APIs require an exact canonical, scoped Pages-preview or explicit local-development Origin.
 - D1 enforces atomic fixed-window abuse limits with separate salted hash buckets for every IP/account identifier; changing an IP or account cannot reset the other bucket. The former rate-limit KV bindings are retired and unbound.
@@ -40,7 +41,7 @@ Validation inquiries are disposable and must not be promoted to production.
 - Public `/waiver` route, legal navigation, sitemap entry and active architecture documentation.
 - A validation-safe browser QA gate that exercises the built Dashboard, Ops, Clue Board and Report clients at desktop, mobile and zoom-equivalent viewports.
 
-Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5`, `65e12bf`, `0e701b6` and `765102d`.
+Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5`, `65e12bf`, `0e701b6`, `765102d`, `e714796` and `5deee85`.
 
 ## Database and provider state
 
@@ -62,12 +63,12 @@ Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `
 - The browser gate covers `/waiver`, Dashboard and Ops at 1440×1000, 390×844 and 720×500; real built clients; print CSS; 0/1/10 minors; validation/focus; receipt pending/sent/failed states; progress, note, reply, find-report and upload boundaries; overflow, console and axe checks.
 - QA privacy classification reports zero findings in production source, rendered public output and public bundles. Private server/Ops bundles are classified separately rather than represented as public leaks.
 - The earlier sponsor surface remains documented in `docs/qa/2026-07-13-sponsor-feature-verification.md` with its reproducible `scripts/verify-sponsor-qa.mjs` runner and uncommitted `%TEMP%\tim-lost-task10` artifacts; this waiver pass does not replace or redeploy that validation release.
-- `npm test`: 88/88 static/contract tests and 194/194 TypeScript tests passed.
+- `npm test`: 88/88 static/contract tests and 202/202 TypeScript tests passed.
 - `npm run typecheck`: Worker, client, Worker-test and client-test checks passed.
-- `npm run build`: passed; Pages Worker 304.8 kB, media Worker 3.2 kB and client bundles completed.
+- `npm run build`: passed; Pages Worker 305.0 kB, media Worker 3.2 kB and client bundles completed.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
-- Validation deployment `85ccc8e5-0cd9-428b-af65-ad32f5494a67` from `765102d` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return 200. Cloudflare lists the active transactional settings and pending SebaHub credential as encrypted Preview secrets. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
+- Validation deployment `c09b79d9-6a2a-459c-8cd6-a80f4633a2af` from `5deee85` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return 200. Cloudflare lists the active transactional settings and pending SebaHub credential as encrypted Preview secrets. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
 - `npm audit --omit=dev --audit-level=high`: exit 0 with zero high/critical findings. Twelve moderate findings remain in Clerk's optional Solana chain; no forced breaking remediation was applied.
 - Full evidence and reproduction commands are recorded in `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`.
 
