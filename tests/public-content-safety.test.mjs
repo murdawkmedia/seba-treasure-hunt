@@ -58,7 +58,7 @@ test("public browser surfaces contain no legal ledger, participant, receipt, or 
   }
 });
 
-test("project docs make the sponsor workflow and unresolved validation state actionable", () => {
+test("project docs make the sponsor workflow and current validation state actionable", () => {
   const readme = read("README.md");
   const status = read("STATUS.md");
   const legal = read("src/generated/privacy-media.ts");
@@ -70,7 +70,7 @@ test("project docs make the sponsor workflow and unresolved validation state act
   assert.match(readme, /no automated email|no email automation/i);
   assert.match(readme, /Ops Sponsors|Sponsors ledger/i);
 
-  assert.match(status, /migration `?0005[^\n]*not (?:confirmed|applied) remotely/i);
+  assert.match(status, /validation migrations `?0005`? through `?0009`? are applied and recorded/i);
   assert.match(status, /Turnstile[^\n]*`sponsor_inquiry`[^\n]*(?:not verified|not configured|unconfirmed)/i);
   assert.match(status, /production[^\n]*(?:migration|deployment|DNS|data)[\s\S]{0,240}unchanged/i);
   assert.match(status, /validation inquir[^\n]*disposable/i);

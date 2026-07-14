@@ -6,7 +6,7 @@ Last updated: 2026-07-14
 
 The participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow is implemented on `codex/tim-lost-hunter-platform`, verified, pushed and deployed to the stable noindex validation alias from source `65e12bf`.
 
-Validation now presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the new guardian/receipt/Ops surfaces at `https://codex-validation.seba-treasure-hunt.pages.dev`. Its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; its deployment ID, DNS, domains and data were not changed. No provider secret has been configured, no account or submission has been created, and no email has been sent.
+Validation now presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the new guardian/receipt/Ops surfaces at `https://codex-validation.seba-treasure-hunt.pages.dev`. Its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; its deployment ID, DNS, domains and data were not changed. Resend and the transactional sender/reply settings are configured as encrypted Preview secrets. No account or submission has been created, and no email has been sent.
 
 For historical sponsor-release auditability, the pre-disclosure Privacy/Media `2026.1` hash was `c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9`; it is not the active local `2026.2` policy hash below.
 
@@ -48,9 +48,9 @@ Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `
 - Validation migrations `0005` through `0009` are applied and recorded. Post-checks show no pending migration and zero sponsor, waiver-review, participant, delivery, lease or rate-limit rows.
 - Wrangler's normal migration command applied `0005` but could not parse the trigger bodies in `0006`. Migrations `0006`–`0009` were therefore imported one at a time through D1's atomic raw-file path, verified by object signature and then recorded in the migration ledger. Preserve this fact for production planning.
 - Production migrations, deployment, DNS and data remain unchanged. No waiver, receipt-lease, immutable-ledger or atomic-rate-limit migration is applied there.
-- Clerk, Turnstile and Resend preview configuration is absent/unverified. The new flows remain fail-closed until configured through authenticated provider sessions.
+- Clerk and Turnstile Preview configuration is absent/unverified, so identity and human-verified writes remain fail-closed. Resend and the recovery/legal-receipt sender settings are installed as encrypted Preview-only secrets; the sender uses Resend's verified Murdawk Media domain and replies route to the SebaHub Project mailbox. No credential value is recorded in source or documentation.
 - The validation Turnstile action `sponsor_inquiry` is not verified or configured, so the deployed sponsor form remains fail-closed.
-- The existing Murdawk Media Wrangler OAuth session was verified and used only for the approved validation migration and deployment work. No raw credential value was opened, copied or logged. Clerk, Resend and Cloudflare dashboard sessions still require interactive sign-in before preview-provider configuration. No real provider delivery occurred.
+- The existing Murdawk Media Wrangler OAuth session was verified and used only for the approved validation migration and deployment work. The authenticated Cloudflare and Resend dashboard sessions were used only for Preview configuration and verified-domain inspection. No raw credential value is stored in the repository or documentation, and no real provider delivery occurred.
 - Pages domains remain `seba-treasure-hunt.pages.dev`, `timlostsomething.com` and `www.timlostsomething.com`; no domain or DNS change occurred.
 
 ## Verification evidence
@@ -75,8 +75,8 @@ Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `
 
 Validation activation is approved, but the following still require authenticated provider access and controlled verification:
 
-1. Complete interactive Cloudflare, Clerk and Resend sign-in without exposing credentials in chat or source.
-2. Configure preview-only identity, webhook, Turnstile, sender and secret values.
+1. Complete Clerk application setup and Cloudflare Turnstile setup through the authenticated provider sessions without exposing credentials in chat or source.
+2. Configure the remaining Preview-only identity, webhook and Turnstile values.
 3. Run one owner-controlled disposable hunter/guardian/receipt/Ops test and a controlled test receipt.
 4. Verify password recovery, staff invitation/authorization, all Turnstile actions and private media processing.
 5. Wipe disposable validation identities, D1 activity/legal records and validation media after testing. Immutable legal ledgers mean this should be a controlled validation-resource reset, not ad hoc deletes.
@@ -84,7 +84,7 @@ Validation activation is approved, but the following still require authenticated
 
 ## Next approved workflow
 
-Resume from the Cloudflare dashboard sign-in tab, then configure preview-only providers without exposing values. Run one owner-controlled acceptance/guardian/receipt/Ops retry, password-recovery, Turnstile and media test; verify no public disclosure; and reset disposable validation records. Production requires another explicit later approval.
+Resume from the authenticated Clerk and Cloudflare tabs, configure the two Preview-only Clerk applications and Turnstile widget without exposing values, then run one owner-controlled acceptance/guardian/receipt/Ops retry, password-recovery, Turnstile and media test. Verify no public disclosure and reset disposable validation records. Production requires another explicit later approval.
 
 ## Decisions in force
 
