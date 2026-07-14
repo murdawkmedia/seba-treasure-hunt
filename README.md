@@ -53,6 +53,7 @@ The browser receives waypoint names, descriptions and safety states only. Exact 
 - All published route photographs are re-encoded without EXIF, GPS, XMP or IPTC metadata.
 - `assets/photos/evidence-cash.jpg` is the real last-known evidence image; readable card details are blurred.
 - `assets/photos/tim-lost-id-campaign-prop.webp` is fictional campaign artwork and is visibly disclosed as a dramatization. It is never evidence or social preview artwork.
+- `assets/photos/sunny-pirate-treasure-seba-beach.webp` is the dedicated sponsor-hero illustration; its 1200x630 JPEG companion is the sponsor page's social preview. The favicon remains a small-format campaign mark and is not enlarged as page artwork.
 - Exact directions, staff allowlists, private reports, originals, secrets and internal runbooks are excluded from the public build.
 - Unapproved future campaign, partner and prize claims are not published.
 

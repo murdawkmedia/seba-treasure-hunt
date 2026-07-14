@@ -33,9 +33,9 @@ test("the sponsor page is a canonical, indexable answer and conversion surface",
   assert.match(html, /<meta property="og:site_name" content="Tim Lost Something\?"/);
   assert.match(html, /<meta property="og:type" content="website"/);
   assert.match(html, /<meta property="og:url" content="https:\/\/www\.timlostsomething\.com\/sponsors"/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/favicon-512x512\.png"/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/sunny-pirate-treasure-seba-beach\.jpg"/);
   assert.match(html, /<meta name="twitter:card" content="summary_large_image"/);
-  assert.match(html, /<meta name="twitter:image" content="https:\/\/www\.timlostsomething\.com\/assets\/favicon-512x512\.png"/);
+  assert.match(html, /<meta name="twitter:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/sunny-pirate-treasure-seba-beach\.jpg"/);
   assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="any">/);
   assert.match(html, /<link rel="icon" href="\/assets\/favicon\.svg" type="image\/svg\+xml">/);
   assert.match(html, /<link rel="icon" href="\/assets\/favicon-32x32\.png" type="image\/png" sizes="32x32">/);
@@ -45,6 +45,17 @@ test("the sponsor page is a canonical, indexable answer and conversion surface",
   for (const stylesheet of ["/css/style.css", "/css/hunter.css", "/css/sponsors.css"]) {
     assert.match(html, new RegExp(`<link rel=["']stylesheet["'] href=["']${stylesheet.replaceAll("/", "\\/")}["']`));
   }
+});
+
+test("the sponsor hero uses dedicated campaign artwork, never an enlarged favicon", () => {
+  const html = read("sponsors.html");
+  const hero = extractSection(html, "sponsor-hero");
+  const artifact = hero.match(/<div class="sponsor-hero__artifact"[\s\S]*?<\/div>/i)?.[0] ?? "";
+
+  assert.match(artifact, /src="\/assets\/photos\/sunny-pirate-treasure-seba-beach\.webp"/);
+  assert.doesNotMatch(artifact, /favicon/i);
+  assert.ok(fs.existsSync(path.join(root, "assets", "photos", "sunny-pirate-treasure-seba-beach.webp")));
+  assert.ok(fs.existsSync(path.join(root, "assets", "photos", "sunny-pirate-treasure-seba-beach.jpg")));
 });
 
 test("the sponsor page shell preserves status, navigation, accessibility, and client hooks", () => {

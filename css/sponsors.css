@@ -179,15 +179,16 @@
   overflow: hidden;
   aspect-ratio: 1;
   place-items: center;
-  background: radial-gradient(circle, #f7d982, #d5981f 62%, #775013 100%);
+  background: #d5981f;
   border: 8px double var(--sponsor-ink);
-  border-radius: 50% 47% 48% 45%;
-  box-shadow: inset 0 0 0 8px rgba(246, 239, 221, 0.3), 0 10px 26px rgba(36, 27, 15, 0.26);
+  border-radius: 4px;
+  box-shadow: 0 10px 26px rgba(36, 27, 15, 0.26);
 }
 
 .artifact-mark img {
-  width: 88%;
-  filter: drop-shadow(0 10px 8px rgba(36, 27, 15, 0.3));
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .artifact-caption {

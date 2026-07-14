@@ -8,6 +8,8 @@ The hunter-account, privacy/media, pending-waiver and Sunny Pirate Mystery Chest
 
 The dedicated sponsor page, persistent navigation, protected inquiry intake, private D1 workflow, and staff-only Ops Sponsors ledger are implemented on `codex/tim-lost-hunter-platform`. The implementation sequence includes sponsor persistence (`b12aca2`), protected intake (`dff10ff`), accessible client (`7e37970`), sponsor page (`7976f0d`), persistent navigation (`1b6988a`), Ops ledger (`219bcb3`), workflow-total correction (`1aae14f`), and private-inquiry disclosure (`2f8d157`). A build from source `942ec9e` is deployed only to the validation branch. The later QA-runner compatibility fix is commit `a3dea47` and has not been redeployed because it changes tooling and documentation only.
 
+The sponsor hero now has dedicated storybook pirate artwork set on the shores of Seba Beach instead of enlarging the favicon. A 1024-pixel WebP is used in the taped case-file card, and a purpose-cropped 1200x630 JPEG is used for Open Graph and Twitter previews. The approved Sunny Pirate Mystery Chest favicon remains unchanged. This artwork replacement is verified locally and has not yet been deployed to validation or production.
+
 Validation branch alias:
 
 <https://codex-validation.seba-treasure-hunt.pages.dev/>
@@ -84,6 +86,7 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 - The broad planned output grep is not clean and must not be cited as a data-leak scan: sponsor table names appear only as executable server code in the bundled Worker, `private note` appears only as UI copy in the downloadable Ops implementation bundle, and the matched SebaHub and Business as a Force for Good addresses are pre-existing intentional public contact details on Home, Privacy, and Route. The Worker bundle is not served at `/_worker.js` (HTTP 404), the Ops API remains staff-gated, and CFCW has zero built-output matches.
 - The corrected rendered-public-surface scan, which excludes server and Ops implementation bundles, is clean. The sponsor page contact-address scan is clean, and an actual fixture/data scan for `alex@example.test`, `Good local fit`, and `staff_subject` is clean.
 - Favicon contract: canonical semantic parts, 32/180/192/512-pixel PNG dimensions, 16/32/48-pixel ICO directory, all twelve page references and build output pass; 512- and 32-pixel renders were visually inspected.
+- Sponsor-art contract: the hero and social-preview metadata use dedicated campaign artwork and explicitly reject an enlarged favicon. The 1024x1024 WebP and 1200x630 JPEG are present in source and build output with no EXIF, XMP, IPTC or ICC metadata. Fresh desktop (1440x900) and mobile (390x844) browser checks show no console warnings or errors and no narrow-layout overflow; the art is intentionally omitted below the existing responsive breakpoint.
 - Live validation smoke test: home, Privacy, ICO, SVG, 32-pixel PNG, Apple touch icon and manifest return HTTP 200 with `X-Robots-Tag: noindex`; the deployed SVG byte hash matches the local source and the old money-bag data favicon is absent.
 - Local Pages runtime: home, start, dashboard, clue board, Ops and status API all return 200 with clean routes.
 - Rendered desktop and 390 px mobile QA for Privacy, Dashboard and Ops: no horizontal overflow and no WCAG 2.1 A/AA axe violations.
