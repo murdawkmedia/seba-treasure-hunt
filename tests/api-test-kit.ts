@@ -428,6 +428,18 @@ export class FakeStore {
     return this.getParticipationWaiver(subject);
   }
 
+  async queueOpsWaiverReceiptResend(subject: string, acceptanceId: string, actorSubject: string) {
+    const acceptance = await this.queueWaiverReceiptResend(subject, acceptanceId);
+    if (!acceptance) return null;
+    this.audits.push({
+      action: "player.waiver-receipt.requested",
+      actorSubject,
+      target: acceptanceId,
+      subject
+    });
+    return acceptance;
+  }
+
   async upsertProfile(subject: string, input: Record<string, unknown>) {
     if (input.privacyMediaAccepted === true) {
       this.legalEvents.push({
@@ -598,7 +610,30 @@ export class FakeStore {
         huntEmail: 1,
         marketing: 0
       },
-      items: [...this.accounts.values()],
+      items: [...this.accounts.values()].map((account) => {
+        const subject = String(account.subject);
+        const profile = this.profiles.get(subject);
+        const acceptance = [...this.waiverAcceptances.values()]
+          .reverse()
+          .find((entry) => entry.subject === subject);
+        return {
+          ...account,
+          profileComplete: Boolean(profile),
+          fullName: profile?.fullName ?? null,
+          publicHandle: profile?.publicHandle ?? null,
+          townArea: profile?.townArea ?? null,
+          privacyMediaVersion: this.legalEvents.some(
+            (event) => event.subject === subject && event.documentType === "privacy_media"
+          ) ? "2026.2" : null,
+          waiverStatus: acceptance ? "accepted" : "required",
+          waiverVersion: acceptance?.documentVersion ?? null,
+          acceptedAt: acceptance?.acceptedAt ?? null,
+          minorCount: acceptance?.participants.filter((participant) => participant.role === "minor").length ?? 0,
+          receiptStatus: acceptance?.receipt.status ?? null,
+          participationUnlocked: Boolean(acceptance),
+          consents: { huntEmail: false, marketing: false }
+        };
+      }),
       nextCursor: null
     };
   }

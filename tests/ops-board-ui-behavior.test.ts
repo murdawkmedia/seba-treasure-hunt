@@ -7,12 +7,69 @@ import {
   validateReply,
 } from "../src/client/board";
 import {
+  buildSubscriberCsv,
   normalizeOpsDashboard,
   normalizeOpsSponsors,
+  normalizeOpsSubscribers,
+  normalizeOpsWaiverDetail,
+  renderOpsWaiverDetail,
+  renderSubscriberRows,
   renderSponsorRows,
   renderStaffRows,
   resolveOpsView,
 } from "../src/client/ops";
+
+test("player ledger keeps only a waiver summary until deliberate detail review", () => {
+  const ledger = normalizeOpsSubscribers({ data: { counts: {}, items: [{
+    id: "hunter-1",
+    verifiedEmail: "hunter@example.test",
+    accountState: "active",
+    profileComplete: true,
+    fullName: "Alex Hunter",
+    publicHandle: "Hunter A1B2",
+    townArea: "Seba Beach",
+    privacyMediaVersion: "2026.2",
+    waiverStatus: "accepted",
+    waiverVersion: "2026.1",
+    acceptedAt: "2026-07-13T18:05:00.000Z",
+    minorCount: 1,
+    receiptStatus: "pending",
+    participationUnlocked: true,
+    consents: { huntEmail: false, marketing: false },
+    createdAt: "2026-07-13T18:00:00.000Z",
+    updatedAt: "2026-07-13T18:05:00.000Z",
+  }] } });
+  assert.equal(ledger.items[0]?.minorCount, 1);
+  const rows = renderSubscriberRows(ledger.items);
+  assert.match(rows, /Review legal record/);
+  assert.match(rows, /1 supervised minor/);
+  assert.doesNotMatch(rows, /Sam Hunter|birth year/);
+
+  const csv = buildSubscriberCsv(ledger.items);
+  assert.doesNotMatch(csv, /minor_count|receipt_status|accepted_at/i);
+});
+
+test("waiver detail rendering validates and escapes the deliberately loaded private record", () => {
+  const detail = normalizeOpsWaiverDetail({ data: {
+    id: "waiver-1",
+    subject: "hunter-1",
+    documentVersion: "2026.1",
+    documentHash: "a".repeat(64),
+    acceptedAt: "2026-07-13T18:05:00.000Z",
+    referenceCode: "TLS-W-ABC12345",
+    participants: [
+      { role: "adult", fullName: "Alex <Hunter>", birthYear: null, guardianAttested: false },
+      { role: "minor", fullName: "Sam <script>", birthYear: 2014, guardianAttested: true },
+    ],
+    receipt: { jobId: "private-job", status: "failed", attempts: 2, sentAt: null },
+  } });
+  assert.equal(detail?.participants.length, 2);
+  const html = renderOpsWaiverDetail(detail!);
+  assert.match(html, /Alex &lt;Hunter&gt;/);
+  assert.match(html, /Sam &lt;script&gt;<\/strong> \(birth year 2014\)/);
+  assert.match(html, /2 attempts/);
+  assert.doesNotMatch(html, /<script>|private-job/);
+});
 
 test("sponsor operations rows normalize private fields and escape every rendered value", () => {
   const ledger = normalizeOpsSponsors({

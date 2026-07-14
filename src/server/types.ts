@@ -201,6 +201,11 @@ export interface DataStore {
     result: { status: "sent"; providerMessageId: string } | { status: "failed"; errorCode: string }
   ): Promise<void>;
   getOpsWaiverDetail?(subject: string): Promise<WaiverAcceptanceRecord | null>;
+  queueOpsWaiverReceiptResend?(
+    subject: string,
+    acceptanceId: string,
+    actorSubject: string
+  ): Promise<WaiverAcceptanceRecord | null>;
   applyIdentityEvent(event: IdentityLifecycleEvent): Promise<{ replayed: boolean }>;
   upsertProfile(subject: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getMemberWaypoint(id: number): Promise<Record<string, unknown> | null>;

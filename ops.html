@@ -239,6 +239,16 @@
     </div>
   </div>
 
+  <dialog class="ops-dialog" id="ops-waiver-dialog" aria-labelledby="waiver-dialog-title">
+    <form method="dialog" class="ops-dialog__head"><div><p class="ops-kicker">Private legal record</p><h2 id="waiver-dialog-title">Participation waiver</h2></div><button class="ops-icon-button" value="close" aria-label="Close legal record">&times;</button></form>
+    <div class="ops-dialog__body">
+      <p class="ops-ledger-state" id="waiver-detail-state" role="status" aria-live="polite">Choose Review legal record for one player to load the private acceptance.</p>
+      <div data-waiver-detail-output></div>
+      <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-retry-waiver-receipt disabled>Retry receipt</button></div>
+      <p class="ops-panel__note">Participant names and birth years stay in this deliberately opened record. They are not included in the player export.</p>
+    </div>
+  </dialog>
+
   <dialog class="ops-dialog" id="ops-account-dialog" aria-labelledby="account-dialog-title">
     <form method="dialog" class="ops-dialog__head"><div><p class="ops-kicker">Managed identity</p><h2 id="account-dialog-title">Account security</h2></div><button class="ops-icon-button" value="close" aria-label="Close account security">&times;</button></form>
     <div class="ops-dialog__body">

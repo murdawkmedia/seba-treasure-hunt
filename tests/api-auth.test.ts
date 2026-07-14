@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApi } from "../src/server/app";
+import { participationWaiverDocument } from "../src/server/legal-documents";
 import {
   FakeIdentity,
   FakeEnvironment,
+  FakeLegalReceiptSender,
   FakeRateLimits,
   FakeStaffAccounts,
   FakeStore,
@@ -16,6 +18,7 @@ import {
 const makeApp = (store = new FakeStore()) => {
   const staffAccounts = new FakeStaffAccounts();
   const rateLimits = new FakeRateLimits();
+  const waiverReceipts = new FakeLegalReceiptSender();
   return {
     app: createApi({
       store,
@@ -25,11 +28,13 @@ const makeApp = (store = new FakeStore()) => {
       staffAccounts,
       playerAccounts: staffAccounts,
       rateLimits,
+      waiverReceipts,
       environment: new FakeEnvironment()
     }),
     store,
     staffAccounts,
-    rateLimits
+    rateLimits,
+    waiverReceipts
   };
 };
 
@@ -380,4 +385,172 @@ test("lets active staff send player recovery instructions or revoke player sessi
   assert.deepEqual(staffAccounts.actions.map((item) => item.action), ["recovery", "revoke-sessions"]);
   assert.equal(staffAccounts.actions[0]?.target.verifiedEmail, "hunter@example.test");
   assert.equal(store.audits.at(-1)?.action, "player.revoke-sessions.requested");
+});
+
+test("keeps waiver summaries minimal and loads legal detail only for deliberate staff review", async () => {
+  const { app, store, waiverReceipts } = makeApp();
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  const review = await store.recordWaiverReview("hunter-1", {
+    version: participationWaiverDocument.version,
+    hash: participationWaiverDocument.hash
+  });
+  const accepted = await store.acceptParticipationWaiver("hunter-1", {
+    reviewEventId: review.id,
+    idempotencyKey: "ops-acceptance",
+    adultName: "Alex Hunter",
+    minors: [{ fullName: "Sam Hunter", birthYear: 2014 }],
+    guardianAttested: true,
+    documentVersion: participationWaiverDocument.version,
+    documentHash: participationWaiverDocument.hash
+  });
+  const staffHeaders = { authorization: "Bearer staff-token" };
+
+  const anonymous = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/players/hunter-1/waiver"
+  );
+  assert.equal(anonymous.status, 401);
+  const hunter = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/players/hunter-1/waiver",
+    { headers: hunterHeaders }
+  );
+  assert.equal(hunter.status, 401);
+
+  const list = await app.request("https://www.timlostsomething.com/api/v1/ops/players", {
+    headers: staffHeaders
+  });
+  assert.equal(list.status, 200);
+  const listText = await list.text();
+  assert.doesNotMatch(listText, /Sam Hunter|birthYear|participants|waiver-receipt-/);
+  const listItem = JSON.parse(listText).data.items[0];
+  assert.equal(listItem.waiverVersion, participationWaiverDocument.version);
+  assert.equal(listItem.minorCount, 1);
+  assert.equal(listItem.receiptStatus, "pending");
+
+  const detail = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/players/hunter-1/waiver",
+    { headers: staffHeaders }
+  );
+  assert.equal(detail.status, 200);
+  const detailBody = (await responseJson(detail)).data;
+  assert.equal(detailBody.id, accepted.value.id);
+  assert.equal(detailBody.participants[1].fullName, "Sam Hunter");
+
+  const retry = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/players/hunter-1/waiver/receipt",
+    { method: "POST", headers: { ...staffHeaders, origin: "https://www.timlostsomething.com" } }
+  );
+  assert.equal(retry.status, 202);
+  assert.deepEqual(waiverReceipts.calls, [accepted.value.id]);
+  const audit = store.audits.at(-1);
+  assert.equal(audit?.action, "player.waiver-receipt.requested");
+  assert.equal(JSON.stringify(audit).includes("Sam Hunter"), false);
+});
+
+test("a current waiver unlocks hunter tools without weakening reports, moderation, or human checks", async () => {
+  const { app, store } = makeApp();
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  store.profiles.set("hunter-1", { subject: "hunter-1", fullName: "Alex Hunter" });
+  store.legalEvents.push({
+    subject: "hunter-1",
+    documentType: "privacy_media",
+    version: "2026.2"
+  });
+  const lockedRequests: Array<[string, RequestInit]> = [
+    ["/api/v1/member/waypoints/1", { headers: hunterHeaders }],
+    ["/api/v1/progress/1", { method: "PUT", ...json({ state: "visited" }, hunterHeaders) }],
+    ["/api/v1/board/notes", {
+      method: "POST",
+      ...json({ waypointId: 1, body: "A careful field observation." }, hunterHeaders)
+    }],
+    ["/api/v1/board/notes/note-1/replies", {
+      method: "POST",
+      ...json({ body: "A safe community reply." }, hunterHeaders)
+    }],
+  ];
+  for (const [path, init] of lockedRequests) {
+    const response = await app.request(`https://www.timlostsomething.com${path}`, init);
+    assert.equal(response.status, 423, path);
+    assert.equal((await responseJson(response)).error.code, "participation_waiver_required", path);
+  }
+
+  const flag = await app.request("https://www.timlostsomething.com/api/v1/board/reply/reply-1/flags", {
+    method: "POST",
+    ...json({ reason: "unsafe", details: "Review this community reply." }, hunterHeaders)
+  });
+  assert.equal(flag.status, 201);
+
+  const privateReport = await app.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    ...json({
+      type: "tip",
+      name: "Anonymous-capable Reporter",
+      email: "reporter@example.test",
+      locationDescription: "Near the marked public trail.",
+      details: "A private report that must not appear on the clue board.",
+      cfTurnstileResponse: "human-token"
+    }, { "idempotency-key": "waiver-matrix-report", origin: "https://www.timlostsomething.com" })
+  });
+  assert.equal(privateReport.status, 201);
+  assert.equal(store.reports[0]?.hunterSubject, null);
+  assert.equal(store.board.length, 0);
+
+  const review = await app.request("https://www.timlostsomething.com/api/v1/me/waiver/review", {
+    method: "POST",
+    ...json({
+      version: participationWaiverDocument.version,
+      hash: participationWaiverDocument.hash
+    }, { ...hunterHeaders, origin: "https://www.timlostsomething.com" })
+  });
+  const reviewEventId = (await responseJson(review)).data.review.id;
+  const acceptance = await app.request("https://www.timlostsomething.com/api/v1/me/waiver/accept", {
+    method: "POST",
+    ...json({
+      reviewEventId,
+      version: participationWaiverDocument.version,
+      hash: participationWaiverDocument.hash,
+      waiverAccepted: true,
+      guardianAttested: false,
+      minors: []
+    }, {
+      ...hunterHeaders,
+      origin: "https://www.timlostsomething.com",
+      "idempotency-key": "waiver-matrix-acceptance"
+    })
+  });
+  assert.equal(acceptance.status, 201);
+
+  const progress = await app.request("https://www.timlostsomething.com/api/v1/progress/1", {
+    method: "PUT",
+    ...json({ state: "visited" }, hunterHeaders)
+  });
+  assert.equal(progress.status, 200);
+  const waypoint = await app.request("https://www.timlostsomething.com/api/v1/member/waypoints/1", {
+    headers: hunterHeaders
+  });
+  assert.equal(waypoint.status, 200);
+
+  const form = new FormData();
+  form.set("waypointId", "1");
+  form.set("body", "Fresh boot prints beside the approved trail.");
+  form.set("cfTurnstileResponse", "human-token");
+  form.append(
+    "images",
+    new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "observation.png", { type: "image/png" })
+  );
+  const note = await app.request("https://www.timlostsomething.com/api/v1/board/notes", {
+    method: "POST",
+    headers: hunterHeaders,
+    body: form
+  });
+  assert.equal(note.status, 201);
+  const noteBody = (await responseJson(note)).data;
+  assert.equal(noteBody.status, "pending");
+  assert.equal(noteBody.media[0].status, "processing");
+
+  const reply = await app.request(
+    `https://www.timlostsomething.com/api/v1/board/notes/${noteBody.id}/replies`,
+    { method: "POST", ...json({ body: "I noticed that too." }, hunterHeaders) }
+  );
+  assert.equal(reply.status, 201);
+  assert.equal(store.board.length, 0);
 });

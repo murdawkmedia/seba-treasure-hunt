@@ -97,6 +97,9 @@ export interface OpsSubscriberRecord {
   privacyMediaVersion: string;
   waiverStatus: string;
   waiverVersion: string;
+  acceptedAt: string;
+  minorCount: number;
+  receiptStatus: string;
   participationUnlocked: boolean;
   consents: {
     huntEmail: boolean;
@@ -104,6 +107,26 @@ export interface OpsSubscriberRecord {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OpsWaiverDetail {
+  id: string;
+  subject: string;
+  documentVersion: string;
+  documentHash: string;
+  acceptedAt: string;
+  referenceCode: string;
+  participants: Array<{
+    role: "adult" | "minor";
+    fullName: string;
+    birthYear: number | null;
+    guardianAttested: boolean;
+  }>;
+  receipt: {
+    status: "pending" | "sent" | "failed";
+    attempts: number;
+    sentAt: string;
+  };
 }
 
 export interface OpsSubscriberLedger {
@@ -369,6 +392,9 @@ export function normalizeOpsSubscribers(payload: unknown): OpsSubscriberLedger {
       privacyMediaVersion: asString(value.privacyMediaVersion),
       waiverStatus: asString(value.waiverStatus) || "pending",
       waiverVersion: asString(value.waiverVersion),
+      acceptedAt: asString(value.acceptedAt),
+      minorCount: asNumber(value.minorCount) ?? 0,
+      receiptStatus: asString(value.receiptStatus),
       participationUnlocked,
       consents: { huntEmail, marketing },
       createdAt: asString(value.createdAt),
@@ -388,6 +414,74 @@ export function normalizeOpsSubscribers(payload: unknown): OpsSubscriberLedger {
   };
 }
 
+export function normalizeOpsWaiverDetail(payload: unknown): OpsWaiverDetail | null {
+  const value = envelopeData(payload);
+  if (!isRecord(value) || !Array.isArray(value.participants) || !isRecord(value.receipt)) return null;
+  const id = asString(value.id);
+  const subject = asString(value.subject);
+  const documentVersion = asString(value.documentVersion);
+  const documentHash = asString(value.documentHash).toLowerCase();
+  const acceptedAt = asString(value.acceptedAt);
+  const referenceCode = asString(value.referenceCode);
+  const receiptStatus = asString(value.receipt.status);
+  const receiptAttempts = asNumber(value.receipt.attempts);
+  if (
+    !id || !subject || !documentVersion || !/^[a-f0-9]{64}$/.test(documentHash) ||
+    !acceptedAt || !referenceCode || !["pending", "sent", "failed"].includes(receiptStatus) ||
+    receiptAttempts === null
+  ) return null;
+  const participants = value.participants.flatMap((candidate) => {
+    if (!isRecord(candidate)) return [];
+    const role = asString(candidate.role);
+    const fullName = asString(candidate.fullName).trim();
+    const guardianAttested = asBoolean(candidate.guardianAttested);
+    const birthYear = candidate.birthYear === null ? null : asNumber(candidate.birthYear);
+    if (
+      !["adult", "minor"].includes(role) || !fullName || fullName.length > 100 ||
+      guardianAttested === null || (role === "minor" && birthYear === null) ||
+      (role === "adult" && birthYear !== null)
+    ) return [];
+    return [{
+      role: role as "adult" | "minor",
+      fullName,
+      birthYear,
+      guardianAttested,
+    }];
+  });
+  if (participants.length !== value.participants.length || participants.filter((item) => item.role === "adult").length !== 1) {
+    return null;
+  }
+  return {
+    id,
+    subject,
+    documentVersion,
+    documentHash,
+    acceptedAt,
+    referenceCode,
+    participants,
+    receipt: {
+      status: receiptStatus as "pending" | "sent" | "failed",
+      attempts: receiptAttempts,
+      sentAt: asString(value.receipt.sentAt),
+    },
+  };
+}
+
+export function renderOpsWaiverDetail(detail: OpsWaiverDetail): string {
+  const attempts = `${detail.receipt.attempts} ${detail.receipt.attempts === 1 ? "attempt" : "attempts"}`;
+  const participants = detail.participants.map((participant) => {
+    const suffix = participant.role === "minor" ? ` (birth year ${participant.birthYear})` : " (adult account holder)";
+    return `<li><strong>${escapeOpsHtml(participant.fullName)}</strong>${escapeOpsHtml(suffix)}</li>`;
+  }).join("");
+  return `<dl class="ops-legal-summary">
+    <div><dt>Version</dt><dd>${escapeOpsHtml(detail.documentVersion)}</dd></div>
+    <div><dt>Document hash</dt><dd class="ops-mono">${escapeOpsHtml(detail.documentHash)}</dd></div>
+    <div><dt>Accepted</dt><dd>${escapeOpsHtml(formatOpsTime(detail.acceptedAt))}</dd></div>
+    <div><dt>Reference</dt><dd class="ops-mono">${escapeOpsHtml(detail.referenceCode)}</dd></div>
+    <div><dt>Receipt</dt><dd>${escapeOpsHtml(detail.receipt.status)} &middot; ${escapeOpsHtml(attempts)}</dd></div>
+  </dl><section class="ops-legal-participants"><h3>Covered participants</h3><ul>${participants}</ul></section>`;
+}
+
 function consentCell(value: boolean): string {
   const label = value ? "yes" : "no";
   return `<span class="ops-consent" data-value="${label}">${label}</span>`;
@@ -401,10 +495,10 @@ export function renderSubscriberRows(records: readonly OpsSubscriberRecord[]): s
     <td>${escapeOpsHtml(record.townArea || "Not supplied")}</td>
     <td>${record.profileComplete ? "Complete" : "Onboarding"}</td>
     <td>${escapeOpsHtml(record.privacyMediaVersion || "Required")}</td>
-    <td>${escapeOpsHtml(record.waiverVersion || record.waiverStatus)}</td>
+    <td>${escapeOpsHtml(record.waiverVersion || record.waiverStatus)}${record.acceptedAt ? `<br /><small>${escapeOpsHtml(formatOpsTime(record.acceptedAt))}</small>` : ""}${record.waiverVersion ? `<br /><small>${record.minorCount} supervised ${record.minorCount === 1 ? "minor" : "minors"} &middot; ${escapeOpsHtml(record.receiptStatus || "receipt unknown")}</small>` : ""}</td>
     <td>${consentCell(record.consents.huntEmail)}</td>
     <td>${consentCell(record.consents.marketing)}</td>
-    <td><div class="ops-actions"><button class="ops-button ops-button--quiet" type="button" data-player-action="recovery" data-player-id="${escapeOpsHtml(record.id)}">Send recovery instructions</button><button class="ops-button ops-button--quiet" type="button" data-player-action="revoke-sessions" data-player-id="${escapeOpsHtml(record.id)}">Revoke sessions</button></div></td>
+    <td><div class="ops-actions">${record.waiverVersion ? `<button class="ops-button ops-button--quiet" type="button" data-waiver-detail data-player-id="${escapeOpsHtml(record.id)}">Review legal record</button>` : ""}<button class="ops-button ops-button--quiet" type="button" data-player-action="recovery" data-player-id="${escapeOpsHtml(record.id)}">Send recovery instructions</button><button class="ops-button ops-button--quiet" type="button" data-player-action="revoke-sessions" data-player-id="${escapeOpsHtml(record.id)}">Revoke sessions</button></div></td>
   </tr>`).join("");
 }
 
@@ -859,6 +953,37 @@ async function loadSubscribers(append = false): Promise<void> {
   }
 }
 
+function setWaiverDetailState(message: string, kind: "normal" | "error" = "normal"): void {
+  const state = document.querySelector<HTMLElement>("#waiver-detail-state");
+  if (!state) return;
+  state.textContent = message;
+  state.dataset.kind = kind;
+}
+
+async function openWaiverDetail(subject: string): Promise<void> {
+  const dialog = document.querySelector<HTMLDialogElement>("#ops-waiver-dialog");
+  const output = dialog?.querySelector<HTMLElement>("[data-waiver-detail-output]");
+  const retry = dialog?.querySelector<HTMLButtonElement>("[data-retry-waiver-receipt]");
+  if (!dialog || !output || !retry) return;
+  dialog.dataset.playerId = "";
+  output.replaceChildren();
+  retry.disabled = true;
+  setWaiverDetailState("Loading the selected player's private legal record...");
+  if (!dialog.open) dialog.showModal();
+  try {
+    const { response, payload } = await opsRequest(`/api/v1/ops/players/${encodeURIComponent(subject)}/waiver`);
+    if (!response.ok) throw new Error(apiError(payload, "The legal record is unavailable."));
+    const detail = normalizeOpsWaiverDetail(payload);
+    if (!detail || detail.subject !== subject) throw new Error("The legal record response was incomplete.");
+    output.innerHTML = renderOpsWaiverDetail(detail);
+    dialog.dataset.playerId = subject;
+    retry.disabled = false;
+    setWaiverDetailState("Private legal record loaded for deliberate review.");
+  } catch (error) {
+    setWaiverDetailState(error instanceof Error ? error.message : "The legal record is unavailable.", "error");
+  }
+}
+
 function exportLoadedSubscribers(): void {
   if (loadedSubscribers.length === 0) return;
   const csv = buildSubscriberCsv(loadedSubscribers);
@@ -1208,7 +1333,12 @@ function setupWorkspace(): void {
 
   document.querySelector("#subscribers-table")?.addEventListener("click", async (event) => {
     const button = event.target;
-    if (!(button instanceof HTMLButtonElement) || !button.dataset.playerId || !button.dataset.playerAction) return;
+    if (!(button instanceof HTMLButtonElement) || !button.dataset.playerId) return;
+    if (button.hasAttribute("data-waiver-detail")) {
+      await openWaiverDetail(button.dataset.playerId);
+      return;
+    }
+    if (!button.dataset.playerAction) return;
     const action = button.dataset.playerAction;
     if (!window.confirm(`${button.textContent?.trim() ?? "Apply this action"}? This event will be audited.`)) return;
     button.disabled = true;
@@ -1221,6 +1351,37 @@ function setupWorkspace(): void {
       button.disabled = false;
       showPageError(error instanceof Error ? error.message : "The player account action was not completed.");
     }
+  });
+
+  document.querySelector("[data-retry-waiver-receipt]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const dialog = document.querySelector<HTMLDialogElement>("#ops-waiver-dialog");
+    const subject = dialog?.dataset.playerId;
+    if (!(button instanceof HTMLButtonElement) || !subject) return;
+    if (!window.confirm("Retry this participant's legal receipt email? This action will be audited.")) return;
+    button.disabled = true;
+    setWaiverDetailState("Queueing a fresh copy of the legal receipt...");
+    try {
+      const { response, payload } = await opsRequest(`/api/v1/ops/players/${encodeURIComponent(subject)}/waiver/receipt`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error(apiError(payload, "The legal receipt could not be retried."));
+      setWaiverDetailState("Receipt retry queued and recorded in the audit trail.");
+      await loadAudit();
+    } catch (error) {
+      setWaiverDetailState(error instanceof Error ? error.message : "The legal receipt could not be retried.", "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+  document.querySelector<HTMLDialogElement>("#ops-waiver-dialog")?.addEventListener("close", (event) => {
+    const dialog = event.currentTarget;
+    if (!(dialog instanceof HTMLDialogElement)) return;
+    dialog.dataset.playerId = "";
+    dialog.querySelector<HTMLElement>("[data-waiver-detail-output]")?.replaceChildren();
+    const retry = dialog.querySelector<HTMLButtonElement>("[data-retry-waiver-receipt]");
+    if (retry) retry.disabled = true;
+    setWaiverDetailState("Choose Review legal record for one player to load the private acceptance.");
   });
 }
 

@@ -128,3 +128,15 @@ test("the private player ledger loads authorized rows and exports only in the cl
   assert.match(client, /new Blob\(/);
   assert.doesNotMatch(client, /\/api\/v1\/ops\/players\/export/);
 });
+
+test("legal detail is deliberately loaded in a private dialog and never bulk-exported", () => {
+  const html = read("ops.html");
+  const client = read("src/client/ops.ts");
+  assert.match(html, /id="ops-waiver-dialog"/);
+  assert.match(html, /id="waiver-detail-state"[^>]*aria-live="polite"/);
+  assert.match(html, /data-waiver-detail/);
+  assert.match(html, /data-retry-waiver-receipt/);
+  assert.match(client, /\/api\/v1\/ops\/players\/\$\{encodeURIComponent\([^)]*\)\}\/waiver/);
+  assert.match(client, /window\.confirm\([^)]*receipt/i);
+  assert.doesNotMatch(client, /participant(s)?[^\n]{0,80}buildSubscriberCsv/i);
+});

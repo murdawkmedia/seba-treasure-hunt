@@ -1423,6 +1423,39 @@ export const createApi = (deps: ApiDependencies) => {
       nextCursor: result.nextCursor
     });
   });
+  app.get("/api/v1/ops/players/:subject/waiver", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    if (!deps.store.getOpsWaiverDetail) {
+      throw new ApiError(503, "waiver_store_unavailable", "The legal record is temporarily unavailable.");
+    }
+    const detail = await deps.store.getOpsWaiverDetail(c.req.param("subject"));
+    if (!detail) throw new ApiError(404, "waiver_acceptance_not_found", "No current waiver acceptance was found.");
+    return success(c, detail);
+  });
+  app.post("/api/v1/ops/players/:subject/waiver/receipt", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    await applyRateLimit(deps, c.req.raw, "waiver_receipt", staff);
+    if (
+      !deps.store.getOpsWaiverDetail ||
+      !deps.store.queueOpsWaiverReceiptResend
+    ) {
+      throw new ApiError(503, "waiver_store_unavailable", "The legal receipt is temporarily unavailable.");
+    }
+    const subject = c.req.param("subject");
+    const detail = await deps.store.getOpsWaiverDetail(subject);
+    if (!detail) throw new ApiError(404, "waiver_acceptance_not_found", "No current waiver acceptance was found.");
+    if (
+      detail.documentVersion !== participationWaiverDocument.version ||
+      detail.documentHash !== participationWaiverDocument.hash
+    ) {
+      throw new ApiError(409, "waiver_document_outdated", "Only the current waiver acceptance can be resent here.");
+    }
+    const queued = await deps.store.queueOpsWaiverReceiptResend(subject, detail.id, staff.subject);
+    if (!queued) throw new ApiError(404, "waiver_acceptance_not_found", "No current waiver acceptance was found.");
+    scheduleWaiverReceipt(c, deps.waiverReceipts, queued.id);
+    return success(c, { acceptance: queued }, 202);
+  });
   app.get("/api/v1/ops/audit", async (c) => {
     await requireStaff(deps, c.req.raw);
     const result = await deps.store.listAudit({
