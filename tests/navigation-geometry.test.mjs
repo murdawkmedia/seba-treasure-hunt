@@ -276,3 +276,99 @@ test("stacked geometry remains live without ResizeObserver", { timeout: 30_000 }
     await browser.close();
   }
 });
+
+test("short mobile viewports can scroll the full campaign menu into focus", { timeout: 60_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const { viewport, files } of [
+      { viewport: { width: 720, height: 500 }, files: ["index.html", "route.html", "interview.html", "clue-board.html"] },
+      { viewport: { width: 320, height: 500 }, files: ["clue-board.html"] },
+    ]) {
+      const context = await browser.newContext({ viewport });
+      await context.route("**/*", async (route) => {
+        if (route.request().url().startsWith(origin)) await route.continue();
+        else await route.abort();
+      });
+      const page = await context.newPage();
+
+      for (const file of files) {
+        await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
+        await page.locator(".campaign-menu-toggle").click();
+        const sponsor = page.locator('#campaign-nav a[href="/sponsors"]');
+        await sponsor.focus();
+        await sponsor.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
+        const metrics = await page.evaluate(() => {
+          const nav = document.querySelector("#campaign-nav");
+          const sponsorLink = nav?.querySelector('a[href="/sponsors"]');
+          if (!(nav instanceof HTMLElement) || !(sponsorLink instanceof HTMLElement)) return null;
+          const navRect = nav.getBoundingClientRect();
+          const sponsorRect = sponsorLink.getBoundingClientRect();
+          const sponsorStyles = getComputedStyle(sponsorLink);
+          const focusSpace = Number.parseFloat(sponsorStyles.outlineWidth) + Number.parseFloat(sponsorStyles.outlineOffset);
+          const originalScrollTop = nav.scrollTop;
+          nav.scrollTop = nav.scrollHeight;
+          const maximumScrollTop = nav.scrollTop;
+          nav.scrollTop = originalScrollTop;
+          return {
+            documentOverflow: document.documentElement.scrollWidth - window.innerWidth,
+            focusSpace,
+            maximumScrollTop,
+            navBottom: navRect.bottom,
+            navClientHeight: nav.clientHeight,
+            navOverflowY: getComputedStyle(nav).overflowY,
+            navScrollHeight: nav.scrollHeight,
+            navTop: navRect.top,
+            sponsorBottom: sponsorRect.bottom,
+            sponsorTop: sponsorRect.top,
+            viewportHeight: window.innerHeight,
+          };
+        });
+
+        assert.ok(metrics, `${file} exposes menu geometry at ${viewport.width}x${viewport.height}`);
+        assert.ok(metrics.documentOverflow <= 1, `${file} has no horizontal overflow at ${viewport.width}px`);
+        assert.equal(metrics.navOverflowY, "auto", `${file} menu scroll is operable`);
+        if (metrics.navScrollHeight > metrics.navClientHeight) {
+          assert.ok(metrics.maximumScrollTop > 0, `${file} constrained menu accepts vertical scrolling`);
+        }
+        assert.ok(metrics.sponsorTop >= metrics.navTop + metrics.focusSpace - 1, `${file} Sponsors focus top is visible`);
+        assert.ok(
+          metrics.sponsorBottom <= Math.min(metrics.navBottom, metrics.viewportHeight) - metrics.focusSpace + 1,
+          `${file} Sponsors focus bottom is visible`,
+        );
+      }
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test("navigation remains usable when matchMedia is unavailable", { timeout: 30_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await context.addInitScript(() => {
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: undefined });
+  });
+  await context.route("**/*", async (route) => {
+    if (route.request().url().startsWith(origin)) await route.continue();
+    else await route.abort();
+  });
+
+  try {
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
+    const toggle = page.locator(".campaign-menu-toggle");
+    const nav = page.locator("#campaign-nav");
+    await toggle.click();
+    assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+    assert.equal(await nav.evaluate((element) => getComputedStyle(element).display), "flex");
+    await page.keyboard.press("Escape");
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await toggle.evaluate((element) => document.activeElement === element), true);
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser.close();
+  }
+});

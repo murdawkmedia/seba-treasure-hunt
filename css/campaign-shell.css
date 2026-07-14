@@ -322,8 +322,14 @@ html {
     flex-direction: column;
     gap: 0;
     width: 100%;
+    max-height: calc(100vh - var(--case-strip-height) - var(--campaign-nav-min-height));
+    max-height: calc(100dvh - var(--case-strip-height) - var(--campaign-nav-min-height));
     margin-left: 0;
-    padding-bottom: 6px;
+    padding: 4px 8px 10px;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scroll-padding-block: 8px;
+    -webkit-overflow-scrolling: touch;
   }
 
   .campaign-nav.open { display: flex; }

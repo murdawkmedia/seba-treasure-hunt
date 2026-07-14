@@ -118,7 +118,7 @@ function normalizeBody(html, filename) {
 }
 
 function preservationHashes(html, filename) {
-  const head = requiredMatch(
+  let head = requiredMatch(
     normalizeLines(html),
     /<head\b[^>]*>[\s\S]*?<\/head>/i,
     `${filename} has a complete head`,
@@ -126,6 +126,9 @@ function preservationHashes(html, filename) {
     /^[ \t]*<link rel="stylesheet" href="\/css\/campaign-shell\.css" \/>\n/m,
     "",
   );
+  if (wrapperOnlyPages.has(filename)) {
+    head = head.replace('href="/css/style.css"', 'href="css/style.css"');
+  }
   return {
     headSha256: sha256(head),
     scriptsSha256: sha256(JSON.stringify(scriptTags(html, filename))),
@@ -163,7 +166,7 @@ test("preservation hashes detect head, script, and body drift", () => {
     expected.scriptsSha256,
   );
   assert.notEqual(
-    preservationHashes(html.replace('<link rel="stylesheet" href="css/style.css" />', ""), filename).headSha256,
+    preservationHashes(html.replace('<link rel="stylesheet" href="/css/style.css" />', ""), filename).headSha256,
     expected.headSha256,
     "removing an unrelated stylesheet must be detected",
   );

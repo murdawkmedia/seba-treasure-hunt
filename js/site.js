@@ -181,6 +181,7 @@ function initNav() {
       toggle.focus();
     }
   });
+  if (typeof window.matchMedia !== "function") return;
   var desktop = window.matchMedia("(min-width: 761px)");
   var closeAtDesktop = function (event) {
     if (event.matches) closeNav(toggle, nav);

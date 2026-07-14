@@ -49,13 +49,31 @@ test("legacy stylesheets no longer expose public shell selectors", () => {
   }
 });
 
-test("every campaign source loads the canonical shell exactly once and last", () => {
+test("every campaign source uses root-relative local stylesheet URLs", () => {
   for (const filename of Object.keys(CAMPAIGN_PAGES)) {
-    const html = read(filename);
-    const stylesheets = [...html.matchAll(/<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)]
+    const head = read(filename).match(/<head\b[^>]*>[\s\S]*?<\/head>/i)?.[0] ?? "";
+    const stylesheets = [...head.matchAll(/<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)]
       .map((match) => match[1]);
-    assert.equal(stylesheets.filter((href) => href === "/css/campaign-shell.css").length, 1, `${filename} loads one canonical shell stylesheet`);
-    assert.equal(stylesheets.at(-1), "/css/campaign-shell.css", `${filename} loads the canonical shell last`);
+    for (const href of stylesheets.filter((candidate) => !/^https?:\/\//i.test(candidate))) {
+      assert.match(href, /^\//, `${filename} uses a root-relative local stylesheet URL: ${href}`);
+    }
+  }
+});
+
+test("every campaign source loads the canonical shell once after all author CSS", () => {
+  for (const filename of Object.keys(CAMPAIGN_PAGES)) {
+    const head = read(filename).match(/<head\b[^>]*>[\s\S]*?<\/head>/i)?.[0] ?? "";
+    const stylesheets = [...head.matchAll(/<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)];
+    const canonical = stylesheets.filter((match) => match[1] === "/css/campaign-shell.css");
+    assert.equal(canonical.length, 1, `${filename} loads one canonical shell stylesheet`);
+    const canonicalEnd = canonical[0].index + canonical[0][0].length;
+    const otherStylesheetEnd = Math.max(0, ...stylesheets
+      .filter((match) => match[1] !== "/css/campaign-shell.css")
+      .map((match) => match.index + match[0].length));
+    const finalStyleEnd = Math.max(0, ...[...head.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/gi)]
+      .map((match) => match.index + match[0].length));
+    assert.ok(canonicalEnd > otherStylesheetEnd, `${filename} loads the canonical shell after stylesheet links`);
+    assert.ok(canonicalEnd > finalStyleEnd, `${filename} loads the canonical shell after inline author styles`);
   }
 });
 
