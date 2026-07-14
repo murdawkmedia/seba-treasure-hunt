@@ -3,12 +3,14 @@ import test from "node:test";
 
 import {
   buildWaiverPayload,
+  createSerializedWaiverReviewActivation,
   exactAcceptedWaiverDocument,
   parseWaiverAcceptanceProjection,
   performAcceptedWaiverView,
   performWaiverAcceptance,
   performWaiverReview,
   validateWaiverDraft,
+  waiverAcceptanceResultMessage,
   waiverWrite,
   WaiverRequestError,
   type WaiverDraft,
@@ -148,6 +150,43 @@ test("failed review recording leaves fetched legal text visible and acceptance l
   assert.equal(enabled, false);
 });
 
+test("concurrent review activation is ignored until the first review transition completes", async () => {
+  let releaseReview!: (reviewEventId: string) => void;
+  const deferredReview = new Promise<string>((resolve) => {
+    releaseReview = resolve;
+  });
+  const events: string[] = [];
+  let enabled = false;
+  const activate = createSerializedWaiverReviewActivation(() => performWaiverReview({
+    fetchDocument: async () => {
+      events.push("fetch");
+      return acceptedDocument;
+    },
+    renderAndReveal: () => events.push("render"),
+    recordReview: async () => {
+      events.push("post");
+      return await deferredReview;
+    },
+    setAcceptanceEnabled: (value) => {
+      enabled = value;
+      events.push(value ? "enable" : "disable");
+    },
+  }));
+
+  const first = activate();
+  const second = activate();
+  assert.equal(await second, null);
+  for (let turn = 0; turn < 10 && !events.includes("post"); turn += 1) {
+    await Promise.resolve();
+  }
+  assert.deepEqual(events, ["disable", "fetch", "render", "post"]);
+
+  releaseReview("review-serialized");
+  assert.equal((await first)?.reviewEventId, "review-serialized");
+  assert.equal(enabled, true);
+  assert.deepEqual(events, ["disable", "fetch", "render", "post", "enable"]);
+});
+
 test("waiver writes preserve API status and error code for stale recovery", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
@@ -241,7 +280,7 @@ test("stale acceptance resets review state and does not refresh unlocked dashboa
   assert.equal(state.acceptanceDisabled, false);
 });
 
-test("stored acceptance refreshes dashboard before restoring receipt projection", async () => {
+test("stored acceptance renders its receipt before refreshing unlocked dashboard data", async () => {
   const events: string[] = [];
   const projection = { acceptance: storedAcceptance, document: acceptedDocument };
   await performWaiverAcceptance({
@@ -264,7 +303,38 @@ test("stored acceptance refreshes dashboard before restoring receipt projection"
     },
     resetOutdatedState: () => events.push("reset-stale"),
   });
-  assert.deepEqual(events, ["accept", "projection", "dashboard", "render-dashboard", "render-receipt"]);
+  assert.deepEqual(events, ["accept", "projection", "render-receipt", "dashboard", "render-dashboard"]);
+});
+
+test("dashboard refresh failure preserves stored confirmation without rejecting acceptance", async () => {
+  const events: string[] = [];
+  let receiptVisible = false;
+  const outcome = await performWaiverAcceptance({
+    accept: async () => events.push("accept"),
+    loadProjection: async () => {
+      events.push("projection");
+      return { acceptance: storedAcceptance, document: acceptedDocument };
+    },
+    fetchDashboard: async () => {
+      events.push("dashboard");
+      throw new Error("dashboard unavailable");
+    },
+    renderDashboard: () => events.push("render-dashboard"),
+    renderProjection: () => {
+      receiptVisible = true;
+      events.push("render-receipt");
+    },
+    resetOutdatedState: () => events.push("reset-stale"),
+  });
+
+  assert.equal(receiptVisible, true);
+  assert.equal(outcome.dashboardRefreshed, false);
+  assert.match(outcome.dashboardError instanceof Error ? outcome.dashboardError.message : "", /dashboard unavailable/);
+  assert.deepEqual(events, ["accept", "projection", "render-receipt", "dashboard"]);
+  assert.equal(
+    waiverAcceptanceResultMessage(outcome.dashboardRefreshed),
+    "Registration is stored and your confirmation is available, but unlocked dashboard data could not refresh yet. Refresh the page to try again.",
+  );
 });
 
 test("accepted waiver view uses the immutable authenticated document with exact version and hash", async () => {

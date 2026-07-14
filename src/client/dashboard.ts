@@ -158,6 +158,21 @@ export async function performWaiverReview(
   }
 }
 
+export function createSerializedWaiverReviewActivation<T>(
+  activate: () => Promise<T>,
+): () => Promise<T | null> {
+  let inFlight = false;
+  return async () => {
+    if (inFlight) return null;
+    inFlight = true;
+    try {
+      return await activate();
+    } finally {
+      inFlight = false;
+    }
+  };
+}
+
 interface WaiverAcceptanceWorkflow {
   accept: () => Promise<unknown>;
   loadProjection: () => Promise<WaiverAcceptanceProjection>;
@@ -169,14 +184,22 @@ interface WaiverAcceptanceWorkflow {
 
 export async function performWaiverAcceptance(
   workflow: WaiverAcceptanceWorkflow,
-): Promise<WaiverAcceptanceProjection> {
+): Promise<{
+  projection: WaiverAcceptanceProjection;
+  dashboardRefreshed: boolean;
+  dashboardError: unknown | null;
+}> {
   try {
     await workflow.accept();
     const projection = await workflow.loadProjection();
-    const dashboard = await workflow.fetchDashboard();
-    await workflow.renderDashboard(dashboard);
     await workflow.renderProjection(projection);
-    return projection;
+    try {
+      const dashboard = await workflow.fetchDashboard();
+      await workflow.renderDashboard(dashboard);
+      return { projection, dashboardRefreshed: true, dashboardError: null };
+    } catch (dashboardError) {
+      return { projection, dashboardRefreshed: false, dashboardError };
+    }
   } catch (error) {
     if (error instanceof WaiverRequestError &&
       error.status === 409 &&
@@ -185,6 +208,12 @@ export async function performWaiverAcceptance(
     }
     throw error;
   }
+}
+
+export function waiverAcceptanceResultMessage(dashboardRefreshed: boolean): string {
+  return dashboardRefreshed
+    ? "Waiver accepted and registration stored."
+    : "Registration is stored and your confirmation is available, but unlocked dashboard data could not refresh yet. Refresh the page to try again.";
 }
 
 export function exactAcceptedWaiverDocument(
@@ -1058,49 +1087,55 @@ async function initializeWaiverExperience(
     addMinor?.addEventListener("click", createMinorRow);
     updateMinorControls();
 
-    reviewLink?.addEventListener("click", async (event) => {
+    const activateWaiverReview = reviewLink
+      ? createSerializedWaiverReviewActivation(async () => {
+        reviewLink.setAttribute("aria-busy", "true");
+        try {
+          const reviewed = await performWaiverReview({
+            fetchDocument: fetchCurrentWaiverDocument,
+            renderAndReveal: (documentValue) => {
+              activeWaiverDocument = documentValue;
+              waiverReviewEventId = "";
+              renderWaiverDocument(documentValue);
+              if (legalBody) legalBody.hidden = false;
+              reviewLink.setAttribute("aria-expanded", "true");
+              if (acceptanceCopy && typeof documentValue.acceptanceStatement === "string") {
+                acceptanceCopy.textContent = documentValue.acceptanceStatement;
+              }
+            },
+            recordReview: async (documentValue) => {
+              const reviewPayload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
+                version: documentValue.version,
+                hash: documentValue.hash,
+              });
+              return reviewIdFrom(reviewPayload);
+            },
+            setAcceptanceEnabled: (enabled) => {
+              if (!acceptanceInput) return;
+              acceptanceInput.disabled = !enabled;
+              if (!enabled) acceptanceInput.checked = false;
+            },
+          });
+          activeWaiverDocument = reviewed.document;
+          waiverReviewEventId = reviewed.reviewEventId;
+          showWaiverErrors({});
+          setWaiverResult("The current waiver review is recorded. You may now accept it.", "success");
+        } catch (error) {
+          setWaiverResult(error instanceof Error ? error.message : "The waiver review could not be recorded.", "error", true);
+        } finally {
+          reviewLink.removeAttribute("aria-busy");
+        }
+      })
+      : null;
+
+    reviewLink?.addEventListener("click", (event) => {
       event.preventDefault();
       if (waiverReviewEventId && activeWaiverDocument && legalBody) {
         legalBody.hidden = !legalBody.hidden;
         reviewLink.setAttribute("aria-expanded", String(!legalBody.hidden));
         return;
       }
-      reviewLink.setAttribute("aria-busy", "true");
-      try {
-        const reviewed = await performWaiverReview({
-          fetchDocument: fetchCurrentWaiverDocument,
-          renderAndReveal: (documentValue) => {
-            activeWaiverDocument = documentValue;
-            waiverReviewEventId = "";
-            renderWaiverDocument(documentValue);
-            if (legalBody) legalBody.hidden = false;
-            reviewLink.setAttribute("aria-expanded", "true");
-            if (acceptanceCopy && typeof documentValue.acceptanceStatement === "string") {
-              acceptanceCopy.textContent = documentValue.acceptanceStatement;
-            }
-          },
-          recordReview: async (documentValue) => {
-            const reviewPayload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
-              version: documentValue.version,
-              hash: documentValue.hash,
-            });
-            return reviewIdFrom(reviewPayload);
-          },
-          setAcceptanceEnabled: (enabled) => {
-            if (!acceptanceInput) return;
-            acceptanceInput.disabled = !enabled;
-            if (!enabled) acceptanceInput.checked = false;
-          },
-        });
-        activeWaiverDocument = reviewed.document;
-        waiverReviewEventId = reviewed.reviewEventId;
-        showWaiverErrors({});
-        setWaiverResult("The current waiver review is recorded. You may now accept it.", "success");
-      } catch (error) {
-        setWaiverResult(error instanceof Error ? error.message : "The waiver review could not be recorded.", "error", true);
-      } finally {
-        reviewLink.removeAttribute("aria-busy");
-      }
+      void activateWaiverReview?.();
     });
 
     waiverForm?.addEventListener("submit", async (event) => {
@@ -1114,7 +1149,7 @@ async function initializeWaiverExperience(
       retainedWaiverIdempotencyKey ??= crypto.randomUUID();
       let acceptanceStored = false;
       try {
-        await performWaiverAcceptance({
+        const outcome = await performWaiverAcceptance({
           accept: async () => {
             await waiverWrite(
               auth,
@@ -1137,7 +1172,10 @@ async function initializeWaiverExperience(
           renderProjection: renderWaiverAcceptanceProjection,
           resetOutdatedState: resetOutdatedWaiverState,
         });
-        setWaiverResult("Waiver accepted and registration stored.", "success");
+        setWaiverResult(
+          waiverAcceptanceResultMessage(outcome.dashboardRefreshed),
+          "success",
+        );
       } catch (error) {
         setWaiverResult(error instanceof Error ? error.message : "The waiver could not be accepted.", "error", true);
       } finally {
