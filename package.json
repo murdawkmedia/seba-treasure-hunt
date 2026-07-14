@@ -11,6 +11,7 @@
     "dev": "npm run build && wrangler pages dev dist --persist-to .wrangler/state",
     "test": "node --test tests/*.test.mjs && tsx --test \"tests/**/*.test.ts\"",
     "verify:sponsor-qa": "node scripts/verify-sponsor-qa.mjs",
+    "verify:waiver-qa": "node scripts/verify-waiver-qa.mjs",
     "test:legacy": "node --test tests/*.test.mjs",
     "test:unit": "tsx --test \"tests/**/*.test.ts\"",
     "typecheck": "npm run typecheck:worker && npm run typecheck:client && npm run typecheck:tests",
