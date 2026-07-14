@@ -43,7 +43,7 @@ const staticFiles = [
 ];
 const staticDirectories = ["assets", "css", "js"];
 
-function validateOptions(options) {
+function normalizeOptions(options) {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
     throw new TypeError("Build options must be an object");
   }
@@ -51,18 +51,35 @@ function validateOptions(options) {
   const supported = new Set(["temporary", "campaignSourceOverrides"]);
   const unknown = Object.keys(options).find((key) => !supported.has(key));
   if (unknown) throw new Error(`Unsupported build option: ${unknown}`);
-  if (options.temporary !== undefined && typeof options.temporary !== "boolean") {
+  const temporaryOption = options.temporary;
+  const sourceOverridesOption = options.campaignSourceOverrides;
+  if (temporaryOption !== undefined && typeof temporaryOption !== "boolean") {
     throw new TypeError("Build option temporary must be a boolean");
   }
   if (
-    options.campaignSourceOverrides !== undefined &&
-    !(options.campaignSourceOverrides instanceof Map)
+    sourceOverridesOption !== undefined &&
+    !(sourceOverridesOption instanceof Map)
   ) {
     throw new TypeError("Build option campaignSourceOverrides must be a Map");
   }
-  if (options.campaignSourceOverrides && !options.temporary) {
+  const temporary = temporaryOption === true;
+  const campaignSourceOverrides = new Map(sourceOverridesOption);
+  if (sourceOverridesOption && !temporary) {
     throw new Error("Campaign source overrides are available only for temporary builds");
   }
+  for (const [filename, html] of campaignSourceOverrides) {
+    if (!Object.hasOwn(CAMPAIGN_PAGES, filename)) {
+      throw new Error(`Campaign source override is not registered: ${filename}`);
+    }
+    if (legalPages.has(filename)) {
+      throw new Error(`${filename} has an authoritative legal source and cannot be overridden`);
+    }
+    if (typeof html !== "string") {
+      throw new TypeError(`Campaign source override for ${filename} must be a string`);
+    }
+  }
+
+  return Object.freeze({ temporary, campaignSourceOverrides });
 }
 
 function verifyLegalDocuments() {
@@ -75,18 +92,6 @@ function verifyLegalDocuments() {
 }
 
 async function preflightCampaignPages(sourceOverrides = new Map()) {
-  for (const [filename, html] of sourceOverrides) {
-    if (!Object.hasOwn(CAMPAIGN_PAGES, filename)) {
-      throw new Error(`Campaign source override is not registered: ${filename}`);
-    }
-    if (legalPages.has(filename)) {
-      throw new Error(`${filename} has an authoritative legal source and cannot be overridden`);
-    }
-    if (typeof html !== "string") {
-      throw new TypeError(`Campaign source override for ${filename} must be a string`);
-    }
-  }
-
   const renderedPages = new Map();
   for (const filename of Object.keys(CAMPAIGN_PAGES)) {
     const html = sourceOverrides.has(filename)
@@ -222,14 +227,14 @@ async function emitBuild({ dist, mediaDist, renderedCampaignPages }) {
 }
 
 export async function buildSite(options = {}) {
-  validateOptions(options);
+  const config = normalizeOptions(options);
   await verifyLegalDocuments();
   const renderedCampaignPages = await preflightCampaignPages(
-    options.campaignSourceOverrides,
+    config.campaignSourceOverrides,
   );
 
   let outputs;
-  if (options.temporary) {
+  if (config.temporary) {
     outputs = await createTemporaryOutput();
   } else {
     const dist = path.join(root, "dist");
@@ -245,7 +250,7 @@ export async function buildSite(options = {}) {
     await emitBuild({ ...outputs, renderedCampaignPages });
     return outputs;
   } catch (error) {
-    if (options.temporary) await outputs.cleanup();
+    if (config.temporary) await outputs.cleanup();
     throw error;
   }
 }

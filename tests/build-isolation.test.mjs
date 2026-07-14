@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -58,6 +59,28 @@ function snapshotRepositoryOutputs() {
   };
 }
 
+function backupRepositoryOutputs() {
+  const backupRoot = mkdtempSync(path.join(tmpdir(), "tim-lost-repo-output-backup-"));
+  const outputs = [
+    [publicDist, path.join(backupRoot, "dist")],
+    [mediaDist, path.join(backupRoot, "dist-media")],
+  ];
+  const present = new Map();
+  for (const [output, backup] of outputs) {
+    const exists = existsSync(output);
+    present.set(output, exists);
+    if (exists) cpSync(output, backup, { recursive: true });
+  }
+
+  return () => {
+    for (const [output, backup] of outputs) {
+      rmSync(output, { recursive: true, force: true });
+      if (present.get(output)) cpSync(backup, output, { recursive: true });
+    }
+    rmSync(backupRoot, { recursive: true, force: true });
+  };
+}
+
 async function withTemporaryBuild(options, callback) {
   const result = await buildSite({ temporary: true, ...options });
   try {
@@ -84,6 +107,79 @@ test("imported builds use owned temporary outputs without touching repository di
     assert.ok(readdirSync(isolatedMedia).length > 0);
   });
 
+  assert.deepEqual(snapshotRepositoryOutputs(), before);
+});
+
+test("caller mutation cannot switch an in-flight temporary build to repository outputs", async () => {
+  const restore = backupRepositoryOutputs();
+  const publicSentinel = path.join(publicDist, ".async-options-race-sentinel");
+  const mediaSentinel = path.join(mediaDist, ".async-options-race-sentinel");
+  let result;
+  let observed;
+
+  try {
+    mkdirSync(publicDist, { recursive: true });
+    mkdirSync(mediaDist, { recursive: true });
+    writeFileSync(publicSentinel, "public output must survive", "utf8");
+    writeFileSync(mediaSentinel, "media output must survive", "utf8");
+    const options = { temporary: true };
+    const pendingBuild = buildSite(options);
+    queueMicrotask(() => {
+      options.temporary = false;
+    });
+
+    result = await pendingBuild;
+    observed = {
+      dist: result.dist,
+      mediaDist: result.mediaDist,
+      publicSentinel: existsSync(publicSentinel)
+        ? readFileSync(publicSentinel, "utf8")
+        : null,
+      mediaSentinel: existsSync(mediaSentinel)
+        ? readFileSync(mediaSentinel, "utf8")
+        : null,
+    };
+  } finally {
+    if (result && result.dist !== publicDist) await result.cleanup();
+    restore();
+  }
+
+  assert.notEqual(observed.dist, publicDist);
+  assert.notEqual(observed.mediaDist, mediaDist);
+  assert.equal(observed.publicSentinel, "public output must survive");
+  assert.equal(observed.mediaSentinel, "media output must survive");
+});
+
+test("caller Map mutation cannot change legal sources after build validation", async () => {
+  const before = snapshotRepositoryOutputs();
+  const overrides = new Map();
+  const options = { temporary: true, campaignSourceOverrides: overrides };
+  const expectedLegal = new Map();
+  const mutatedLegal = new Map();
+  for (const filename of ["privacy.html", "waiver.html"]) {
+    const source = readFileSync(path.join(root, filename), "utf8");
+    expectedLegal.set(filename, renderCampaignPage(source, filename));
+    mutatedLegal.set(
+      filename,
+      source.replace("</main>", `<p data-async-race="${filename}">MUTATED LEGAL</p></main>`),
+    );
+  }
+
+  const pendingBuild = buildSite(options);
+  queueMicrotask(() => {
+    for (const [filename, html] of mutatedLegal) overrides.set(filename, html);
+  });
+  const result = await pendingBuild;
+  const observedLegal = new Map();
+  try {
+    for (const filename of expectedLegal.keys()) {
+      observedLegal.set(filename, readFileSync(path.join(result.dist, filename), "utf8"));
+    }
+  } finally {
+    await result.cleanup();
+  }
+
+  assert.deepEqual(observedLegal, expectedLegal);
   assert.deepEqual(snapshotRepositoryOutputs(), before);
 });
 
