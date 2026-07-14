@@ -16,6 +16,7 @@ const baseUrl = new URL(configuredBaseUrl);
 const baseOrigin = baseUrl.origin;
 const axeTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const sponsorInquiryPath = "/api/v1/sponsors/inquiries";
+const validationNoticeFixture = `<aside class="validation-environment-notice" role="status" aria-label="Validation environment notice"><strong>Validation environment</strong><span>Test accounts and submissions will be deleted before launch.</span></aside>`;
 const textExtensions = new Set([".css", ".html", ".js", ".json", ".map", ".svg", ".txt", ".xml"]);
 
 assert.ok(["http:", "https:"].includes(baseUrl.protocol), "SPONSOR_QA_BASE_URL must use HTTP or HTTPS.");
@@ -291,6 +292,56 @@ async function assertStickyRowsAfterSurfaceScroll(page, stripSelector, headerSel
     return scrollPastNoticeAndAssertStickyRows(page, stripSelector, headerSelector, label);
   }
   return assertStickyRowsAfterScroll(page, stripSelector, headerSelector, label);
+}
+
+async function validationNoticeGeometry(browser) {
+  const { context, page, tracker } = await createQaPage(browser, { width: 1440, height: 1000 });
+  try {
+    await goto(page, "/sponsors");
+    const fixture = await page.evaluate((markup) => {
+      const beforeCount = document.querySelectorAll(".validation-environment-notice").length;
+      if (beforeCount > 1) throw new Error(`Expected at most one validation notice before fixture setup, received ${beforeCount}.`);
+      if (beforeCount === 0) document.body.insertAdjacentHTML("afterbegin", markup);
+      const notices = document.querySelectorAll(".validation-environment-notice");
+      return {
+        source: beforeCount === 0 ? "injected" : "existing",
+        beforeCount,
+        afterCount: notices.length,
+        firstInBody: notices[0] === document.body.firstElementChild,
+      };
+    }, validationNoticeFixture);
+    assert.equal(fixture.afterCount, 1, "Validation notice fixture must leave exactly one notice in the page.");
+    assert.equal(fixture.firstInBody, true, "Validation notice fixture must participate in the site's normal body flow.");
+
+    const initialGeometry = await initialStickyGeometry(
+      page,
+      ".case-strip",
+      ".sponsor-topbar",
+      { stripHeight: 54, headerHeight: 67, stack: 121 },
+      "Validation notice fixture",
+    );
+    assert.equal(initialGeometry.notice.present, true, "Validation notice fixture must always exercise notice-present geometry.");
+    assert.equal(initialGeometry.notice.position, "relative", "Validation notice fixture must use the site's relative notice CSS.");
+    const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
+      page,
+      ".case-strip",
+      ".sponsor-topbar",
+      "Validation notice fixture",
+    );
+    assert.equal(tracker.sponsorPosts, 0, "Validation notice fixture must observe zero sponsor POSTs.");
+    evidence.sponsorPosts += tracker.sponsorPosts;
+    return {
+      scenario: "Validation notice fixture",
+      source: fixture.source,
+      beforeCount: fixture.beforeCount,
+      afterCount: fixture.afterCount,
+      initialGeometry,
+      postScrollGeometry,
+      sponsorPosts: tracker.sponsorPosts,
+    };
+  } finally {
+    await context.close();
+  }
 }
 
 async function sponsorDesktop(browser) {
@@ -751,6 +802,7 @@ async function main() {
   const { browser, source } = await launchBrowser();
   evidence.browser = source;
   try {
+    evidence.checks.validationNoticeGeometry = await validationNoticeGeometry(browser);
     evidence.checks.sponsorDesktop = await sponsorDesktop(browser);
     evidence.checks.sponsorMobile = await sponsorMobile(browser);
     evidence.checks.sponsorZoomEquivalent = await sponsorZoomEquivalent(browser);

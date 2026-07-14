@@ -54,6 +54,12 @@ test("sponsor QA has a durable read-only command, evidence record, and machine-n
   assert.doesNotMatch(script, /a\[href=["']#inquiry["']\][^\n]*\.click\(/);
   assert.match(script, /waitForFunction[^]*scrolled first-row/i);
   assert.match(script, /scrolled first-row top/);
+  assert.match(script, /const validationNoticeFixture/);
+  assert.match(script, /async function validationNoticeGeometry/);
+  assert.match(script, /beforeCount === 0[^]*insertAdjacentHTML/);
+  assert.match(script, /afterCount[^]*assert\.equal\([^,]+,\s*1/);
+  assert.match(script, /checks\.validationNoticeGeometry\s*=\s*await validationNoticeGeometry/);
+  assert.match(script, /Validation notice fixture[^]*sponsorPosts/);
 
   assert.match(record, /2026-07-13/);
   assert.match(record, /npm run build/);
@@ -68,6 +74,7 @@ test("sponsor QA has a durable read-only command, evidence record, and machine-n
   assert.match(record, /SHA-256/i);
   assert.match(record, /initial validation notice[^\n]*non-sticky/i);
   assert.match(record, /after[^\n]*scroll[^\n]*sticky[^\n]*top 0/i);
+  assert.match(record, /injects[^\n]*validation notice[^\n]*only when[^\n]*lacks/i);
 
   assert.match(status, /docs\/qa\/2026-07-13-sponsor-feature-verification\.md/);
   assert.match(status, /scripts\/verify-sponsor-qa\.mjs/);
