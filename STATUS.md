@@ -66,10 +66,10 @@ The deployed validation release contains a D1 environment sentinel, fail-closed 
 ## Verification evidence
 
 - Sponsor implementation commits through `2f8d157` are locally verified. Focused API, authorization, D1 store/integration, client behavior, static privacy, and legal-hash tests pass.
-- Fresh Task 10 automated suite: 70 of 70 static/contract tests and 134 of 134 TypeScript tests pass with no failures, skips, cancellations, or TODOs.
-- Fresh Task 10 TypeScript checks pass for the Worker, client, Worker tests, and client tests.
-- Fresh Task 10 production build succeeds: the Pages Worker is 268.0 kB, the media Worker is 3.2 kB, and the client bundle completes successfully.
-- Fresh Task 10 production-dependency audit exits successfully with zero high or critical findings. Twelve moderate findings remain in Clerk's optional Solana dependency chain; the only complete automated remediation offered is a forced breaking Clerk downgrade, which was not applied.
+- `npm test`: the fresh Task 10 automated suite reports 70 of 70 static/contract tests and 134 of 134 TypeScript tests passing, with no failures, skips, cancellations, or TODOs.
+- `npm run typecheck`: the fresh Task 10 TypeScript checks pass for the Worker, client, Worker tests, and client tests.
+- `npm run build`: the fresh Task 10 production build succeeds; the Pages Worker is 268.0 kB, the media Worker is 3.2 kB, and the client bundle completes successfully.
+- `npm audit --omit=dev --audit-level=high`: the fresh Task 10 production-dependency audit exits successfully with zero high or critical findings. Twelve moderate findings remain in Clerk's optional Solana dependency chain; the only complete automated remediation offered is a forced breaking Clerk downgrade, which was not applied.
 - A hidden local Pages runtime served `http://127.0.0.1:8788` during Task 10 with launcher PID 62404 and listening Worker PID 10756. Its temporary logs and screenshots are under `C:/Users/Murphy/AppData/Local/Temp/tim-lost-task10/`; they are local QA artifacts, are not committed, and are not a durable runtime dependency.
 - Local sponsor smoke checks: `/sponsors` returns HTTP 200; `/api/v1/status` returns HTTP 200 with the normal OPEN state, 09:00â€“20:00 America/Edmonton hours, version 1, and the verified update timestamp; unauthenticated `/api/v1/ops/sponsors` returns HTTP 401 with only the safe `staff_auth_required` response and no inquiry data.
 - Desktop sponsor QA at 1440Ã—1000 (1425 px effective content width) shows no horizontal overflow. The 54 px case strip remains sticky at the top, the 67 px header remains sticky below it, and the live 121 px stack/anchor offset clears the inquiry, FAQ, and footer. Sponsors remains gold-highlighted and current. Local Turnstile fails closed, the submit button remains disabled, and the console reports zero warnings or errors.
