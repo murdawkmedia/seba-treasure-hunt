@@ -17,6 +17,7 @@ export class ManagedStaffAccounts implements StaffAccountManager {
       invitationRedirectUrl: string | null;
       resendApiKey: string | null;
       recoveryEmailFrom: string | null;
+      recoveryEmailReplyTo: string | null;
     }
   ) {
     this.clerk = secretKey ? createClerkClient({ secretKey }) : null;
@@ -58,8 +59,10 @@ export class ManagedStaffAccounts implements StaffAccountManager {
 
   private async sendRecovery(target: Record<string, unknown>) {
     const email = targetEmail(target);
-    const { accountPortalUrl, resendApiKey, recoveryEmailFrom } = this.options;
-    if (!email || !accountPortalUrl || !resendApiKey || !recoveryEmailFrom) throw this.unavailable();
+    const { accountPortalUrl, resendApiKey, recoveryEmailFrom, recoveryEmailReplyTo } = this.options;
+    if (!email || !accountPortalUrl || !resendApiKey || !recoveryEmailFrom || !recoveryEmailReplyTo) {
+      throw this.unavailable();
+    }
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -68,6 +71,7 @@ export class ManagedStaffAccounts implements StaffAccountManager {
       },
       body: JSON.stringify({
         from: recoveryEmailFrom,
+        reply_to: recoveryEmailReplyTo,
         to: [email],
         subject: "Tim Lost Something? staff account recovery",
         text: `An administrator requested account-recovery instructions for you. Open ${accountPortalUrl} and choose Forgot password. If you did not expect this, contact another campaign administrator.`

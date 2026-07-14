@@ -18,6 +18,7 @@ export class ManagedPlayerAccounts implements StaffAccountManager {
       dashboardUrl: string | null;
       resendApiKey: string | null;
       recoveryEmailFrom: string | null;
+      recoveryEmailReplyTo: string | null;
     }
   ) {
     this.clerk = secretKey ? createClerkClient({ secretKey }) : null;
@@ -43,8 +44,10 @@ export class ManagedPlayerAccounts implements StaffAccountManager {
 
   private async sendRecovery(target: Record<string, unknown>) {
     const email = targetEmail(target);
-    const { dashboardUrl, resendApiKey, recoveryEmailFrom } = this.options;
-    if (!email || !dashboardUrl || !resendApiKey || !recoveryEmailFrom) throw this.unavailable();
+    const { dashboardUrl, resendApiKey, recoveryEmailFrom, recoveryEmailReplyTo } = this.options;
+    if (!email || !dashboardUrl || !resendApiKey || !recoveryEmailFrom || !recoveryEmailReplyTo) {
+      throw this.unavailable();
+    }
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -53,6 +56,7 @@ export class ManagedPlayerAccounts implements StaffAccountManager {
       },
       body: JSON.stringify({
         from: recoveryEmailFrom,
+        reply_to: recoveryEmailReplyTo,
         to: [email],
         subject: "Tim Lost Something? account recovery",
         text: `An administrator requested account-recovery instructions for you. Open ${dashboardUrl}, choose Forgot password, and use the provider's emailed verification code. Campaign administrators cannot view or choose your password.`

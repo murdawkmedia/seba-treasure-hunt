@@ -20,13 +20,15 @@ test("managed recovery instructions use only the configured stable validation li
   const playerAccounts = new ManagedPlayerAccounts(null, {
     dashboardUrl: `${validationOrigin}/dashboard`,
     resendApiKey: "test-only-key",
-    recoveryEmailFrom: "Test sender <sender@example.test>"
+    recoveryEmailFrom: "Test sender <sender@example.test>",
+    recoveryEmailReplyTo: "casey@example.test"
   });
   const staffAccounts = new ManagedStaffAccounts(null, {
     accountPortalUrl: `${validationOrigin}/ops`,
     invitationRedirectUrl: `${validationOrigin}/ops`,
     resendApiKey: "test-only-key",
-    recoveryEmailFrom: "Test sender <sender@example.test>"
+    recoveryEmailFrom: "Test sender <sender@example.test>",
+    recoveryEmailReplyTo: "casey@example.test"
   });
 
   await playerAccounts.execute("recovery", { verifiedEmail: "player@example.test" });
@@ -36,4 +38,36 @@ test("managed recovery instructions use only the configured stable validation li
   assert.equal(messages[0]!.includes(`${validationOrigin}/dashboard`), true);
   assert.equal(messages[1]!.includes(`${validationOrigin}/ops`), true);
   assert.doesNotMatch(messages.join("\n"), /www\.timlostsomething\.com/);
+});
+
+test("managed recovery instructions set the configured campaign reply-to", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const replyAddresses: Array<string | undefined> = [];
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { reply_to?: string };
+    replyAddresses.push(body.reply_to);
+    return Response.json({ id: "test-message" });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const playerAccounts = new ManagedPlayerAccounts(null, {
+    dashboardUrl: `${validationOrigin}/dashboard`,
+    resendApiKey: "test-only-key",
+    recoveryEmailFrom: "Test sender <sender@example.test>",
+    recoveryEmailReplyTo: "casey@example.test"
+  });
+  const staffAccounts = new ManagedStaffAccounts(null, {
+    accountPortalUrl: `${validationOrigin}/ops`,
+    invitationRedirectUrl: `${validationOrigin}/ops`,
+    resendApiKey: "test-only-key",
+    recoveryEmailFrom: "Test sender <sender@example.test>",
+    recoveryEmailReplyTo: "casey@example.test"
+  });
+
+  await playerAccounts.execute("recovery", { verifiedEmail: "player@example.test" });
+  await staffAccounts.execute("recovery", { email: "staff@example.test" });
+
+  assert.deepEqual(replyAddresses, ["casey@example.test", "casey@example.test"]);
 });

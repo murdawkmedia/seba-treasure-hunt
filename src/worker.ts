@@ -124,13 +124,15 @@ const application = (env: PagesEnv) => {
     playerAccounts: new ManagedPlayerAccounts(hunterSecretKey, {
       dashboardUrl: hunterAccountPortalUrl,
       resendApiKey: env.RESEND_API_KEY ?? null,
-      recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
+      recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null,
+      recoveryEmailReplyTo: env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null
     }),
     staffAccounts: new ManagedStaffAccounts(staffSecretKey, {
       accountPortalUrl: staffAccountPortalUrl,
       invitationRedirectUrl: staffInvitationRedirectUrl,
       resendApiKey: env.RESEND_API_KEY ?? null,
-      recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null
+      recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null,
+      recoveryEmailReplyTo: env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null
     }),
     waiverReceipts: new ManagedWaiverReceipts(store, {
       fetch,
