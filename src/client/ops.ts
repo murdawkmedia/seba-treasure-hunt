@@ -490,13 +490,26 @@ export function waiverReceiptRetryIntent(
 } {
   return status === "uncertain"
     ? {
-        confirmation: "I checked tech@sebahub.com Sent Items and still want to retry this uncertain receipt.",
+        confirmation: "I checked the configured sender mailbox Sent Items or provider delivery log and still want to retry this uncertain receipt.",
         body: { confirmUncertainRetry: true },
       }
     : {
         confirmation: "Retry this participant's legal receipt email? This action will be audited.",
         body: undefined,
       };
+}
+
+export function applyWaiverReceiptRetryState(
+  dialog: { dataset: { receiptStatus?: string } },
+  button: { disabled: boolean },
+  queued: boolean
+): void {
+  if (queued) {
+    dialog.dataset.receiptStatus = "pending";
+    button.disabled = true;
+    return;
+  }
+  button.disabled = false;
 }
 
 function consentCell(value: boolean): string {
@@ -1384,6 +1397,7 @@ function setupWorkspace(): void {
     if (!window.confirm(receiptConfirmation)) return;
     button.disabled = true;
     setWaiverDetailState("Queueing a fresh copy of the legal receipt...");
+    let queued = false;
     try {
       const { response, payload } = await opsRequest(`/api/v1/ops/players/${encodeURIComponent(subject)}/waiver/receipt`, {
         method: "POST",
@@ -1391,12 +1405,13 @@ function setupWorkspace(): void {
         body: JSON.stringify(intent.body ?? {}),
       });
       if (!response.ok) throw new Error(apiError(payload, "The legal receipt could not be retried."));
+      queued = true;
+      applyWaiverReceiptRetryState(dialog, button, true);
       setWaiverDetailState("Receipt retry queued and recorded in the audit trail.");
       await loadAudit();
     } catch (error) {
+      if (!queued && dialog) applyWaiverReceiptRetryState(dialog, button, false);
       setWaiverDetailState(error instanceof Error ? error.message : "The legal receipt could not be retried.", "error");
-    } finally {
-      button.disabled = false;
     }
   });
   document.querySelector<HTMLDialogElement>("#ops-waiver-dialog")?.addEventListener("close", (event) => {

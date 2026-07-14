@@ -8,6 +8,7 @@ import {
 } from "../src/client/board";
 import {
   buildSubscriberCsv,
+  applyWaiverReceiptRetryState,
   normalizeOpsDashboard,
   normalizeOpsSponsors,
   normalizeOpsSubscribers,
@@ -20,7 +21,7 @@ import {
   waiverReceiptRetryIntent,
 } from "../src/client/ops";
 
-const uncertainRetryConfirmation = "I checked tech@sebahub.com Sent Items and still want to retry this uncertain receipt.";
+const uncertainRetryConfirmation = "I checked the configured sender mailbox Sent Items or provider delivery log and still want to retry this uncertain receipt.";
 
 test("player ledger keeps only a waiver summary until deliberate detail review", () => {
   const ledger = normalizeOpsSubscribers({ data: { counts: {}, items: [{
@@ -83,6 +84,18 @@ test("Ops sends the uncertain override only after the explicit Sent Items confir
     confirmation: "Retry this participant's legal receipt email? This action will be audited.",
     body: undefined,
   });
+});
+
+test("Ops keeps a successfully queued receipt retry locked until detail refresh", () => {
+  const dialog = { dataset: { receiptStatus: "uncertain" } };
+  const button = { disabled: false };
+  applyWaiverReceiptRetryState(dialog, button, true);
+  assert.equal(dialog.dataset.receiptStatus, "pending");
+  assert.equal(button.disabled, true);
+
+  applyWaiverReceiptRetryState(dialog, button, false);
+  assert.equal(dialog.dataset.receiptStatus, "pending");
+  assert.equal(button.disabled, false);
 });
 
 test("sponsor operations rows normalize private fields and escape every rendered value", () => {

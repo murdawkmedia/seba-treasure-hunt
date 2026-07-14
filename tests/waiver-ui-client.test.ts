@@ -17,7 +17,7 @@ import {
   type WaiverDraft,
 } from "../src/client/dashboard";
 
-const uncertainReceiptCopy = "Microsoft may have accepted this receipt, but the confirmation response was interrupted. To prevent duplicates, another copy is temporarily blocked while the case team checks the sender mailbox.";
+const uncertainReceiptCopy = "Your email provider may have accepted this receipt, but the confirmation response was interrupted. To prevent duplicates, another copy is temporarily blocked while the case team checks the configured sender mailbox Sent Items or the provider delivery log.";
 
 const validDraft: WaiverDraft = {
   reviewEventId: "review-1",

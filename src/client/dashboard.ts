@@ -986,7 +986,7 @@ export function waiverReceiptPresentation(receipt: unknown): {
   if (state === "uncertain") {
     return {
       status: state,
-      message: "Microsoft may have accepted this receipt, but the confirmation response was interrupted. To prevent duplicates, another copy is temporarily blocked while the case team checks the sender mailbox.",
+      message: "Your email provider may have accepted this receipt, but the confirmation response was interrupted. To prevent duplicates, another copy is temporarily blocked while the case team checks the configured sender mailbox Sent Items or the provider delivery log.",
       resendDisabled: true,
     };
   }

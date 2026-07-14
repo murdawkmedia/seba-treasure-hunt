@@ -20,6 +20,8 @@ const documentIdentity = {
   version: participationWaiverDocument.version,
   hash: participationWaiverDocument.hash,
 };
+const uncertainParticipantMessage = "The email provider may already have accepted this receipt. The case team must check the configured sender mailbox Sent Items or provider delivery log before another copy can be sent.";
+const uncertainOpsMessage = "Check the configured sender mailbox Sent Items or provider delivery log, then explicitly confirm before retrying this uncertain receipt.";
 
 const makeApp = () => {
   const store = new FakeStore();
@@ -222,10 +224,9 @@ test("an uncertain receipt survives replay and requires explicit Ops mailbox con
     ...json({}, hunterHeaders),
   });
   assert.equal(participantResend.status, 409);
-  assert.equal(
-    (await responseJson(participantResend)).error.code,
-    "waiver_receipt_delivery_uncertain"
-  );
+  const participantResendError = (await responseJson(participantResend)).error;
+  assert.equal(participantResendError.code, "waiver_receipt_delivery_uncertain");
+  assert.equal(participantResendError.message, uncertainParticipantMessage);
   assert.deepEqual(receipts.calls, callsBeforeReplay);
 
   const opsHeaders = { authorization: "Bearer staff-token", origin };
@@ -234,10 +235,9 @@ test("an uncertain receipt survives replay and requires explicit Ops mailbox con
     { method: "POST", ...json({}, opsHeaders) }
   );
   assert.equal(ordinaryOpsRetry.status, 409);
-  assert.equal(
-    (await responseJson(ordinaryOpsRetry)).error.code,
-    "waiver_receipt_delivery_uncertain"
-  );
+  const ordinaryOpsError = (await responseJson(ordinaryOpsRetry)).error;
+  assert.equal(ordinaryOpsError.code, "waiver_receipt_delivery_uncertain");
+  assert.equal(ordinaryOpsError.message, uncertainOpsMessage);
   assert.deepEqual(receipts.calls, callsBeforeReplay);
 
   const confirmedOpsRetry = await app.request(
@@ -261,6 +261,60 @@ test("an uncertain receipt survives replay and requires explicit Ops mailbox con
     ).length,
     1
   );
+});
+
+test("Ops receipt retries require a JSON body whenever content is present", async () => {
+  const { app, store } = makeApp();
+  await completePlayer(store);
+  const reviewEventId = await recordReview(app);
+  const accepted = await app.request(`${origin}/api/v1/me/waiver/accept`, {
+    method: "POST",
+    ...json({
+      reviewEventId,
+      ...documentIdentity,
+      waiverAccepted: true,
+      guardianAttested: false,
+      minors: [],
+    }, { ...hunterHeaders, "idempotency-key": "accept-ops-media-type" }),
+  });
+  assert.equal(accepted.status, 201);
+  const endpoint = `${origin}/api/v1/ops/players/hunter-1/waiver/receipt`;
+  const opsHeaders = { authorization: "Bearer staff-token", origin };
+
+  const formEncoded = await app.request(endpoint, {
+    method: "POST",
+    headers: {
+      ...opsHeaders,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "confirmUncertainRetry=true",
+  });
+  assert.equal(formEncoded.status, 415);
+  const formEncodedError = (await responseJson(formEncoded)).error;
+  assert.equal(formEncodedError.code, "unsupported_media_type");
+  assert.equal(formEncodedError.message, "Waiver receipt retry requests require JSON.");
+
+  const multipartBody = new FormData();
+  multipartBody.set("confirmUncertainRetry", "true");
+  const multipart = await app.request(endpoint, {
+    method: "POST",
+    headers: opsHeaders,
+    body: multipartBody,
+  });
+  assert.equal(multipart.status, 415);
+  const multipartError = (await responseJson(multipart)).error;
+  assert.equal(multipartError.code, "unsupported_media_type");
+  assert.equal(multipartError.message, "Waiver receipt retry requests require JSON.");
+
+  const jsonWithCharset = await app.request(endpoint, {
+    method: "POST",
+    headers: {
+      ...opsHeaders,
+      "content-type": "application/json; charset=utf-8",
+    },
+    body: "{}",
+  });
+  assert.equal(jsonWithCharset.status, 202);
 });
 
 test("rejects stale, unreviewed, and ineligible waiver acceptance", async () => {

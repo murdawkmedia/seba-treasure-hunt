@@ -1112,7 +1112,7 @@ export const createApi = (deps: ApiDependencies) => {
       throw new ApiError(
         409,
         "waiver_receipt_delivery_uncertain",
-        "The receipt may already have been accepted by Microsoft. The case team must check the sender mailbox before another copy can be sent."
+        "The email provider may already have accepted this receipt. The case team must check the configured sender mailbox Sent Items or provider delivery log before another copy can be sent."
       );
     }
     const queued = await deps.store.queueWaiverReceiptResend(hunter.subject, acceptance.id);
@@ -1123,7 +1123,7 @@ export const createApi = (deps: ApiDependencies) => {
       throw new ApiError(
         409,
         "waiver_receipt_delivery_uncertain",
-        "The receipt may already have been accepted by Microsoft. The case team must check the sender mailbox before another copy can be sent."
+        "The email provider may already have accepted this receipt. The case team must check the configured sender mailbox Sent Items or provider delivery log before another copy can be sent."
       );
     }
     scheduleWaiverReceipt(c, deps.waiverReceipts, queued.id);
@@ -1448,10 +1448,16 @@ export const createApi = (deps: ApiDependencies) => {
     ) {
       throw new ApiError(409, "waiver_document_outdated", "Only the current waiver acceptance can be resent here.");
     }
-    const { body, files } = c.req.raw.body
-      ? await requestBody(c.req.raw)
-      : { body: {} as Record<string, unknown>, files: [] as File[] };
-    if (files.length) throw new ApiError(415, "unsupported_media_type", "Waiver receipt requests accept JSON only.");
+    if (c.req.raw.body && mediaTypeEssence(c.req.raw) !== "application/json") {
+      throw new ApiError(
+        415,
+        "unsupported_media_type",
+        "Waiver receipt retry requests require JSON."
+      );
+    }
+    const { body } = c.req.raw.body
+      ? await requestBody(c.req.raw, "application/json")
+      : { body: {} as Record<string, unknown> };
     const confirmUncertainRetry = body.confirmUncertainRetry === true;
     const result = await deps.store.queueOpsWaiverReceiptResend(
       subject,
@@ -1473,7 +1479,7 @@ export const createApi = (deps: ApiDependencies) => {
       throw new ApiError(
         409,
         "waiver_receipt_delivery_uncertain",
-        "Check tech@sebahub.com Sent Items, then explicitly confirm before retrying this uncertain receipt."
+        "Check the configured sender mailbox Sent Items or provider delivery log, then explicitly confirm before retrying this uncertain receipt."
       );
     }
     scheduleWaiverReceipt(c, deps.waiverReceipts, result.acceptance.id);
