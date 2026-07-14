@@ -98,11 +98,22 @@ test("the waiver ledger schema records review, participants, and receipt deliver
   assert.match(sql, /CREATE TABLE IF NOT EXISTS legal_document_review_events/i);
   assert.match(sql, /CREATE TABLE IF NOT EXISTS waiver_acceptance_participants/i);
   assert.match(sql, /CREATE TABLE IF NOT EXISTS notification_delivery_events/i);
-  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_job_target/i);
+  assert.match(
+    sql,
+    /CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_job_target\s+ON notification_jobs\(kind, target_record_id\)\s+WHERE kind = 'waiver_receipt'/i
+  );
   assert.match(
     sql,
     /participant_role TEXT NOT NULL CHECK \(participant_role IN \('adult', 'minor'\)\)/i
   );
   assert.match(sql, /document_type TEXT NOT NULL CHECK \(document_type = 'participation_waiver'\)/i);
   assert.match(sql, /event_type TEXT NOT NULL CHECK \(event_type IN \('queued', 'attempted', 'sent', 'failed', 'requeued'\)\)/i);
+  assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_waiver_participant_acceptance_insert/i);
+  assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_waiver_participant_acceptance_update/i);
+  assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_waiver_receipt_target_insert/i);
+  assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_waiver_receipt_target_update/i);
+
+  const reconcileAt = sql.search(/DELETE FROM notification_jobs[\s\S]*kind = 'waiver_receipt'/i);
+  const uniqueIndexAt = sql.search(/CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_job_target/i);
+  assert.ok(reconcileAt >= 0 && reconcileAt < uniqueIndexAt, "receipt duplicates reconcile first");
 });

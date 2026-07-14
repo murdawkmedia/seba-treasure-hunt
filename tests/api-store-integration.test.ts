@@ -15,10 +15,80 @@ const migration = await readFile(
 );
 
 const applySql = async (db: D1Database, sql: string) => {
-  for (const statement of sql.split(";").map((value) => value.trim()).filter(Boolean)) {
-    await db.prepare(statement).run();
+  const statements: string[] = [];
+  let statement = "";
+  let inTrigger = false;
+
+  for (const line of sql.replace(/\r\n/g, "\n").split("\n")) {
+    const trimmed = line.trim();
+    if (!statement && !trimmed) continue;
+    statement += `${line}\n`;
+    if (/^CREATE\s+TRIGGER\b/i.test(trimmed)) inTrigger = true;
+    if ((inTrigger && /^END;$/i.test(trimmed)) || (!inTrigger && /;$/i.test(trimmed))) {
+      statements.push(statement.trim());
+      statement = "";
+      inTrigger = false;
+    }
+  }
+
+  assert.equal(statement.trim(), "", "migration script ends with a complete SQL statement");
+  for (const sqlStatement of statements) {
+    await db.prepare(sqlStatement).run();
   }
 };
+
+const playerInsert = (db: D1Database, subject: string) =>
+  db
+    .prepare(
+      `INSERT INTO player_accounts
+       (subject, verified_email, account_state, created_at, updated_at, last_seen_at)
+       VALUES (?, ?, 'active', ?, ?, ?)`
+    )
+    .bind(
+      subject,
+      `${subject}@example.test`,
+      "2026-07-13T20:00:00.000Z",
+      "2026-07-13T20:00:00.000Z",
+      "2026-07-13T20:00:00.000Z"
+    );
+
+const acceptanceInsert = (
+  db: D1Database,
+  id: string,
+  documentType: "privacy_media" | "participation_waiver",
+  action: "accepted" | "withdrawn" = "accepted"
+) =>
+  db
+    .prepare(
+      `INSERT INTO legal_acceptance_events
+       (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
+       VALUES (?, 'hunter-waiver-1', ?, '2026.1', 'waiver-hash', ?, ?)`
+    )
+    .bind(id, documentType, action, "2026-07-13T20:02:00.000Z");
+
+const participantInsert = (db: D1Database, id: string, acceptanceEventId: string) =>
+  db
+    .prepare(
+      `INSERT INTO waiver_acceptance_participants
+       (id, acceptance_event_id, participant_role, full_name, birth_year, guardian_attested, created_at)
+       VALUES (?, ?, 'adult', 'Alex Adult', NULL, 0, ?)`
+    )
+    .bind(id, acceptanceEventId, "2026-07-13T20:02:00.000Z");
+
+const notificationJobInsert = (
+  db: D1Database,
+  id: string,
+  kind: string,
+  targetRecordId: string,
+  createdAt = "2026-07-13T20:02:00.000Z"
+) =>
+  db
+    .prepare(
+      `INSERT INTO notification_jobs
+       (id, kind, target_record_id, status, attempts, created_at, updated_at)
+       VALUES (?, ?, ?, 'pending', 0, ?, ?)`
+    )
+    .bind(id, kind, targetRecordId, createdAt, createdAt);
 
 const sponsorInput = (
   overrides: Partial<SponsorInquiryInput> = {}
@@ -255,19 +325,7 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
   }
 
   await db.batch([
-    db
-      .prepare(
-        `INSERT INTO player_accounts
-         (subject, verified_email, account_state, created_at, updated_at, last_seen_at)
-         VALUES (?, ?, 'active', ?, ?, ?)`
-      )
-      .bind(
-        "hunter-waiver-1",
-        "hunter-waiver-1@example.test",
-        "2026-07-13T20:00:00.000Z",
-        "2026-07-13T20:00:00.000Z",
-        "2026-07-13T20:00:00.000Z"
-      ),
+    playerInsert(db, "hunter-waiver-1"),
     db
       .prepare(
         `INSERT INTO legal_document_review_events
@@ -281,26 +339,8 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
         "waiver-hash",
         "2026-07-13T20:01:00.000Z"
       ),
-    db
-      .prepare(
-        `INSERT INTO legal_acceptance_events
-         (id, hunter_subject, document_type, document_version, document_hash, action, accepted_at)
-         VALUES (?, ?, 'participation_waiver', ?, ?, 'accepted', ?)`
-      )
-      .bind(
-        "acceptance-1",
-        "hunter-waiver-1",
-        "2026.1",
-        "waiver-hash",
-        "2026-07-13T20:02:00.000Z"
-      ),
-    db
-      .prepare(
-        `INSERT INTO waiver_acceptance_participants
-         (id, acceptance_event_id, participant_role, full_name, birth_year, guardian_attested, created_at)
-         VALUES (?, ?, 'adult', ?, NULL, 0, ?)`
-      )
-      .bind("participant-adult", "acceptance-1", "Alex Adult", "2026-07-13T20:02:00.000Z"),
+    acceptanceInsert(db, "acceptance-1", "participation_waiver"),
+    participantInsert(db, "participant-adult", "acceptance-1"),
     db
       .prepare(
         `INSERT INTO waiver_acceptance_participants
@@ -327,18 +367,7 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
         2015,
         "2026-07-13T20:02:00.000Z"
       ),
-    db
-      .prepare(
-        `INSERT INTO notification_jobs
-         (id, kind, target_record_id, status, attempts, created_at, updated_at)
-         VALUES (?, 'waiver_receipt', ?, 'pending', 0, ?, ?)`
-      )
-      .bind(
-        "receipt-job-1",
-        "acceptance-1",
-        "2026-07-13T20:02:00.000Z",
-        "2026-07-13T20:02:00.000Z"
-      ),
+    notificationJobInsert(db, "receipt-job-1", "waiver_receipt", "acceptance-1"),
     db
       .prepare(
         `INSERT INTO notification_delivery_events
@@ -362,20 +391,128 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
   );
   assert.deepEqual(counts, [1, 1, 3, 1, 1]);
 
+  await db.batch([
+    acceptanceInsert(db, "acceptance-privacy", "privacy_media"),
+    acceptanceInsert(db, "acceptance-withdrawn", "participation_waiver", "withdrawn")
+  ]);
+
+  const invalidAcceptanceIds = [
+    ["privacy", "acceptance-privacy"],
+    ["withdrawn", "acceptance-withdrawn"],
+    ["missing", "acceptance-missing"]
+  ] as const;
+  for (const [suffix, acceptanceEventId] of invalidAcceptanceIds) {
+    await assert.rejects(
+      participantInsert(db, `participant-${suffix}`, acceptanceEventId).run(),
+      /accepted participation waiver/i
+    );
+    await assert.rejects(
+      db
+        .prepare(
+          "UPDATE waiver_acceptance_participants SET acceptance_event_id = ? WHERE id = 'participant-adult'"
+        )
+        .bind(acceptanceEventId)
+        .run(),
+      /accepted participation waiver/i
+    );
+    await assert.rejects(
+      notificationJobInsert(db, `receipt-${suffix}`, "waiver_receipt", acceptanceEventId).run(),
+      /accepted participation waiver/i
+    );
+    await assert.rejects(
+      db
+        .prepare("UPDATE notification_jobs SET target_record_id = ? WHERE id = 'receipt-job-1'")
+        .bind(acceptanceEventId)
+        .run(),
+      /accepted participation waiver/i
+    );
+  }
+
+  await notificationJobInsert(db, "generic-job", "account_notice", "acceptance-privacy").run();
   await assert.rejects(
-    db
-      .prepare(
-        `INSERT INTO notification_jobs
-         (id, kind, target_record_id, status, attempts, created_at, updated_at)
-         VALUES (?, 'waiver_receipt', ?, 'pending', 0, ?, ?)`
-      )
-      .bind(
-        "receipt-job-2",
-        "acceptance-1",
-        "2026-07-13T20:03:00.000Z",
-        "2026-07-13T20:03:00.000Z"
-      )
-      .run(),
+    db.prepare("UPDATE notification_jobs SET kind = 'waiver_receipt' WHERE id = 'generic-job'").run(),
+    /accepted participation waiver/i
+  );
+  await assert.rejects(
+    db.prepare("UPDATE legal_acceptance_events SET action = 'withdrawn' WHERE id = 'acceptance-1'").run(),
+    /accepted participation waiver/i
+  );
+
+  await assert.rejects(
+    notificationJobInsert(
+      db,
+      "receipt-job-2",
+      "waiver_receipt",
+      "acceptance-1",
+      "2026-07-13T20:03:00.000Z"
+    ).run(),
+    /UNIQUE constraint failed/i
+  );
+});
+
+test("a populated D1 waiver upgrade reconciles receipt duplicates only", async (t) => {
+  const migrationFiles = [
+    "0001_hunter_platform.sql",
+    "0002_consent_ledger_index.sql",
+    "0003_player_accounts_and_legal_acceptance.sql",
+    "0004_environment_metadata.sql",
+    "0005_sponsor_inquiries.sql",
+    "0006_participation_waiver_and_receipts.sql"
+  ];
+  const migrations = await Promise.all(
+    migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
+  );
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: "waiver-upgrade-test" }
+  });
+  t.after(() => miniflare.dispose());
+  const miniflareDb = await miniflare.getD1Database("DB");
+  const db = miniflareDb as unknown as D1Database;
+
+  for (const sql of migrations.slice(0, 5)) {
+    await applySql(db, sql);
+  }
+  await db.batch([
+    playerInsert(db, "hunter-waiver-1"),
+    acceptanceInsert(db, "acceptance-1", "participation_waiver"),
+    notificationJobInsert(
+      db,
+      "receipt-oldest",
+      "waiver_receipt",
+      "acceptance-1",
+      "2026-07-13T20:02:00.000Z"
+    ),
+    notificationJobInsert(
+      db,
+      "receipt-newer",
+      "waiver_receipt",
+      "acceptance-1",
+      "2026-07-13T20:03:00.000Z"
+    ),
+    notificationJobInsert(db, "generic-a", "account_notice", "same-target"),
+    notificationJobInsert(db, "generic-b", "account_notice", "same-target")
+  ]);
+
+  const waiverMigration = migrations[5];
+  assert.ok(waiverMigration, "waiver migration is loaded");
+  await applySql(db, waiverMigration);
+  await applySql(db, waiverMigration);
+
+  const jobs = await db
+    .prepare("SELECT id, kind FROM notification_jobs ORDER BY id")
+    .all<{ id: string; kind: string }>();
+  assert.deepEqual(jobs.results, [
+    { id: "generic-a", kind: "account_notice" },
+    { id: "generic-b", kind: "account_notice" },
+    { id: "receipt-oldest", kind: "waiver_receipt" }
+  ]);
+
+  await notificationJobInsert(db, "generic-c", "account_notice", "same-target").run();
+  await assert.rejects(
+    notificationJobInsert(db, "receipt-third", "waiver_receipt", "acceptance-1").run(),
     /UNIQUE constraint failed/i
   );
 });
