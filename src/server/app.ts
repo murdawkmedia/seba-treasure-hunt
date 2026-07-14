@@ -1108,7 +1108,17 @@ export const createApi = (deps: ApiDependencies) => {
     if (!deps.store.getParticipationWaiver || !deps.store.queueWaiverReceiptResend) {
       throw new ApiError(503, "waiver_store_unavailable", "Waiver receipts are temporarily unavailable.");
     }
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length) throw new ApiError(415, "unsupported_media_type", "Waiver receipt requests accept JSON only.");
+    const requestedAcceptanceId = optionalString(body, "acceptanceId", 128);
     const acceptance = await deps.store.getParticipationWaiver(hunter.subject);
+    if (requestedAcceptanceId && requestedAcceptanceId !== acceptance?.id) {
+      throw new ApiError(
+        401,
+        "waiver_receipt_unauthorized",
+        "That waiver receipt is not available to this account."
+      );
+    }
     if (!acceptance) {
       throw new ApiError(404, "waiver_acceptance_not_found", "No accepted participation waiver was found.");
     }

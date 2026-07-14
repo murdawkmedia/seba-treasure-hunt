@@ -156,6 +156,10 @@ test("rejects stale, unreviewed, and ineligible waiver acceptance", async () => 
   const stale = await submit({ ...valid, version: "2025.9" }, "invalid-stale");
   assert.equal(stale.status, 409);
 
+  const staleHash = await submit({ ...valid, hash: "f".repeat(64) }, "invalid-stale-hash");
+  assert.equal(staleHash.status, 409);
+  assert.equal((await responseJson(staleHash)).error.code, "waiver_document_outdated");
+
   const missingReview = await submit({ ...valid, reviewEventId: "review-other" }, "invalid-review");
   assert.equal(missingReview.status, 422);
 
@@ -238,9 +242,16 @@ test("queues a receipt resend only for the signed-in player's stored acceptance"
     }, { ...hunterHeaders, "idempotency-key": "accept-resend" }),
   });
   const acceptanceId = (await responseJson(accepted)).data.acceptance.id;
-  const resent = await app.request(`${origin}/api/v1/me/waiver/receipt`, {
+  const foreign = await app.request(`${origin}/api/v1/me/waiver/receipt`, {
     method: "POST",
     ...json({ acceptanceId: "someone-elses-acceptance" }, hunterHeaders),
+  });
+  assert.equal(foreign.status, 401);
+  assert.equal((await responseJson(foreign)).error.code, "waiver_receipt_unauthorized");
+
+  const resent = await app.request(`${origin}/api/v1/me/waiver/receipt`, {
+    method: "POST",
+    ...json({}, hunterHeaders),
   });
   assert.equal(resent.status, 202);
   assert.equal((await responseJson(resent)).data.acceptance.id, acceptanceId);

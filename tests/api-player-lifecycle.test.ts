@@ -36,13 +36,13 @@ class PlayerStore extends FakeStore {
   async getPlayerAccess(subject: string): Promise<PlayerAccessState> {
     const profileComplete = this.profiles.has(subject);
     const privacyAccepted = this.legalEvents.some(
-      (event) => event.subject === subject && event.documentType === "privacy_media" && event.version === "2026.1",
+      (event) => event.subject === subject && event.documentType === "privacy_media" && event.version === "2026.2",
     );
     return {
       accountState: this.accounts.has(subject) ? "active" : "missing",
       profileComplete,
       privacyMediaRequired: !privacyAccepted,
-      privacyMediaVersion: privacyAccepted ? "2026.1" : null,
+      privacyMediaVersion: privacyAccepted ? "2026.2" : null,
       waiverStatus: "pending",
       waiverVersion: null,
       participationUnlocked: false,
@@ -115,7 +115,7 @@ const acceptedProfile = {
   discoverySource: "friend",
   adultAttested: true,
   privacyMediaAccepted: true,
-  privacyMediaVersion: "2026.1",
+  privacyMediaVersion: "2026.2",
   consents: { huntEmail: false, marketing: false },
 };
 
@@ -175,7 +175,7 @@ test("profile completion requires the current privacy-media notice but not Turns
   assert.equal(body.data.participationUnlocked, false);
 });
 
-test("pending waiver keeps exact directions and participation writes locked", async () => {
+test("required waiver keeps exact directions and participation writes locked", async () => {
   const { app } = makeApp();
   await syncVerifiedHunter(app);
   await app.request("https://www.timlostsomething.com/api/v1/me/bootstrap", { method: "POST", headers: auth });
@@ -190,7 +190,7 @@ test("pending waiver keeps exact directions and participation writes locked", as
   ] as const) {
     const response = await app.request(url, init);
     assert.equal(response.status, 423);
-    assert.equal((await responseJson(response)).error.code, "participation_waiver_pending");
+    assert.equal((await responseJson(response)).error.code, "participation_waiver_required");
   }
 });
 
