@@ -238,6 +238,18 @@ test("fails closed when the declared skip target does not exist as an id", () =>
   );
 });
 
+test("does not accept a skip target id that exists only in a comment or script", () => {
+  for (const targetMarkup of [
+    '<!-- <main id="main"></main> -->',
+    '<script>const template = \'<main id="main"></main>\';</script><main></main>',
+  ]) {
+    assert.throws(
+      () => renderCampaignPage(source({ targetMarkup }), "route.html"),
+      /skip target.*does not exist/i,
+    );
+  }
+});
+
 test("rejects legacy public shell classes", () => {
   for (const className of [
     "topbar",
@@ -265,6 +277,26 @@ test("rejects source markup that would duplicate a canonical shell root", () => 
     () => renderCampaignPage(source({ beforeFooter: '<div class="campaign-footer"></div>' }), "route.html"),
     /exactly one canonical campaign-footer/i,
   );
+});
+
+test("rejects duplicate canonical shell internals and campaign nav id", () => {
+  for (const { markup, name } of [
+    {
+      markup: '<div class="campaign-header__inner"></div>',
+      name: "campaign-header__inner",
+    },
+    {
+      markup: '<button class="campaign-menu-toggle"></button>',
+      name: "campaign-menu-toggle",
+    },
+    { markup: '<div id="campaign-nav"></div>', name: "#campaign-nav" },
+  ]) {
+    assert.throws(
+      () => renderCampaignPage(source({ beforeFooter: markup }), "route.html"),
+      new RegExp(`exactly one canonical ${name}`),
+      name,
+    );
+  }
 });
 
 test("registry and menu expose exactly the approved frozen contracts", () => {

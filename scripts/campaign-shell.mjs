@@ -49,9 +49,12 @@ const canonicalShellRoots = [
   "skip-link",
   "case-strip",
   "campaign-header",
+  "campaign-header__inner",
+  "campaign-menu-toggle",
   "campaign-nav",
   "campaign-footer",
 ];
+const canonicalShellIds = ["campaign-nav"];
 
 const footerLinks = [
   { route: "privacy", label: "Privacy", href: "/privacy" },
@@ -131,6 +134,20 @@ function collectClasses(source) {
   return classes;
 }
 
+function collectElementIds(source) {
+  const renderedMarkup = source
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+  const ids = [];
+
+  for (const tag of renderedMarkup.match(/<[A-Za-z][^>]*>/g) ?? []) {
+    const id = tag.match(/\sid\s*=\s*(["'])(.*?)\1/i);
+    if (id) ids.push(id[2]);
+  }
+
+  return ids;
+}
+
 function assertNoLegacyShellClasses(source) {
   const legacyClass = collectClasses(source).find((className) =>
     legacyShellClasses.has(className),
@@ -145,6 +162,13 @@ function assertOneCanonicalShell(rendered) {
   for (const className of canonicalShellRoots) {
     if (classes.filter((candidate) => candidate === className).length !== 1) {
       throw new Error(`Expected exactly one canonical ${className}`);
+    }
+  }
+
+  const ids = collectElementIds(rendered);
+  for (const id of canonicalShellIds) {
+    if (ids.filter((candidate) => candidate === id).length !== 1) {
+      throw new Error(`Expected exactly one canonical #${id}`);
     }
   }
 }
@@ -208,12 +232,7 @@ export function renderCampaignPage(source, filename) {
     throw new Error("Invalid campaign skip target");
   }
 
-  const escapedTarget = descriptor.skipTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const targetPattern = new RegExp(
-    `(?:^|[\\s<])id\\s*=\\s*(["'])${escapedTarget}\\1`,
-    "i",
-  );
-  if (!targetPattern.test(source)) {
+  if (!collectElementIds(source).includes(descriptor.skipTarget)) {
     throw new Error(
       `Campaign skip target ${descriptor.skipTarget} does not exist in ${filename}`,
     );
