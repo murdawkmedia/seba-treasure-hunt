@@ -34,10 +34,19 @@ test("sponsor inquiry handling is disclosed but private records never enter publ
   );
 });
 
+test("guardian data and legal receipt delivery are disclosed without making minors public", () => {
+  const privacy = read("privacy.html");
+  assert.match(privacy, /Version 2026\.2/i);
+  assert.match(privacy, /supervised minors?[\s\S]{0,300}full name[\s\S]{0,160}birth year/i);
+  assert.match(privacy, /transactional legal (?:waiver )?receipt[\s\S]{0,220}verified email/i);
+  assert.match(privacy, /do not grant or change permission for hunt updates or SebaHub marketing/i);
+  assert.match(privacy, /Minor participant snapshots[\s\S]{0,260}never public[\s\S]{0,180}never included in player exports/i);
+});
+
 test("project docs make the sponsor workflow and unresolved validation state actionable", () => {
   const readme = read("README.md");
   const status = read("STATUS.md");
-  const legal = read("src/server/legal-documents.ts");
+  const legal = read("src/generated/privacy-media.ts");
   const currentHash = legal.match(/hash:\s*"([a-f0-9]{64})"/)?.[1];
   assert.ok(currentHash, "current privacy hash is documented in the server contract");
 

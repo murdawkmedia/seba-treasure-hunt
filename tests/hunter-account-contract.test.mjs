@@ -69,7 +69,10 @@ test("onboarding requires the versioned privacy-media notice and presents a non-
 test("privacy page adapts the SebaHub media notice to the hunt without importing unrelated claims", () => {
   const html = read("privacy.html");
   assert.match(html, /<h1[^>]*>Privacy Policy &amp; Media Notice<\/h1>/);
-  assert.match(html, /Version 2026\.1/i);
+  assert.match(html, /Version 2026\.2/i);
+  assert.match(html, /supervised minor[^.]*full name[^.]*birth year/is);
+  assert.match(html, /waiver receipt[^.]*verified email/is);
+  assert.match(html, /transactional[^.]*not[^.]*marketing consent/is);
   assert.match(html, /id="media-notice"/);
   assert.match(html, /Alberta(?:'s|&rsquo;s) Personal Information Protection Act \(PIPA\)/i);
   assert.match(html, /Canada(?:'s|&rsquo;s) Anti-Spam Legislation \(CASL\)/i);
@@ -84,12 +87,15 @@ test("privacy page adapts the SebaHub media notice to the hunt without importing
 test("the active legal document hash ignores decorative head assets and matches the published policy", () => {
   const html = read("privacy.html");
   const legal = read("src/server/legal-documents.ts");
+  const generated = read("src/generated/privacy-media.ts");
   const canonicalPolicy = html.replace(
     /^.*(?:\/favicon\.ico|\/assets\/favicon(?:-32x32)?\.(?:svg|png)|\/assets\/apple-touch-icon\.png|\/site\.webmanifest).*\r?\n/gm,
     "",
   );
   const hash = createHash("sha256").update(canonicalPolicy).digest("hex");
-  assert.match(legal, new RegExp(`hash:\\s*"${hash}"`));
+  assert.match(generated, new RegExp(`hash:\\s*"${hash}"`));
+  assert.match(generated, /version:\s*"2026\.2"/);
+  assert.match(legal, /generatedPrivacyMediaDocument/);
 });
 
 test("the clue board routes possible finds to a private report", () => {
