@@ -37,8 +37,8 @@ test("the active waiver is discoverable from legal footers, routing, build, and 
   assert.match(read("scripts/build.mjs"), /"waiver\.html"/);
   const readme = read("README.md");
   assert.match(readme, /\| `\/waiver` \|/);
-  assert.match(readme, /LEGAL_RECEIPT_EMAIL_FROM/);
-  assert.match(readme, /LEGAL_RECEIPT_EMAIL_REPLY_TO/);
+  assert.match(readme, /TRANSACTIONAL_EMAIL_FROM_ADDRESS/);
+  assert.match(readme, /TRANSACTIONAL_EMAIL_REPLY_TO/);
   assert.doesNotMatch(readme, /waiver is pending|forthcoming participation waiver/i);
 });
 

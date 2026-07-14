@@ -12,6 +12,11 @@ import { D1RateLimiter } from "./server/rate-limit";
 import { D1EnvironmentGuard } from "./server/environment-guard";
 import { providerKeyForEnvironment, publicUrlForEnvironment } from "./server/provider-environment";
 import { ManagedWaiverReceipts } from "./server/waiver-receipts";
+import { D1GraphTokenStore } from "./server/graph-token-store";
+import { MicrosoftGraphTransactionalMailer } from "./server/microsoft-graph-mailer";
+import { ResendTransactionalMailer } from "./server/resend-mailer";
+import { createTransactionalMailer } from "./server/transactional-mail-factory";
+import type { TransactionalMailer, TransactionalMessage } from "./server/transactional-mail";
 
 const canonicalOrigin = "https://www.timlostsomething.com";
 const defaultTurnstileHosts = ["www.timlostsomething.com", "seba-treasure-hunt.pages.dev"];
@@ -37,6 +42,48 @@ let cache:
     }
   | undefined;
 
+export interface TransactionalMailRuntime {
+  mailer: TransactionalMailer;
+  sender: TransactionalMessage["from"];
+  replyTo: string | null;
+}
+
+export function transactionalMailRuntimeForEnvironment(
+  env: Partial<PagesEnv>,
+  fetchImpl: typeof globalThis.fetch = fetch
+): TransactionalMailRuntime {
+  const graphTokenStore = new D1GraphTokenStore(
+    env.DB ?? null,
+    env.GRAPH_TOKEN_ENCRYPTION_KEY ?? null,
+    env.GRAPH_TOKEN_KEY_VERSION ?? null
+  );
+  const graphMailer = new MicrosoftGraphTransactionalMailer({
+    fetch: fetchImpl,
+    clientId: env.GRAPH_CLIENT_ID ?? null,
+    tenantId: env.GRAPH_TENANT_ID ?? null,
+    bootstrapRefreshToken: env.GRAPH_REFRESH_TOKEN_BOOTSTRAP ?? null,
+    tokenStore: graphTokenStore
+  });
+  const resendMailer = new ResendTransactionalMailer({
+    fetch: fetchImpl,
+    apiKey: env.RESEND_API_KEY ?? null
+  });
+  const transactionalMailer = createTransactionalMailer({
+    provider: env.TRANSACTIONAL_EMAIL_PROVIDER ?? null,
+    graph: graphMailer,
+    resend: resendMailer
+  });
+
+  return {
+    mailer: transactionalMailer,
+    sender: {
+      name: env.TRANSACTIONAL_EMAIL_FROM_NAME?.trim() ?? "",
+      address: env.TRANSACTIONAL_EMAIL_FROM_ADDRESS?.trim() ?? ""
+    },
+    replyTo: env.TRANSACTIONAL_EMAIL_REPLY_TO?.trim() || null
+  };
+}
+
 const application = (env: PagesEnv) => {
   const signature = JSON.stringify([
     env.TURNSTILE_SECRET_KEY ?? null,
@@ -55,6 +102,15 @@ const application = (env: PagesEnv) => {
     env.STAFF_AUTH_ISSUER ?? null,
     env.STAFF_AUTH_JWKS_URL ?? null,
     env.AUTHORIZED_PARTY ?? null,
+    env.TRANSACTIONAL_EMAIL_PROVIDER ?? null,
+    env.GRAPH_CLIENT_ID ?? null,
+    env.GRAPH_TENANT_ID ?? null,
+    env.GRAPH_REFRESH_TOKEN_BOOTSTRAP ?? null,
+    env.GRAPH_TOKEN_ENCRYPTION_KEY ?? null,
+    env.GRAPH_TOKEN_KEY_VERSION ?? null,
+    env.TRANSACTIONAL_EMAIL_FROM_ADDRESS ?? null,
+    env.TRANSACTIONAL_EMAIL_FROM_NAME ?? null,
+    env.TRANSACTIONAL_EMAIL_REPLY_TO ?? null,
     env.RESEND_API_KEY ?? null,
     env.RECOVERY_EMAIL_FROM ?? null,
     env.LEGAL_RECEIPT_EMAIL_FROM ?? null,
@@ -107,6 +163,11 @@ const application = (env: PagesEnv) => {
     env.DEPLOYMENT_ENV
   );
   const store = env.DB ? new D1DataStore(env.DB) : unavailableStore;
+  const {
+    mailer: transactionalMailer,
+    sender: transactionalSender,
+    replyTo: transactionalReplyTo
+  } = transactionalMailRuntimeForEnvironment(env);
   const app = createApi({
     store,
     identity: new ManagedIdentityVerifier({
@@ -123,22 +184,21 @@ const application = (env: PagesEnv) => {
     webhooks: new ClerkWebhookVerifier(env.CLERK_WEBHOOK_SIGNING_SECRET ?? null),
     playerAccounts: new ManagedPlayerAccounts(hunterSecretKey, {
       dashboardUrl: hunterAccountPortalUrl,
-      resendApiKey: env.RESEND_API_KEY ?? null,
-      recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null,
-      recoveryEmailReplyTo: env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null
+      mailer: transactionalMailer,
+      sender: transactionalSender,
+      recoveryEmailReplyTo: transactionalReplyTo
     }),
     staffAccounts: new ManagedStaffAccounts(staffSecretKey, {
       accountPortalUrl: staffAccountPortalUrl,
       invitationRedirectUrl: staffInvitationRedirectUrl,
-      resendApiKey: env.RESEND_API_KEY ?? null,
-      recoveryEmailFrom: env.RECOVERY_EMAIL_FROM ?? null,
-      recoveryEmailReplyTo: env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null
+      mailer: transactionalMailer,
+      sender: transactionalSender,
+      recoveryEmailReplyTo: transactionalReplyTo
     }),
     waiverReceipts: new ManagedWaiverReceipts(store, {
-      fetch,
-      apiKey: env.RESEND_API_KEY ?? null,
-      from: env.LEGAL_RECEIPT_EMAIL_FROM ?? null,
-      replyTo: env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null,
+      mailer: transactionalMailer,
+      sender: transactionalSender,
+      replyTo: transactionalReplyTo,
       canonicalOrigin: campaignBaseUrl
     }),
     config: {

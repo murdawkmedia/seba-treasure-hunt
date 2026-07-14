@@ -46,7 +46,7 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 - Sponsor follow-up remains a deliberate staff workflow. There is no automated email, marketing subscription, public sponsor list, or CSV export in this implementation.
 - Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
 - Privacy/media acceptance, participation-waiver review and participation-waiver acceptance are separate append-only legal events. One adult may register up to ten directly supervised minors by name and birth year; those snapshots are private and absent from player exports.
-- A stored waiver acceptance queues one transactional full-text receipt to the player account's verified email. Delivery and deliberate resend require dedicated `LEGAL_RECEIPT_EMAIL_FROM` and `LEGAL_RECEIPT_EMAIL_REPLY_TO` configuration. The same configured Reply-To is applied to player and staff recovery instructions so campaign replies reach one operations mailbox; none of these messages change hunt-update or SebaHub marketing permissions.
+- A stored waiver acceptance queues one transactional full-text receipt to the player account's verified email. Waiver receipts plus player and staff recovery instructions share one explicitly selected transactional provider and one Reply-To; none of these messages change hunt-update or SebaHub marketing permissions.
 - `assets/favicon.svg` is the canonical Sunny Pirate Mystery Chest favicon. `npm run assets:favicons` deterministically regenerates its PNG and multi-resolution ICO variants.
 
 The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication, a completed profile, current Privacy/Media `2026.2` acceptance, current Participation Waiver `2026.1` acceptance and an active/open safety check. Exact directions, progress writes and community participation remain locked until all independent gates pass.
@@ -82,19 +82,41 @@ All Pages preview deployments use disposable validation-suffixed D1, R2 and Queu
 
 Never upload the working directory. `npm run build` creates an allowlisted `dist/` and excludes planning, source media, environment files, local Cloudflare state and unconfirmed partner assets.
 
+### Validation transactional email
+
+Microsoft Graph is active only when `TRANSACTIONAL_EMAIL_PROVIDER=microsoft_graph` is explicitly selected. There is no automatic fallback to Resend. The validation Worker sends as the configured `tech@sebahub.com` mailbox and applies `casey@sebahub.com` as the shared Reply-To for waiver receipts and account-recovery instructions.
+
+Configure these values only in the Cloudflare Pages Preview environment for the validation deployment:
+
+- `TRANSACTIONAL_EMAIL_PROVIDER`
+- `GRAPH_CLIENT_ID`
+- `GRAPH_TENANT_ID`
+- `GRAPH_REFRESH_TOKEN_BOOTSTRAP`
+- `GRAPH_TOKEN_ENCRYPTION_KEY`
+- `GRAPH_TOKEN_KEY_VERSION`
+- `TRANSACTIONAL_EMAIL_FROM_ADDRESS`
+- `TRANSACTIONAL_EMAIL_FROM_NAME`
+- `TRANSACTIONAL_EMAIL_REPLY_TO`
+- `RESEND_API_KEY` only when Resend is deliberately selected in a future change
+- `CAMPAIGN_BASE_URL`, which must remain the validation origin in Preview
+
+Keep the bootstrap refresh token and encryption key in encrypted Preview secrets. D1 stores only AES-GCM encrypted rotations and never stores an access token or plaintext refresh token. Do not copy validation OAuth state into production.
+
+If the delegated grant is revoked or expired, run `node scripts/graph-device-login.mjs` with `GRAPH_CLIENT_ID` and `GRAPH_TENANT_ID` present only in the local process environment. The helper requests exactly delegated `Mail.Send` plus `offline_access`, shows the Microsoft verification URL and user code, and copies the resulting refresh token to the Windows clipboard without printing or writing it. Paste the clipboard value into the Cloudflare Pages Preview secret `GRAPH_REFRESH_TOKEN_BOOTSTRAP`, save it, then clear the clipboard. The helper does not modify Cloudflare configuration; use the authenticated Pages dashboard so the secret cannot be applied to production accidentally.
+
 Do not promote a build until all of these are configured and tested in preview:
 
 1. public Clerk application with verified email/password, password recovery and compromised-password protection;
 2. separate invitation-only staff Clerk application;
 3. signed Clerk lifecycle webhook and deployment secret;
-4. required D1 migrations through `0009_atomic_rate_limits.sql`, including the player/legal ledger, environment sentinel, sponsor inquiries, waiver/receipt records, fenced delivery leases, immutable legal-delivery ledgers and atomic rate-limit counters;
+4. required D1 migrations through `0010_graph_transactional_email.sql`, including the player/legal ledger, environment sentinel, sponsor inquiries, waiver/receipt records, fenced delivery leases, immutable legal-delivery ledgers, atomic rate-limit counters and encrypted delegated Graph token state;
 5. privately seeded staff principals;
 6. hostname-restricted Turnstile widget and secret;
 7. private report upload and queue processing;
 8. hunter and staff sign-in, recovery and authorization;
 9. sponsor inquiry submission and Ops Sponsors review with the exact `sponsor_inquiry` Turnstile action;
 10. full public-output privacy scan.
-11. a dedicated Resend legal-receipt sender configured through both `LEGAL_RECEIPT_EMAIL_FROM` and the shared transactional `LEGAL_RECEIPT_EMAIL_REPLY_TO`;
+11. the explicitly selected transactional email provider, shared sender and Reply-To configuration, with one controlled validation-only delivery;
 
 ## Decisions in force
 

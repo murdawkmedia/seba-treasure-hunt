@@ -4,6 +4,8 @@ import test from "node:test";
 
 const pagesConfig = await readFile("wrangler.toml", "utf8");
 const mediaConfig = await readFile("wrangler.media.toml", "utf8");
+const envExample = await readFile(".env.example", "utf8");
+const readme = await readFile("README.md", "utf8");
 
 const section = (source, heading) => {
   const start = source.indexOf(heading);
@@ -46,4 +48,30 @@ test("the media worker has a validation environment with no production data bind
   assert.match(validation, /bucket_name\s*=\s*"tim-lost-private-media-validation"/);
   assert.match(validation, /queue\s*=\s*"tim-lost-media-processing-validation"/);
   assert.match(validation, /dead_letter_queue\s*=\s*"tim-lost-media-dlq-validation"/);
+});
+
+test("tracked Preview guidance names every Graph setting without credential values", () => {
+  const providerSettings = [
+    "TRANSACTIONAL_EMAIL_PROVIDER",
+    "GRAPH_CLIENT_ID",
+    "GRAPH_TENANT_ID",
+    "GRAPH_REFRESH_TOKEN_BOOTSTRAP",
+    "GRAPH_TOKEN_ENCRYPTION_KEY",
+    "GRAPH_TOKEN_KEY_VERSION",
+    "TRANSACTIONAL_EMAIL_FROM_ADDRESS",
+    "TRANSACTIONAL_EMAIL_FROM_NAME",
+    "TRANSACTIONAL_EMAIL_REPLY_TO"
+  ];
+  for (const setting of providerSettings) {
+    assert.match(envExample, new RegExp(`^${setting}=$`, "m"));
+    assert.match(readme, new RegExp(`\\b${setting}\\b`));
+  }
+  assert.match(readme, /Microsoft Graph is active only when `TRANSACTIONAL_EMAIL_PROVIDER=microsoft_graph`/);
+  assert.match(readme, /casey@sebahub\.com/);
+  assert.match(readme, /encrypted rotations/i);
+  assert.match(readme, /revoked or expired/i);
+  assert.match(readme, /scripts\/graph-device-login\.mjs/);
+  assert.match(readme, /Cloudflare Pages Preview secret/i);
+  assert.doesNotMatch(readme, /wrangler pages secret put/i);
+  assert.doesNotMatch(envExample, /RESEND_API_KEY_SEBAHUB_PENDING/);
 });
