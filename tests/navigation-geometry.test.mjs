@@ -128,6 +128,36 @@ const contrastRatio = (foreground, background) => {
     / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
 };
 
+const readOutlineClearance = (locator) => locator.evaluate((element) => {
+  const style = getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  const expansion = Number.parseFloat(style.outlineWidth) + Number.parseFloat(style.outlineOffset);
+  const outlineBox = {
+    top: rect.top - expansion,
+    right: rect.right + expansion,
+    bottom: rect.bottom + expansion,
+    left: rect.left - expansion,
+  };
+  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    const ancestorStyle = getComputedStyle(ancestor);
+    const clipsX = /^(?:auto|clip|hidden|scroll)$/.test(ancestorStyle.overflowX);
+    const clipsY = /^(?:auto|clip|hidden|scroll)$/.test(ancestorStyle.overflowY);
+    if (!clipsX && !clipsY) continue;
+    const boundary = ancestor.getBoundingClientRect();
+    const clearances = [];
+    if (clipsX) clearances.push(outlineBox.left - boundary.left, boundary.right - outlineBox.right);
+    if (clipsY) clearances.push(outlineBox.top - boundary.top, boundary.bottom - outlineBox.bottom);
+    return {
+      ancestor: `${ancestor.tagName.toLowerCase()}${ancestor.id ? `#${ancestor.id}` : ""}`,
+      minClearance: Math.min(...clearances),
+    };
+  }
+  return {
+    ancestor: "viewport",
+    minClearance: Math.min(outlineBox.left, innerWidth - outlineBox.right, outlineBox.top, innerHeight - outlineBox.bottom),
+  };
+});
+
 before(async () => {
   server = createServer(async (request, response) => {
     try {
@@ -241,7 +271,6 @@ test("contextual focus maps public parchment and resets nested dark utilities", 
 
     await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
     await assertFocusColor(page.locator(".stop .stop-meta a").first(), dark, "route stop link uses dark focus on parchment", page.locator(".stop").first());
-    await assertFocusColor(page.locator(".stop .photo a").first(), dark, "route photo card link uses dark focus in its parchment stop", page.locator(".stop").first());
 
     await page.goto(`${origin}/index.html`, { waitUntil: "domcontentloaded" });
     await assertFocusColor(page.locator(".step a").first(), dark, "How to Play step link uses dark focus on paper", page.locator(".step").first());
@@ -259,6 +288,75 @@ test("contextual focus maps public parchment and resets nested dark utilities", 
       feed.innerHTML = '<article class="field-note"><div class="form-error-summary" tabindex="-1">Validation test</div></article>';
     });
     await assertFocusColor(page.locator(".field-note .form-error-summary"), gold, "Board dark validation nested in paper resets to gold");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("overflow-clipped focus targets transfer one visible outline to their parent", { timeout: 30_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.route("**/*", async (route) => {
+    if (route.request().url().startsWith(origin)) await route.continue();
+    else await route.abort();
+  });
+
+  const dark = "rgb(7, 31, 28)";
+  const assertTransferredOutline = async ({ child, parent, contextSurface, label }) => {
+    const parentShadow = (await readFocusStyle(parent)).boxShadow;
+    const contextBackground = (await readFocusStyle(contextSurface)).effectiveBackgroundColor;
+    await child.focus();
+    const childFocus = await readFocusStyle(child);
+    const parentFocus = await readFocusStyle(parent);
+    const clearance = await readOutlineClearance(parent);
+    const ratio = contrastRatio(parentFocus.outlineColor, contextBackground);
+
+    assert.equal(childFocus.focusVisible, true, `${label} direct child remains the focused control`);
+    assert.deepEqual(
+      [parentFocus.outlineColor, parentFocus.outlineStyle, parentFocus.outlineWidth, parentFocus.outlineOffset],
+      [dark, "solid", "3px", "3px"],
+      `${label} parent owns the visible focus outline`,
+    );
+    assert.ok(childFocus.outlineStyle === "none" || childFocus.outlineWidth === "0px", `${label} child does not double-outline`);
+    assert.equal(parentFocus.boxShadow, parentShadow, `${label} parent keeps its component shadow`);
+    assert.ok(ratio >= 3, `${label} parent outline contrasts ${ratio.toFixed(2)}:1 with the outer paper context`);
+    assert.ok(clearance.minClearance >= 6, `${label} outline has ${clearance.minClearance.toFixed(2)}px clearance inside ${clearance.ancestor}`);
+    return { childFocus, parentFocus, clearance, ratio };
+  };
+
+  try {
+    const page = await context.newPage();
+
+    await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
+    await assertTransferredOutline({
+      child: page.locator(".stop .photo > a").first(),
+      parent: page.locator(".stop .photo").first(),
+      contextSurface: page.locator(".stop").first(),
+      label: "route photo",
+    });
+
+    await page.goto(`${origin}/interview.html`, { waitUntil: "domcontentloaded" });
+    const details = page.locator("details.qa").first();
+    const summary = details.locator(":scope > summary");
+    assert.equal(await details.getAttribute("open"), null, "interview disclosure starts closed");
+    await assertTransferredOutline({
+      child: summary,
+      parent: details,
+      contextSurface: page.locator(".interview-section"),
+      label: "interview disclosure",
+    });
+
+    await page.emulateMedia({ forcedColors: "active" });
+    await summary.focus();
+    const forcedParent = await readFocusStyle(details);
+    const forcedChild = await readFocusStyle(summary);
+    assert.deepEqual(
+      [forcedParent.outlineStyle, forcedParent.outlineWidth, forcedParent.outlineOffset],
+      ["solid", "3px", "3px"],
+      "forced colors keeps the real parent outline",
+    );
+    assert.notEqual(forcedParent.outlineColor, "rgba(0, 0, 0, 0)", "forced colors exposes a system-visible outline color");
+    assert.ok(forcedChild.outlineStyle === "none" || forcedChild.outlineWidth === "0px", "forced colors still avoids a double outline");
   } finally {
     await browser.close();
   }

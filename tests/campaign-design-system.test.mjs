@@ -147,6 +147,15 @@ test("campaign pages share body type, headings, readable wrapping, controls, and
   assert.match(focusRules[0][2], /outline-offset:\s*3px;/);
   assert.doesNotMatch(focusRules[0][2], /box-shadow\s*:/, "shared focus never replaces component shadows");
   assert.doesNotMatch(css, /\.campaign-page\s+:focus-visible/);
+  assert.match(
+    css,
+    /@supports selector\(:has\(\*\)\)\s*\{\s*\.campaign-page \.photo:has\(> a:focus-visible\),\s*\.campaign-page details\.qa:has\(> summary:focus-visible\)\s*\{\s*outline:\s*3px solid var\(--campaign-focus\);\s*outline-offset:\s*3px;\s*\}\s*\.campaign-page \.photo > a:focus-visible,\s*\.campaign-page details\.qa > summary:focus-visible\s*\{\s*outline:\s*none;\s*\}\s*\}/s,
+    "overflow-clipped direct children transfer one real outline to their parent only when :has is supported",
+  );
+  assert.ok(
+    css.indexOf(focusRules[0][0]) < css.indexOf("@supports selector(:has(*))"),
+    "the shared direct-child outline remains an unconditional fallback before the enhancement",
+  );
 });
 
 test("contextual focus tokens keep three-to-one outlines on light and dark surfaces", () => {
