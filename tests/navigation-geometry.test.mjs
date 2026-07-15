@@ -158,6 +158,48 @@ const readOutlineClearance = (locator) => locator.evaluate((element) => {
   };
 });
 
+const assertTransferredOutline = async ({ child, parent, contextSurface, label }) => {
+  const dark = "rgb(7, 31, 28)";
+  const parentShadow = (await readFocusStyle(parent)).boxShadow;
+  const contextBackground = (await readFocusStyle(contextSurface)).effectiveBackgroundColor;
+  await child.focus();
+  const childFocus = await readFocusStyle(child);
+  const parentFocus = await readFocusStyle(parent);
+  const clearance = await readOutlineClearance(parent);
+  const ratio = contrastRatio(parentFocus.outlineColor, contextBackground);
+
+  assert.equal(childFocus.focusVisible, true, `${label} direct child remains the focused control`);
+  assert.deepEqual(
+    [parentFocus.outlineColor, parentFocus.outlineStyle, parentFocus.outlineWidth, parentFocus.outlineOffset],
+    [dark, "solid", "3px", "3px"],
+    `${label} parent owns the visible focus outline`,
+  );
+  assert.ok(childFocus.outlineStyle === "none" || childFocus.outlineWidth === "0px", `${label} child does not double-outline`);
+  assert.equal(parentFocus.boxShadow, parentShadow, `${label} parent keeps its component shadow`);
+  assert.ok(ratio >= 3, `${label} parent outline contrasts ${ratio.toFixed(2)}:1 with the outer paper context`);
+  assert.ok(clearance.minClearance >= 6, `${label} outline has ${clearance.minClearance.toFixed(2)}px clearance inside ${clearance.ancestor}`);
+  return { childFocus, parentFocus, clearance, ratio };
+};
+
+const stripHasSupportsBlocks = (source) => {
+  const marker = "@supports selector(:has(*))";
+  let stripped = source;
+  for (let start = stripped.indexOf(marker); start !== -1; start = stripped.indexOf(marker)) {
+    const openingBrace = stripped.indexOf("{", start + marker.length);
+    assert.notEqual(openingBrace, -1, "the :has support guard has an opening brace");
+    let depth = 0;
+    let end = openingBrace;
+    for (; end < stripped.length; end += 1) {
+      if (stripped[end] === "{") depth += 1;
+      if (stripped[end] === "}") depth -= 1;
+      if (depth === 0) break;
+    }
+    assert.ok(end < stripped.length, "the :has support guard has a closing brace");
+    stripped = `${stripped.slice(0, start)}${stripped.slice(end + 1)}`;
+  }
+  return stripped;
+};
+
 before(async () => {
   server = createServer(async (request, response) => {
     try {
@@ -293,36 +335,16 @@ test("contextual focus maps public parchment and resets nested dark utilities", 
   }
 });
 
-test("overflow-clipped focus targets transfer one visible outline to their parent", { timeout: 30_000 }, async () => {
+test("focus-within parent outlines work when every :has support block is unavailable", { timeout: 30_000 }, async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route("**/*", async (route) => {
-    if (route.request().url().startsWith(origin)) await route.continue();
+    if (route.request().url() === `${origin}/css/campaign-shell.css`) {
+      const source = await readFile(path.join(root, "css", "campaign-shell.css"), "utf8");
+      await route.fulfill({ body: stripHasSupportsBlocks(source), contentType: "text/css; charset=utf-8" });
+    } else if (route.request().url().startsWith(origin)) await route.continue();
     else await route.abort();
   });
-
-  const dark = "rgb(7, 31, 28)";
-  const assertTransferredOutline = async ({ child, parent, contextSurface, label }) => {
-    const parentShadow = (await readFocusStyle(parent)).boxShadow;
-    const contextBackground = (await readFocusStyle(contextSurface)).effectiveBackgroundColor;
-    await child.focus();
-    const childFocus = await readFocusStyle(child);
-    const parentFocus = await readFocusStyle(parent);
-    const clearance = await readOutlineClearance(parent);
-    const ratio = contrastRatio(parentFocus.outlineColor, contextBackground);
-
-    assert.equal(childFocus.focusVisible, true, `${label} direct child remains the focused control`);
-    assert.deepEqual(
-      [parentFocus.outlineColor, parentFocus.outlineStyle, parentFocus.outlineWidth, parentFocus.outlineOffset],
-      [dark, "solid", "3px", "3px"],
-      `${label} parent owns the visible focus outline`,
-    );
-    assert.ok(childFocus.outlineStyle === "none" || childFocus.outlineWidth === "0px", `${label} child does not double-outline`);
-    assert.equal(parentFocus.boxShadow, parentShadow, `${label} parent keeps its component shadow`);
-    assert.ok(ratio >= 3, `${label} parent outline contrasts ${ratio.toFixed(2)}:1 with the outer paper context`);
-    assert.ok(clearance.minClearance >= 6, `${label} outline has ${clearance.minClearance.toFixed(2)}px clearance inside ${clearance.ancestor}`);
-    return { childFocus, parentFocus, clearance, ratio };
-  };
 
   try {
     const page = await context.newPage();
@@ -332,7 +354,7 @@ test("overflow-clipped focus targets transfer one visible outline to their paren
       child: page.locator(".stop .photo > a").first(),
       parent: page.locator(".stop .photo").first(),
       contextSurface: page.locator(".stop").first(),
-      label: "route photo",
+      label: "fallback route photo",
     });
 
     await page.goto(`${origin}/interview.html`, { waitUntil: "domcontentloaded" });
@@ -343,8 +365,60 @@ test("overflow-clipped focus targets transfer one visible outline to their paren
       child: summary,
       parent: details,
       contextSurface: page.locator(".interview-section"),
-      label: "interview disclosure",
+      label: "fallback interview disclosure",
     });
+  } finally {
+    await browser.close();
+  }
+});
+
+test("modern overflow-clipped targets keep one parent outline and visible nested-link focus", { timeout: 30_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.route("**/*", async (route) => {
+    if (route.request().url().startsWith(origin)) await route.continue();
+    else await route.abort();
+  });
+
+  try {
+    const page = await context.newPage();
+
+    await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
+    await assertTransferredOutline({
+      child: page.locator(".stop .photo > a").first(),
+      parent: page.locator(".stop .photo").first(),
+      contextSurface: page.locator(".stop").first(),
+      label: "modern route photo",
+    });
+
+    await page.goto(`${origin}/interview.html`, { waitUntil: "domcontentloaded" });
+    const details = page.locator("details.qa").first();
+    const summary = details.locator(":scope > summary");
+    await assertTransferredOutline({
+      child: summary,
+      parent: details,
+      contextSurface: page.locator(".interview-section"),
+      label: "modern interview disclosure",
+    });
+
+    await details.evaluate((element) => {
+      element.open = true;
+      element.querySelector(".qa-body")?.insertAdjacentHTML("beforeend", '<a data-nested-focus-test href="#top">Nested focus test</a>');
+    });
+    const nestedLink = details.locator("[data-nested-focus-test]");
+    await nestedLink.focus();
+    const nestedFocus = await readFocusStyle(nestedLink);
+    const groupedFocus = await readFocusStyle(details);
+    assert.deepEqual(
+      [nestedFocus.outlineStyle, nestedFocus.outlineWidth, nestedFocus.outlineOffset],
+      ["solid", "3px", "3px"],
+      "an inner disclosure link keeps its own focus indicator",
+    );
+    assert.deepEqual(
+      [groupedFocus.outlineStyle, groupedFocus.outlineWidth, groupedFocus.outlineOffset],
+      ["solid", "3px", "3px"],
+      "the parent grouping outline remains outside the open disclosure",
+    );
 
     await page.emulateMedia({ forcedColors: "active" });
     await summary.focus();

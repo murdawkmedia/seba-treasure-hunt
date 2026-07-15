@@ -50,17 +50,15 @@ html {
   outline-offset: 3px;
 }
 
-@supports selector(:has(*)) {
-  .campaign-page .photo:has(> a:focus-visible),
-  .campaign-page details.qa:has(> summary:focus-visible) {
-    outline: 3px solid var(--campaign-focus);
-    outline-offset: 3px;
-  }
+.campaign-page .photo:focus-within,
+.campaign-page details.qa:focus-within {
+  outline: 3px solid var(--campaign-focus);
+  outline-offset: 3px;
+}
 
-  .campaign-page .photo > a:focus-visible,
-  .campaign-page details.qa > summary:focus-visible {
-    outline: none;
-  }
+.campaign-page .photo > a:focus-visible,
+.campaign-page details.qa > summary:focus-visible {
+  outline: none;
 }
 
 .case-strip,
