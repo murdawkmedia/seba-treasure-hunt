@@ -2,11 +2,15 @@
 
 Last updated: 2026-07-15
 
-The July 15 session-aware registration candidate is complete locally and awaiting its validation-only deployment. Hunter signup now requires same-page review and separate acceptance of the current Privacy/Media notice and Participation Waiver before any Clerk signup request; durable legal events are written only after verified-email session activation. The global header has a privacy-safe account menu, and `/route` reveals the 12 waypoint sections only to a Hunter session while exact map links remain subject to the existing profile, legal, case and zone gates. The separate Staff identity now permits exact verified `sebahub.com` and `businessasaforceforgood.ca` addresses to self-register, with D1 authorization, suspension protection and an append-only activation audit.
+The July 15 session-aware registration candidate is deployed to the noindex validation alias and ready for owner testing. Hunter signup now requires same-page review and separate acceptance of the current Privacy/Media notice and Participation Waiver before any Clerk signup request; durable legal events are written only after verified-email session activation. The global header has a privacy-safe account menu, and `/route` reveals the 12 waypoint sections only to a Hunter session while exact map links remain subject to the existing profile, legal, case and zone gates. The separate Staff identity now permits exact verified `sebahub.com` and `businessasaforceforgood.ca` addresses to self-register, with D1 authorization, suspension protection and an append-only activation audit.
 
 ## Current state
 
 ### Validation MVP checkpoint — 2026-07-14
+
+The current validation candidate is Cloudflare deployment `c1943e01` from source commit `7a927de`, available at `https://codex-validation.seba-treasure-hunt.pages.dev`. The two intermediate deployments were `04a97672` and `12d4a92d`. Production, custom-domain routing and production data remain unchanged.
+
+Live July 15 browser verification confirmed that a signed-out visitor sees the route sign-in gate and not the detailed waypoint content. An existing disposable signed-in Hunter session sees all twelve route sections and exactly twelve approved Google Maps links, with the global `Hunter 0557` account control visible and the public Sign in control absent. The signup surface keeps both legal checkboxes disabled until each full legal document is opened in its same-page viewer; the Privacy/Media and waiver viewers now render successfully under route-specific same-origin framing headers. The Staff console exposes a separate Create staff account flow and identifies exact `sebahub.com` and `businessasaforceforgood.ca` company addresses as eligible. No new identity or submission was created during this final read-only browser pass.
 
 The stable noindex validation alias serves the reviewed Graph-hardened candidate as Cloudflare deployment `1fb157d6` from source commit `d830e19`. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
 
@@ -101,7 +105,7 @@ Graph transactional-mail wiring from `17f70c0` and `c23109f` is active. Migratio
 - `git diff --check`: passed. Pre-existing Wrangler/workerd processes were neither started nor stopped and were not used as release evidence.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
-- Validation deployment `1fb157d6` from `d830e19` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; the signed-in Hunter dashboard reports the receipt as sent. Cloudflare holds the active transactional settings as encrypted Preview secrets, and validation D1 contains encrypted Graph rotation state only. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
+- Validation deployment `c1943e01` from `7a927de` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; the signed-in Hunter dashboard reports the receipt as sent. The legal document routes permit same-origin framing only, while `/route` and the remaining site retain `frame-ancestors 'none'` and `X-Frame-Options: DENY`. Cloudflare holds the active transactional settings as encrypted Preview secrets, and validation D1 contains encrypted Graph rotation state only. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
 - `npm audit --omit=dev --audit-level=high`: exit 0 with zero high/critical findings. Twelve moderate findings remain in Clerk's optional Solana chain; no forced breaking remediation was applied.
 - Full evidence and reproduction commands are recorded in `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`.
 
@@ -117,7 +121,7 @@ Validation MVP implementation is complete. The remaining owner/provider checks b
 
 ## Next approved workflow
 
-Resume with controlled waiver-receipt inbox/Sent Items verification, the clean-browser Staff sign-in and Hunter password-recovery mailbox checks. Then decide whether visible waypoint progress controls are a launch requirement, reset disposable validation resources, and rehearse production migrations. Production requires another explicit later approval.
+Resume with owner testing at the stable validation alias, followed by controlled waiver-receipt inbox/Sent Items verification, one complete Staff company-domain signup/sign-in round trip and one Hunter password-recovery mailbox round trip. Then reset disposable validation resources and rehearse production migrations. Visible waypoint progress remains a post-MVP wishlist item. Production requires another explicit later approval.
 
 ## Decisions in force
 
