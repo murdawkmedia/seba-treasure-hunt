@@ -4,7 +4,7 @@ This record verifies the local unified-shell implementation for the Tim Lost Som
 
 ## Source and architecture
 
-The verified implementation head before this documentation commit was `48c9057` on `codex/tim-lost-hunter-platform`.
+The verified implementation head before this documentation commit was `786598d` on `codex/tim-lost-hunter-platform`.
 
 - Task 1 renderer/parser: `2bee863`, `c58124d`, `f295f91`, `174f883`, `e77fb69`.
 - Task 2 build integration: `6f29961`, `639b30e`, `46bc766`, `f852a34`.
@@ -13,7 +13,7 @@ The verified implementation head before this documentation commit was `48c9057` 
 - Task 5 Clue Board status integration: `7cb02d3`, `dc0d6d6`.
 - Task 6 route-matrix/accessibility QA: `53e1941`, `c234363`.
 - Task 7 drift protection: `4bda466`, `350c297`, `6a6c3eb`, `1bf3935`.
-- Task 8 reproducible browser and privacy-output QA: `48c9057`.
+- Task 8 reproducible browser and privacy-output QA: `48c9057`, `786598d`.
 
 `scripts/campaign-shell.mjs` is the only public shell source. Its fixed primary menu is Start, 12-waypoint Route, Updates, Clue Board, Report, Rules, Dashboard, Sponsors. `css/campaign-shell.css` owns public chrome and shared tokens; landing, route, editorial, ledger, workspace, document and sponsor page-family classes preserve route-specific character. The private Ops console remains independent.
 
@@ -36,7 +36,7 @@ node --test tests/navigation-geometry.test.mjs tests/campaign-shell-accessibilit
 Fresh results:
 
 - Legal generation check: passed. Participation Waiver `2026.1` remains SHA-256 `1a6e50f445fc7c67962e5e0050c7fbe161d7d78e679dab4f6fde951602cf3607`; Privacy Policy & Media Notice `2026.2` remains SHA-256 `47e26763d46441e2e155a6d0ca3869986395c49b60073a8da9256577229f07a8`.
-- Static/contract suite: 194/194 passed.
+- Static/contract suite: 196/196 passed.
 - TypeScript suite: 278/278 passed.
 - Worker, client, Worker-test and client-test typechecks: passed.
 - Build: passed; Pages Worker 316.9 kB, media Worker 3.2 kB, Clerk browser bundle 1.5 MB, Ops 40.3 kB, Dashboard 29.7 kB, Clue Board 14.1 kB and Sponsors 8.4 kB, plus the remaining client bundles.
@@ -69,11 +69,15 @@ The durable `verify:unified-shell-qa` runner creates a unique OS-temporary build
 - 26 collapsed/expanded states at 390x844; and
 - 7 representative desktop states at 1440x1000.
 
+The fresh runner executed on 2026-07-15 and records its real Node execution timestamp and derived run date in the JSON ledger. The browser fixture clock remains separately and explicitly fixed at `2026-07-14T18:00:00.000Z` so status-age and clue-time rendering are controlled test inputs rather than false run metadata.
+
 The audit recorded zero `console.error` messages and zero uncaught page errors. Across the route matrix and screenshot pass, it intercepted 112 external read attempts: 91 stylesheets and 21 scripts. Every attempt was fulfilled locally with a non-networking QA response; zero external request continued. It recorded zero external writes, zero local writes and zero writes rejected by the read-only server. Local API fixtures were also fulfilled inside the audit boundary so console results reflect the shell and built clients rather than unavailable test infrastructure.
 
 ## Visual inspection
 
-Representative full-page captures were reviewed for Home, Route, Interview, Clue Board, Dashboard, Sponsors, Privacy and Waiver at 390x844 and 1440x1000. Separate 720x500 captures show the focused Home skip link, the complete open Route menu and the Waiver main-content landing after skip navigation.
+Representative full-page captures were reviewed for Home, Route, Interview, Clue Board, Dashboard, Sponsors, Privacy and Waiver at 390x844 and 1440x1000. The three separate 720x500 zoom artifacts are viewport captures rather than full-page captures, so they directly show the focused Home skip link, complete open Route menu and Waiver main-content landing.
+
+Before those zoom captures, the runner asserts that Tab places Home focus on the visible, outlined `.skip-link` inside the viewport; that the Route menu has its real open state; and that activating the Waiver `.skip-link` targeting `#main` transfers focus to `#main`, leaves it inside the viewport and clears the measured current `--stacked-header-height`. Missing targets or failed focus transfer are not ignored.
 
 The inspection confirmed:
 
@@ -104,9 +108,9 @@ Screenshots remain outside the repository and were not published. The temporary 
 | `desktop-1440x1000-sponsors.png` | `bfff101c83e6010e3286f8a0ac5e1a7de21750c57f6f74a58174f629018c2df7` |
 | `desktop-1440x1000-privacy.png` | `62fc231797bbb931f11c144dba47333f92d84aadf437638f9166eddcb3cf1986` |
 | `desktop-1440x1000-waiver.png` | `3c46440aefed0b21ca64cb8a534589d6f90d67b776a1f8b69a07bdd874154186` |
-| `zoom-200-home-tab-focus.png` | `cc0db5f3061902c9742bdc4678865c9dbdd92592bb4bf38c9e5e0d21ba196d49` |
-| `zoom-200-route-menu-open.png` | `0cc25a4a28738442c2e26111c9f3818346f3206a2557342edf0ff311b95a5d39` |
-| `zoom-200-waiver-main-focus.png` | `361c474806827ff9d6f1c40821855ccaea604261dc0ce433853f6e2f286e5b51` |
+| `zoom-200-home-tab-focus.png` | `67c3a42aeb1cfff5c6d8ec721cd6d77380af264309783f2d1753b5612e166e11` |
+| `zoom-200-route-menu-open.png` | `bccf7ebfe855b6f289bff4321998ccd65907ac70914f9df07ecde3d67a67a6db` |
+| `zoom-200-waiver-main-focus.png` | `559f1fb1885a1128d1acfc93362d5e4258c96594aca2fbec04cc162e6d3dc70e` |
 
 ## Public-output privacy classification
 
