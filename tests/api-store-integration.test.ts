@@ -1484,6 +1484,45 @@ test("the real D1 waiver migration is replayable and enforces one receipt job", 
   );
 });
 
+test("real D1 self-enrolls only exact approved staff domains and preserves blocked principals", async (t) => {
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: "staff-domain-test" }
+  });
+  t.after(() => miniflare.dispose());
+  const db = await miniflare.getD1Database("DB") as unknown as D1Database;
+  await applySql(db, await readFile(path.join(root, "migrations", "0001_hunter_platform.sql"), "utf8"));
+  const store = new D1DataStore(db);
+
+  assert.equal(await store.isActiveStaff("staff-murphy", "Murphy@SebaHub.com"), true);
+  assert.equal(await store.isActiveStaff("staff-jonnah", "jonnah@businessasaforceforgood.ca"), true);
+  assert.equal(await store.isActiveStaff("staff-lookalike", "attacker@sebahub.com.evil.test"), false);
+
+  await db.prepare(
+    `INSERT INTO staff_principals
+     (id, provider_subject, normalized_email, display_name, status, invited_at)
+     VALUES ('blocked-tech', NULL, 'tech@sebahub.com', 'Tech', 'suspended', ?)`
+  ).bind("2026-07-15T18:00:00.000Z").run();
+  assert.equal(await store.isActiveStaff("staff-tech", "tech@sebahub.com"), false);
+
+  const rows = await db.prepare(
+    "SELECT normalized_email, provider_subject, status FROM staff_principals ORDER BY normalized_email"
+  ).all<Record<string, unknown>>();
+  assert.deepEqual(rows.results.map((row) => row.normalized_email), [
+    "jonnah@businessasaforceforgood.ca",
+    "murphy@sebahub.com",
+    "tech@sebahub.com"
+  ]);
+  assert.equal(rows.results.find((row) => row.normalized_email === "tech@sebahub.com")?.status, "suspended");
+
+  const audit = await db.prepare(
+    "SELECT action, actor_subject FROM audit_events WHERE action = 'staff.domain_activated' ORDER BY occurred_at"
+  ).all<Record<string, unknown>>();
+  assert.deepEqual(audit.results.map((row) => row.actor_subject).sort(), ["staff-jonnah", "staff-murphy"]);
+});
+
 test("the Graph state upgrade preserves historical immutable delivery evidence", async (t) => {
   const migrationFiles = [
     "0001_hunter_platform.sql",

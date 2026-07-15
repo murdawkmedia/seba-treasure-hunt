@@ -12,6 +12,56 @@ interface PublicConfig {
   hunterPublishableKey: string | null;
 }
 
+export interface HunterSignupDraft {
+  fullName: string;
+  emailAddress: string;
+  password: string;
+  confirmation: string;
+  adultAttested: boolean;
+  privacyMediaReviewed: boolean;
+  privacyMediaAccepted: boolean;
+  waiverReviewed: boolean;
+  waiverAccepted: boolean;
+}
+
+type HunterSignupErrors = Partial<Record<"fullName" | "emailAddress" | "password" | "adult" | "privacyMedia" | "waiver", string>>;
+
+export function validateHunterSignupDraft(draft: HunterSignupDraft): HunterSignupErrors {
+  const errors: HunterSignupErrors = {};
+  if (!draft.fullName.trim()) errors.fullName = "Enter the adult participant's full name.";
+  if (!/^\S+@\S+\.\S+$/.test(draft.emailAddress.trim())) errors.emailAddress = "Enter a valid email address.";
+  if (draft.password.length < 12 || draft.password !== draft.confirmation) {
+    errors.password = "Enter matching passwords of at least 12 characters.";
+  }
+  if (!draft.adultAttested) errors.adult = "Confirm the adult eligibility statement.";
+  if (!draft.privacyMediaReviewed || !draft.privacyMediaAccepted) {
+    errors.privacyMedia = "Open and review the current Privacy Policy & Media Notice, then accept it.";
+  }
+  if (!draft.waiverReviewed || !draft.waiverAccepted) {
+    errors.waiver = "Open and review the current Participation Waiver, then accept it.";
+  }
+  return errors;
+}
+
+interface HunterRegistrationWorkflow {
+  bootstrap: () => Promise<void>;
+  saveProfileAndPrivacy: () => Promise<void>;
+  fetchWaiverDocument: () => Promise<Record<string, unknown>>;
+  recordWaiverReview: (documentValue: Record<string, unknown>) => Promise<string>;
+  acceptWaiver: (documentValue: Record<string, unknown>, reviewEventId: string) => Promise<void>;
+  refreshDashboard: () => Promise<void>;
+}
+
+export async function completeHunterRegistration(workflow: HunterRegistrationWorkflow): Promise<void> {
+  await workflow.bootstrap();
+  await workflow.saveProfileAndPrivacy();
+  const documentValue = await workflow.fetchWaiverDocument();
+  const reviewEventId = await workflow.recordWaiverReview(documentValue);
+  if (!reviewEventId.trim()) throw new Error("The current waiver review could not be recorded.");
+  await workflow.acceptWaiver(documentValue, reviewEventId);
+  await workflow.refreshDashboard();
+}
+
 export interface HunterProfileDraft {
   fullName: string;
   townArea: string;
@@ -238,6 +288,7 @@ const unavailableConfig = (): PublicConfig => ({
 let hunterClerk: Clerk | null = null;
 let signInAttempt: SignInResource | null = null;
 let signUpAttempt: SignUpResource | null = null;
+let pendingSignupDraft: HunterSignupDraft | null = null;
 
 async function authHeaders(auth: HunterAuthHook | null): Promise<Headers> {
   const headers = new Headers({ Accept: "application/json" });
@@ -892,7 +943,7 @@ function readWaiverDraft(): WaiverDraft {
     reviewEventId: waiverReviewEventId,
     version: typeof activeWaiverDocument?.version === "string" ? activeWaiverDocument.version : "",
     hash: typeof activeWaiverDocument?.hash === "string" ? activeWaiverDocument.hash : "",
-    waiverAccepted: document.querySelector<HTMLInputElement>('input[name="waiverAccepted"]')?.checked ?? false,
+    waiverAccepted: document.querySelector<HTMLInputElement>("#waiver-accepted")?.checked ?? false,
     guardianAttested: document.querySelector<HTMLInputElement>('input[name="guardianAttested"]')?.checked ?? false,
     minors,
   };
@@ -905,7 +956,7 @@ function showWaiverErrors(errors: WaiverErrors): void {
   }
   const targets: Record<keyof WaiverErrors, string> = {
     review: "[data-waiver-review-link]",
-    waiverAccepted: 'input[name="waiverAccepted"]',
+    waiverAccepted: "#waiver-accepted",
     guardianAttested: 'input[name="guardianAttested"]',
     minors: "[data-minors-fieldset]",
   };
@@ -1087,7 +1138,7 @@ function resetOutdatedWaiverState(): void {
   activeWaiverDocument = null;
   waiverReviewEventId = "";
   retainedWaiverIdempotencyKey = null;
-  const acceptanceInput = document.querySelector<HTMLInputElement>('input[name="waiverAccepted"]');
+  const acceptanceInput = document.querySelector<HTMLInputElement>("#waiver-accepted");
   const acceptanceCopy = document.querySelector<HTMLElement>("[data-waiver-acceptance-statement]");
   if (acceptanceInput) {
     acceptanceInput.checked = false;
@@ -1109,7 +1160,7 @@ async function initializeWaiverExperience(
   if (panel.dataset.waiverInitialized !== "true") {
     panel.dataset.waiverInitialized = "true";
     const reviewLink = document.querySelector<HTMLAnchorElement>("[data-waiver-review-link]");
-    const acceptanceInput = document.querySelector<HTMLInputElement>('input[name="waiverAccepted"]');
+    const acceptanceInput = document.querySelector<HTMLInputElement>("#waiver-accepted");
     const acceptanceCopy = document.querySelector<HTMLElement>("[data-waiver-acceptance-statement]");
     const legalBody = document.querySelector<HTMLElement>("[data-waiver-legal-body]");
     const addMinor = document.querySelector<HTMLButtonElement>("[data-add-minor]");
@@ -1356,6 +1407,108 @@ async function loadSignedInDashboard(auth: HunterAuthHook): Promise<void> {
   );
 }
 
+function readHunterSignupDraft(form: HTMLFormElement): HunterSignupDraft {
+  const data = new FormData(form);
+  return {
+    fullName: String(data.get("fullName") ?? ""),
+    emailAddress: String(data.get("email") ?? "").trim().toLowerCase(),
+    password: String(data.get("password") ?? ""),
+    confirmation: String(data.get("confirmPassword") ?? ""),
+    adultAttested: data.get("adultAttested") === "on",
+    privacyMediaReviewed: form.dataset.privacyMediaReviewed === "true",
+    privacyMediaAccepted: data.get("privacyMediaAccepted") === "on",
+    waiverReviewed: form.dataset.waiverReviewed === "true",
+    waiverAccepted: data.get("waiverAccepted") === "on",
+  };
+}
+
+function showHunterSignupErrors(form: HTMLFormElement, errors: HunterSignupErrors): void {
+  const summary = form.querySelector<HTMLElement>("[data-signup-errors]");
+  if (!summary) return;
+  const messages = Object.values(errors);
+  summary.textContent = messages.join(" ");
+  summary.hidden = messages.length === 0;
+  if (messages.length) summary.focus();
+}
+
+function setupSignupLegalReview(form: HTMLFormElement): void {
+  for (const button of form.querySelectorAll<HTMLButtonElement>("[data-signup-review]")) {
+    button.addEventListener("click", () => {
+      const kind = button.dataset.signupReview;
+      if (kind !== "privacy-media" && kind !== "waiver") return;
+      const dialog = document.querySelector<HTMLDialogElement>(`[data-signup-dialog="${kind}"]`);
+      if (!dialog) return;
+      if (kind === "privacy-media") {
+        form.dataset.privacyMediaReviewed = "true";
+        const input = form.querySelector<HTMLInputElement>('input[name="privacyMediaAccepted"]');
+        if (input) input.disabled = false;
+      } else {
+        form.dataset.waiverReviewed = "true";
+        const input = form.querySelector<HTMLInputElement>('input[name="waiverAccepted"]');
+        if (input) input.disabled = false;
+      }
+      dialog.showModal();
+    });
+  }
+  for (const close of document.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
+    close.addEventListener("click", () => close.closest<HTMLDialogElement>("dialog")?.close());
+  }
+}
+
+async function saveSignupProfileAndPrivacy(auth: HunterAuthHook, draft: HunterSignupDraft): Promise<void> {
+  const headers = await authHeaders(auth);
+  headers.set("Content-Type", "application/json");
+  const response = await fetch("/api/v1/me/profile", {
+    method: "PATCH",
+    headers,
+    credentials: "same-origin",
+    body: JSON.stringify(buildProfilePayload({
+      fullName: draft.fullName,
+      townArea: "",
+      interests: [],
+      discoverySource: "",
+      adultAttested: draft.adultAttested,
+      privacyMediaAccepted: draft.privacyMediaAccepted,
+      huntEmail: false,
+      marketing: false,
+    })),
+    signal: AbortSignal.timeout(12_000),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(profileErrorMessage(payload, "Your legal profile could not be stored."));
+}
+
+async function finalizeVerifiedSignup(auth: HunterAuthHook, draft: HunterSignupDraft): Promise<void> {
+  await completeHunterRegistration({
+    bootstrap: () => bootstrapPlayer(auth),
+    saveProfileAndPrivacy: () => saveSignupProfileAndPrivacy(auth, draft),
+    fetchWaiverDocument: fetchCurrentWaiverDocument,
+    recordWaiverReview: async (documentValue) => {
+      const payload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
+        version: documentValue.version,
+        hash: documentValue.hash,
+      });
+      return reviewIdFrom(payload);
+    },
+    acceptWaiver: async (documentValue, reviewEventId) => {
+      await waiverWrite(
+        auth,
+        "/api/v1/me/waiver/accept",
+        buildWaiverPayload({
+          reviewEventId,
+          version: text(documentValue.version, ""),
+          hash: text(documentValue.hash, ""),
+          waiverAccepted: true,
+          guardianAttested: false,
+          minors: [],
+        }),
+        crypto.randomUUID(),
+      );
+    },
+    refreshDashboard: () => loadSignedInDashboard(auth),
+  });
+}
+
 function setupAccountForms(auth: HunterAuthHook): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-show-auth]")) {
     button.addEventListener("click", () => showAuthForm(button.dataset.showAuth ?? "hunter-sign-in-form"));
@@ -1384,23 +1537,31 @@ function setupAccountForms(auth: HunterAuthHook): void {
   });
 
   const signUp = document.querySelector<HTMLFormElement>("#hunter-sign-up-form");
-  signUp?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(signUp);
-    const emailAddress = String(form.get("email") ?? "").trim().toLowerCase();
-    const password = String(form.get("password") ?? "");
-    if (!hunterClerk?.client || !emailAddress || password.length < 12) {
-      authMessage("Enter a valid email and a password of at least 12 characters.", "error");
-      return;
-    }
+  if (signUp) setupSignupLegalReview(signUp);
+  const runSignUp = signUp ? createSerializedSubmission(async () => {
+    const draft = readHunterSignupDraft(signUp);
+    const errors = validateHunterSignupDraft(draft);
+    showHunterSignupErrors(signUp, errors);
+    if (!hunterClerk?.client || Object.keys(errors).length) return;
+    const submit = signUp.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const label = submit?.textContent ?? "Create account";
+    if (submit) { submit.disabled = true; submit.textContent = "Sending code…"; }
     try {
-      signUpAttempt = await hunterClerk.client.signUp.create({ emailAddress, password });
+      pendingSignupDraft = draft;
+      signUpAttempt = await hunterClerk.client.signUp.create({ emailAddress: draft.emailAddress, password: draft.password });
       await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
       showAuthForm("hunter-verify-form");
-      authMessage("Check your email for the verification code.", "success");
+      authMessage("Check your email for one verification code.", "success");
     } catch (error) {
+      pendingSignupDraft = null;
       authMessage(identityError(error, "Your account could not be created."), "error");
+    } finally {
+      if (submit) { submit.disabled = false; submit.textContent = label; }
     }
+  }) : null;
+  signUp?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void runSignUp?.();
   });
 
   const verify = document.querySelector<HTMLFormElement>("#hunter-verify-form");
@@ -1413,17 +1574,21 @@ function setupAccountForms(auth: HunterAuthHook): void {
       if (signUpAttempt.status !== "complete" || !await activateSession(signUpAttempt.createdSessionId)) {
         throw new Error("Email verification is not complete.");
       }
-      await loadSignedInDashboard(auth);
+      if (!pendingSignupDraft) throw new Error("Your legal signup details are no longer available. Sign in and complete registration.");
+      await finalizeVerifiedSignup(auth, pendingSignupDraft);
+      pendingSignupDraft = null;
     } catch (error) {
       authMessage(identityError(error, "The verification code could not be accepted."), "error");
     }
   });
 
   const recovery = document.querySelector<HTMLFormElement>("#hunter-recovery-form");
-  recovery?.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  const runRecovery = recovery ? createSerializedSubmission(async () => {
     const identifier = String(new FormData(recovery).get("email") ?? "").trim().toLowerCase();
     if (!hunterClerk?.client || !identifier) return authMessage("Enter your account email.", "error");
+    const submit = recovery.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const label = submit?.textContent ?? "Email recovery code";
+    if (submit) { submit.disabled = true; submit.textContent = "Sending code…"; }
     try {
       signInAttempt = await hunterClerk.client.signIn.create({ strategy: "reset_password_email_code", identifier });
       const factor = signInAttempt.supportedFirstFactors?.find((item) => item.strategy === "reset_password_email_code");
@@ -1433,7 +1598,13 @@ function setupAccountForms(auth: HunterAuthHook): void {
       authMessage("If that account exists, a recovery code has been emailed.", "success");
     } catch (error) {
       authMessage(identityError(error, "Password recovery could not be started."), "error");
+    } finally {
+      if (submit) { submit.disabled = false; submit.textContent = label; }
     }
+  }) : null;
+  recovery?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void runRecovery?.();
   });
 
   const reset = document.querySelector<HTMLFormElement>("#hunter-reset-form");
@@ -1520,3 +1691,4 @@ if (typeof document !== "undefined") {
 export {};
 import type { Clerk } from "@clerk/clerk-js";
 import type { SignInResource, SignUpResource } from "@clerk/shared/types";
+import { createSerializedSubmission } from "./identity-submission";

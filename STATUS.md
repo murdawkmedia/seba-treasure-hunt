@@ -2,6 +2,8 @@
 
 Last updated: 2026-07-15
 
+The July 15 session-aware registration candidate is complete locally and awaiting its validation-only deployment. Hunter signup now requires same-page review and separate acceptance of the current Privacy/Media notice and Participation Waiver before any Clerk signup request; durable legal events are written only after verified-email session activation. The global header has a privacy-safe account menu, and `/route` reveals the 12 waypoint sections only to a Hunter session while exact map links remain subject to the existing profile, legal, case and zone gates. The separate Staff identity now permits exact verified `sebahub.com` and `businessasaforceforgood.ca` addresses to self-register, with D1 authorization, suspension protection and an append-only activation audit.
+
 ## Current state
 
 ### Validation MVP checkpoint — 2026-07-14
@@ -78,6 +80,12 @@ Graph transactional-mail wiring from `17f70c0` and `c23109f` is active. Migratio
 
 ## Verification evidence
 
+- July 15 session-aware release checks: `npm test` passed 200/200 static/contract tests and 295/295 TypeScript tests; `npm run typecheck`, `npm run legal:verify` and `npm run build` passed.
+- `npm run verify:unified-shell-qa` passed 72 navigations and 111 responsive/menu states with zero console or page errors and no external or local writes.
+- `npm run verify:waiver-qa` passed the complete signup/waiver/guardian/receipt boundary with 427 observed requests, seven allowlisted local mock writes, zero external writes, zero escaped external reads and zero privacy findings.
+- Real-D1 tests cover exact allowed-domain Staff activation, lookalike-domain rejection, suspended-record denial and audit-event creation. Route normalization rejects non-HTTPS exact links, and the global account model never derives a public identity from email or full name.
+- Security review found no new secret exposure, cross-identity issuer relaxation or public private-data path. Staff wildcard authorization is intentionally broad within the two company-owned domains and is therefore protected by separate Clerk issuer verification plus D1 status/subject/email checks. `npm audit --omit=dev --audit-level=high` passed; the existing 12 moderate Clerk optional-Solana dependency findings remain.
+
 - `npm run legal:verify`: authoritative waiver and Privacy/Media generated artifacts match their recorded versions and hashes.
 - Focused real-D1 integration passes after migrations through `0009`, including migration replay, populated receipt reconciliation, acceptance rollback, withdrawal ranking, lease fencing, interrupted-receipt replay, Ops retry/view auditing, append-only mutation rejection and atomic multi-identity rate limiting.
 - Waiver QA contract: 6/6 passing; the unified-shell, evidence-document and output-classification contracts add another 7/7 passing checks.
@@ -103,7 +111,7 @@ Validation MVP implementation is complete. The remaining owner/provider checks b
 
 1. Confirm the controlled waiver receipt in the disposable Hunter inbox and the configured sender's Sent Items, including visible From, Reply-To and complete plain/HTML content.
 2. Confirm Staff password sign-in once in a clean browser and complete one real Hunter password-recovery mailbox round trip.
-3. Add visible waypoint progress controls before public launch if progress tracking is part of the launch promise; the protected progress API already exists.
+3. Visible waypoint progress controls are deliberately deferred to the post-MVP wishlist; do not present them as a launch promise yet.
 4. Reset disposable validation identities, D1 records and media as a controlled validation-resource reset before launch.
 5. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
 
@@ -118,5 +126,7 @@ Resume with controlled waiver-receipt inbox/Sent Items verification, the clean-b
 - Descriptor: **The Seba Beach Treasure Hunt**
 - Canonical item language is **ID bundle**, not lost wallet.
 - The current 12-waypoint route is authoritative.
-- Registration is layered, not launch-gated: account creation is available while participation-only tools remain independently gated.
+- Account creation is legal-review gated: Privacy/Media and waiver review/acceptance are required before the signup request, and participation-only tools remain independently gated until verified durable acceptance succeeds.
+- Staff self-registration is limited server-side to exact verified `sebahub.com` and `businessasaforceforgood.ca` addresses; existing suspension/revocation records override the domain wildcard.
+- Signed-out visitors see the route gate. Signed-in hunters see all 12 route sections; only fully registered hunters receive currently approved Google Maps links.
 - SMS remains out of scope. Hunt email and SebaHub marketing permissions remain separate and unchecked.

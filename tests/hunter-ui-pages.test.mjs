@@ -118,6 +118,14 @@ test("start and dashboard explain the member tool without pretending historical 
   const dashboard = read("dashboard.html");
   assert.match(dashboard, /data-dashboard-state/);
   assert.match(dashboard, /Sign in/i);
+  assert.match(dashboard, /id="hunter-sign-up-form"/);
+  assert.match(dashboard, /name="fullName"/);
+  assert.match(dashboard, /data-signup-review="privacy-media"/);
+  assert.match(dashboard, /data-signup-review="waiver"/);
+  assert.match(dashboard, /name="privacyMediaAccepted"/);
+  assert.match(dashboard, /name="waiverAccepted"/);
+  assert.match(dashboard, /Privacy Policy &amp; Media Notice/);
+  assert.match(dashboard, /Participation Waiver/);
   assert.match(dashboard, /Exact directions stay locked/i);
   assert.match(dashboard, /data-dashboard-waypoints/);
   assert.match(dashboard, /data-profile-form/);
@@ -243,6 +251,19 @@ test("the clue board uses the canonical shell without becoming a navigation exce
   assert.match(shell, /@media\s*\(max-width:\s*760px\)[\s\S]*\.campaign-nav\s*\{[^}]*display:\s*none/s);
   assert.match(shell, /\.campaign-nav\.open\s*\{[^}]*display:\s*flex/s);
   assert.match(shell, /@media\s*\(max-width:\s*760px\)[\s\S]*\.campaign-menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
+});
+
+test("route details are session-aware and load protected waypoint links from the member API", () => {
+  const route = read("route.html");
+  const client = read("src/client/route.ts");
+  assert.match(route, /data-route-signed-out/);
+  assert.match(route, /data-route-member-content[^>]*hidden/);
+  assert.match(route, /data-route-member-state/);
+  assert.match(route, /\/assets\/app\/route\.js/);
+  assert.match(client, /campaignHunterSession/);
+  assert.match(client, /\/api\/v1\/me\/dashboard/);
+  assert.match(client, /participationUnlocked/);
+  assert.doesNotMatch(client, /member_exact_url|latitude|longitude/i);
 });
 
 test("the clue board loads shared status before its board client", () => {

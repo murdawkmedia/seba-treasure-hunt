@@ -194,6 +194,11 @@
 
     /* ---------- contact action buttons ---------- */
     .contact-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+    [data-route-member-content][hidden] { display: none !important; }
+    .member-route-state { padding: 18px 20px; color: var(--cream-100); background: var(--green-800); border-bottom: 2px solid var(--gold-400); text-align: center; }
+    .member-route-state a { color: var(--gold-300); }
+    .stop-meta[data-zone] { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .stop-meta[data-zone]::before { content: attr(data-zone); padding: 3px 8px; color: var(--ink-900); background: var(--gold-300); border-radius: 999px; font-family: var(--font-mono); font-size: .76rem; text-transform: uppercase; }
   </style>
   <link rel="stylesheet" href="/css/campaign-shell.css" />
 </head>
@@ -222,14 +227,17 @@
   </section>
 
   <!-- ===================== MEMBER TRAIL MAP ===================== -->
-  <section class="mapsection member-map-gate" id="trail-map">
+  <section class="mapsection member-map-gate" id="trail-map" data-route-signed-out>
     <div class="wrap">
       <p class="eyebrow">Free hunter account</p>
       <h2 class="section-title">Unlock the Precise Trail Map</h2>
-      <p class="section-lead">The twelve waypoint names and field photos stay public. Precise map points, live area labels, and your personal progress live in Hunter Dashboard so updates have one dependable home.</p>
-      <p class="center"><a class="btn" href="start.html">🔐 Sign in to open Hunter Dashboard</a></p>
+      <p class="section-lead">Sign in with your hunter account to reveal all twelve waypoints, field photos, live area labels, and approved Google Maps links.</p>
+      <p class="center"><a class="btn" href="dashboard.html">🔐 Sign in to reveal the twelve-waypoint route</a></p>
     </div>
   </section>
+
+  <div data-route-member-content hidden>
+  <section class="member-route-state" data-route-member-state role="status" aria-live="polite">Checking your hunter access&hellip;</section>
 
   <!-- ===================== ROUTE VIDEO ===================== -->
   <section class="routevideo" id="route-video">
@@ -739,6 +747,8 @@
   </section>
 
 
+  </div>
+
   <!-- ===================== FOOTER NOTE ===================== -->
   <section class="route-footnote">
     <div class="wrap">
@@ -776,5 +786,6 @@
   <!-- CAMPAIGN_FOOTER -->
   <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
+  <script type="module" src="/assets/app/route.js"></script>
 </body>
 </html>

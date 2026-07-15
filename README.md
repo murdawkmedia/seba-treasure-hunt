@@ -19,7 +19,7 @@ The bare hostname permanently redirects to the canonical `www` hostname while pr
 |---|---|
 | `/` | Campaign story, case status, primary actions, evidence and quick answers |
 | `/start` | Permanent QR destination, live route/zone ledger and safe starting instructions |
-| `/route` | Public 12-waypoint overview, public-safe photos and route video |
+| `/route` | Signed-out route gate; signed-in hunters see all 12 waypoints, field photos and server-approved map links |
 | `/interview` | Tim's full account and optional Hunter's Notes |
 | `/dashboard` | Hunter identity, profile, progress and authenticated exact guidance |
 | `/updates` | Dated official case-update feed |
@@ -30,7 +30,7 @@ The bare hostname permanently redirects to the canonical `www` hostname while pr
 | `/privacy` | Versioned Privacy Policy & Media Notice |
 | `/waiver` | Versioned Participation Waiver, guardian terms and print view |
 | `/community-guidelines` | Public contribution and moderation rules |
-| `/ops` | Invitation-only staff case room, including the private Ops Sponsors ledger |
+| `/ops` | Company-domain staff case room, including the private Ops Sponsors ledger |
 
 Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](https://www.sebastays.com/guarantee).
 
@@ -46,12 +46,14 @@ Public campaign pages declare a route marker and are rendered through `scripts/c
 - D1 provides atomic fixed-window rate limits using salted identifier hashes and expiring counters. Turnstile is the second write control.
 - Sponsor inquiries use the dedicated `sponsor_inquiry` Turnstile action, idempotency, and rate limits before entering a private D1 sponsor-inquiry and append-only event ledger. Authorized staff use Ops Sponsors to search, filter, and record audited pipeline changes.
 - Sponsor follow-up remains a deliberate staff workflow. There is no automated email, marketing subscription, public sponsor list, or CSV export in this implementation.
-- Hunter and staff identity use separate Clerk applications. Hunters use verified email and a password of at least 12 characters with provider-managed recovery. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified. Staff authorization is repeated in D1.
+- Hunter and staff identity use separate Clerk applications. Hunters review and accept the current Privacy/Media notice and Participation Waiver before the browser asks Clerk to create an account, then use verified email and a password of at least 12 characters with provider-managed recovery. After verification, the application records the versioned legal events against the verified subject before protected tools unlock. Signed Clerk lifecycle webhooks create the D1 player only after the primary email is verified.
+- Staff may self-register only with an exact verified `sebahub.com` or `businessasaforceforgood.ca` address. The browser provides an early domain check, but the Worker and D1 remain authoritative: lookalike domains, subdomains, suspended/revoked records and subject/email mismatches are denied, while first-time company-domain activation is audited.
+- The canonical campaign header exposes a privacy-safe hunter account control on every public route. It displays only the D1 public handle (or a generic Hunter fallback), never an email-derived username or full name.
 - Privacy/media acceptance, participation-waiver review and participation-waiver acceptance are separate append-only legal events. One adult may register up to ten directly supervised minors by name and birth year; those snapshots are private and absent from player exports.
 - A stored waiver acceptance queues one transactional full-text receipt to the player account's verified email. Waiver receipts plus player and staff recovery instructions share one explicitly selected transactional provider and one Reply-To; none of these messages change hunt-update or SebaHub marketing permissions.
 - `assets/favicon.svg` is the canonical Sunny Pirate Mystery Chest favicon. `npm run assets:favicons` deterministically regenerates its PNG and multi-resolution ICO variants.
 
-The browser receives waypoint names, descriptions and safety states only. Exact navigation content is returned only after hunter authentication, a completed profile, current Privacy/Media `2026.2` acceptance, current Participation Waiver `2026.1` acceptance and an active/open safety check. Exact directions, progress writes and community participation remain locked until all independent gates pass.
+The signed-out route view does not reveal the detailed waypoint experience. After hunter authentication it reveals the 12 route sections and requests the private dashboard projection; exact navigation links are rendered only after a completed profile, current Privacy/Media `2026.2` acceptance, current Participation Waiver `2026.1` acceptance and an active/open safety check. Exact directions, progress writes and community participation remain locked until all independent gates pass.
 
 ## Privacy and campaign artwork
 
@@ -111,7 +113,7 @@ If the delegated grant is revoked or expired, run `node scripts/graph-device-log
 Do not promote a build until all of these are configured and tested in preview:
 
 1. public Clerk application with verified email/password, password recovery and compromised-password protection;
-2. separate invitation-only staff Clerk application;
+2. separate staff Clerk application with email/password signup enabled; D1 restricts authorization to the exact approved company domains or a pre-existing private invitation;
 3. signed Clerk lifecycle webhook and deployment secret;
 4. required D1 migrations through `0010_graph_transactional_email.sql`, including the player/legal ledger, environment sentinel, sponsor inquiries, waiver/receipt records, fenced delivery leases, immutable legal-delivery ledgers, atomic rate-limit counters and encrypted delegated Graph token state;
 5. privately seeded staff principals;

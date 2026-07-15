@@ -1,5 +1,7 @@
 import type { Clerk } from "@clerk/clerk-js";
-import type { SignInResource } from "@clerk/shared/types";
+import type { SignInResource, SignUpResource } from "@clerk/shared/types";
+import { createSerializedSubmission } from "./identity-submission";
+import { isAllowedStaffEmail } from "../server/staff-domains";
 
 type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit";
 
@@ -147,6 +149,7 @@ const sponsorSupportTypes: readonly OpsSponsorSupportType[] = ["community", "lea
 
 let staffClerk: Clerk | null = null;
 let signInAttempt: SignInResource | null = null;
+let signUpAttempt: SignUpResource | null = null;
 let latestDashboard: OpsDashboard | null = null;
 let loadedSubscribers: OpsSubscriberRecord[] = [];
 let subscriberNextCursor: string | null = null;
@@ -1038,8 +1041,10 @@ async function activateAttempt(): Promise<boolean> {
   return true;
 }
 
-function showAuthForm(id: "ops-sign-in-form" | "ops-second-factor-form" | "ops-recovery-form" | "ops-recovery-complete-form"): void {
-  for (const formId of ["ops-sign-in-form", "ops-second-factor-form", "ops-recovery-form", "ops-recovery-complete-form"]) {
+type OpsAuthFormId = "ops-sign-in-form" | "ops-sign-up-form" | "ops-sign-up-verify-form" | "ops-second-factor-form" | "ops-recovery-form" | "ops-recovery-complete-form";
+
+function showAuthForm(id: OpsAuthFormId): void {
+  for (const formId of ["ops-sign-in-form", "ops-sign-up-form", "ops-sign-up-verify-form", "ops-second-factor-form", "ops-recovery-form", "ops-recovery-complete-form"]) {
     const form = document.querySelector<HTMLFormElement>(`#${formId}`);
     if (form) form.hidden = formId !== id;
   }
@@ -1089,7 +1094,7 @@ async function initialiseManagedIdentity(): Promise<void> {
     staffClerk = new ClerkConstructor(publishableKey);
     await staffClerk.load();
     if (staffClerk.user && await verifyStaffSession()) return;
-    setAuthMessage("Managed staff identity is ready. Only invited accounts can continue.", "ready");
+    setAuthMessage("Managed staff identity is ready. Verified company-domain accounts can continue.", "ready");
   } catch (error) {
     setAuthMessage(identityError(error, "Staff identity could not be loaded."), "error");
   }
@@ -1097,15 +1102,75 @@ async function initialiseManagedIdentity(): Promise<void> {
 
 function setupAuthForms(): void {
   const signIn = document.querySelector<HTMLFormElement>("#ops-sign-in-form");
+  const signUp = document.querySelector<HTMLFormElement>("#ops-sign-up-form");
+  const signUpVerify = document.querySelector<HTMLFormElement>("#ops-sign-up-verify-form");
   const secondFactor = document.querySelector<HTMLFormElement>("#ops-second-factor-form");
   const recovery = document.querySelector<HTMLFormElement>("#ops-recovery-form");
   const recoveryComplete = document.querySelector<HTMLFormElement>("#ops-recovery-complete-form");
-  if (!signIn || !secondFactor || !recovery || !recoveryComplete) return;
+  if (!signIn || !signUp || !signUpVerify || !secondFactor || !recovery || !recoveryComplete) return;
 
+  document.querySelector("#show-staff-sign-up")?.addEventListener("click", () => showAuthForm("ops-sign-up-form"));
   document.querySelector("#show-recovery")?.addEventListener("click", () => showAuthForm("ops-recovery-form"));
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-back-to-sign-in]")) {
-    button.addEventListener("click", () => { signInAttempt = null; showAuthForm("ops-sign-in-form"); });
+    button.addEventListener("click", () => { signInAttempt = null; signUpAttempt = null; showAuthForm("ops-sign-in-form"); });
   }
+
+  const runStaffSignUp = createSerializedSubmission(async () => {
+    const client = staffClerk?.client;
+    const submit = signUp.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const error = signUp.querySelector<HTMLElement>(".ops-form__error");
+    const formData = new FormData(signUp);
+    const emailAddress = asString(formData.get("email")).trim().toLowerCase();
+    const password = asString(formData.get("password"));
+    const confirmation = asString(formData.get("confirmPassword"));
+    if (!client || !isAllowedStaffEmail(emailAddress) || password.length < 14 || password !== confirmation) {
+      if (error) {
+        error.hidden = false;
+        error.textContent = "Use an approved company email and matching passwords of at least 14 characters.";
+      }
+      return;
+    }
+    const label = submit?.textContent ?? "Create staff account";
+    if (submit) { submit.disabled = true; submit.textContent = "Sending code…"; }
+    try {
+      signUpAttempt = await client.signUp.create({ emailAddress, password });
+      await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
+      showAuthForm("ops-sign-up-verify-form");
+      setAuthMessage("Check your company email for one verification code.", "ready");
+    } catch (caught) {
+      if (error) { error.hidden = false; error.textContent = identityError(caught, "Staff account creation failed."); }
+    } finally {
+      if (submit) { submit.disabled = false; submit.textContent = label; }
+    }
+  });
+
+  signUp.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void runStaffSignUp();
+  });
+
+  signUpVerify.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const code = asString(new FormData(signUpVerify).get("code")).trim();
+    if (!signUpAttempt || !code || !staffClerk) {
+      setAuthMessage("Enter the verification code from your company email.", "error");
+      return;
+    }
+    try {
+      signUpAttempt = await signUpAttempt.attemptEmailAddressVerification({ code });
+      if (signUpAttempt.status !== "complete" || !signUpAttempt.createdSessionId) {
+        throw new Error("Company email verification is not complete.");
+      }
+      await staffClerk.setActive({ session: signUpAttempt.createdSessionId });
+      if (!await verifyStaffSession()) {
+        await staffClerk.signOut();
+        throw new Error("This verified address is not authorized for case-room access.");
+      }
+      signUpAttempt = null;
+    } catch (caught) {
+      setAuthMessage(identityError(caught, "Company email verification failed."), "error");
+    }
+  });
 
   signIn.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1151,21 +1216,29 @@ function setupAuthForms(): void {
     }
   });
 
-  recovery.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  const runRecovery = createSerializedSubmission(async () => {
     const client = staffClerk?.client;
     if (!client) return;
+    const submit = recovery.querySelector<HTMLButtonElement>('button[type="submit"]');
     const identifier = asString(new FormData(recovery).get("email")).trim().toLowerCase();
+    const label = submit?.textContent ?? "Send verification code";
+    if (submit) { submit.disabled = true; submit.textContent = "Sending code…"; }
     try {
       signInAttempt = await client.signIn.create({ strategy: "reset_password_email_code", identifier });
       const factor = signInAttempt.supportedFirstFactors?.find((item) => item.strategy === "reset_password_email_code");
       if (!factor || factor.strategy !== "reset_password_email_code") throw new Error("Email recovery is not available for this account.");
       signInAttempt = await signInAttempt.prepareFirstFactor({ strategy: "reset_password_email_code", emailAddressId: factor.emailAddressId });
       showAuthForm("ops-recovery-complete-form");
-      setAuthMessage("If the invited account exists, its verification code has been sent.", "ready");
+      setAuthMessage("If the staff account exists, its verification code has been sent.", "ready");
     } catch (error) {
       setAuthMessage(identityError(error, "Recovery could not be started."), "error");
+    } finally {
+      if (submit) { submit.disabled = false; submit.textContent = label; }
     }
+  });
+  recovery.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void runRecovery();
   });
 
   recoveryComplete.addEventListener("submit", async (event) => {

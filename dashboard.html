@@ -56,9 +56,23 @@
         </form>
         <form id="hunter-sign-up-form" class="auth-form" novalidate hidden>
           <div class="form-grid">
+            <div class="form-field"><label for="hunter-sign-up-name">Adult participant name</label><input id="hunter-sign-up-name" name="fullName" type="text" autocomplete="name" maxlength="100" required /></div>
             <div class="form-field"><label for="hunter-sign-up-email">Email</label><input id="hunter-sign-up-email" name="email" type="email" autocomplete="email" required /></div>
             <div class="form-field"><label for="hunter-sign-up-password">Create password</label><input id="hunter-sign-up-password" name="password" type="password" autocomplete="new-password" minlength="12" required /><span class="field-hint">Use at least 12 characters. Passwords and recovery codes are managed by our identity provider, not this website.</span></div>
+            <div class="form-field"><label for="hunter-sign-up-confirm">Confirm password</label><input id="hunter-sign-up-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></div>
           </div>
+          <fieldset class="signup-legal">
+            <legend>Required legal review</legend>
+            <p>Open both current documents here before accepting them. Your acceptance is stored against your verified account after email verification.</p>
+            <div class="signup-legal__actions">
+              <button class="hunter-button hunter-button--quiet" type="button" data-signup-review="privacy-media">View Privacy Policy &amp; Media Notice</button>
+              <button class="hunter-button hunter-button--quiet" type="button" data-signup-review="waiver">View Participation Waiver</button>
+            </div>
+            <label class="check-row"><input name="adultAttested" type="checkbox" required /><span>I confirm that I am an adult participant and will follow the current hunt rules.</span></label>
+            <label class="check-row"><input name="privacyMediaAccepted" type="checkbox" required disabled /><span>I have read and agree to the current <a href="/privacy#media-notice" target="_blank" rel="noopener">Privacy Policy &amp; Media Notice</a>.</span></label>
+            <label class="check-row"><input name="waiverAccepted" type="checkbox" required disabled /><span>I have read and accept the current <a href="/waiver" target="_blank" rel="noopener">Participation Waiver</a>.</span></label>
+            <div class="field-error" data-signup-errors role="alert" hidden></div>
+          </fieldset>
           <div id="clerk-captcha"></div>
           <div class="action-row"><button class="hunter-button" type="submit">Create account</button><button class="hunter-button hunter-button--quiet" type="button" data-show-auth="hunter-sign-in-form">Back to sign in</button></div>
         </form>
@@ -80,6 +94,18 @@
         </form>
         <p><a href="/route">Continue with the public route</a></p>
       </section>
+
+      <dialog class="signup-legal-dialog" data-signup-dialog="privacy-media" aria-labelledby="signup-privacy-title">
+        <div class="signup-legal-dialog__header"><h2 id="signup-privacy-title">Privacy Policy &amp; Media Notice</h2><button type="button" data-signup-dialog-close aria-label="Close Privacy Policy and Media Notice">&times;</button></div>
+        <iframe src="/privacy.html#media-notice" title="Current Privacy Policy and Media Notice"></iframe>
+        <p><a href="/privacy#media-notice" target="_blank" rel="noopener">Open the full notice in a new tab</a></p>
+      </dialog>
+
+      <dialog class="signup-legal-dialog" data-signup-dialog="waiver" aria-labelledby="signup-waiver-title">
+        <div class="signup-legal-dialog__header"><h2 id="signup-waiver-title">Participation Waiver</h2><button type="button" data-signup-dialog-close aria-label="Close Participation Waiver">&times;</button></div>
+        <iframe src="/waiver.html" title="Current Participation Waiver"></iframe>
+        <p><a href="/waiver" target="_blank" rel="noopener">Open the full waiver in a new tab</a></p>
+      </dialog>
 
       <section class="dashboard-grid" data-dashboard-content hidden aria-label="Your Hunter Dashboard" style="margin-top: 22px">
         <aside class="dashboard-sidebar">

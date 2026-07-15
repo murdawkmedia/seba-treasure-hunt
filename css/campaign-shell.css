@@ -291,6 +291,69 @@ html {
   text-decoration: none;
 }
 
+.campaign-account {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.campaign-account button {
+  min-height: 40px;
+  padding: 7px 10px;
+  color: var(--campaign-paper-100);
+  background: transparent;
+  border: 1px solid rgba(242, 205, 106, 0.55);
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.campaign-account__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.campaign-account__avatar {
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  width: 30px;
+  height: 30px;
+  color: var(--campaign-ink);
+  background: var(--campaign-gold-300);
+  border-radius: 50%;
+  font-family: var(--campaign-font-meta);
+  font-size: 0.76rem;
+}
+
+.campaign-account__avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.campaign-account__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  right: 0;
+  display: grid;
+  min-width: 180px;
+  padding: 7px;
+  background: var(--campaign-forest-950);
+  border: 1px solid var(--campaign-gold-400);
+  border-radius: 8px;
+  box-shadow: 0 14px 30px rgba(2, 16, 14, 0.36);
+}
+
+.campaign-account__menu[hidden] { display: none; }
+
+.campaign-account__menu button {
+  width: 100%;
+  border-color: transparent;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.campaign-account__menu button:hover,
+.campaign-account__menu button:focus-visible { color: var(--campaign-ink); background: var(--campaign-gold-300); }
+
 .campaign-footer {
   padding: 38px 22px;
   color: var(--campaign-paper-300);
@@ -397,6 +460,11 @@ html {
     border-top: 1px solid rgba(234, 182, 63, 0.2);
     border-radius: 0;
   }
+
+  .campaign-account { width: 100%; padding: 8px 12px; border-top: 1px solid rgba(234, 182, 63, 0.2); }
+  .campaign-account__signin,
+  .campaign-account__toggle { width: 100%; justify-content: flex-start; }
+  .campaign-account__menu { position: static; width: 100%; margin-top: 6px; box-shadow: none; }
 
   .campaign-footer__inner { flex-direction: column; }
 }

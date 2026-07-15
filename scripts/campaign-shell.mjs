@@ -53,6 +53,7 @@ const canonicalShellRoots = [
   "campaign-header__inner",
   "campaign-menu-toggle",
   "campaign-nav",
+  "campaign-account",
   "campaign-footer",
 ];
 const canonicalShellIds = ["campaign-nav"];
@@ -122,6 +123,15 @@ function renderCampaignShell({ route, skipLabel, skipTarget }) {
     <button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle campaign menu</span><span aria-hidden="true">&#9776;</span></button>
     <nav class="campaign-nav" id="campaign-nav" aria-label="Campaign">
         ${navigation}
+        <div class="campaign-account" data-campaign-account>
+          <button class="campaign-account__signin" type="button" data-campaign-account-sign-in>Sign in</button>
+          <button class="campaign-account__toggle" type="button" data-campaign-account-toggle aria-expanded="false" aria-controls="campaign-account-menu" hidden><span class="campaign-account__avatar" data-campaign-account-avatar aria-hidden="true">?</span><span data-campaign-account-handle>Hunter</span></button>
+          <div class="campaign-account__menu" id="campaign-account-menu" data-campaign-account-menu hidden>
+            <button type="button" data-campaign-account-destination="/dashboard">Dashboard</button>
+            <button type="button" data-campaign-account-destination="/dashboard#profile">Edit profile</button>
+            <button type="button" data-campaign-sign-out>Sign out</button>
+          </div>
+        </div>
     </nav>
   </div>
 </header>`;
@@ -136,7 +146,8 @@ function renderCampaignFooter(route) {
         ${links}
     </nav>
   </div>
-</footer>`;
+</footer>
+<script type="module" src="/assets/app/account.js"></script>`;
 }
 
 function malformedHtml(detail) {

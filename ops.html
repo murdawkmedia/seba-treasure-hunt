@@ -28,9 +28,9 @@
       <span>Restricted case room</span>
     </div>
     <div class="ops-gateway__card">
-      <p class="ops-kicker">Invitation-only staff access</p>
+      <p class="ops-kicker">Company-domain staff access</p>
       <h1 id="ops-gateway-title">Open the case room</h1>
-      <p class="ops-gateway__intro">Use the email address on your invitation and your managed staff password. Public hunter accounts cannot open this console.</p>
+      <p class="ops-gateway__intro">Use your separate staff account. Verified SebaHub and Business as a Force for Good addresses may create one here; public hunter accounts cannot open this console.</p>
 
       <div class="ops-notice" id="ops-auth-config" role="status" aria-live="polite">Checking staff identity service&hellip;</div>
 
@@ -41,7 +41,29 @@
         <label for="ops-password">Password</label>
         <input id="ops-password" name="password" type="password" autocomplete="current-password" minlength="14" required />
         <button class="ops-button ops-button--primary" type="submit">Sign in</button>
+        <button class="ops-text-button" id="show-staff-sign-up" type="button">Create staff account</button>
         <button class="ops-text-button" id="show-recovery" type="button">Forgot your password?</button>
+      </form>
+
+      <form class="ops-form" id="ops-sign-up-form" hidden novalidate>
+        <div class="ops-form__error" role="alert" hidden></div>
+        <p class="ops-form__lead">Create an operator identity using an address ending exactly in <strong>sebahub.com</strong> or <strong>businessasaforceforgood.ca</strong>.</p>
+        <label for="ops-sign-up-email">Company email</label>
+        <input id="ops-sign-up-email" name="email" type="email" autocomplete="username" required />
+        <label for="ops-sign-up-password">Create password</label>
+        <input id="ops-sign-up-password" name="password" type="password" autocomplete="new-password" minlength="14" required />
+        <label for="ops-sign-up-confirm">Confirm password</label>
+        <input id="ops-sign-up-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="14" required />
+        <button class="ops-button ops-button--primary" type="submit">Create staff account</button>
+        <button class="ops-text-button" data-back-to-sign-in type="button">Back to sign in</button>
+      </form>
+
+      <form class="ops-form" id="ops-sign-up-verify-form" hidden novalidate>
+        <p class="ops-form__lead">Enter the verification code sent to your company email. Server authorization is applied only after the address is verified.</p>
+        <label for="ops-sign-up-code">Verification code</label>
+        <input id="ops-sign-up-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required />
+        <button class="ops-button ops-button--primary" type="submit">Verify and open case room</button>
+        <button class="ops-text-button" data-back-to-sign-in type="button">Cancel account creation</button>
       </form>
 
       <form class="ops-form" id="ops-second-factor-form" hidden novalidate>

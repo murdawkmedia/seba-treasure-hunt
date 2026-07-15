@@ -228,7 +228,9 @@ async function installQaBoundary(context, origin, networkLedger) {
 
 function attachErrorAudit(page, label, consoleErrors, pageErrors) {
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push({ label: label(), message: message.text() });
+    if (message.type() === "error") {
+      consoleErrors.push({ label: label(), message: message.text(), location: message.location() });
+    }
   });
   page.on("pageerror", (error) => pageErrors.push({ label: label(), message: error.message }));
 }

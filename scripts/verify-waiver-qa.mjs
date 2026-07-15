@@ -289,6 +289,7 @@ function readMockResponse(url, fixtureState, legalDocument) {
   if (url.pathname === "/api/v1/rules/current") return jsonResponse({ data: { id: "rules-qa", version: "qa", title: "QA rules", body: "Test-only current rules.", lastUpdatedAt: "2026-07-13T18:00:00.000Z" } });
   if (url.pathname === "/api/v1/legal/waiver") return jsonResponse({ data: legalDocument });
   if (url.pathname === "/api/v1/me/dashboard") return jsonResponse(dashboardPayload());
+  if (url.pathname === "/api/v1/me/profile") return jsonResponse({ data: { publicHandle: "@qa-hunter" } });
   if (url.pathname === "/api/v1/me/waiver") return fixtureState.accepted ? jsonResponse(acceptancePayload(legalDocument, fixtureState.receiptStatus)) : jsonResponse({ data: { acceptance: null, document: { waiver: legalDocument } } });
   if (url.pathname === "/api/v1/waypoints") return jsonResponse({ data: { items: [{ id: "1", name: "Waypoint 01" }] } });
   if (url.pathname === "/api/v1/board") return jsonResponse({ data: { items: [{ id: "note-public-1", waypointId: "1", body: "A public-safe observation near the marked trail.", authorHandle: "@public-qa", createdAt: "2026-07-13T18:00:00.000Z", media: [], replies: [{ id: "reply-public-1", body: "Public-safe reply.", authorHandle: "@reply-qa", createdAt: "2026-07-13T18:05:00.000Z" }] }] }, page: { nextCursor: null } });
@@ -458,9 +459,9 @@ async function exerciseDashboard(page, legalSource, viewportName, evidence) {
   assert.equal(await page.locator("[data-minor-row]").count(), 10, "minor counts 0, 1, and 10 must be real DOM states");
   for (let index = 9; index >= 1; index -= 1) await page.locator("[data-minor-row] button").nth(index).click();
   await page.locator("[data-waiver-review-link]").click();
-  await page.locator('input[name="waiverAccepted"]:not([disabled])').waitFor();
+  await page.locator("#waiver-accepted:not([disabled])").waitFor();
   await assertExactLegalDisplay(page, legalSource, "[data-waiver-legal-body]", "[data-waiver-legal-body] > h3");
-  await page.locator('input[name="waiverAccepted"]').check();
+  await page.locator("#waiver-accepted").check();
   await page.locator('input[name="guardianAttested"]').evaluate((input) => {
     input.checked = true;
     input.dispatchEvent(new Event("change", { bubbles: true }));

@@ -55,6 +55,12 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(html, /<meta name="robots" content="noindex,nofollow/);
   assert.match(html, /id="ops-sign-in-form"/);
   assert.match(html, /autocomplete="current-password"/);
+  assert.match(html, /id="ops-sign-up-form"/);
+  assert.match(html, /id="ops-sign-up-verify-form"/);
+  assert.match(html, /Create staff account/i);
+  assert.match(html, /sebahub\.com/i);
+  assert.match(html, /businessasaforceforgood\.ca/i);
+  assert.match(html, /autocomplete="new-password"/);
   assert.match(html, /id="ops-recovery-form"/);
   assert.match(html, /verification code/i);
   assert.match(html, /Optional authenticator MFA/i);
@@ -80,6 +86,10 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(html, /cannot see or choose another operator(?:&rsquo;|')s password/is);
   assert.doesNotMatch(html, /name="(?:other|peer)[-_ ]?password"/i);
   assert.match(client, /\/api\/v1\/ops\/session/);
+  assert.match(client, /signUp\.create/);
+  assert.match(client, /prepareEmailAddressVerification/);
+  assert.match(client, /attemptEmailAddressVerification/);
+  assert.match(client, /createSerializedSubmission/);
   assert.match(client, /\/api\/v1\/ops\/dashboard/);
   assert.match(html, /id="sponsors-table"/);
   assert.match(html, /id="sponsor-state-filter"/);

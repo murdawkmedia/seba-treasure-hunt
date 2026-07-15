@@ -1,5 +1,6 @@
 import { ApiError, ConflictError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument } from "./legal-documents";
+import { isAllowedStaffEmail, staffDisplayName } from "./staff-domains";
 import type {
   CaseStatus,
   DataStore,
@@ -1872,7 +1873,7 @@ export class D1DataStore implements DataStore {
 
   async isActiveStaff(subject: string, normalizedEmail: string | null): Promise<boolean> {
     if (!normalizedEmail) return false;
-    const normalized = normalizedEmail.toLowerCase();
+    const normalized = normalizedEmail.trim().toLowerCase();
     const row = await this.db
       .prepare(
         `SELECT id FROM staff_principals
@@ -1884,27 +1885,70 @@ export class D1DataStore implements DataStore {
 
     const invitation = await this.db
       .prepare(
-        `SELECT id FROM staff_principals
-         WHERE provider_subject IS NULL AND normalized_email = ? AND status = 'invited' LIMIT 1`
+        `SELECT id, provider_subject, status FROM staff_principals
+         WHERE normalized_email = ? LIMIT 1`
       )
       .bind(normalized)
       .first<Row>();
-    if (!invitation) return false;
+    if (invitation) {
+      if (invitation.provider_subject || invitation.status !== "invited") return false;
+      const timestamp = now();
+      try {
+        const result = await this.db
+          .prepare(
+            `UPDATE staff_principals SET provider_subject = ?, status = 'active',
+               activated_at = COALESCE(activated_at, ?), last_login_at = ?
+             WHERE id = ? AND provider_subject IS NULL AND status = 'invited'`
+          )
+          .bind(subject, timestamp, timestamp, invitation.id)
+          .run();
+        if (!result.meta.changes) return false;
+        await this.audit(subject, "staff.activated", "staff_principal", value(invitation.id), {});
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    if (!isAllowedStaffEmail(normalized)) return false;
     const timestamp = now();
+    const principalId = id();
     try {
-      const result = await this.db
-        .prepare(
-          `UPDATE staff_principals SET provider_subject = ?, status = 'active',
-             activated_at = COALESCE(activated_at, ?), last_login_at = ?
-           WHERE id = ? AND provider_subject IS NULL AND status = 'invited'`
-        )
-        .bind(subject, timestamp, timestamp, invitation.id)
-        .run();
-      if (!result.meta.changes) return false;
-      await this.audit(subject, "staff.activated", "staff_principal", value(invitation.id), {});
+      await this.db.batch([
+        this.db
+          .prepare(
+            `INSERT INTO staff_principals
+             (id, provider_subject, normalized_email, display_name, status,
+              invited_at, activated_at, last_login_at)
+             VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`
+          )
+          .bind(
+            principalId,
+            subject,
+            normalized,
+            staffDisplayName(normalized),
+            timestamp,
+            timestamp,
+            timestamp
+          ),
+        this.db
+          .prepare(
+            `INSERT INTO audit_events
+             (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+             VALUES (?, ?, 'staff.domain_activated', 'staff_principal', ?, ?, ?)`
+          )
+          .bind(id(), subject, principalId, json({ domain: normalized.split("@")[1] }), timestamp)
+      ]);
       return true;
     } catch {
-      return false;
+      const raced = await this.db
+        .prepare(
+          `SELECT id FROM staff_principals
+           WHERE provider_subject = ? AND normalized_email = ? AND status = 'active' LIMIT 1`
+        )
+        .bind(subject, normalized)
+        .first<Row>();
+      return Boolean(raced);
     }
   }
 

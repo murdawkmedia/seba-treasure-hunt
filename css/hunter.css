@@ -475,6 +475,71 @@ button.hunter-button {
   font-weight: 400;
 }
 
+.signup-legal {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+  padding: 18px;
+  border: 2px solid var(--hunter-paper-deep);
+  border-radius: 8px;
+}
+
+.signup-legal legend {
+  padding-inline: 8px;
+  font-family: var(--hunter-display);
+  font-size: 1.35rem;
+}
+
+.signup-legal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.signup-legal-dialog {
+  width: min(960px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  padding: 0;
+  color: var(--hunter-ink-dark);
+  background: var(--hunter-paper);
+  border: 2px solid var(--hunter-gold);
+  border-radius: 10px;
+}
+
+.signup-legal-dialog::backdrop { background: rgba(2, 16, 14, 0.78); }
+
+.signup-legal-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--hunter-green);
+  color: var(--hunter-cream);
+}
+
+.signup-legal-dialog__header h2 { margin: 0; color: inherit; }
+
+.signup-legal-dialog__header button {
+  min-width: 44px;
+  min-height: 44px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.signup-legal-dialog iframe {
+  display: block;
+  width: 100%;
+  height: min(68vh, 720px);
+  border: 0;
+}
+
+.signup-legal-dialog > p { margin: 12px 18px 18px; }
+
 .profile-editor {
   scroll-margin-top: var(--stacked-header-height);
 }

@@ -150,7 +150,18 @@ test("renders one complete canonical shell and footer without changing page cont
     /<button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle campaign menu<\/span><span aria-hidden="true">&#9776;<\/span><\/button>/,
   );
   assert.match(primaryNav(html), /id="campaign-nav" aria-label="Campaign"/);
+  assert.match(primaryNav(html), /class="campaign-account" data-campaign-account/);
+  assert.match(primaryNav(html), /class="campaign-account__signin" type="button" data-campaign-account-sign-in>Sign in<\/button>/);
+  assert.match(primaryNav(html), /data-campaign-account-toggle/);
+  assert.match(primaryNav(html), /data-campaign-account-menu/);
+  assert.match(primaryNav(html), /data-campaign-account-destination="\/dashboard#profile">Edit profile<\/button>/);
+  assert.match(primaryNav(html), /data-campaign-sign-out/);
   assert.doesNotMatch(html, /CAMPAIGN_SHELL|CAMPAIGN_FOOTER/);
+});
+
+test("the canonical shell loads one global account client after public page content", () => {
+  const html = renderCampaignPage(source(), "route.html");
+  assert.equal((html.match(/src="\/assets\/app\/account\.js"/g) ?? []).length, 1);
 });
 
 test("renders the exact primary menu order, current route, and Sponsors class", () => {

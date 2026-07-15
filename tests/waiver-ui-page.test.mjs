@@ -67,6 +67,8 @@ test("waiver client wires review, acceptance, status and resend without injectin
   assert.match(client, /headers\.set\("Idempotency-Key", idempotencyKey\)/);
   assert.match(client, /retainedWaiverIdempotencyKey\s*=\s*null/);
   assert.match(client, /privacy\.checked\s*=\s*!privacyMediaRequired/);
+  assert.match(client, /querySelector<.*>\("#waiver-accepted"\)/);
+  assert.doesNotMatch(client, /document\.querySelector<.*>\('input\[name="waiverAccepted"\]'\)/);
   assert.match(client, /add\.disabled\s*=\s*rows\.length\s*>=\s*10/);
   assert.match(client, /document\.createElement\("div"\)/);
   assert.match(client, /nameInput\.value/);

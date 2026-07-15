@@ -339,6 +339,9 @@ test("contextual focus maps public parchment and resets nested dark utilities", 
     await assertFocusColor(sponsorResult, gold, "sponsor result resets to gold on its dark surface");
 
     await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
+    await page.locator("[data-route-member-content]").evaluate((element) => {
+      element.hidden = false;
+    });
     await assertFocusColor(page.locator(".stop .stop-meta a").first(), dark, "route stop link uses dark focus on parchment", page.locator(".stop").first());
 
     await page.goto(`${origin}/index.html`, { waitUntil: "domcontentloaded" });
@@ -377,6 +380,9 @@ test("focus-within parent outlines work when every :has support block is unavail
     const page = await context.newPage();
 
     await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
+    await page.locator("[data-route-member-content]").evaluate((element) => {
+      element.hidden = false;
+    });
     await assertTransferredOutline({
       child: page.locator(".stop .photo > a").first(),
       parent: page.locator(".stop .photo").first(),
@@ -411,6 +417,9 @@ test("modern overflow-clipped targets keep one parent outline and visible nested
     const page = await context.newPage();
 
     await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
+    await page.locator("[data-route-member-content]").evaluate((element) => {
+      element.hidden = false;
+    });
     await assertTransferredOutline({
       child: page.locator(".stop .photo > a").first(),
       parent: page.locator(".stop .photo").first(),
