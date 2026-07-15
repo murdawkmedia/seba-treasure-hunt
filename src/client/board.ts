@@ -295,7 +295,7 @@ function nextCursor(payload: unknown): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-async function initialiseBoard(): Promise<void> {
+export async function initialiseBoard(): Promise<void> {
   const feed = document.querySelector<HTMLElement>("#board-feed");
   const status = document.querySelector<HTMLElement>("#board-status");
   const filter = document.querySelector<HTMLSelectElement>("#waypoint-filter");
