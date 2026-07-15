@@ -36,6 +36,8 @@ Every **Always Sunny in Seba** badge links to the [SebaStays Sunny Guarantee](ht
 
 ## Architecture
 
+Public campaign pages declare a route marker and are rendered through `scripts/campaign-shell.mjs` during `npm run build`. Do not hand-edit generated navigation or footer markup. Update the route registry and its contract tests instead. `css/campaign-shell.css` owns the shared public chrome and design tokens; the private Ops console remains intentionally independent.
+
 - Cloudflare Pages advanced-mode Worker serves the site and versioned API.
 - D1 stores case state, dated updates, rules, zones, waypoints, player accounts, profiles, progress, communication permissions, append-only legal acceptances, reports, moderation and audit events. It never stores passwords or reset codes.
 - Private R2 stores report and community-media originals.
