@@ -57,6 +57,17 @@ The waiver QA run observed 251 requests: 129 continued local reads, 37 external 
 
 The focused browser run blocked all non-local requests. The screenshot captures also intercepted every external request before network continuation: 23 font or Turnstile requests were fulfilled locally, zero external request continued and zero page error was recorded.
 
+A separate console audit used the same source-rendered local shell server, the freshly built client assets and local API fixtures. It covered 72 page navigations and 111 route states:
+
+- 26 collapsed/expanded states at 360x900;
+- 13 desktop states at 768x900;
+- 13 desktop states at 1440x900;
+- 26 collapsed/expanded states at the 720x500 200%-zoom equivalent;
+- 26 collapsed/expanded states at 390x844; and
+- 7 representative desktop states at 1440x1000.
+
+The audit recorded zero `console.error` messages and zero uncaught page errors. It intercepted 89 external request attempts: 72 Google Fonts stylesheet requests and 17 Cloudflare Turnstile script requests. Every external request was fulfilled locally with a non-networking QA response; zero external request continued. Local API fixtures were also fulfilled inside the audit boundary so console results reflect the shell and built clients rather than unavailable test infrastructure.
+
 ## Visual inspection
 
 Representative full-page captures were reviewed for Home, Route, Interview, Clue Board, Dashboard, Sponsors, Privacy and Waiver at 390x844 and 1440x1000. Separate 720x500 captures show the focused Home skip link, the complete open Route menu and the Waiver main-content landing after skip navigation.

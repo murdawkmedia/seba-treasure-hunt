@@ -81,6 +81,7 @@ Graph transactional-mail wiring remains locally complete in `17f70c0` and `c2310
 - `npm run typecheck`: Worker, client, Worker-test and client-test checks passed.
 - `npm run build`: passed; Pages Worker 316.9 kB, media Worker 3.2 kB and client bundles completed.
 - Focused campaign navigation/accessibility verification: 12/12 passed. Nineteen representative screenshots were captured outside the repository with external requests blocked and zero page errors; the artifact names and SHA-256 values are recorded in `docs/qa/2026-07-14-unified-campaign-shell-verification.md`.
+- Dedicated console verification covered 72 page navigations and 111 collapsed, expanded, desktop and zoom-equivalent route states with zero console errors and zero uncaught page errors. All 89 external attempts were intercepted locally (72 font stylesheets and 17 Turnstile scripts); zero external request continued.
 - `git diff --check`: passed. Pre-existing Wrangler/workerd processes were neither started nor stopped and were not used as release evidence.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
