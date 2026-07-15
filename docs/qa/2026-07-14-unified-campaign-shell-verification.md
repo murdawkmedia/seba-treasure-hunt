@@ -36,7 +36,7 @@ node --test tests/navigation-geometry.test.mjs tests/campaign-shell-accessibilit
 Fresh results:
 
 - Legal generation check: passed. Participation Waiver `2026.1` remains SHA-256 `1a6e50f445fc7c67962e5e0050c7fbe161d7d78e679dab4f6fde951602cf3607`; Privacy Policy & Media Notice `2026.2` remains SHA-256 `47e26763d46441e2e155a6d0ca3869986395c49b60073a8da9256577229f07a8`.
-- Static/contract suite: 196/196 passed.
+- Static/contract suite: 197/197 passed.
 - TypeScript suite: 278/278 passed.
 - Worker, client, Worker-test and client-test typechecks: passed.
 - Build: passed; Pages Worker 316.9 kB, media Worker 3.2 kB, Clerk browser bundle 1.5 MB, Ops 40.3 kB, Dashboard 29.7 kB, Clue Board 14.1 kB and Sponsors 8.4 kB, plus the remaining client bundles.
@@ -69,13 +69,13 @@ The durable `verify:unified-shell-qa` runner creates a unique OS-temporary build
 - 26 collapsed/expanded states at 390x844; and
 - 7 representative desktop states at 1440x1000.
 
-The fresh runner executed on 2026-07-15 and records its real Node execution timestamp and derived run date in the JSON ledger. The browser fixture clock remains separately and explicitly fixed at `2026-07-14T18:00:00.000Z` so status-age and clue-time rendering are controlled test inputs rather than false run metadata.
+The authoritative ledger for this table executed at `2026-07-15T03:24:50.371Z` (run date `2026-07-15`). It records its real Node execution timestamp and derived run date, while the browser fixture clock remains separately and explicitly fixed at `2026-07-14T18:00:00.000Z` so status-age and clue-time rendering are controlled test inputs rather than false run metadata.
 
 The audit recorded zero `console.error` messages and zero uncaught page errors. Across the route matrix and screenshot pass, it intercepted 112 external read attempts: 91 stylesheets and 21 scripts. Every attempt was fulfilled locally with a non-networking QA response; zero external request continued. It recorded zero external writes, zero local writes and zero writes rejected by the read-only server. Local API fixtures were also fulfilled inside the audit boundary so console results reflect the shell and built clients rather than unavailable test infrastructure.
 
 ## Visual inspection
 
-Representative full-page captures were reviewed for Home, Route, Interview, Clue Board, Dashboard, Sponsors, Privacy and Waiver at 390x844 and 1440x1000. The three separate 720x500 zoom artifacts are viewport captures rather than full-page captures, so they directly show the focused Home skip link, complete open Route menu and Waiver main-content landing.
+All 19 artifacts from this exact run were visually reviewed together. The eight mobile and eight desktop full-page captures retain the unified shell, correct current-state treatment and expected page-family layouts; the three separate 720x500 zoom artifacts are viewport captures rather than full-page captures, so they directly show the focused Home skip link, complete open Route menu and Waiver main-content landing. No private report evidence, exact location, credential, staff-only record or unexpected personal data was visible; the public legal/contact copy and disclosed fictional campaign prop remain the approved public content.
 
 Before those zoom captures, the runner asserts that Tab places Home focus on the visible, outlined `.skip-link` inside the viewport; that the Route menu has its real open state; and that activating the Waiver `.skip-link` targeting `#main` transfers focus to `#main`, leaves it inside the viewport and clears the measured current `--stacked-header-height`. Missing targets or failed focus transfer are not ignored.
 
@@ -88,19 +88,19 @@ The inspection confirmed:
 - the focused skip link is fully visible, the short open menu exposes every item, and zoomed main content clears the sticky rows; and
 - no screenshot displayed a broken shell, clipped focus state or page-level overflow.
 
-Screenshots remain outside the repository and were not published. The temporary artifact set contains only the following relative names and SHA-256 values:
+Screenshots remain outside the repository and were not published. All 19 rows below come from that one preserved unique OS-temporary artifact set; its absolute temporary path is intentionally not recorded. The authoritative ledger contains the following relative names and SHA-256 values:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `mobile-390x844-home.png` | `e92cabe26f34d3233c10531f7137e885add09cf4037d7e76499c0629f8dd1f39` |
-| `mobile-390x844-route.png` | `0bd5cd8460ced91bc5ee3e2c085e4ce4d989cab628bb49a99baa8e4d333759b7` |
+| `mobile-390x844-home.png` | `72299a515a7d0d5b9498341ea2deb95b703a949f90d1df4df436875e0b242c0f` |
+| `mobile-390x844-route.png` | `3994069477fe0af7e85d721e923033b767d3d030c59eaca10e9603c2b49bfbc8` |
 | `mobile-390x844-interview.png` | `26e7dde5600601102fda48e6559a7db922bc398bb57410adac37188dc701b1f9` |
 | `mobile-390x844-clue-board.png` | `4e21c1ad06b017b68b6a6fa24ffd9d91e037313cc36d0c62d537c52c02a105cd` |
 | `mobile-390x844-dashboard.png` | `51dfcb67fc5b94730d50eb5db72d25dea61832fcaac088694b9adb0918021c9d` |
 | `mobile-390x844-sponsors.png` | `57d2ccc5fd7ddf5d5b2a6cb56c704ea66f88f1d62cd4c700fa4925a3d6a18e36` |
 | `mobile-390x844-privacy.png` | `30051be86bb207b31a46185275e67a0eab7e195767f2d7add3338cded1141116` |
 | `mobile-390x844-waiver.png` | `42985f0a9e6afba15566a23fd6ed0ae8033829d7f7d4f60143b1ac0e1a9ebd75` |
-| `desktop-1440x1000-home.png` | `a63fbd8841860426ce0a8a45bb6c255cfec8f99b42508379b92ab669b797816f` |
+| `desktop-1440x1000-home.png` | `ac8b5e69c1a4d2f744d9388af478b3666e56fd76f8cf8d26a2bf1aa7f963824c` |
 | `desktop-1440x1000-route.png` | `55b09b7384b3f3a8df01b64d4ece4ac45f04ced3a318c81df35c4104ddce40f0` |
 | `desktop-1440x1000-interview.png` | `73916a97155ab38dceea512881f54abcce8c68a91bae8b192c2063d7975268da` |
 | `desktop-1440x1000-clue-board.png` | `30810992c584e7f7d937de8b098a52f3af94edcb66dfc0b8eb6bf388d8ab7bdd` |
