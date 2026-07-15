@@ -10,8 +10,9 @@ export function providerKeyForEnvironment(
   environment: DeploymentEnvironment | null | undefined
 ): string | null {
   if (!key || !environment || !["production", "validation"].includes(environment)) return null;
-  if (environment === "production") return liveKey.test(key) ? key : null;
-  return developmentKey.test(key) ? key : null;
+  const normalizedKey = key.trim();
+  if (environment === "production") return liveKey.test(normalizedKey) ? normalizedKey : null;
+  return developmentKey.test(normalizedKey) ? normalizedKey : null;
 }
 
 export function publicUrlForEnvironment(

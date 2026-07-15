@@ -177,7 +177,11 @@ const application = (env: PagesEnv) => {
       staffJwksUrl: env.STAFF_AUTH_JWKS_URL ?? null,
       authorizedParty: env.AUTHORIZED_PARTY ?? canonicalOrigin
     }),
-    turnstile: new TurnstileVerifier(env.TURNSTILE_SECRET_KEY ?? null, allowedHosts),
+    turnstile: new TurnstileVerifier(
+      env.TURNSTILE_SECRET_KEY ?? null,
+      allowedHosts,
+      env.DEPLOYMENT_ENV === "validation"
+    ),
     uploads: new R2UploadStorage(env.UPLOADS ?? null, env.MEDIA_QUEUE ?? null),
     rateLimits: new D1RateLimiter(env.DB ?? null, env.RATE_LIMIT_SALT ?? null),
     environment: new D1EnvironmentGuard(env.DB ?? null, env.DEPLOYMENT_ENV ?? null),

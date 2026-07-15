@@ -71,7 +71,8 @@ test("project docs make the sponsor workflow and current validation state action
   assert.match(readme, /Ops Sponsors|Sponsors ledger/i);
 
   assert.match(status, /validation migrations `?0005`? through `?0009`? are applied and recorded/i);
-  assert.match(status, /Turnstile[^\n]*`sponsor_inquiry`[^\n]*(?:not verified|not configured|unconfirmed)/i);
+  assert.match(status, /validation uses Cloudflare's official always-pass Turnstile test key/i);
+  assert.match(status, /production remains strict and unchanged/i);
   assert.match(status, /production[^\n]*(?:migration|deployment|DNS|data)[\s\S]{0,240}unchanged/i);
   assert.match(status, /validation inquir[^\n]*disposable/i);
   assert.match(status, /c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9/i);

@@ -33,6 +33,10 @@ export function isAllowedAuthorizedParty(candidate: unknown, configured: string 
   });
 }
 
+export function isAcceptedAuthorizedPartyClaim(candidate: unknown, configured: string | null): boolean {
+  return candidate === undefined || isAllowedAuthorizedParty(candidate, configured);
+}
+
 const bearerToken = (request: Request): string | null => {
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) return null;
@@ -64,7 +68,7 @@ class JwtProvider {
         issuer: this.config.issuer,
         clockTolerance: 5
       });
-      if (!isAllowedAuthorizedParty(payload.azp, this.config.authorizedParty) || typeof payload.sub !== "string") return null;
+      if (!isAcceptedAuthorizedPartyClaim(payload.azp, this.config.authorizedParty) || typeof payload.sub !== "string") return null;
       const email = claimEmail(payload);
       if (kind === "staff" && !email) return null;
       return { kind, subject: payload.sub, email };

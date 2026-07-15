@@ -59,6 +59,7 @@
             <div class="form-field"><label for="hunter-sign-up-email">Email</label><input id="hunter-sign-up-email" name="email" type="email" autocomplete="email" required /></div>
             <div class="form-field"><label for="hunter-sign-up-password">Create password</label><input id="hunter-sign-up-password" name="password" type="password" autocomplete="new-password" minlength="12" required /><span class="field-hint">Use at least 12 characters. Passwords and recovery codes are managed by our identity provider, not this website.</span></div>
           </div>
+          <div id="clerk-captcha"></div>
           <div class="action-row"><button class="hunter-button" type="submit">Create account</button><button class="hunter-button hunter-button--quiet" type="button" data-show-auth="hunter-sign-in-form">Back to sign in</button></div>
         </form>
         <form id="hunter-verify-form" class="auth-form" novalidate hidden>

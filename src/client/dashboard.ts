@@ -298,7 +298,8 @@ async function initializeManagedAuth(config: PublicConfig): Promise<HunterAuthHo
     };
     (window as unknown as { timLostAuth?: HunterAuthHook }).timLostAuth = auth;
     return auth;
-  } catch {
+  } catch (error) {
+    console.error("Hunter identity initialization failed.", identityDiagnostic(error));
     return null;
   }
 }
@@ -1272,16 +1273,51 @@ function identityError(error: unknown, fallback: string): string {
   return typeof candidate === "string" && candidate.trim() ? candidate : fallback;
 }
 
+function identityDiagnostic(error: unknown): { code: string | null; status: number | null } {
+  if (!isRecord(error)) return { code: null, status: null };
+  const errors = Array.isArray(error.errors) ? error.errors : [];
+  const first = errors.find(isRecord);
+  const rawCode = first?.code ?? error.code;
+  return {
+    code: typeof rawCode === "string" && /^[a-z0-9_-]{1,80}$/i.test(rawCode) ? rawCode : null,
+    status: typeof error.status === "number" && Number.isInteger(error.status) ? error.status : null,
+  };
+}
+
 function showAuthForm(id: string): void {
   for (const form of document.querySelectorAll<HTMLFormElement>(".auth-form")) {
     form.hidden = form.id !== id;
   }
 }
 
+export async function waitForActiveSession(
+  sessionId: string,
+  readSession: () => { id: string; getToken: () => Promise<string | null> } | null | undefined,
+  delay: (milliseconds: number) => Promise<void>,
+  attempts = 10,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const session = readSession();
+    if (session?.id === sessionId) {
+      try {
+        if (await session.getToken()) return true;
+      } catch {
+        // Clerk can briefly reject token reads while the new session propagates.
+      }
+    }
+    await delay(150 * (attempt + 1));
+  }
+  return false;
+}
+
 async function activateSession(sessionId: string | null | undefined): Promise<boolean> {
   if (!hunterClerk || !sessionId) return false;
   await hunterClerk.setActive({ session: sessionId });
-  return true;
+  return waitForActiveSession(
+    sessionId,
+    () => hunterClerk?.session,
+    (milliseconds) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)),
+  );
 }
 
 async function bootstrapPlayer(auth: HunterAuthHook): Promise<void> {
@@ -1342,6 +1378,7 @@ function setupAccountForms(auth: HunterAuthHook): void {
       }
       await loadSignedInDashboard(auth);
     } catch (error) {
+      console.error("Hunter password sign-in failed.", identityDiagnostic(error));
       authMessage(identityError(error, "Sign-in failed. Check your email and password."), "error");
     }
   });

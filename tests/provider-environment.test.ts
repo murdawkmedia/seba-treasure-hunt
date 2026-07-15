@@ -12,6 +12,11 @@ test("accepts Clerk development keys only in validation", () => {
   assert.equal(providerKeyForEnvironment("sk_test_hunter", "production"), null);
 });
 
+test("normalizes harmless surrounding whitespace in provider keys", () => {
+  assert.equal(providerKeyForEnvironment("\uFEFFpk_test_hunter\r\n", "validation"), "pk_test_hunter");
+  assert.equal(providerKeyForEnvironment("  sk_live_hunter  ", "production"), "sk_live_hunter");
+});
+
 test("retains live keys in production and fails closed without an environment", () => {
   assert.equal(providerKeyForEnvironment("pk_live_hunter", "production"), "pk_live_hunter");
   assert.equal(providerKeyForEnvironment("sk_live_hunter", "production"), "sk_live_hunter");

@@ -4,9 +4,15 @@ Last updated: 2026-07-14
 
 ## Current state
 
-The `codex/tim-lost-hunter-platform` branch now contains a locally verified unified public campaign shell in addition to the participation-waiver, guardian, hunter-tool unlock, legal receipt and private Ops workflow. The shell, route-wide accessibility hardening and Graph transactional-mail wiring have not been deployed in this pass.
+### Validation MVP checkpoint — 2026-07-14
 
-The stable noindex validation alias still serves the earlier approved validation release from source `5deee85`. It presents Privacy/Media `2026.2`, Participation Waiver `2026.1` and the guardian/receipt/Ops surfaces; its isolated media Worker is also deployed. Production remains on its earlier release from source `5552a57`; production deployment, DNS, domains and data were not changed. No Cloudflare, DNS, provider, authorization, email or deployment mutation occurred during the unified-shell verification.
+The current branch is now deployed to the stable noindex validation alias. Production, custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
+
+Disposable live QA passed the Hunter identity sync, password sign-in, profile/Privacy acceptance, waiver review and acceptance, 12-waypoint participation unlock, Field Note submission/moderation/publication, private report submission, private image upload and media processing paths. A disposable Staff principal also passed the authenticated Ops dashboard and moderation API path. The evidence and ranked wishlist are in `docs/qa/2026-07-14-validation-mvp-readiness.md`.
+
+The release is not production-ready yet: Microsoft Graph delegated authorization and the controlled waiver receipt are still pending; one clean-browser Staff UI sign-in and one real password-recovery mailbox round trip remain. Validation data stays disposable and must be reset before launch.
+
+The branch contains the unified public campaign shell, route-wide accessibility hardening, participation-waiver and guardian flows, hunter-tool unlocks, legal receipt plumbing and private Ops workflow. The stable validation alias is the only deployment target for this candidate.
 
 For historical sponsor-release auditability, the pre-disclosure Privacy/Media `2026.1` hash was `c385974ca255ef14161e89041908f4b4eda97c9e7f207288bd1db304a02925d9`; it is not the active local `2026.2` policy hash below.
 
@@ -64,10 +70,10 @@ Graph transactional-mail wiring remains locally complete in `17f70c0` and `c2310
 - Validation migrations `0005` through `0009` are applied and recorded. Post-checks show no pending migration and zero sponsor, waiver-review, participant, delivery, lease or rate-limit rows.
 - Wrangler's normal migration command applied `0005` but could not parse the trigger bodies in `0006`. Migrations `0006`–`0009` were therefore imported one at a time through D1's atomic raw-file path, verified by object signature and then recorded in the migration ledger. Preserve this fact for production planning.
 - Production migrations, deployment, DNS and data remain unchanged. No waiver, receipt-lease, immutable-ledger or atomic-rate-limit migration is applied there.
-- Clerk and Turnstile Preview configuration is absent/unverified, so identity and human-verified writes remain fail-closed. Resend and the recovery/legal-receipt sender settings are installed as encrypted Preview-only secrets. The verified Murdawk Media sender remains active and receipt replies route to the campaign lead mailbox. A non-delivering API probe confirmed the new SebaHub credential is valid but its Resend account currently has zero sending domains, so it is stored only as `RESEND_API_KEY_SEBAHUB_PENDING` and is not used by the Worker. No credential value is recorded in source or documentation.
-- Graph migration `0010`, Preview-only Graph/sender settings and delegated authorization are not applied to validation or production. The local Graph implementation remains fail-closed until that rollout is completed.
-- The validation Turnstile action `sponsor_inquiry` is not verified or configured, so the deployed sponsor form remains fail-closed.
-- The existing Murdawk Media Wrangler OAuth session was verified and used only for the approved validation migration and deployment work. The authenticated Cloudflare and Resend dashboard sessions were used only for Preview configuration and verified-domain inspection. No raw credential value is stored in the repository or documentation, and no real provider delivery occurred.
+- Validation migration `0010` is applied. Hunter and Staff Clerk applications, the Hunter lifecycle webhook and Preview-only Cloudflare bindings are configured and exercised with disposable identities.
+- Validation uses Cloudflare's official always-pass Turnstile test key; its bypass is additionally restricted in code to `DEPLOYMENT_ENV=validation`. Production remains strict and unchanged.
+- Microsoft Graph delegated authorization and its Preview-only sender secrets are not configured, so waiver receipts remain pending and fail closed without provider access. Resend is not an automatic fallback.
+- No raw credential value is stored in source or documentation. A Clerk webhook signing secret disclosed during setup QA must be rotated in the provider dashboard before public launch.
 - Pages domains remain `seba-treasure-hunt.pages.dev`, `timlostsomething.com` and `www.timlostsomething.com`; no domain or DNS change occurred.
 
 ## Verification evidence
@@ -79,7 +85,7 @@ Graph transactional-mail wiring remains locally complete in `17f70c0` and `c2310
 - The browser gates cover every public route at 390x844, 360x900, 768x900, 1440x900 and the 720x500 200%-zoom equivalent, plus seven representative desktop routes at 1440x1000. They verify collapsed/expanded menus, skip-link focus, sticky geometry, current state, short-menu traversal, overflow, console output and serious/critical axe findings.
 - QA privacy classification reports zero findings in production source, rendered public output and 37 public static files. Dashboard HTML and its client bundle are public scan surfaces; three private Worker/Ops bundle files are classified separately and also contain zero private-fixture findings.
 - The earlier sponsor surface remains documented in `docs/qa/2026-07-13-sponsor-feature-verification.md` with its reproducible `scripts/verify-sponsor-qa.mjs` runner and uncommitted `%TEMP%\tim-lost-task10` artifacts; this waiver pass does not replace or redeploy that validation release.
-- `npm test`: 197/197 static/contract tests and 278/278 TypeScript tests passed.
+- `npm test`: 198/198 static/contract tests and 284/284 TypeScript tests passed on the final MVP candidate.
 - `npm run typecheck`: Worker, client, Worker-test and client-test checks passed.
 - `npm run build`: passed; Pages Worker 316.9 kB, media Worker 3.2 kB and client bundles completed.
 - Focused campaign navigation/accessibility verification: 12/12 passed. Nineteen representative screenshots were captured outside the repository with external requests blocked and zero page errors; the artifact names and SHA-256 values are recorded in `docs/qa/2026-07-14-unified-campaign-shell-verification.md`.
@@ -93,20 +99,18 @@ Graph transactional-mail wiring remains locally complete in `17f70c0` and `c2310
 
 ## Remaining activation gates
 
-Validation activation is approved, but the following still require authenticated provider access and controlled verification:
+Validation MVP implementation is complete. The remaining owner/provider checks before public launch are:
 
-1. Complete Clerk application setup and Cloudflare Turnstile setup through the authenticated provider sessions without exposing credentials in chat or source.
-2. Configure the remaining Preview-only identity, webhook and Turnstile values.
-3. Run one owner-controlled disposable hunter/guardian/receipt/Ops test and a controlled test receipt.
-4. Verify password recovery, staff invitation/authorization, all Turnstile actions and private media processing.
-5. Apply validation migration `0010`, configure Preview-only Graph/sender settings and complete one owner-controlled delegated authorization and controlled validation delivery.
-6. Rotate the Resend credentials after controlled delivery/domain verification because both initial credentials were supplied through chat; replace only their encrypted Preview secrets.
-7. Wipe disposable validation identities, D1 activity/legal records and validation media after testing. Immutable legal ledgers mean this should be a controlled validation-resource reset, not ad hoc deletes.
-8. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
+1. Configure Preview-only Microsoft Graph sender settings, complete delegated authorization and confirm one controlled waiver receipt from `tech@sebahub.com` with Reply-To `casey@sebahub.com`.
+2. Rotate the exposed Clerk webhook signing secret, replace only its encrypted Preview value and confirm a lifecycle sync.
+3. Confirm Staff password sign-in once in a clean browser and complete one real Hunter password-recovery mailbox round trip.
+4. Add visible waypoint progress controls before public launch if progress tracking is part of the launch promise; the protected progress API already exists.
+5. Reset disposable validation identities, D1 records and media as a controlled validation-resource reset before launch.
+6. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
 
 ## Next approved workflow
 
-Resume the Graph validation rollout by migrating the isolated validation D1 database through `0010_graph_transactional_email.sql`, configuring Preview-only Graph/sender settings, completing owner-controlled delegated authorization, deploying only the validation branch and running one controlled provider test. Then finish the separate Clerk/Turnstile and disposable-account checks, verify no public disclosure, and reset disposable validation records. Production requires another explicit later approval.
+Resume with the owner-controlled Microsoft Entra app/delegated sign-in for `tech@sebahub.com`, store the Graph values only as Cloudflare Preview secrets and send one controlled receipt. Then rotate the Clerk webhook secret and run the clean-browser Staff/password-recovery checks. Production requires another explicit later approval.
 
 ## Decisions in force
 

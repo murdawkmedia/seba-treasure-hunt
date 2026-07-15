@@ -13,6 +13,7 @@ import {
 import {
   buildProfilePayload,
   validateProfileDraft,
+  waitForActiveSession,
   type HunterProfileDraft,
 } from "../src/client/dashboard";
 
@@ -44,6 +45,37 @@ test("status timestamp formatter includes an absolute time and relative age", ()
   );
   assert.match(label, /Jul/);
   assert.match(label, /2 hours ago/);
+});
+
+test("active-session wait tolerates one transient token rejection", async () => {
+  let reads = 0;
+  const session = {
+    id: "session-1",
+    getToken: async () => {
+      reads += 1;
+      if (reads === 1) throw new Error("not ready");
+      return "token";
+    },
+  };
+  const delays: number[] = [];
+  assert.equal(await waitForActiveSession("session-1", () => session, async (ms) => { delays.push(ms); }, 3), true);
+  assert.deepEqual(delays, [150]);
+});
+
+test("active-session wait returns false after bounded null-token attempts", async () => {
+  let reads = 0;
+  const session = { id: "session-1", getToken: async () => { reads += 1; return null; } };
+  assert.equal(await waitForActiveSession("session-1", () => session, async () => undefined, 3), false);
+  assert.equal(reads, 3);
+});
+
+test("active-session wait accepts delayed session activation", async () => {
+  let checks = 0;
+  const session = { id: "session-1", getToken: async () => "token" };
+  assert.equal(
+    await waitForActiveSession("session-1", () => (++checks < 3 ? null : session), async () => undefined, 4),
+    true,
+  );
 });
 
 const baseReport: ReportDraft = {

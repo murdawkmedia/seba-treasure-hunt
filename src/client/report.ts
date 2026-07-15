@@ -399,6 +399,7 @@ async function submitReport(form: HTMLFormElement): Promise<void> {
         ? envelope.error.code
         : undefined;
     if (!response.ok || !isRecord(envelope) || !isRecord(envelope.data)) {
+      console.error("Private report submission rejected.", { status: response.status, errorCode });
       throw new Error(errorCopy(response.status, errorCode));
     }
     const reportId = typeof envelope.data.id === "string" ? envelope.data.id : "recorded";

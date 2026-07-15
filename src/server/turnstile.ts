@@ -11,7 +11,8 @@ export class TurnstileVerifier implements HumanVerifier {
 
   constructor(
     private readonly secret: string | null,
-    allowedHosts: string[]
+    allowedHosts: string[],
+    private readonly allowCloudflareTestKey = false
   ) {
     this.allowedHosts = allowedHosts.map((host) => host.trim().toLowerCase()).filter(Boolean);
   }
@@ -30,6 +31,14 @@ export class TurnstileVerifier implements HumanVerifier {
       });
       if (!response.ok) return false;
       const result = (await response.json()) as TurnstileResult;
+      if (
+        this.allowCloudflareTestKey &&
+        this.secret === "1x0000000000000000000000000000000AA" &&
+        result.success &&
+        result.hostname === "example.com"
+      ) {
+        return true;
+      }
       return Boolean(
         result.success &&
         result.action === action &&
