@@ -111,29 +111,72 @@ function stripCssComments(css) {
   return output;
 }
 
-function decodeCssEscapes(value) {
-  let decoded = "";
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] !== "\\") {
-      decoded += value[index];
-      continue;
-    }
-    const next = value[index + 1];
-    if (next === undefined) break;
-    const hex = value.slice(index + 1).match(/^[0-9a-f]{1,6}/i)?.[0];
-    if (hex) {
-      const codePoint = Number.parseInt(hex, 16);
-      decoded += codePoint === 0 || codePoint > 0x10ffff
-        ? "\ufffd"
-        : String.fromCodePoint(codePoint);
-      index += hex.length;
-      if (/[\t\n\f\r ]/.test(value[index + 1] ?? "")) index += 1;
-    } else if (next !== "\n" && next !== "\r" && next !== "\f") {
-      decoded += next;
-      index += 1;
+function consumeCssEscape(source, start) {
+  const next = source[start + 1];
+  if (next === undefined) return { end: start + 1, value: "" };
+  if (next === "\n" || next === "\f") return { end: start + 2, value: "" };
+  if (next === "\r") {
+    return { end: start + (source[start + 2] === "\n" ? 3 : 2), value: "" };
+  }
+
+  const hex = source.slice(start + 1).match(/^[0-9a-f]{1,6}/i)?.[0];
+  if (!hex) return { end: start + 2, value: next };
+  const codePoint = Number.parseInt(hex, 16);
+  let end = start + 1 + hex.length;
+  if (/[\t\n\f\r ]/.test(source[end] ?? "")) {
+    end += source[end] === "\r" && source[end + 1] === "\n" ? 2 : 1;
+  }
+  return {
+    end,
+    value: codePoint === 0 || codePoint > 0x10ffff
+      ? "\ufffd"
+      : String.fromCodePoint(codePoint),
+  };
+}
+
+function readCssIdentifier(source, start) {
+  let cursor = start;
+  let value = "";
+  while (cursor < source.length) {
+    if (source[cursor] === "\\") {
+      const escape = consumeCssEscape(source, cursor);
+      value += escape.value;
+      cursor = escape.end;
+    } else if (/[-_a-z0-9]/i.test(source[cursor]) || source.charCodeAt(cursor) >= 0x80) {
+      value += source[cursor];
+      cursor += 1;
+    } else {
+      break;
     }
   }
-  return decoded;
+  return { end: cursor, value };
+}
+
+function readCssString(source, start) {
+  const quote = source[start];
+  let cursor = start + 1;
+  let value = "";
+  while (cursor < source.length && source[cursor] !== quote) {
+    if (source[cursor] === "\\") {
+      const escape = consumeCssEscape(source, cursor);
+      value += escape.value;
+      cursor = escape.end;
+    } else {
+      value += source[cursor];
+      cursor += 1;
+    }
+  }
+  return {
+    end: cursor < source.length ? cursor + 1 : cursor,
+    terminated: source[cursor] === quote,
+    value,
+  };
+}
+
+function skipCssWhitespace(source, start) {
+  let cursor = start;
+  while (/[\t\n\f\r ]/.test(source[cursor] ?? "")) cursor += 1;
+  return cursor;
 }
 
 function cssRulePreludes(css) {
@@ -151,7 +194,9 @@ function cssRulePreludes(css) {
       else if (character === quote) quote = "";
       continue;
     }
-    if (character === '"' || character === "'") quote = character;
+    if (character === "\\") {
+      index = consumeCssEscape(source, index).end - 1;
+    } else if (character === '"' || character === "'") quote = character;
     else if (character === "[") bracketDepth += 1;
     else if (character === "]") bracketDepth = Math.max(0, bracketDepth - 1);
     else if (character === "(") parenthesisDepth += 1;
@@ -171,8 +216,52 @@ function cssRulePreludes(css) {
   return preludes;
 }
 
-function classSelectors(prelude) {
-  const selector = decodeCssEscapes(prelude);
+function readClassAttributeSelector(selector, start) {
+  let cursor = skipCssWhitespace(selector, start + 1);
+  const attributeName = readCssIdentifier(selector, cursor);
+  cursor = skipCssWhitespace(selector, attributeName.end);
+
+  let operator = "";
+  if (selector.startsWith("~=", cursor)) {
+    operator = "~=";
+    cursor += 2;
+  } else if (selector[cursor] === "=") {
+    operator = "=";
+    cursor += 1;
+  }
+  cursor = skipCssWhitespace(selector, cursor);
+
+  let attributeValue = { end: cursor, terminated: true, value: "" };
+  if (selector[cursor] === '"' || selector[cursor] === "'") {
+    attributeValue = readCssString(selector, cursor);
+  } else {
+    const identifier = readCssIdentifier(selector, cursor);
+    attributeValue = { ...identifier, terminated: true };
+  }
+  cursor = skipCssWhitespace(selector, attributeValue.end);
+
+  let flag = "";
+  if (selector[cursor] !== "]") {
+    const flagToken = readCssIdentifier(selector, cursor);
+    flag = flagToken.value.toLowerCase();
+    cursor = skipCssWhitespace(selector, flagToken.end);
+  }
+
+  const valid =
+    selector[cursor] === "]" &&
+    attributeValue.terminated &&
+    attributeName.value.toLowerCase() === "class" &&
+    (operator === "=" || operator === "~=") &&
+    (flag === "" || flag === "i" || flag === "s");
+  return {
+    className: valid
+      ? (flag === "i" ? attributeValue.value.toLowerCase() : attributeValue.value)
+      : null,
+    end: selector.indexOf("]", Math.max(cursor, start + 1)),
+  };
+}
+
+function classSelectors(selector) {
   const classes = [];
   let quote = "";
 
@@ -188,28 +277,16 @@ function classSelectors(prelude) {
       continue;
     }
     if (character === "[") {
-      let end = index + 1;
-      let attributeQuote = "";
-      for (; end < selector.length; end += 1) {
-        const candidate = selector[end];
-        if (attributeQuote) {
-          if (candidate === "\\") end += 1;
-          else if (candidate === attributeQuote) attributeQuote = "";
-        } else if (candidate === '"' || candidate === "'") attributeQuote = candidate;
-        else if (candidate === "]") break;
-      }
-      const attribute = selector.slice(index + 1, end).match(
-        /^[\t\n\f\r ]*class[\t\n\f\r ]*~=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r \]]+))(?:[\t\n\f\r ]+[is])?[\t\n\f\r ]*$/i,
-      );
-      if (attribute) classes.push(attribute[1] ?? attribute[2] ?? attribute[3]);
-      index = end;
+      const attribute = readClassAttributeSelector(selector, index);
+      if (attribute.className !== null) classes.push(attribute.className);
+      if (attribute.end !== -1) index = attribute.end;
       continue;
     }
     if (character === ".") {
-      const name = selector.slice(index + 1).match(/^[-_a-z0-9]+/i)?.[0];
-      if (name) {
-        classes.push(name);
-        index += name.length;
+      const identifier = readCssIdentifier(selector, index + 1);
+      if (identifier.value) {
+        classes.push(identifier.value);
+        index = identifier.end - 1;
       }
     }
   }
@@ -417,6 +494,31 @@ test("legacy CSS selector detection covers attribute and escaped forms without i
   `);
 
   assert.deepEqual(detected, ["board-topbar", "hunter-nav", "topbar"]);
+});
+
+test("legacy CSS selector detection covers exact class equality forms", () => {
+  assert.deepEqual(
+    legacyCssClassSelectors(String.raw`
+      [class="footer"] { display: block; }
+      [ CLASS = 'HUNTER-FOOTER' i ] { display: block; }
+      [cl\61 ss = board-footer] { display: block; }
+    `),
+    ["board-footer", "footer", "hunter-footer"],
+  );
+});
+
+test("CSS escapes are decoded inside tokens without becoming selector punctuation", () => {
+  assert.deepEqual(
+    legacyCssClassSelectors(String.raw`
+      .\2e topbar { display: block; }
+      [class|="hunter-nav"] { display: block; }
+      [data-class="board-footer"] { display: block; }
+      [class="TOPBAR" s] { display: block; }
+      .campaign-footer { content: ".topbar"; }
+      /* [class="site-footer"], .site-header { display: block; } */
+    `),
+    [],
+  );
 });
 
 test("public stylesheets expose none of the complete legacy shell selector set", () => {
