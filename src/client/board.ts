@@ -295,28 +295,6 @@ function nextCursor(payload: unknown): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-function setCaseStatus(payload: unknown): void {
-  const signal = document.querySelector<HTMLElement>("#case-signal");
-  const label = document.querySelector<HTMLElement>("#case-signal-label");
-  const detail = document.querySelector<HTMLElement>("#case-signal-detail");
-  if (!signal || !label || !detail) return;
-  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
-  const rawState = isRecord(data) ? asString(data.state || data.status).toLowerCase() : "";
-  const state = ["open", "paused", "found"].includes(rawState) ? rawState : "unavailable";
-  signal.dataset.state = state;
-  const labels: Record<string, string> = {
-    open: "CASE OPEN",
-    paused: "HUNT PAUSED",
-    found: "CASE FOUND",
-    unavailable: "STATUS UNAVAILABLE",
-  };
-  label.textContent = labels[state] ?? labels.unavailable ?? "STATUS UNAVAILABLE";
-  if (state === "open") detail.textContent = "Search only during published hours and follow every posted safety boundary.";
-  else if (state === "paused") detail.textContent = "Do not begin or continue searching. Private safety reports remain open.";
-  else if (state === "found") detail.textContent = "The search is closed. The community board is preserved read-only.";
-  else detail.textContent = "Exact directions remain locked until status is confirmed.";
-}
-
 async function initialiseBoard(): Promise<void> {
   const feed = document.querySelector<HTMLElement>("#board-feed");
   const status = document.querySelector<HTMLElement>("#board-status");
@@ -465,20 +443,14 @@ async function initialiseBoard(): Promise<void> {
   await bootstrapRuntime();
 
   try {
-    const [session, caseStatus] = await Promise.all([
-      requestJson("/api/v1/me/dashboard"),
-      requestJson("/api/v1/status"),
-    ]);
+    const session = await requestJson("/api/v1/me/dashboard");
     signedIn = session.response.ok;
     noteForm.hidden = !signedIn;
     authPrompt.hidden = signedIn;
-    if (caseStatus.response.ok) setCaseStatus(caseStatus.payload);
-    else setCaseStatus(null);
   } catch {
     signedIn = false;
     noteForm.hidden = true;
     authPrompt.hidden = false;
-    setCaseStatus(null);
   }
 
   if (signedIn) {

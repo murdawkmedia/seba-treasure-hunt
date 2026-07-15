@@ -45,6 +45,7 @@ test("the public clue board is an accessible, moderated community surface", () =
   assert.match(client, /action:\s*"flag"/);
   assert.match(client, /turnstileApi\.render/);
   assert.match(client, /turnstileApi\.reset/);
+  assert.doesNotMatch(client, /\bsetCaseStatus\b|\/api\/v1\/status|#case-signal/);
 });
 
 test("the case-room console exposes every approved ledger and safe account control", () => {

@@ -216,6 +216,7 @@ test("hunter page menus expose one labelled toggle and retain campaign destinati
 test("the clue board uses the canonical shell without becoming a navigation exception", () => {
   const html = readRenderedCampaignPage("clue-board.html");
   const source = read("clue-board.html");
+  const boardCss = read("css/board.css");
   const shell = read("css/campaign-shell.css");
 
   assert.equal((html.match(/\bid="campaign-nav"/g) ?? []).length, 1, "clue-board.html has one nav id");
@@ -228,6 +229,11 @@ test("the clue board uses the canonical shell without becoming a navigation exce
   assert.doesNotMatch(html, />Interview<\/a>/);
   assert.match(source, /<script src="\/js\/site\.js"><\/script>/);
   assert.match(html, /<section\b(?=[^>]*class="case-strip")(?=[^>]*role="status")(?=[^>]*aria-live="polite")[^>]*>/);
+  assert.match(html, /data-case-status/);
+  assert.doesNotMatch(
+    `${source}\n${html}\n${boardCss}`,
+    /(?:case-signal|board-topbar|board-nav|board-brand|board-menu-toggle|board-footer)/,
+  );
 
   assert.match(shell, /\.case-strip\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*var\(--campaign-case-min-height\)/s);
   assert.doesNotMatch(shell, /\.case-strip\s*\{[^}]*height:\s*var\(--case-strip-height\)/s);
@@ -241,14 +247,15 @@ test("the clue board uses the canonical shell without becoming a navigation exce
 
 test("the clue board loads shared status before its board client", () => {
   const source = read("clue-board.html");
+  const siteScript = '<script src="/js/site.js"></script>';
   const statusScript = '<script type="module" src="/assets/app/status.js"></script>';
   const boardScript = '<script type="module" src="/assets/app/board.js"></script>';
 
-  assert.notEqual(source.indexOf(statusScript), -1, "clue-board.html loads shared status");
-  assert.ok(
-    source.indexOf(statusScript) < source.indexOf(boardScript),
-    "shared status must initialize before the board client",
-  );
+  for (const script of [siteScript, statusScript, boardScript]) {
+    assert.equal(source.split(script).length - 1, 1, `${script} loads exactly once`);
+  }
+  assert.ok(source.indexOf(siteScript) < source.indexOf(statusScript), "site behavior initializes first");
+  assert.ok(source.indexOf(statusScript) < source.indexOf(boardScript), "shared status initializes before the board client");
 });
 
 test("shared menu behavior closes consistently without trapping focus", () => {
