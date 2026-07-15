@@ -447,6 +447,12 @@ test("canonicalizes the apex with method-safe redirects and falls through to sta
   assert.equal(staticResponse.headers.get("permissions-policy"), "camera=(), microphone=(), geolocation=(self)");
   assert.equal(staticResponse.headers.get("strict-transport-security"), "max-age=31536000");
 
+  for (const legalPath of ["/privacy", "/privacy.html", "/waiver", "/waiver.html"]) {
+    const legalResponse = await app.request(`https://www.timlostsomething.com${legalPath}`, {}, env as never);
+    assert.match(legalResponse.headers.get("content-security-policy") ?? "", /frame-ancestors 'self'/);
+    assert.equal(legalResponse.headers.get("x-frame-options"), "SAMEORIGIN");
+  }
+
   await app.request("https://www.timlostsomething.com/start", {}, env as never);
   assert.equal(requestedPaths.at(-1), "/start");
   await app.request("https://www.timlostsomething.com/ops", {}, env as never);

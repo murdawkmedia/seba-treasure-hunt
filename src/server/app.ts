@@ -38,6 +38,10 @@ const contentSecurityPolicy = [
   "worker-src 'self' blob:",
   "upgrade-insecure-requests"
 ].join("; ");
+const sameOriginFrameContentSecurityPolicy = contentSecurityPolicy.replace(
+  "frame-ancestors 'none'",
+  "frame-ancestors 'self'"
+);
 const cleanRoutes = new Map([
   ["/", "/index.html"],
   ["/route", "/route.html"],
@@ -55,6 +59,7 @@ const cleanRoutes = new Map([
   ["/ops", "/ops.html"]
 ]);
 const staticHtmlPaths = new Set(cleanRoutes.values());
+const legalFrameablePaths = new Set(["/privacy", "/privacy.html", "/waiver", "/waiver.html"]);
 const appPaths = new Set([...cleanRoutes.keys()].filter((path) => !["/", "/route", "/interview"].includes(path)));
 const validReportStates = new Set([
   "received",
@@ -670,10 +675,14 @@ export const createApi = (deps: ApiDependencies) => {
       return Response.redirect(url.toString(), status);
     }
     await next();
-    c.header("Content-Security-Policy", contentSecurityPolicy);
+    const sameOriginFrameable = legalFrameablePaths.has(url.pathname.replace(/\/$/, ""));
+    c.header(
+      "Content-Security-Policy",
+      sameOriginFrameable ? sameOriginFrameContentSecurityPolicy : contentSecurityPolicy
+    );
     c.header("Referrer-Policy", "strict-origin-when-cross-origin");
     c.header("X-Content-Type-Options", "nosniff");
-    c.header("X-Frame-Options", "DENY");
+    c.header("X-Frame-Options", sameOriginFrameable ? "SAMEORIGIN" : "DENY");
     c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
     c.header("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
     if (url.protocol === "https:") {
