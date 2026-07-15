@@ -253,10 +253,15 @@ function readClassAttributeSelector(selector, start) {
     attributeName.value.toLowerCase() === "class" &&
     (operator === "=" || operator === "~=") &&
     (flag === "" || flag === "i" || flag === "s");
+  const normalizedValue = flag === "i"
+    ? attributeValue.value.toLowerCase()
+    : attributeValue.value;
   return {
-    className: valid
-      ? (flag === "i" ? attributeValue.value.toLowerCase() : attributeValue.value)
-      : null,
+    classNames: !valid
+      ? []
+      : operator === "="
+        ? normalizedValue.split(/[\t\n\f\r ]+/).filter(Boolean)
+        : [normalizedValue],
     end: selector.indexOf("]", Math.max(cursor, start + 1)),
   };
 }
@@ -278,7 +283,7 @@ function classSelectors(selector) {
     }
     if (character === "[") {
       const attribute = readClassAttributeSelector(selector, index);
-      if (attribute.className !== null) classes.push(attribute.className);
+      classes.push(...attribute.classNames);
       if (attribute.end !== -1) index = attribute.end;
       continue;
     }
@@ -504,6 +509,34 @@ test("legacy CSS selector detection covers exact class equality forms", () => {
       [cl\61 ss = board-footer] { display: block; }
     `),
     ["board-footer", "footer", "hunter-footer"],
+  );
+});
+
+test("exact class equality checks every ASCII-whitespace-separated class token", () => {
+  assert.deepEqual(
+    legacyCssClassSelectors(`
+      [class="topbar\tcampaign"] { display: block; }
+      [class="campaign\nhunter-nav\fextra"] { display: block; }
+      [class='campaign\rboard-footer '] { display: block; }
+      [class="campaign \\74 opbar"] { display: block; }
+      [class="campaign TOPBAR" i] { display: block; }
+      [class="campaign TOPBAR" s] { display: block; }
+    `),
+    ["board-footer", "hunter-nav", "topbar"],
+  );
+});
+
+test("class token matching keeps tilde-equals values atomic", () => {
+  assert.deepEqual(
+    legacyCssClassSelectors(`
+      [class~="campaign topbar"] { display: block; }
+      [class~="TOPBAR" s] { display: block; }
+    `),
+    [],
+  );
+  assert.deepEqual(
+    legacyCssClassSelectors('[class~="TOPBAR" i] { display: block; }'),
+    ["topbar"],
   );
 });
 
