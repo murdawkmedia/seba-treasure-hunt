@@ -63,23 +63,17 @@ after(async () => {
 });
 
 async function auditRoutes(browser, viewport, files) {
-  const context = await browser.newContext({ viewport });
-  await context.route("**/*", async (route) => {
-    if (route.request().url().startsWith(origin)) await route.continue();
-    else await route.abort();
-  });
-  const page = await context.newPage();
+  let context;
 
   try {
-    for (const file of files) {
-      await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
-      assert.equal(await page.locator('nav[aria-label="Campaign"]').count(), 1, `${file} Campaign landmark at ${viewport.width}px`);
-      assert.equal(await page.locator("#campaign-nav").count(), 1, `${file} campaign nav id at ${viewport.width}px`);
-      assert.equal(await page.locator(".campaign-menu-toggle").count(), 1, `${file} menu toggle at ${viewport.width}px`);
-      assert.equal(await page.locator(".skip-link").count(), 1, `${file} skip link at ${viewport.width}px`);
-      assert.equal(await page.locator("main").count(), 1, `${file} main landmark at ${viewport.width}px`);
+    context = await browser.newContext({ viewport });
+    await context.route("**/*", async (route) => {
+      if (route.request().url().startsWith(origin)) await route.continue();
+      else await route.abort();
+    });
+    const page = await context.newPage();
 
-      await page.addScriptTag({ content: axeSource });
+    const runAxe = async (state) => {
       const violations = await page.evaluate(async () => {
         const result = await globalThis.axe.run(document, {
           resultTypes: ["violations"],
@@ -95,10 +89,31 @@ async function auditRoutes(browser, viewport, files) {
             targets: nodes.map((node) => node.target),
           }));
       });
-      assert.deepEqual(violations, [], `${file} serious/critical axe findings at ${viewport.width}px`);
+      assert.deepEqual(violations, [], `${state} serious/critical axe findings at ${viewport.width}px`);
+    };
+
+    for (const file of files) {
+      await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
+      assert.equal(await page.locator('nav[aria-label="Campaign"]').count(), 1, `${file} Campaign landmark at ${viewport.width}px`);
+      assert.equal(await page.locator("#campaign-nav").count(), 1, `${file} campaign nav id at ${viewport.width}px`);
+      assert.equal(await page.locator(".campaign-menu-toggle").count(), 1, `${file} menu toggle at ${viewport.width}px`);
+      assert.equal(await page.locator(".skip-link").count(), 1, `${file} skip link at ${viewport.width}px`);
+      assert.equal(await page.locator("main").count(), 1, `${file} main landmark at ${viewport.width}px`);
+
+      await page.addScriptTag({ content: axeSource });
+      await runAxe(`${file} collapsed menu`);
+
+      if (viewport.width <= 760) {
+        const toggle = page.locator(".campaign-menu-toggle");
+        const nav = page.locator("#campaign-nav");
+        await toggle.click();
+        assert.equal(await toggle.getAttribute("aria-expanded"), "true", `${file} expands its mobile menu`);
+        assert.equal(await nav.isVisible(), true, `${file} exposes its expanded mobile navigation`);
+        await runAxe(`${file} expanded menu`);
+      }
     }
   } finally {
-    await context.close();
+    await context?.close();
   }
 }
 

@@ -819,14 +819,16 @@ test("canonical shell geometry and navigation state hold across every route and 
 });
 
 test("mobile navigation resets at desktop and preserves the required focus behavior", { timeout: 30_000 }, async () => {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  await context.route("**/*", async (route) => {
-    if (route.request().url().startsWith(origin)) await route.continue();
-    else await route.abort();
-  });
+  let browser;
+  let context;
 
   try {
+    browser = await chromium.launch({ headless: true });
+    context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.route("**/*", async (route) => {
+      if (route.request().url().startsWith(origin)) await route.continue();
+      else await route.abort();
+    });
     const page = await context.newPage();
     await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
     const toggle = page.locator(".campaign-menu-toggle");
@@ -852,19 +854,25 @@ test("mobile navigation resets at desktop and preserves the required focus behav
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
     assert.equal(await toggle.evaluate((element) => document.activeElement === element), true, "Escape restores focus to the toggle");
   } finally {
-    await browser.close();
+    try {
+      await context?.close();
+    } finally {
+      await browser?.close();
+    }
   }
 });
 
 test("200 percent zoom geometry leaves every primary skip target uncovered", { timeout: 120_000 }, async () => {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 720, height: 500 } });
-  await context.route("**/*", async (route) => {
-    if (route.request().url().startsWith(origin)) await route.continue();
-    else await route.abort();
-  });
+  let browser;
+  let context;
 
   try {
+    browser = await chromium.launch({ headless: true });
+    context = await browser.newContext({ viewport: { width: 720, height: 500 } });
+    await context.route("**/*", async (route) => {
+      if (route.request().url().startsWith(origin)) await route.continue();
+      else await route.abort();
+    });
     const page = await context.newPage();
     for (const file of campaignFiles) {
       await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
@@ -889,6 +897,10 @@ test("200 percent zoom geometry leaves every primary skip target uncovered", { t
       assert.ok(primary.top < 500 && primary.bottom > geometry.stackedVariable, `${file} primary content remains visible in the short viewport`);
     }
   } finally {
-    await browser.close();
+    try {
+      await context?.close();
+    } finally {
+      await browser?.close();
+    }
   }
 });
