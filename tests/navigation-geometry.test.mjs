@@ -75,6 +75,59 @@ const waitForSyncedGeometry = async (page, stripSelector, headerSelector, minimu
   return readGeometry(page, stripSelector, headerSelector);
 };
 
+const readFocusStyle = (locator) => locator.evaluate((element) => {
+  const style = getComputedStyle(element);
+  const parseColor = (color) => {
+    const values = color.match(/[\d.]+/g)?.map(Number) ?? [];
+    return [values[0] ?? 0, values[1] ?? 0, values[2] ?? 0, values[3] ?? 1];
+  };
+  let effectiveBackground = [0, 0, 0, 0];
+  for (let current = element; current instanceof Element; current = current.parentElement) {
+    const background = parseColor(getComputedStyle(current).backgroundColor);
+    const outputAlpha = effectiveBackground[3] + (background[3] * (1 - effectiveBackground[3]));
+    if (outputAlpha > 0) {
+      effectiveBackground = [
+        ((effectiveBackground[0] * effectiveBackground[3]) + (background[0] * background[3] * (1 - effectiveBackground[3]))) / outputAlpha,
+        ((effectiveBackground[1] * effectiveBackground[3]) + (background[1] * background[3] * (1 - effectiveBackground[3]))) / outputAlpha,
+        ((effectiveBackground[2] * effectiveBackground[3]) + (background[2] * background[3] * (1 - effectiveBackground[3]))) / outputAlpha,
+        outputAlpha,
+      ];
+    }
+    if (effectiveBackground[3] >= 0.999) break;
+  }
+  return {
+    backgroundColor: style.backgroundColor,
+    boxShadow: style.boxShadow,
+    effectiveBackgroundColor: `rgb(${effectiveBackground.slice(0, 3).map(Math.round).join(", ")})`,
+    focusVisible: element.matches(":focus-visible"),
+    outlineColor: style.outlineColor,
+    outlineOffset: style.outlineOffset,
+    outlineStyle: style.outlineStyle,
+    outlineWidth: style.outlineWidth,
+  };
+});
+
+const contrastRatio = (foreground, background) => {
+  const parse = (color) => {
+    const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+    assert.equal(channels?.length, 3, `expected an RGB color, received ${color}`);
+    return channels;
+  };
+  const luminance = (color) => {
+    const channels = parse(color).map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+    / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+};
+
 before(async () => {
   server = createServer(async (request, response) => {
     try {
@@ -112,18 +165,6 @@ test("contextual focus outlines preserve raised and current-state shadows", { ti
     else await route.abort();
   });
 
-  const readFocusStyle = (locator) => locator.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      boxShadow: style.boxShadow,
-      focusVisible: element.matches(":focus-visible"),
-      outlineColor: style.outlineColor,
-      outlineOffset: style.outlineOffset,
-      outlineStyle: style.outlineStyle,
-      outlineWidth: style.outlineWidth,
-    };
-  });
-
   try {
     const page = await context.newPage();
     await page.goto(`${origin}/start.html`, { waitUntil: "domcontentloaded" });
@@ -156,6 +197,68 @@ test("contextual focus outlines preserve raised and current-state shadows", { ti
       [focusedSponsorInput.outlineColor, focusedSponsorInput.outlineStyle, focusedSponsorInput.outlineWidth, focusedSponsorInput.outlineOffset],
       ["rgb(7, 31, 28)", "solid", "3px", "3px"],
     );
+  } finally {
+    await browser.close();
+  }
+});
+
+test("contextual focus maps public parchment and resets nested dark utilities", { timeout: 30_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.route("**/*", async (route) => {
+    if (route.request().url().startsWith(origin)) await route.continue();
+    else await route.abort();
+  });
+
+  const assertFocusColor = async (locator, expectedColor, message, contextSurface = locator) => {
+    const shadow = (await readFocusStyle(locator)).boxShadow;
+    const contextBackground = (await readFocusStyle(contextSurface)).effectiveBackgroundColor;
+    await locator.focus();
+    const focused = await readFocusStyle(locator);
+    const ratio = contrastRatio(focused.outlineColor, contextBackground);
+    assert.equal(focused.focusVisible, true, `${message} is keyboard-focused`);
+    assert.equal(focused.outlineColor, expectedColor, message);
+    assert.equal(focused.boxShadow, shadow, `${message} preserves the component shadow`);
+    assert.ok(ratio >= 3, `${message} has ${ratio.toFixed(2)}:1 outline contrast`);
+    return focused;
+  };
+
+  const dark = "rgb(7, 31, 28)";
+  const gold = "rgb(242, 205, 106)";
+
+  try {
+    const page = await context.newPage();
+
+    await page.goto(`${origin}/sponsors.html`, { waitUntil: "domcontentloaded" });
+    await assertFocusColor(page.locator(".opportunity-card a").first(), dark, "sponsor opportunity link uses dark focus on paper", page.locator(".opportunity-card").first());
+    await assertFocusColor(page.locator(".sponsor-form .turnstile-shell"), gold, "sponsor Turnstile shell resets to gold on its dark surface");
+    const sponsorResult = page.locator(".sponsor-form__result");
+    await sponsorResult.evaluate((element) => {
+      element.hidden = false;
+      element.textContent = "Test result";
+    });
+    await assertFocusColor(sponsorResult, gold, "sponsor result resets to gold on its dark surface");
+
+    await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
+    await assertFocusColor(page.locator(".stop .stop-meta a").first(), dark, "route stop link uses dark focus on parchment", page.locator(".stop").first());
+    await assertFocusColor(page.locator(".stop .photo a").first(), dark, "route photo card link uses dark focus in its parchment stop", page.locator(".stop").first());
+
+    await page.goto(`${origin}/index.html`, { waitUntil: "domcontentloaded" });
+    await assertFocusColor(page.locator(".step a").first(), dark, "How to Play step link uses dark focus on paper", page.locator(".step").first());
+    await assertFocusColor(page.locator(".legend .btn"), dark, "legend control uses dark focus on paper", page.locator(".legend .scroll"));
+
+    await page.goto(`${origin}/start.html`, { waitUntil: "domcontentloaded" });
+    const hunterValidation = page.locator(".field-panel--paper").first().locator(".system-message");
+    await page.locator(".field-panel--paper").first().evaluate((panel) => {
+      panel.insertAdjacentHTML("beforeend", '<div class="system-message" tabindex="-1">Validation test</div>');
+    });
+    await assertFocusColor(hunterValidation, gold, "Hunter dark validation nested in paper resets to gold");
+
+    await page.goto(`${origin}/clue-board.html`, { waitUntil: "domcontentloaded" });
+    await page.locator("#board-feed").evaluate((feed) => {
+      feed.innerHTML = '<article class="field-note"><div class="form-error-summary" tabindex="-1">Validation test</div></article>';
+    });
+    await assertFocusColor(page.locator(".field-note .form-error-summary"), gold, "Board dark validation nested in paper resets to gold");
   } finally {
     await browser.close();
   }

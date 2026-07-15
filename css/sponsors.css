@@ -20,6 +20,23 @@
   scroll-margin-top: var(--stacked-header-height);
 }
 
+.trust-grid,
+.opportunity-card,
+.recognition__paper,
+.sponsor-form {
+  --campaign-focus: var(--campaign-focus-dark);
+}
+
+.sponsor-page,
+.sponsor-hero,
+.opportunities,
+.recognition,
+.inquiry,
+.sponsor-faq,
+.faq-list {
+  --campaign-focus: var(--campaign-focus-light);
+}
+
 .sponsor-hero {
   position: relative;
   isolation: isolate;
@@ -326,7 +343,6 @@
 .privacy-ticket { padding: 12px; border: 1px dashed var(--hunter-gold-dark); font-size: 0.66rem; line-height: 1.5; }
 
 .sponsor-form {
-  --campaign-focus: var(--campaign-focus-dark);
   min-width: 0;
   padding: clamp(25px, 5vw, 48px);
   color: var(--sponsor-ink);

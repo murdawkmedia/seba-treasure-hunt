@@ -56,6 +56,10 @@ html {
   --campaign-focus: var(--campaign-focus-light);
 }
 
+.campaign-page :where(.system-message, .turnstile-shell, .form-error-summary) {
+  --campaign-focus: var(--campaign-focus-light);
+}
+
 .campaign-page :where(h1, h2, h3) {
   font-family: var(--campaign-font-display);
   font-weight: 400;

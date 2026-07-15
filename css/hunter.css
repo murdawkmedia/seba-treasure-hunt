@@ -629,6 +629,10 @@ button.hunter-button {
   border-radius: 7px;
 }
 
+.field-panel--paper :where(.system-message, .turnstile-shell) {
+  background: var(--hunter-night);
+}
+
 .rules-masthead {
   display: flex;
   flex-wrap: wrap;

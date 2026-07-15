@@ -175,14 +175,29 @@ test("light surfaces select dark focus while dark campaign chrome stays gold", (
     "canonical dark chrome pins the gold focus token",
   );
   assert.match(
+    shellCss,
+    /\.campaign-page\s+:where\(\.system-message,\s*\.turnstile-shell,\s*\.form-error-summary\)\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
+    "shared dark validation and challenge surfaces reset inherited paper focus to gold",
+  );
+  assert.match(
     sponsorCss,
-    /\.sponsor-form\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
-    "the sponsor parchment form selects dark focus",
+    /\.trust-grid,\s*\.opportunity-card,\s*\.recognition__paper,\s*\.sponsor-form\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    "all sponsor parchment surfaces select dark focus",
+  );
+  assert.match(
+    sponsorCss,
+    /\.sponsor-page,\s*\.sponsor-hero,\s*\.opportunities,\s*\.recognition,\s*\.inquiry,\s*\.sponsor-faq,\s*\.faq-list\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
+    "sponsor forest sections, including the actual dark FAQ, pin gold focus",
   );
   assert.match(
     hunterCss,
     /\.field-panel--paper,\s*\.waiver-legal-body\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
     "Hunter paper and waiver surfaces select dark focus",
+  );
+  assert.match(
+    hunterCss,
+    /\.field-panel--paper\s+:where\(\.system-message,\s*\.turnstile-shell\)\s*\{[^}]*background:\s*var\(--hunter-night\);[^}]*\}/s,
+    "Hunter dark utilities remain opaque enough when nested in paper",
   );
   assert.match(
     boardCss,
@@ -191,8 +206,13 @@ test("light surfaces select dark focus while dark campaign chrome stays gold", (
   );
   assert.match(
     publicCss,
-    /\.card,\s*\.anchor-sponsor,\s*details\.qa\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
-    "public parchment cards select dark focus without changing whole page families",
+    /\.answer-block,\s*\.campaign-prop,\s*\.rules,\s*\.legend,\s*\.islands,\s*\.card,\s*\.howto,\s*\.step,\s*\.evidence,\s*\.found,\s*\.longgame,\s*\.fineprint,\s*\.hunt-faq,\s*\.interview-section,\s*details\.qa,\s*\.lookfor,\s*\.stops-intro,\s*\.stop,\s*\.anchor-sponsor\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    "public light and parchment roots systematically select dark focus",
+  );
+  assert.match(
+    publicCss,
+    /\.hero,\s*\.prize,\s*\.festival,\s*\.mapsection,\s*\.gallery,\s*\.route-teaser,\s*\.sponsor,\s*\.contact-card,\s*\.hours-banner,\s*\.checklist,\s*\.route-hero,\s*\.routevideo,\s*\.route-footnote,\s*\.evidence-section,\s*\.final-cta\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
+    "public forest surfaces pin gold focus, including dark cards nested in paper sections",
   );
 });
 

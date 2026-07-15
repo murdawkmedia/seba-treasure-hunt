@@ -50,10 +50,44 @@ a { color: var(--rust-600); }
 
 h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.05; letter-spacing: 0.5px; }
 
+.answer-block,
+.campaign-prop,
+.rules,
+.legend,
+.islands,
 .card,
-.anchor-sponsor,
-details.qa {
+.howto,
+.step,
+.evidence,
+.found,
+.longgame,
+.fineprint,
+.hunt-faq,
+.interview-section,
+details.qa,
+.lookfor,
+.stops-intro,
+.stop,
+.anchor-sponsor {
   --campaign-focus: var(--campaign-focus-dark);
+}
+
+.hero,
+.prize,
+.festival,
+.mapsection,
+.gallery,
+.route-teaser,
+.sponsor,
+.contact-card,
+.hours-banner,
+.checklist,
+.route-hero,
+.routevideo,
+.route-footnote,
+.evidence-section,
+.final-cta {
+  --campaign-focus: var(--campaign-focus-light);
 }
 
 .wrap { max-width: var(--max); margin: 0 auto; padding: 0 22px; }
