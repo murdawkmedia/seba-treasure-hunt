@@ -4,6 +4,8 @@
 
 - Candidate: `codex/tim-lost-hunter-platform`, validation alias only.
 - Validation URL: `https://codex-validation.seba-treasure-hunt.pages.dev`.
+- Deployed candidate: commit `da27f2a`, Cloudflare deployment `6a00edc1-10c4-4286-abed-c80cb15a6eec`.
+- Unchanged production reference: source `5552a57`, Cloudflare deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359`.
 - Validation remains publicly reachable by URL and sends `X-Robots-Tag: noindex, nofollow`.
 - Production, custom domains, DNS, production D1 and production media were not changed.
 - Validation identities, submissions, uploads and moderation decisions are disposable and must be reset before launch.

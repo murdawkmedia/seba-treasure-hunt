@@ -6,9 +6,9 @@ Last updated: 2026-07-14
 
 ### Validation MVP checkpoint — 2026-07-14
 
-The current branch is now deployed to the stable noindex validation alias. Production, custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
+Commit `da27f2a` is deployed to the stable noindex validation alias as Cloudflare deployment `6a00edc1-10c4-4286-abed-c80cb15a6eec`. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
 
-Disposable live QA passed the Hunter identity sync, password sign-in, profile/Privacy acceptance, waiver review and acceptance, 12-waypoint participation unlock, Field Note submission/moderation/publication, private report submission, private image upload and media processing paths. A disposable Staff principal also passed the authenticated Ops dashboard and moderation API path. The evidence and ranked wishlist are in `docs/qa/2026-07-14-validation-mvp-readiness.md`.
+Disposable live QA passed the Hunter identity sync, password sign-in, profile/Privacy acceptance, waiver review and acceptance, 12-waypoint participation unlock, Field Note submission/moderation/publication, private report submission, private image upload and media processing paths. A disposable Staff principal and existing session passed the authenticated Ops dashboard and moderation API path; a fresh clean-browser Staff UI sign-in remains pending. The evidence and ranked wishlist are in `docs/qa/2026-07-14-validation-mvp-readiness.md`.
 
 The release is not production-ready yet: Microsoft Graph delegated authorization and the controlled waiver receipt are still pending; one clean-browser Staff UI sign-in and one real password-recovery mailbox round trip remain. Validation data stays disposable and must be reset before launch.
 
