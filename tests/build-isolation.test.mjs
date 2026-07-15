@@ -18,7 +18,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { buildSite } from "../scripts/build.mjs";
-import { CAMPAIGN_MENU, CAMPAIGN_PAGES, renderCampaignPage } from "../scripts/campaign-shell.mjs";
+import {
+  CAMPAIGN_MENU,
+  CAMPAIGN_PAGES,
+  renderCampaignPage,
+  scanCampaignHtmlStartTags,
+} from "../scripts/campaign-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDist = path.join(root, "dist");
@@ -42,9 +47,28 @@ const legacyShellClasses = Object.freeze([
   "site-footer",
 ]);
 
+const expectedShellLinks = Object.freeze([
+  "#main",
+  "/updates",
+  "/",
+  ...CAMPAIGN_MENU.map((item) => item.href),
+  "/privacy",
+  "/waiver",
+  "/community-guidelines",
+  "/rules",
+  "/sponsors",
+]);
+
+function liveAttributeValues(html, name) {
+  return scanCampaignHtmlStartTags(html)
+    .flatMap((tag) => tag.attributes)
+    .filter((attribute) => attribute.name === name)
+    .map((attribute) => attribute.value);
+}
+
 function classTokens(html) {
-  return [...html.matchAll(/\bclass[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >]+))/gi)]
-    .flatMap((match) => (match[1] ?? match[2] ?? match[3] ?? "")
+  return liveAttributeValues(html, "class")
+    .flatMap((value) => value
       .split(/[\t\n\f\r ]+/)
       .filter(Boolean));
 }
@@ -62,6 +86,21 @@ function renderedShell(html, filename) {
 
 function primaryNav(html) {
   return html.match(/<nav class="campaign-nav"[\s\S]*?<\/nav>/)?.[0] ?? "";
+}
+
+function assertCanonicalShellLinks(html, filename) {
+  const hrefs = liveAttributeValues(renderedShell(html, filename), "href");
+  assert.equal(
+    hrefs.length,
+    expectedShellLinks.length,
+    `${filename} expected ${expectedShellLinks.length} shell links`,
+  );
+  for (const href of hrefs) {
+    assert.equal(typeof href, "string", `${filename} shell href has a value`);
+    assert.match(href, /^(?:\/(?!\/)|https?:\/\/|#)/i, `${filename} shell link is root-relative: ${href}`);
+    assert.doesNotMatch(href, /\.html(?:$|[?#])/i, `${filename} shell link omits .html: ${href}`);
+  }
+  assert.deepEqual(hrefs, expectedShellLinks, `${filename} has the exact canonical shell links`);
 }
 
 function expectedCurrentCount(filename) {
@@ -136,6 +175,30 @@ async function withTemporaryBuild(options, callback) {
   }
 }
 
+test("shell link validation handles every attribute form and rejects bypasses", () => {
+  const source = readFileSync(path.join(root, "route.html"), "utf8");
+  const rendered = renderCampaignPage(source, "route.html");
+  const alternateValidForms = rendered
+    .replace('href="/updates"', "HREF = '/updates'")
+    .replace('href="/"', "href=/");
+
+  assert.doesNotThrow(() => assertCanonicalShellLinks(alternateValidForms, "route.html"));
+  for (const unsafe of [
+    rendered.replace('href="/updates"', "HREF = 'updates.html'"),
+    rendered.replace('href="/"', "href=relative"),
+    rendered.replace('href="/privacy"', "HrEf = '//evil.example'"),
+  ]) {
+    assert.throws(
+      () => assertCanonicalShellLinks(unsafe, "route.html"),
+      /shell link|root-relative|expected/i,
+    );
+  }
+  assert.throws(
+    () => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/sponsors"[^>]*>Sponsors<\/a>/, ""), "route.html"),
+    /expected 16 shell links/i,
+  );
+});
+
 test("imported builds use owned temporary outputs without touching repository dist", async () => {
   const before = snapshotRepositoryOutputs();
 
@@ -144,7 +207,6 @@ test("imported builds use owned temporary outputs without touching repository di
     assert.notEqual(isolatedMedia, mediaDist);
     for (const filename of Object.keys(CAMPAIGN_PAGES)) {
       const html = readFileSync(path.join(dist, filename), "utf8");
-      const shell = renderedShell(html, filename);
       const tokens = new Set(classTokens(html));
 
       assert.match(html, /class="campaign-header"/, `${filename} has a rendered header`);
@@ -152,10 +214,7 @@ test("imported builds use owned temporary outputs without touching repository di
       for (const className of legacyShellClasses) {
         assert.equal(tokens.has(className), false, `${filename} excludes legacy class ${className}`);
       }
-      for (const href of [...shell.matchAll(/\bhref="([^"]+)"/g)].map((match) => match[1])) {
-        assert.match(href, /^(?:\/(?!\/)|https?:\/\/|#)/i, `${filename} shell link is root-relative: ${href}`);
-        assert.doesNotMatch(href, /\.html(?:$|[?#])/i, `${filename} shell link omits .html: ${href}`);
-      }
+      assertCanonicalShellLinks(html, filename);
       assert.equal(
         (html.match(/aria-current="page"/g) ?? []).length,
         expectedCurrentCount(filename),

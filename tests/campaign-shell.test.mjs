@@ -8,6 +8,7 @@ import {
   CAMPAIGN_MENU,
   CAMPAIGN_PAGES,
   renderCampaignPage,
+  scanCampaignHtmlStartTags,
 } from "../scripts/campaign-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -96,6 +97,22 @@ function primaryNav(html) {
 
 function footer(html) {
   return html.match(/<footer class="campaign-footer"[\s\S]*?<\/footer>/)?.[0] ?? "";
+}
+
+function assertShellPrefixPreserved(sourceHtml, renderedHtml, filename) {
+  const markers = [...sourceHtml.matchAll(/<!-- CAMPAIGN_SHELL [\s\S]*? -->/g)];
+  assert.equal(markers.length, 1, `${filename} has one shell marker boundary`);
+  const markerStart = markers[0].index;
+  assert.equal(
+    renderedHtml.slice(0, markerStart),
+    sourceHtml.slice(0, markerStart),
+    `${filename} preserves its exact prefix through its shell marker`,
+  );
+  assert.match(
+    renderedHtml.slice(markerStart),
+    /^<a class="skip-link" /,
+    `${filename} inserts the canonical shell at the marker boundary`,
+  );
 }
 
 test("renders one complete canonical shell and footer without changing page content", () => {
@@ -443,6 +460,29 @@ test("splits class tokens on HTML form-feed whitespace", () => {
   );
 });
 
+test("the shared live-HTML scanner parses attribute forms and ignores inert lookalikes", () => {
+  const tags = scanCampaignHtmlStartTags(`
+    <!-- <a href="/comment" class="topbar">Comment</a> -->
+    <script>const inert = '<a href="/script" class="topbar">';</script>
+    <template><a href="/template" class="topbar">Template</a></template>
+    <a HREF = "/double" data-class="topbar">Double</a>
+    <a href = '/single' class='campaign-link'>Single</a>
+    <a\thReF\f=\r/unquoted>Unquoted</a>
+  `);
+  const attributes = tags.flatMap((tag) => tag.attributes);
+
+  assert.ok(Object.isFrozen(tags));
+  assert.ok(tags.every((tag) => Object.isFrozen(tag) && Object.isFrozen(tag.attributes)));
+  assert.deepEqual(
+    attributes.filter((attribute) => attribute.name === "href").map((attribute) => attribute.value),
+    ["/double", "/single", "/unquoted"],
+  );
+  assert.deepEqual(
+    attributes.filter((attribute) => attribute.name === "class").map((attribute) => attribute.value),
+    ["campaign-link"],
+  );
+});
+
 test("rejects every legacy public shell class", () => {
   for (const className of legacyShellClasses) {
     assert.throws(
@@ -593,14 +633,28 @@ test("every registered source page declares exactly its approved shell descripto
   }
 });
 
-test("shell rendering preserves each registered page head byte for byte", () => {
+test("shell rendering preserves each registered page prefix through the shell marker", () => {
   for (const filename of Object.keys(CAMPAIGN_PAGES)) {
     const sourceHtml = readFileSync(path.join(root, filename), "utf8");
     const renderedHtml = renderCampaignPage(sourceHtml, filename);
-    const sourceHead = sourceHtml.match(/<head\b[^>]*>[\s\S]*?<\/head>/i)?.[0];
-    const renderedHead = renderedHtml.match(/<head\b[^>]*>[\s\S]*?<\/head>/i)?.[0];
-
-    assert.ok(sourceHead, `${filename} source has a complete head`);
-    assert.equal(renderedHead, sourceHead, `${filename} metadata head remains byte-exact`);
+    assertShellPrefixPreserved(sourceHtml, renderedHtml, filename);
   }
+});
+
+test("prefix preservation does not truncate at a raw-text head lookalike", () => {
+  const fixture = source().replace(
+    '<meta name="description" content="Keep me">',
+    '<script>const fakeHeadEnd = "</head>";</script><meta name="description" content="Keep me">',
+  );
+  const rendered = renderCampaignPage(fixture, "route.html");
+
+  assert.doesNotThrow(() => assertShellPrefixPreserved(fixture, rendered, "route.html"));
+  assert.throws(
+    () => assertShellPrefixPreserved(
+      fixture,
+      rendered.replace("<title>Test page</title>", "<title>Changed after fake end</title>"),
+      "route.html",
+    ),
+    /prefix through its shell marker/i,
+  );
 });

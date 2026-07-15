@@ -306,6 +306,21 @@ function scanStartTags(source) {
   return scanTagSegment(source).tags;
 }
 
+export function scanCampaignHtmlStartTags(source) {
+  if (typeof source !== "string") {
+    throw new TypeError("Campaign HTML source must be a string");
+  }
+  return Object.freeze(
+    scanStartTags(source).map(({ attributes, name }) =>
+      Object.freeze({
+        name,
+        attributes: Object.freeze(
+          attributes.map((attribute) => Object.freeze({ ...attribute })),
+        ),
+      })),
+  );
+}
+
 function collectClasses(source) {
   const classes = [];
   for (const { attributes } of scanStartTags(source)) {

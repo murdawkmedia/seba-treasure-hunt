@@ -86,6 +86,143 @@ const LEGACY_SHELL_CLASSES = Object.freeze([
   "site-footer",
 ]);
 
+function stripCssComments(css) {
+  let output = "";
+  let quote = "";
+  for (let index = 0; index < css.length; index += 1) {
+    const character = css[index];
+    if (quote) {
+      output += character;
+      if (character === "\\" && index + 1 < css.length) output += css[index += 1];
+      else if (character === quote) quote = "";
+    } else if (character === '"' || character === "'") {
+      quote = character;
+      output += character;
+    } else if (character === "/" && css[index + 1] === "*") {
+      const end = css.indexOf("*/", index + 2);
+      assert.notEqual(end, -1, "CSS comments are terminated");
+      output += " ";
+      index = end + 1;
+    } else {
+      output += character;
+    }
+  }
+  assert.equal(quote, "", "CSS strings are terminated");
+  return output;
+}
+
+function decodeCssEscapes(value) {
+  let decoded = "";
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== "\\") {
+      decoded += value[index];
+      continue;
+    }
+    const next = value[index + 1];
+    if (next === undefined) break;
+    const hex = value.slice(index + 1).match(/^[0-9a-f]{1,6}/i)?.[0];
+    if (hex) {
+      const codePoint = Number.parseInt(hex, 16);
+      decoded += codePoint === 0 || codePoint > 0x10ffff
+        ? "\ufffd"
+        : String.fromCodePoint(codePoint);
+      index += hex.length;
+      if (/[\t\n\f\r ]/.test(value[index + 1] ?? "")) index += 1;
+    } else if (next !== "\n" && next !== "\r" && next !== "\f") {
+      decoded += next;
+      index += 1;
+    }
+  }
+  return decoded;
+}
+
+function cssRulePreludes(css) {
+  const source = stripCssComments(css);
+  const preludes = [];
+  let boundary = 0;
+  let bracketDepth = 0;
+  let parenthesisDepth = 0;
+  let quote = "";
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (character === "\\") index += 1;
+      else if (character === quote) quote = "";
+      continue;
+    }
+    if (character === '"' || character === "'") quote = character;
+    else if (character === "[") bracketDepth += 1;
+    else if (character === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+    else if (character === "(") parenthesisDepth += 1;
+    else if (character === ")") parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+    else if (bracketDepth === 0 && parenthesisDepth === 0 && character === "{") {
+      const prelude = source.slice(boundary, index).trim();
+      if (prelude && !prelude.startsWith("@")) preludes.push(prelude);
+      boundary = index + 1;
+    } else if (
+      bracketDepth === 0 &&
+      parenthesisDepth === 0 &&
+      (character === ";" || character === "}")
+    ) {
+      boundary = index + 1;
+    }
+  }
+  return preludes;
+}
+
+function classSelectors(prelude) {
+  const selector = decodeCssEscapes(prelude);
+  const classes = [];
+  let quote = "";
+
+  for (let index = 0; index < selector.length; index += 1) {
+    const character = selector[index];
+    if (quote) {
+      if (character === "\\") index += 1;
+      else if (character === quote) quote = "";
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === "[") {
+      let end = index + 1;
+      let attributeQuote = "";
+      for (; end < selector.length; end += 1) {
+        const candidate = selector[end];
+        if (attributeQuote) {
+          if (candidate === "\\") end += 1;
+          else if (candidate === attributeQuote) attributeQuote = "";
+        } else if (candidate === '"' || candidate === "'") attributeQuote = candidate;
+        else if (candidate === "]") break;
+      }
+      const attribute = selector.slice(index + 1, end).match(
+        /^[\t\n\f\r ]*class[\t\n\f\r ]*~=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r \]]+))(?:[\t\n\f\r ]+[is])?[\t\n\f\r ]*$/i,
+      );
+      if (attribute) classes.push(attribute[1] ?? attribute[2] ?? attribute[3]);
+      index = end;
+      continue;
+    }
+    if (character === ".") {
+      const name = selector.slice(index + 1).match(/^[-_a-z0-9]+/i)?.[0];
+      if (name) {
+        classes.push(name);
+        index += name.length;
+      }
+    }
+  }
+  return classes;
+}
+
+function legacyCssClassSelectors(css) {
+  const legacy = new Set(LEGACY_SHELL_CLASSES);
+  return [...new Set(cssRulePreludes(css).flatMap(classSelectors)
+    .filter((className) => legacy.has(className)))]
+    .sort();
+}
+
 const cssBlock = (css, marker) => {
   const markerMatch = marker.exec(css);
   assert.ok(markerMatch, `missing CSS block for ${marker}`);
@@ -269,15 +406,24 @@ test("the private Ops console has no campaign page-family or shared-style depend
   assert.doesNotMatch(opsCss, /campaign-page(?:--[a-z]+)?/);
 });
 
+test("legacy CSS selector detection covers attribute and escaped forms without inert false positives", () => {
+  const detected = legacyCssClassSelectors(String.raw`
+    /* .footer, [class~="hunter-footer"] { display: block; } */
+    .campaign-footer { --example: ".topbar"; }
+    [data-class~="topbar"] { content: '[class~="board-nav"]'; }
+    [class~="topbar"] { display: block; }
+    [CLASS ~= 'hunter-nav'] { display: block; }
+    .\62 oard\2d topbar { display: block; }
+  `);
+
+  assert.deepEqual(detected, ["board-topbar", "hunter-nav", "topbar"]);
+});
+
 test("public stylesheets expose none of the complete legacy shell selector set", () => {
   const css = ["css/style.css", "css/hunter.css", "css/board.css", "css/sponsors.css", "css/campaign-shell.css"]
     .map(read)
-    .join("\n")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const className of LEGACY_SHELL_CLASSES) {
-    const selector = `.${className}`;
-    assert.doesNotMatch(css, new RegExp(`\\.${className}(?![\\w-])`), `${selector} is absent, including compound selectors`);
-  }
+    .join("\n");
+  assert.deepEqual(legacyCssClassSelectors(css), []);
 });
 
 test("every campaign source uses root-relative local stylesheet URLs", () => {
