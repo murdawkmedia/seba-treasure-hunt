@@ -168,3 +168,13 @@ test("waiver QA scans private fixture values across source and served public out
   assert.match(script, /privateBundleOutputs/);
   assert.match(script, /privacyFindings/);
 });
+
+test("waiver QA treats Dashboard static artifacts as public while Ops and Worker remain private", async () => {
+  const script = await readRunner();
+
+  assert.match(script, /scanBuiltOutputPrivacy/);
+  assert.doesNotMatch(script, /!file\.endsWith\(["']dashboard\.html["']\)/);
+  assert.doesNotMatch(script, /!file\.endsWith\(`\$\{path\.sep\}dashboard\.js`\)/);
+  assert.match(script, /publicSurfaceOutputs/);
+  assert.match(script, /privateBundleOutputs/);
+});

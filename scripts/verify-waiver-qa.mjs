@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import axeCore from "axe-core";
+import { scanBuiltOutputPrivacy } from "./qa-output-privacy.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "tim-lost-waiver-qa-"));
@@ -559,13 +560,7 @@ async function productionSourcePrivacyScan() {
 }
 
 async function bundlePrivacyClassification() {
-  const publicSurfaceOutputs = [];
-  await collectFiles(distRoot, (file) => /\.(?:html|js|css|json|xml|txt|webmanifest)$/.test(file) && !file.endsWith("_worker.js") && !file.endsWith("ops.html") && !file.endsWith("dashboard.html") && !file.endsWith(`${path.sep}ops.js`) && !file.endsWith(`${path.sep}dashboard.js`), publicSurfaceOutputs);
-  const privateBundleOutputs = [path.join(distRoot, "_worker.js"), path.join(distRoot, "ops.html"), path.join(distRoot, "dashboard.html"), path.join(distRoot, "assets", "app", "ops.js"), path.join(distRoot, "assets", "app", "dashboard.js")];
-  return {
-    publicSurfaceOutputs: { filesScanned: publicSurfaceOutputs.length, privacyFindings: await scanFiles(publicSurfaceOutputs, "served-public-static") },
-    privateBundleOutputs: { filesScanned: privateBundleOutputs.length, privacyFindings: await scanFiles(privateBundleOutputs, "server/Ops-private-bundle") },
-  };
+  return scanBuiltOutputPrivacy({ distRoot, privateFixtureValues });
 }
 
 function scanRenderedPublicOutput(renderedPublicOutputs) {
@@ -665,6 +660,8 @@ async function run() {
     const bundles = await bundlePrivacyClassification();
     const renderedPrivacy = scanRenderedPublicOutput(renderedPublicOutputs);
     assert.deepEqual(sourcePrivacy.privacyFindings, [], "production source privacy scan must not contain QA private fixtures");
+    assert.ok(bundles.publicSurfaceOutputs.files.includes("dashboard.html"), "Dashboard HTML must be treated as a public static output");
+    assert.ok(bundles.publicSurfaceOutputs.files.includes("assets/app/dashboard.js"), "Dashboard client bundle must be treated as a public static output");
     assert.deepEqual(bundles.publicSurfaceOutputs.privacyFindings, [], "served public static output must not contain QA private fixtures");
     assert.deepEqual(renderedPrivacy.privacyFindings, [], "rendered public output privacy scan must not contain QA private fixtures");
 
@@ -690,7 +687,7 @@ async function run() {
     };
     evidence.serverReadCount = serverLedger.reads.length;
     await writeFile(logPath, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
-    console.log(JSON.stringify({ ok: true, browser: evidence.browser, artifactRoot, screenshots: screenshotRoot, log: logPath, mockedWrites: evidence.mockedWrites, networkBoundary: evidence.networkBoundary, privacy: { productionSourceFindings: sourcePrivacy.privacyFindings.length, renderedPublicFindings: renderedPrivacy.privacyFindings.length, publicBundleFindings: bundles.publicSurfaceOutputs.privacyFindings.length, privateBundleClassifiedFindings: bundles.privateBundleOutputs.privacyFindings.length } }, null, 2));
+    console.log(JSON.stringify({ ok: true, browser: evidence.browser, artifactRoot, screenshots: screenshotRoot, log: logPath, mockedWrites: evidence.mockedWrites, networkBoundary: evidence.networkBoundary, privacy: { productionSourceFindings: sourcePrivacy.privacyFindings.length, renderedPublicFindings: renderedPrivacy.privacyFindings.length, publicFilesScanned: bundles.publicSurfaceOutputs.filesScanned, publicBundleFindings: bundles.publicSurfaceOutputs.privacyFindings.length, privateFilesScanned: bundles.privateBundleOutputs.filesScanned, privateBundleClassifiedFindings: bundles.privateBundleOutputs.privacyFindings.length } }, null, 2));
   } finally {
     if (browser) await browser.close();
     if (server) await closeServer(server);
