@@ -6,7 +6,7 @@ Last updated: 2026-07-15
 
 ### Validation MVP checkpoint — 2026-07-14
 
-The stable noindex validation alias serves the reviewed Graph-hardened candidate as Cloudflare deployment `3051bf13` from source `b94e3d4` plus the current six-file mailer hardening diff. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
+The stable noindex validation alias serves the reviewed Graph-hardened candidate as Cloudflare deployment `1fb157d6` from source commit `d830e19`. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
 
 Disposable live QA passed the Hunter identity sync, password sign-in, profile/Privacy acceptance, waiver review and acceptance, 12-waypoint participation unlock, Field Note submission/moderation/publication, private report submission, private image upload and media processing paths. A disposable Staff principal and existing session passed the authenticated Ops dashboard and moderation API path; a fresh clean-browser Staff UI sign-in remains pending. The evidence and ranked wishlist are in `docs/qa/2026-07-14-validation-mvp-readiness.md`.
 
@@ -93,7 +93,7 @@ Graph transactional-mail wiring from `17f70c0` and `c23109f` is active. Migratio
 - `git diff --check`: passed. Pre-existing Wrangler/workerd processes were neither started nor stopped and were not used as release evidence.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
-- Validation deployment `3051bf13` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; the signed-in Hunter dashboard reports the receipt as sent. Cloudflare holds the active transactional settings as encrypted Preview secrets, and validation D1 contains encrypted Graph rotation state only. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
+- Validation deployment `1fb157d6` from `d830e19` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; the signed-in Hunter dashboard reports the receipt as sent. Cloudflare holds the active transactional settings as encrypted Preview secrets, and validation D1 contains encrypted Graph rotation state only. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
 - `npm audit --omit=dev --audit-level=high`: exit 0 with zero high/critical findings. Twelve moderate findings remain in Clerk's optional Solana chain; no forced breaking remediation was applied.
 - Full evidence and reproduction commands are recorded in `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`.
 

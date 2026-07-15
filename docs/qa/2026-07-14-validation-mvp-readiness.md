@@ -4,7 +4,7 @@
 
 - Candidate: `codex/tim-lost-hunter-platform`, validation alias only.
 - Validation URL: `https://codex-validation.seba-treasure-hunt.pages.dev`.
-- Deployed candidate before the final documentation commit: source `b94e3d4` plus the reviewed Graph hardening diff, Cloudflare deployment `3051bf13` (immutable preview `https://3051bf13.seba-treasure-hunt.pages.dev`). The stable alias serves this candidate; redeploy the final commit hash after the branch is pushed.
+- Deployed candidate: commit `d830e19`, Cloudflare deployment `1fb157d6` (immutable preview `https://1fb157d6.seba-treasure-hunt.pages.dev`). The stable alias serves this candidate.
 - Unchanged production reference: source `5552a57`, Cloudflare deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359`.
 - Validation remains publicly reachable by URL and sends `X-Robots-Tag: noindex, nofollow`.
 - Production, custom domains, DNS, production D1 and production media were not changed.
