@@ -300,6 +300,7 @@ async function run() {
   let temporaryBuild;
   let server;
   let browser;
+  let completed = false;
   try {
     temporaryBuild = await buildSite({ temporary: true });
     await mkdir(screenshotRoot, { recursive: true });
@@ -465,12 +466,21 @@ async function run() {
     };
     await writeFile(logPath, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
     console.log(JSON.stringify(evidence, null, 2));
-    console.log(`Unified shell QA artifacts preserved in OS temp directory ${path.basename(artifactRoot)}`);
+    completed = true;
   } finally {
     if (browser) await browser.close();
     if (server) await closeServer(server);
     if (temporaryBuild) await temporaryBuild.cleanup();
-    if (!preserveArtifacts) await rm(artifactRoot, { recursive: true, force: true });
+    if (!preserveArtifacts) {
+      await rm(artifactRoot, { recursive: true, force: true });
+    }
+    if (completed) {
+      console.log(
+        preserveArtifacts
+          ? `Unified shell QA artifacts preserved in OS temp directory ${path.basename(artifactRoot)}`
+          : "Unified shell QA artifacts removed after verification",
+      );
+    }
   }
 }
 

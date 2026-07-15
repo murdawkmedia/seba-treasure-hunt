@@ -105,3 +105,18 @@ test("evidence timestamps the real execution separately from the fixed browser c
   assert.match(script, /browserFixtureTime:\s*fixedNow/);
   assert.doesNotMatch(script, /runDate:\s*["']2026-07-14["']/);
 });
+
+test("artifact reporting distinguishes preserved evidence from completed cleanup", async () => {
+  const script = await readRunner();
+
+  assert.match(script, /let completed = false/);
+  assert.match(script, /completed = true/);
+  assert.match(script, /if \(completed\)/);
+  assert.match(script, /preserveArtifacts\s*\?\s*`Unified shell QA artifacts preserved/);
+  assert.match(script, /:\s*["']Unified shell QA artifacts removed after verification["']/);
+  assert.equal(
+    (script.match(/Unified shell QA artifacts preserved/g) ?? []).length,
+    1,
+    "preserved output is emitted only by the preserve branch",
+  );
+});
