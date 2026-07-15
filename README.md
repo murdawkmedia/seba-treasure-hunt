@@ -71,10 +71,12 @@ npm run assets:favicons
 npm test
 npm run typecheck
 npm run build
+npm run verify:waiver-qa
+npm run verify:unified-shell-qa
 npm run dev
 ```
 
-The complete suite covers public content contracts, SEO/AEO, canonical redirects, gated waypoint data, auth separation, status transitions, reporting, sponsorship inquiries, private sponsor workflow totals, moderation, rate limits, upload privacy, legal-document integrity, media re-encoding, UI normalization, metadata removal and the Cloudflare file-size limit.
+The complete suite covers public content contracts, SEO/AEO, canonical redirects, gated waypoint data, auth separation, status transitions, reporting, sponsorship inquiries, private sponsor workflow totals, moderation, rate limits, upload privacy, legal-document integrity, media re-encoding, UI normalization, metadata removal and the Cloudflare file-size limit. The two browser QA commands use isolated temporary builds and local request boundaries; their screenshots and evidence ledgers remain outside the repository in unique OS-temporary directories.
 
 ## Deploy
 

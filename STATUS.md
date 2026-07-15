@@ -41,6 +41,7 @@ Validation inquiries are disposable and must not be promoted to production.
 - Public `/waiver` route, legal navigation, sitemap entry and active architecture documentation.
 - A validation-safe browser QA gate that exercises the built Dashboard, Ops, Clue Board and Report clients at desktop, mobile and zoom-equivalent viewports.
 - One build-time public shell source, `scripts/campaign-shell.mjs`, owns the status strip, skip link, canonical eight-item menu, header and footer for all thirteen public and hunter routes. `css/campaign-shell.css` owns shared chrome and tokens while page-family classes preserve landing, route, editorial, ledger, workspace, document and sponsor layouts. Ops remains intentionally separate.
+- A durable `verify:unified-shell-qa` command source-renders every campaign route into an owned temporary build, audits the exact 72-navigation/111-state matrix through a read-only local server, writes only hashed evidence and screenshots beneath a unique OS-temporary directory, and fails closed on external continuation or any write attempt.
 
 Key implementation commits include `a0121c0`, `112e286`, `0553fe2`, `1a8a10d`, `db4aaf5`, `41649f5`, `0dd4436`, `26a43d7`, `79a4278`, `6eeb0c1`, `4c05a9b`, `2e0220a`, `9116778`, `535f760`, `1774882`, `bf098f5`, `65e12bf`, `0e701b6`, `765102d`, `e714796` and `5deee85`.
 
@@ -53,6 +54,7 @@ Unified-shell Tasks 1-7 are represented by these local commit groups:
 - Task 5 Clue Board status integration: `7cb02d3`, `dc0d6d6`.
 - Task 6 route-matrix and accessibility QA: `53e1941`, `c234363`.
 - Task 7 public-shell drift protection: `4bda466`, `350c297`, `6a6c3eb`, `1bf3935`.
+- Task 8 reproducible browser and privacy-output QA: `48c9057`.
 
 Graph transactional-mail wiring remains locally complete in `17f70c0` and `c23109f`. Applying migration `0010`, configuring Preview-only settings, completing delegated authorization, deploying validation and sending one controlled validation message remain external rollout steps.
 
@@ -72,16 +74,16 @@ Graph transactional-mail wiring remains locally complete in `17f70c0` and `c2310
 
 - `npm run legal:verify`: authoritative waiver and Privacy/Media generated artifacts match their recorded versions and hashes.
 - Focused real-D1 integration passes after migrations through `0009`, including migration replay, populated receipt reconciliation, acceptance rollback, withdrawal ranking, lease fencing, interrupted-receipt replay, Ops retry/view auditing, append-only mutation rejection and atomic multi-identity rate limiting.
-- Waiver QA contract: 5/5 passing.
+- Waiver QA contract: 6/6 passing; the unified-shell and output-classification contracts add another 4/4 passing checks.
 - `npm run verify:waiver-qa`: passing against an isolated temporary build with 251 observed requests; three local bootstrap mocks and one each for review, acceptance, participant resend and Ops retry; zero external writes, continued external requests, blocked writes, forbidden provider attempts and server-rejected writes.
 - The browser gates cover every public route at 390x844, 360x900, 768x900, 1440x900 and the 720x500 200%-zoom equivalent, plus seven representative desktop routes at 1440x1000. They verify collapsed/expanded menus, skip-link focus, sticky geometry, current state, short-menu traversal, overflow, console output and serious/critical axe findings.
-- QA privacy classification reports zero findings in production source, rendered public output and public bundles. Private server/Ops bundles are classified separately rather than represented as public leaks.
+- QA privacy classification reports zero findings in production source, rendered public output and 37 public static files. Dashboard HTML and its client bundle are public scan surfaces; three private Worker/Ops bundle files are classified separately and also contain zero private-fixture findings.
 - The earlier sponsor surface remains documented in `docs/qa/2026-07-13-sponsor-feature-verification.md` with its reproducible `scripts/verify-sponsor-qa.mjs` runner and uncommitted `%TEMP%\tim-lost-task10` artifacts; this waiver pass does not replace or redeploy that validation release.
-- `npm test`: 189/189 static/contract tests and 278/278 TypeScript tests passed.
+- `npm test`: 194/194 static/contract tests and 278/278 TypeScript tests passed.
 - `npm run typecheck`: Worker, client, Worker-test and client-test checks passed.
 - `npm run build`: passed; Pages Worker 316.9 kB, media Worker 3.2 kB and client bundles completed.
 - Focused campaign navigation/accessibility verification: 12/12 passed. Nineteen representative screenshots were captured outside the repository with external requests blocked and zero page errors; the artifact names and SHA-256 values are recorded in `docs/qa/2026-07-14-unified-campaign-shell-verification.md`.
-- Dedicated console verification covered 72 page navigations and 111 collapsed, expanded, desktop and zoom-equivalent route states with zero console errors and zero uncaught page errors. All 89 external attempts were intercepted locally (72 font stylesheets and 17 Turnstile scripts); zero external request continued.
+- `npm run verify:unified-shell-qa` reproducibly covered 72 page navigations and 111 collapsed, expanded, desktop and zoom-equivalent route states with zero console errors and zero uncaught page errors. Across that matrix and its 19 hashed screenshots, all 112 external reads were fulfilled locally (91 stylesheets and 21 scripts), with zero continued external requests, external writes, local writes or server-rejected writes.
 - `git diff --check`: passed. Pre-existing Wrangler/workerd processes were neither started nor stopped and were not used as release evidence.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.

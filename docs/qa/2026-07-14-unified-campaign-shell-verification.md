@@ -4,7 +4,7 @@ This record verifies the local unified-shell implementation for the Tim Lost Som
 
 ## Source and architecture
 
-The verified implementation head before this documentation commit was `1bf3935` on `codex/tim-lost-hunter-platform`.
+The verified implementation head before this documentation commit was `48c9057` on `codex/tim-lost-hunter-platform`.
 
 - Task 1 renderer/parser: `2bee863`, `c58124d`, `f295f91`, `174f883`, `e77fb69`.
 - Task 2 build integration: `6f29961`, `639b30e`, `46bc766`, `f852a34`.
@@ -13,6 +13,7 @@ The verified implementation head before this documentation commit was `1bf3935` 
 - Task 5 Clue Board status integration: `7cb02d3`, `dc0d6d6`.
 - Task 6 route-matrix/accessibility QA: `53e1941`, `c234363`.
 - Task 7 drift protection: `4bda466`, `350c297`, `6a6c3eb`, `1bf3935`.
+- Task 8 reproducible browser and privacy-output QA: `48c9057`.
 
 `scripts/campaign-shell.mjs` is the only public shell source. Its fixed primary menu is Start, 12-waypoint Route, Updates, Clue Board, Report, Rules, Dashboard, Sponsors. `css/campaign-shell.css` owns public chrome and shared tokens; landing, route, editorial, ledger, workspace, document and sponsor page-family classes preserve route-specific character. The private Ops console remains independent.
 
@@ -26,6 +27,7 @@ npm test
 npm run typecheck
 npm run build
 npm run verify:waiver-qa
+npm run verify:unified-shell-qa
 npm audit --omit=dev --audit-level=high
 git diff --check
 node --test tests/navigation-geometry.test.mjs tests/campaign-shell-accessibility.test.mjs
@@ -34,15 +36,16 @@ node --test tests/navigation-geometry.test.mjs tests/campaign-shell-accessibilit
 Fresh results:
 
 - Legal generation check: passed. Participation Waiver `2026.1` remains SHA-256 `1a6e50f445fc7c67962e5e0050c7fbe161d7d78e679dab4f6fde951602cf3607`; Privacy Policy & Media Notice `2026.2` remains SHA-256 `47e26763d46441e2e155a6d0ca3869986395c49b60073a8da9256577229f07a8`.
-- Static/contract suite: 189/189 passed.
+- Static/contract suite: 194/194 passed.
 - TypeScript suite: 278/278 passed.
 - Worker, client, Worker-test and client-test typechecks: passed.
 - Build: passed; Pages Worker 316.9 kB, media Worker 3.2 kB, Clerk browser bundle 1.5 MB, Ops 40.3 kB, Dashboard 29.7 kB, Clue Board 14.1 kB and Sponsors 8.4 kB, plus the remaining client bundles.
 - Focused navigation/accessibility gate: 12/12 passed.
+- Reproducible unified-shell browser gate: 72/72 navigations, 111/111 states and 19/19 screenshot artifacts passed with zero console or page errors.
 - Diff check: passed.
 - Dependency audit: exit 0 at the high threshold, with zero high or critical findings. Twelve moderate findings remain in `uuid` through Clerk's optional Solana dependency chain. The offered complete remediation requires a breaking Clerk downgrade and was not forced.
 
-The waiver QA run observed 251 requests: 129 continued local reads, 37 external reads fulfilled locally, 69 local API mocks, 9 authentication-provider mocks and 7 local mocked writes. The writes were three account bootstraps and one each for waiver review, waiver acceptance, participant receipt resend and Ops receipt retry. It recorded zero external writes, zero continued external requests, zero blocked writes, zero forbidden provider attempts and zero server-rejected writes.
+The waiver QA run observed 251 requests: 129 continued local reads, 37 external reads fulfilled locally, 69 local API mocks, 9 authentication-provider mocks and 7 local mocked writes. The writes were three account bootstraps and one each for waiver review, waiver acceptance, participant receipt resend and Ops receipt retry. It recorded zero external writes, zero continued external requests, zero blocked writes, zero forbidden provider attempts and zero server-rejected writes. Its output classifier scanned 37 public static files, including `dashboard.html` and `assets/app/dashboard.js`, and three private Worker/Ops bundle files; both classifications contained zero private-fixture findings.
 
 ## Route, accessibility and geometry matrix
 
@@ -57,7 +60,7 @@ The waiver QA run observed 251 requests: 129 continued local reads, 37 external 
 
 The focused browser run blocked all non-local requests. The screenshot captures also intercepted every external request before network continuation: 23 font or Turnstile requests were fulfilled locally, zero external request continued and zero page error was recorded.
 
-A separate console audit used the same source-rendered local shell server, the freshly built client assets and local API fixtures. It covered 72 page navigations and 111 route states:
+The durable `verify:unified-shell-qa` runner creates a unique OS-temporary build and artifact directory, renders all 13 source routes through the canonical renderer, starts a read-only local server, installs its request boundary before each page and covers 72 page navigations and 111 route states:
 
 - 26 collapsed/expanded states at 360x900;
 - 13 desktop states at 768x900;
@@ -66,7 +69,7 @@ A separate console audit used the same source-rendered local shell server, the f
 - 26 collapsed/expanded states at 390x844; and
 - 7 representative desktop states at 1440x1000.
 
-The audit recorded zero `console.error` messages and zero uncaught page errors. It intercepted 89 external request attempts: 72 Google Fonts stylesheet requests and 17 Cloudflare Turnstile script requests. Every external request was fulfilled locally with a non-networking QA response; zero external request continued. Local API fixtures were also fulfilled inside the audit boundary so console results reflect the shell and built clients rather than unavailable test infrastructure.
+The audit recorded zero `console.error` messages and zero uncaught page errors. Across the route matrix and screenshot pass, it intercepted 112 external read attempts: 91 stylesheets and 21 scripts. Every attempt was fulfilled locally with a non-networking QA response; zero external request continued. It recorded zero external writes, zero local writes and zero writes rejected by the read-only server. Local API fixtures were also fulfilled inside the audit boundary so console results reflect the shell and built clients rather than unavailable test infrastructure.
 
 ## Visual inspection
 
@@ -85,25 +88,25 @@ Screenshots remain outside the repository and were not published. The temporary 
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `mobile-390x844-home.png` | `723ef5330f5e5a34e9bb386f4f2a9739bf10188375a41b8c0856bbda36cdfbf7` |
-| `desktop-1440x1000-home.png` | `686a643a28af744a6c68d2c4e602e0de89fcbdbd1dd29a0cbe970e84d68341b9` |
-| `mobile-390x844-route.png` | `472f698bf748e6225d4b3676256eee2435c369e9510486c44cbd51893c895acd` |
-| `desktop-1440x1000-route.png` | `6d5f22fb709ef0732eb92f60511feb746b2831105f5001f53919f87a7e3001d4` |
-| `mobile-390x844-interview.png` | `170b9e7dc3d279f9c2a1060cf24e5797dce095aae996d68cb92741b97e496c19` |
-| `desktop-1440x1000-interview.png` | `8ff54193d74e78fb88318ae850f11bd0323fce1282c233f4e7d7224346709839` |
-| `mobile-390x844-clue-board.png` | `b7424e12f3bd0e45e729f66ef1c582d717b9a901342e2a44db0f82562c1c141f` |
-| `desktop-1440x1000-clue-board.png` | `a16655f28f3cc2bdb7723a253343caf31ff70ee4c4d61247734ffe96441e949e` |
-| `mobile-390x844-dashboard.png` | `8718ef26b836e6ed0866e6ac0355414983e8d5fd5fa7a67f20d6f7dbe21392ad` |
-| `desktop-1440x1000-dashboard.png` | `303f0721001c2100f68bf70c10f509c980517944ca6086a7282f266510fafebd` |
-| `mobile-390x844-sponsors.png` | `54bfa13bf6525aabb045fea010b6d946c11d551f086003cc06c49233dbaef727` |
-| `desktop-1440x1000-sponsors.png` | `b2ef3b85913a78c69ab20325afb3eebc6e718dab614605d8e6273cef47d7774b` |
-| `mobile-390x844-privacy.png` | `a36ae2e3de93a38c90331d7e4d71733004a0ffccda257efb05746e367b236247` |
-| `desktop-1440x1000-privacy.png` | `320693ac1e60881dbdf9f853168daa8b240d918b84675a4cb10d589767e61a80` |
-| `mobile-390x844-waiver.png` | `f1407f5ad741af11245b9e7a72fa8efd02b963fd96f2ed4077098babf11be459` |
-| `desktop-1440x1000-waiver.png` | `d624ee5a3bdf94a91767a2cb9f45e151e1c1ac31dcc78f7aa5f928ffe5ae466d` |
-| `zoom-200-home-skip-focus.png` | `ca31f3cd20f0f0969ba1a11dfdf5da56370173f2394319c1e590cafb63a4aeef` |
-| `zoom-200-route-menu-open.png` | `6529df7480e0c8f77fc10909aafdc5789fa604c22543fe09f0e194bf08bd5d01` |
-| `zoom-200-waiver-main-focus.png` | `79353e00e06d08b1ce07c30f2e1da5357b783ac7f86ec29c8d322f4ac32c4e74` |
+| `mobile-390x844-home.png` | `e92cabe26f34d3233c10531f7137e885add09cf4037d7e76499c0629f8dd1f39` |
+| `mobile-390x844-route.png` | `0bd5cd8460ced91bc5ee3e2c085e4ce4d989cab628bb49a99baa8e4d333759b7` |
+| `mobile-390x844-interview.png` | `26e7dde5600601102fda48e6559a7db922bc398bb57410adac37188dc701b1f9` |
+| `mobile-390x844-clue-board.png` | `4e21c1ad06b017b68b6a6fa24ffd9d91e037313cc36d0c62d537c52c02a105cd` |
+| `mobile-390x844-dashboard.png` | `51dfcb67fc5b94730d50eb5db72d25dea61832fcaac088694b9adb0918021c9d` |
+| `mobile-390x844-sponsors.png` | `57d2ccc5fd7ddf5d5b2a6cb56c704ea66f88f1d62cd4c700fa4925a3d6a18e36` |
+| `mobile-390x844-privacy.png` | `30051be86bb207b31a46185275e67a0eab7e195767f2d7add3338cded1141116` |
+| `mobile-390x844-waiver.png` | `42985f0a9e6afba15566a23fd6ed0ae8033829d7f7d4f60143b1ac0e1a9ebd75` |
+| `desktop-1440x1000-home.png` | `a63fbd8841860426ce0a8a45bb6c255cfec8f99b42508379b92ab669b797816f` |
+| `desktop-1440x1000-route.png` | `55b09b7384b3f3a8df01b64d4ece4ac45f04ced3a318c81df35c4104ddce40f0` |
+| `desktop-1440x1000-interview.png` | `73916a97155ab38dceea512881f54abcce8c68a91bae8b192c2063d7975268da` |
+| `desktop-1440x1000-clue-board.png` | `30810992c584e7f7d937de8b098a52f3af94edcb66dfc0b8eb6bf388d8ab7bdd` |
+| `desktop-1440x1000-dashboard.png` | `f6ebc116d48ebe70039cc8ebb678eaa72be87939858225d949f869fa4d63d46c` |
+| `desktop-1440x1000-sponsors.png` | `bfff101c83e6010e3286f8a0ac5e1a7de21750c57f6f74a58174f629018c2df7` |
+| `desktop-1440x1000-privacy.png` | `62fc231797bbb931f11c144dba47333f92d84aadf437638f9166eddcb3cf1986` |
+| `desktop-1440x1000-waiver.png` | `3c46440aefed0b21ca64cb8a534589d6f90d67b776a1f8b69a07bdd874154186` |
+| `zoom-200-home-tab-focus.png` | `cc0db5f3061902c9742bdc4678865c9dbdd92592bb4bf38c9e5e0d21ba196d49` |
+| `zoom-200-route-menu-open.png` | `0cc25a4a28738442c2e26111c9f3818346f3206a2557342edf0ff311b95a5d39` |
+| `zoom-200-waiver-main-focus.png` | `361c474806827ff9d6f1c40821855ccaea604261dc0ce433853f6e2f286e5b51` |
 
 ## Public-output privacy classification
 
@@ -113,7 +116,7 @@ The built text surfaces were scanned for credentials, local personal paths, priv
 - Waiver QA found zero private fixture leaks in production source, rendered public output and public bundles.
 - Exactly three previously approved public contact addresses remain in the established campaign/privacy copy; no additional or unknown address was found.
 - One broad credential heuristic matched a public analytics identifier embedded in Clerk's bundled Coinbase browser integration. It was inspected and classified as a third-party public vendor constant, not a campaign credential. Its value is intentionally omitted here.
-- Sixteen provider-setting-name occurrences are confined to the private Worker bundle. They are configuration identifiers without values. The Worker, Ops and Dashboard artifacts were classified separately rather than represented as public-page leaks.
+- Sixteen provider-setting-name occurrences are confined to the private Worker bundle. They are configuration identifiers without values. Dashboard HTML and its client bundle are scanned as public static output; the executable Worker and Ops-only artifacts retain their separate private-bundle classification.
 - No raw token, secret value, OAuth state, staff allowlist, private report fixture, exact-location fixture or local source path was found in the served public surfaces.
 
 ## Non-deployment handoff
