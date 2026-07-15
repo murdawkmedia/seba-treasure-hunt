@@ -1,12 +1,12 @@
 # STATUS — Tim Lost Something? Hunter Platform
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Current state
 
 ### Validation MVP checkpoint — 2026-07-14
 
-Commit `da27f2a` is deployed to the stable noindex validation alias as Cloudflare deployment `6a00edc1-10c4-4286-abed-c80cb15a6eec`. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
+Commit `7b07f24` is deployed to the stable noindex validation alias as Cloudflare deployment `3dac5082`. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
 
 Disposable live QA passed the Hunter identity sync, password sign-in, profile/Privacy acceptance, waiver review and acceptance, 12-waypoint participation unlock, Field Note submission/moderation/publication, private report submission, private image upload and media processing paths. A disposable Staff principal and existing session passed the authenticated Ops dashboard and moderation API path; a fresh clean-browser Staff UI sign-in remains pending. The evidence and ranked wishlist are in `docs/qa/2026-07-14-validation-mvp-readiness.md`.
 
@@ -62,7 +62,7 @@ Unified-shell Tasks 1-7 are represented by these local commit groups:
 - Task 7 public-shell drift protection: `4bda466`, `350c297`, `6a6c3eb`, `1bf3935`.
 - Task 8 reproducible browser and privacy-output QA: `48c9057`, `786598d`.
 
-Graph transactional-mail wiring remains locally complete in `17f70c0` and `c23109f`. Applying migration `0010`, configuring Preview-only settings, completing delegated authorization, deploying validation and sending one controlled validation message remain external rollout steps.
+Graph transactional-mail wiring remains complete in `17f70c0` and `c23109f`. Migration `0010` is applied; the Preview-only Entra application, delegated authorization and encrypted sender settings were configured on July 15. Deploying the refreshed validation candidate and sending one controlled validation message remain rollout steps.
 
 ## Database and provider state
 
@@ -72,8 +72,8 @@ Graph transactional-mail wiring remains locally complete in `17f70c0` and `c2310
 - Production migrations, deployment, DNS and data remain unchanged. No waiver, receipt-lease, immutable-ledger or atomic-rate-limit migration is applied there.
 - Validation migration `0010` is applied. Hunter and Staff Clerk applications, the Hunter lifecycle webhook and Preview-only Cloudflare bindings are configured and exercised with disposable identities.
 - Validation uses Cloudflare's official always-pass Turnstile test key; its bypass is additionally restricted in code to `DEPLOYMENT_ENV=validation`. Production remains strict and unchanged.
-- Microsoft Graph delegated authorization and its Preview-only sender secrets are not configured, so waiver receipts remain pending and fail closed without provider access. Resend is not an automatic fallback.
-- No raw credential value is stored in source or documentation. A Clerk webhook signing secret disclosed during setup QA must be rotated in the provider dashboard before public launch.
+- Microsoft Graph delegated authorization and its Preview-only sender secrets are configured for `tech@sebahub.com` with Reply-To `casey@sebahub.com`. The controlled waiver receipt is still pending until the refreshed validation candidate is deployed and exercised. Resend is not an automatic fallback.
+- No raw credential value is stored in source or documentation. The Clerk webhook signing secret disclosed during setup QA was rotated by the account owner on July 15, stored only as an encrypted Cloudflare Preview secret and verified by a successful disposable lifecycle replay against the redeployed validation alias.
 - Pages domains remain `seba-treasure-hunt.pages.dev`, `timlostsomething.com` and `www.timlostsomething.com`; no domain or DNS change occurred.
 
 ## Verification evidence
@@ -102,15 +102,14 @@ Graph transactional-mail wiring remains locally complete in `17f70c0` and `c2310
 Validation MVP implementation is complete. The remaining owner/provider checks before public launch are:
 
 1. Configure Preview-only Microsoft Graph sender settings, complete delegated authorization and confirm one controlled waiver receipt from `tech@sebahub.com` with Reply-To `casey@sebahub.com`.
-2. Rotate the exposed Clerk webhook signing secret, replace only its encrypted Preview value and confirm a lifecycle sync.
-3. Confirm Staff password sign-in once in a clean browser and complete one real Hunter password-recovery mailbox round trip.
-4. Add visible waypoint progress controls before public launch if progress tracking is part of the launch promise; the protected progress API already exists.
-5. Reset disposable validation identities, D1 records and media as a controlled validation-resource reset before launch.
-6. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
+2. Confirm Staff password sign-in once in a clean browser and complete one real Hunter password-recovery mailbox round trip.
+3. Add visible waypoint progress controls before public launch if progress tracking is part of the launch promise; the protected progress API already exists.
+4. Reset disposable validation identities, D1 records and media as a controlled validation-resource reset before launch.
+5. Apply production migrations, deploy production or change DNS/domains only after a separate production approval.
 
 ## Next approved workflow
 
-Resume with the owner-controlled Microsoft Entra app/delegated sign-in for `tech@sebahub.com`, store the Graph values only as Cloudflare Preview secrets and send one controlled receipt. Then rotate the Clerk webhook secret and run the clean-browser Staff/password-recovery checks. Production requires another explicit later approval.
+Resume with the owner-controlled Microsoft Entra app/delegated sign-in for `tech@sebahub.com`, store the Graph values only as Cloudflare Preview secrets and send one controlled receipt. Then run the clean-browser Staff/password-recovery checks. Production requires another explicit later approval.
 
 ## Decisions in force
 

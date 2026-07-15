@@ -33,6 +33,13 @@ CAMPAIGN_BASE_URL = "https://codex-validation.seba-treasure-hunt.pages.dev"
 HUNTER_ACCOUNT_PORTAL_URL = "https://codex-validation.seba-treasure-hunt.pages.dev/dashboard"
 STAFF_ACCOUNT_PORTAL_URL = "https://codex-validation.seba-treasure-hunt.pages.dev/ops"
 STAFF_INVITATION_REDIRECT_URL = "https://codex-validation.seba-treasure-hunt.pages.dev/ops"
+TRANSACTIONAL_EMAIL_PROVIDER = "microsoft_graph"
+GRAPH_CLIENT_ID = "0f2c008f-40db-496e-a37b-a86aa0dadc9f"
+GRAPH_TENANT_ID = "ca4189c0-b72f-4f39-aecc-b44bcaa5b3f7"
+GRAPH_TOKEN_KEY_VERSION = "validation-2026-07-15-v1"
+TRANSACTIONAL_EMAIL_FROM_ADDRESS = "tech@sebahub.com"
+TRANSACTIONAL_EMAIL_FROM_NAME = "Tim Lost Something?"
+TRANSACTIONAL_EMAIL_REPLY_TO = "casey@sebahub.com"
 
 [[env.preview.d1_databases]]
 binding = "DB"

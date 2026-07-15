@@ -4,7 +4,7 @@
 
 - Candidate: `codex/tim-lost-hunter-platform`, validation alias only.
 - Validation URL: `https://codex-validation.seba-treasure-hunt.pages.dev`.
-- Deployed candidate: commit `da27f2a`, Cloudflare deployment `6a00edc1-10c4-4286-abed-c80cb15a6eec`.
+- Deployed candidate: commit `7b07f24`, Cloudflare deployment `3dac5082` (immutable preview `https://3dac5082.seba-treasure-hunt.pages.dev`).
 - Unchanged production reference: source `5552a57`, Cloudflare deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359`.
 - Validation remains publicly reachable by URL and sends `X-Robots-Tag: noindex, nofollow`.
 - Production, custom domains, DNS, production D1 and production media were not changed.
@@ -42,7 +42,8 @@ The following checks used disposable validation-only data:
 1. Microsoft Graph delegated authorization is not complete. The waiver acceptance is stored, but its receipt is currently `pending`; no real email was sent.
 2. One clean-browser Staff UI sign-in still needs confirmation after disabling Client Trust. The same disposable Staff identity and session token passed the complete Ops authorization and moderation API path.
 3. The Hunter password-recovery email-code path still needs one real mailbox round trip.
-4. The Clerk webhook signing secret exposed during setup QA must be rotated by the account owner, then the replacement must be stored in Cloudflare Preview and the validation alias redeployed.
+
+Resolved on July 15, 2026: the account owner rotated the Clerk webhook signing secret, stored the replacement only as an encrypted Cloudflare Preview secret, and the validation alias was redeployed. A disposable `user.updated` lifecycle event was replayed after rotation; Clerk reported a successful delivery, validation D1 retained the active player lifecycle row with a fresh update timestamp, and `/api/v1/status` returned 200 with `X-Robots-Tag: noindex, nofollow`.
 
 ## Ranked post-MVP wishlist
 
@@ -65,4 +66,4 @@ The following checks used disposable validation-only data:
 
 ## Resume point
 
-Create or select the Microsoft Entra application for `tech@sebahub.com`, obtain its public client ID and tenant ID, run the repository's delegated device-login helper, and store the resulting Graph values only as Cloudflare Preview secrets. Send one controlled waiver receipt, verify it arrives from `tech@sebahub.com` with Reply-To `casey@sebahub.com`, then rotate the Clerk webhook secret and rerun the clean-browser Staff and password-recovery checks. Do not touch production until Murphy approves the tested validation release.
+Create or select the Microsoft Entra application for `tech@sebahub.com`, obtain its public client ID and tenant ID, run the repository's delegated device-login helper, and store the resulting Graph values only as Cloudflare Preview secrets. Send one controlled waiver receipt, verify it arrives from `tech@sebahub.com` with Reply-To `casey@sebahub.com`, then run the clean-browser Staff and password-recovery checks. Do not touch production until Murphy approves the tested validation release.
