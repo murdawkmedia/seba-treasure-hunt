@@ -146,13 +146,15 @@ export class D1GraphTokenStore implements GraphRefreshTokenStore {
     key: CryptoKey;
     keyVersion: string;
   }> {
-    if (!this.db || !this.encryptionKeyBase64 || !this.keyVersion) throw unavailable();
-    const keyBytes = decodeBase64(this.encryptionKeyBase64);
+    const encryptionKeyBase64 = this.encryptionKeyBase64?.trim();
+    const keyVersion = this.keyVersion?.trim();
+    if (!this.db || !encryptionKeyBase64 || !keyVersion) throw unavailable();
+    const keyBytes = decodeBase64(encryptionKeyBase64);
     if (keyBytes.byteLength !== 32) throw unavailable();
     const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, [
       "encrypt",
       "decrypt"
     ]);
-    return { db: this.db, key, keyVersion: this.keyVersion };
+    return { db: this.db, key, keyVersion };
   }
 }

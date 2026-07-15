@@ -18,7 +18,8 @@ const unavailableMailer: TransactionalMailer = {
 export function createTransactionalMailer(
   config: TransactionalMailFactoryConfig
 ): TransactionalMailer {
-  if (config.provider === "microsoft_graph") return config.graph ?? unavailableMailer;
-  if (config.provider === "resend") return config.resend ?? unavailableMailer;
+  const provider = config.provider?.trim();
+  if (provider === "microsoft_graph") return config.graph ?? unavailableMailer;
+  if (provider === "resend") return config.resend ?? unavailableMailer;
   return unavailableMailer;
 }

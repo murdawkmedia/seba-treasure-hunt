@@ -4,7 +4,7 @@
 
 - Candidate: `codex/tim-lost-hunter-platform`, validation alias only.
 - Validation URL: `https://codex-validation.seba-treasure-hunt.pages.dev`.
-- Deployed candidate: commit `7b07f24`, Cloudflare deployment `3dac5082` (immutable preview `https://3dac5082.seba-treasure-hunt.pages.dev`).
+- Deployed candidate before the final documentation commit: source `b94e3d4` plus the reviewed Graph hardening diff, Cloudflare deployment `3051bf13` (immutable preview `https://3051bf13.seba-treasure-hunt.pages.dev`). The stable alias serves this candidate; redeploy the final commit hash after the branch is pushed.
 - Unchanged production reference: source `5552a57`, Cloudflare deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359`.
 - Validation remains publicly reachable by URL and sends `X-Robots-Tag: noindex, nofollow`.
 - Production, custom domains, DNS, production D1 and production media were not changed.
@@ -25,10 +25,11 @@ The following checks used disposable validation-only data:
 9. A second private report included a PNG; the private R2 upload was queued and reached `ready` in validation D1.
 10. A disposable Staff principal was invited and activated; the authenticated Ops dashboard returned 200 and loaded the live validation moderation counts.
 11. Validation Turnstile uses Cloudflare's official always-pass test key. The bypass is enabled only when `DEPLOYMENT_ENV=validation`; production retains strict action and hostname checks.
+12. Microsoft delegated authorization completed for the validation mailer. A controlled waiver receipt was accepted by Microsoft Graph using the configured sender and campaign Reply-To; the private delivery job is `sent` and the encrypted Graph refresh-token state rotated into D1 at state version 1. Inbox rendering, visible headers, complete plain/HTML content and Sent Items correlation still require mailbox confirmation.
 
 ## Automated evidence
 
-- `npm test`: 198/198 static/contract tests and 284/284 TypeScript tests passed on the final MVP candidate.
+- `npm test`: 198/198 static/contract tests and 288/288 TypeScript tests passed on the final MVP candidate.
 - `npm run typecheck`: passed.
 - `npm run build`: passed; Pages Worker approximately 317.1 kB and media Worker 3.2 kB.
 - `npm run legal:verify`: passed.
@@ -39,11 +40,13 @@ The following checks used disposable validation-only data:
 
 ## Known ship blockers
 
-1. Microsoft Graph delegated authorization is not complete. The waiver acceptance is stored, but its receipt is currently `pending`; no real email was sent.
+1. Confirm the controlled waiver receipt in the disposable Hunter inbox and correlate it with the configured sender's Sent Items, including visible From, Reply-To and complete plain/HTML content.
 2. One clean-browser Staff UI sign-in still needs confirmation after disabling Client Trust. The same disposable Staff identity and session token passed the complete Ops authorization and moderation API path.
 3. The Hunter password-recovery email-code path still needs one real mailbox round trip.
 
 Resolved on July 15, 2026: the account owner rotated the Clerk webhook signing secret, stored the replacement only as an encrypted Cloudflare Preview secret, and the validation alias was redeployed. A disposable `user.updated` lifecycle event was replayed after rotation; Clerk reported a successful delivery, validation D1 retained the active player lifecycle row with a fresh update timestamp, and `/api/v1/status` returned 200 with `X-Robots-Tag: noindex, nofollow`.
+
+Provider-side milestone on July 15, 2026: the Graph mailer now invokes the runtime `fetch` function without rebinding its receiver and trims secret-input whitespace from the provider selector, token-encryption settings and bootstrap refresh token. Regression tests cover each boundary. A controlled validation receipt reached `sent` through `microsoft_graph`, and D1 contains encrypted rotation state onlyâ€”never the plaintext token. Mailbox and Sent Items verification remains a launch gate.
 
 ## Ranked post-MVP wishlist
 
@@ -51,7 +54,7 @@ Resolved on July 15, 2026: the account owner rotated the Clerk webhook signing s
 
 - Add visible per-waypoint `saved`, `visited` and `searched` controls to the Hunter Dashboard. The protected API exists, but the current dashboard only renders directions and status.
 - Add a validation reset command that recreates disposable Clerk users, D1 activity/legal rows and validation media deliberately rather than deleting immutable ledgers ad hoc.
-- Re-run the full disposable flow from a clean browser after Graph and Staff-provider activation.
+- Re-run the full disposable flow from a clean browser after Staff-provider activation.
 - Verify the four intended administrator addresses through provider invitations and remove the disposable MVP Staff principal.
 - Replace Cloudflare Turnstile test keys with a real production widget and verify every production action/hostname.
 - Rehearse production migrations `0003`–`0010` from a backup before any live deploy.
@@ -66,4 +69,4 @@ Resolved on July 15, 2026: the account owner rotated the Clerk webhook signing s
 
 ## Resume point
 
-Create or select the Microsoft Entra application for `tech@sebahub.com`, obtain its public client ID and tenant ID, run the repository's delegated device-login helper, and store the resulting Graph values only as Cloudflare Preview secrets. Send one controlled waiver receipt, verify it arrives from `tech@sebahub.com` with Reply-To `casey@sebahub.com`, then run the clean-browser Staff and password-recovery checks. Do not touch production until Murphy approves the tested validation release.
+Confirm the controlled receipt in the disposable Hunter inbox and configured sender's Sent Items, then run the clean-browser Staff sign-in and Hunter password-recovery mailbox checks. Do not reset validation data or touch production until Murphy reviews this validation release.

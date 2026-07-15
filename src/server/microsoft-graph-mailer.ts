@@ -69,6 +69,7 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
   constructor(private readonly config: MicrosoftGraphMailerConfig) {}
 
   async send(message: TransactionalMessage): Promise<TransactionalMailAcceptance> {
+    const fetchImpl = this.config.fetch;
     let mime: ReturnType<typeof renderTransactionalMime>;
     try {
       mime = renderTransactionalMime(message);
@@ -87,8 +88,10 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
       throw unavailable();
     }
 
-    const refreshToken = storedToken?.refreshToken ?? this.config.bootstrapRefreshToken;
-    if (!nonEmpty(refreshToken)) throw unavailable();
+    const refreshTokenCandidate =
+      storedToken?.refreshToken ?? this.config.bootstrapRefreshToken;
+    if (!nonEmpty(refreshTokenCandidate)) throw unavailable();
+    const refreshToken = refreshTokenCandidate.trim();
 
     const form = new URLSearchParams({
       grant_type: "refresh_token",
@@ -99,7 +102,7 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
 
     let tokenResponse: Response;
     try {
-      tokenResponse = await this.config.fetch(
+      tokenResponse = await fetchImpl(
         `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
         {
           method: "POST",
@@ -148,7 +151,7 @@ export class MicrosoftGraphTransactionalMailer implements TransactionalMailer {
 
     let sendResponse: Response;
     try {
-      sendResponse = await this.config.fetch(graphSendUrl, {
+      sendResponse = await fetchImpl(graphSendUrl, {
         method: "POST",
         redirect: "manual",
         headers: {

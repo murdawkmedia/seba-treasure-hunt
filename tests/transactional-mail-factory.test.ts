@@ -70,6 +70,17 @@ test("microsoft_graph selects only the Graph mailer", async () => {
   assert.equal(resendCalls.length, 0);
 });
 
+test("microsoft_graph tolerates surrounding secret-input whitespace", async () => {
+  const graphCalls: TransactionalMessage[] = [];
+  const mailer = createTransactionalMailer({
+    provider: "\r\nmicrosoft_graph\n",
+    graph: recordingMailer(graphAcceptance, graphCalls)
+  });
+
+  assert.deepEqual(await mailer.send(message), graphAcceptance);
+  assert.deepEqual(graphCalls, [message]);
+});
+
 test("resend selects only the Resend mailer", async () => {
   const graphCalls: TransactionalMessage[] = [];
   const resendCalls: TransactionalMessage[] = [];

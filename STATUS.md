@@ -6,11 +6,11 @@ Last updated: 2026-07-15
 
 ### Validation MVP checkpoint — 2026-07-14
 
-Commit `7b07f24` is deployed to the stable noindex validation alias as Cloudflare deployment `3dac5082`. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
+The stable noindex validation alias serves the reviewed Graph-hardened candidate as Cloudflare deployment `3051bf13` from source `b94e3d4` plus the current six-file mailer hardening diff. Production remains deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`; custom domains, DNS, production D1 and production media remain unchanged. Validation D1 was backed up before migration `0010` was applied.
 
 Disposable live QA passed the Hunter identity sync, password sign-in, profile/Privacy acceptance, waiver review and acceptance, 12-waypoint participation unlock, Field Note submission/moderation/publication, private report submission, private image upload and media processing paths. A disposable Staff principal and existing session passed the authenticated Ops dashboard and moderation API path; a fresh clean-browser Staff UI sign-in remains pending. The evidence and ranked wishlist are in `docs/qa/2026-07-14-validation-mvp-readiness.md`.
 
-The release is not production-ready yet: Microsoft Graph delegated authorization and the controlled waiver receipt are still pending; one clean-browser Staff UI sign-in and one real password-recovery mailbox round trip remain. Validation data stays disposable and must be reset before launch.
+The release is not production-ready yet: the controlled waiver receipt still needs inbox/Sent Items header-and-content confirmation, one clean-browser Staff UI sign-in remains and one real Hunter password-recovery mailbox round trip remains. Validation data stays disposable and must be reset before launch.
 
 The branch contains the unified public campaign shell, route-wide accessibility hardening, participation-waiver and guardian flows, hunter-tool unlocks, legal receipt plumbing and private Ops workflow. The stable validation alias is the only deployment target for this candidate.
 
@@ -38,7 +38,7 @@ Validation inquiries are disposable and must not be promoted to production.
 - Fenced receipt jobs with opaque lease tokens and attempt generations; stale completions and in-flight resends cannot overwrite or duplicate winning delivery evidence.
 - Idempotent acceptance replay atomically requeues interrupted pending/failed receipts when no lease is active; sent receipts remain silent. Receipt rendering fails before provider access if the stored waiver version/hash does not exactly match the generated legal source.
 - Complete plain-text and HTML waiver receipts containing the accepted legal body, covered participants, reference, version, effective/accepted dates and verified account email.
-- Transactional mail uses one explicitly selected provider. Graph is locally wired with encrypted refresh-token rotation and no automatic Resend fallback; missing configuration fails retryably. No real receipt has been sent by this implementation pass.
+- Transactional mail uses one explicitly selected provider. Graph is wired with encrypted refresh-token rotation and no automatic Resend fallback; missing configuration fails retryably. A controlled validation receipt was accepted by Microsoft Graph on July 15.
 - Player and staff recovery messages use the same encrypted campaign Reply-To as legal receipts, so all transactional replies reach one operations mailbox.
 - Participant receipt resend plus private staff waiver detail and audited Ops retry. Concurrent withdrawal/newer acceptance is rechecked inside the fenced retry batch; an active delivery returns `409 waiver_receipt_in_progress`.
 - Every private staff waiver-detail view appends a privacy-safe audit event before names or birth years are returned. Browser write APIs require an exact canonical, scoped Pages-preview or explicit local-development Origin.
@@ -62,7 +62,7 @@ Unified-shell Tasks 1-7 are represented by these local commit groups:
 - Task 7 public-shell drift protection: `4bda466`, `350c297`, `6a6c3eb`, `1bf3935`.
 - Task 8 reproducible browser and privacy-output QA: `48c9057`, `786598d`.
 
-Graph transactional-mail wiring remains complete in `17f70c0` and `c23109f`. Migration `0010` is applied; the Preview-only Entra application, delegated authorization and encrypted sender settings were configured on July 15. Deploying the refreshed validation candidate and sending one controlled validation message remain rollout steps.
+Graph transactional-mail wiring from `17f70c0` and `c23109f` is active. Migration `0010` is applied; the Preview-only Entra application, delegated authorization and encrypted sender settings were configured on July 15. The Worker now preserves the runtime `fetch` receiver contract and normalizes secret-input whitespace at every Graph boundary. A controlled validation receipt reached provider-accepted `sent`, and encrypted refresh-token state rotated into D1 at state version 1. Inbox rendering, visible From/Reply-To, complete plain/HTML content and Sent Items correlation remain unverified.
 
 ## Database and provider state
 
@@ -72,7 +72,7 @@ Graph transactional-mail wiring remains complete in `17f70c0` and `c23109f`. Mig
 - Production migrations, deployment, DNS and data remain unchanged. No waiver, receipt-lease, immutable-ledger or atomic-rate-limit migration is applied there.
 - Validation migration `0010` is applied. Hunter and Staff Clerk applications, the Hunter lifecycle webhook and Preview-only Cloudflare bindings are configured and exercised with disposable identities.
 - Validation uses Cloudflare's official always-pass Turnstile test key; its bypass is additionally restricted in code to `DEPLOYMENT_ENV=validation`. Production remains strict and unchanged.
-- Microsoft Graph delegated authorization and its Preview-only sender secrets are configured for `tech@sebahub.com` with Reply-To `casey@sebahub.com`. The controlled waiver receipt is still pending until the refreshed validation candidate is deployed and exercised. Resend is not an automatic fallback.
+- Microsoft Graph delegated authorization and its Preview-only sender secrets are configured for the approved sender and campaign Reply-To. The controlled waiver receipt is provider-accepted `sent`; the private delivery ledger records provider `microsoft_graph`. Mailbox and Sent Items verification remains. Resend is not an automatic fallback.
 - No raw credential value is stored in source or documentation. The Clerk webhook signing secret disclosed during setup QA was rotated by the account owner on July 15, stored only as an encrypted Cloudflare Preview secret and verified by a successful disposable lifecycle replay against the redeployed validation alias.
 - Pages domains remain `seba-treasure-hunt.pages.dev`, `timlostsomething.com` and `www.timlostsomething.com`; no domain or DNS change occurred.
 
@@ -85,7 +85,7 @@ Graph transactional-mail wiring remains complete in `17f70c0` and `c23109f`. Mig
 - The browser gates cover every public route at 390x844, 360x900, 768x900, 1440x900 and the 720x500 200%-zoom equivalent, plus seven representative desktop routes at 1440x1000. They verify collapsed/expanded menus, skip-link focus, sticky geometry, current state, short-menu traversal, overflow, console output and serious/critical axe findings.
 - QA privacy classification reports zero findings in production source, rendered public output and 37 public static files. Dashboard HTML and its client bundle are public scan surfaces; three private Worker/Ops bundle files are classified separately and also contain zero private-fixture findings.
 - The earlier sponsor surface remains documented in `docs/qa/2026-07-13-sponsor-feature-verification.md` with its reproducible `scripts/verify-sponsor-qa.mjs` runner and uncommitted `%TEMP%\tim-lost-task10` artifacts; this waiver pass does not replace or redeploy that validation release.
-- `npm test`: 198/198 static/contract tests and 284/284 TypeScript tests passed on the final MVP candidate.
+- `npm test`: 198/198 static/contract tests and 288/288 TypeScript tests passed on the final MVP candidate.
 - `npm run typecheck`: Worker, client, Worker-test and client-test checks passed.
 - `npm run build`: passed; Pages Worker 316.9 kB, media Worker 3.2 kB and client bundles completed.
 - Focused campaign navigation/accessibility verification: 12/12 passed. Nineteen representative screenshots were captured outside the repository with external requests blocked and zero page errors; the artifact names and SHA-256 values are recorded in `docs/qa/2026-07-14-unified-campaign-shell-verification.md`.
@@ -93,7 +93,7 @@ Graph transactional-mail wiring remains complete in `17f70c0` and `c23109f`. Mig
 - `git diff --check`: passed. Pre-existing Wrangler/workerd processes were neither started nor stopped and were not used as release evidence.
 - Validation provider-isolation hardening: 27/27 focused tests, 88/88 static/contract tests and 201/201 TypeScript tests passed; typecheck and build passed with a 304.8 kB Pages Worker.
 - Validation D1 is at migrations `0001`–`0009`, retains the `validation` sentinel and 12-waypoint seed, and reports zero personal/staff or new sponsor/legal/delivery data.
-- Validation deployment `c09b79d9-6a2a-459c-8cd6-a80f4633a2af` from `5deee85` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; `/api/v1/status`, `/waiver` and `/privacy` return 200. Cloudflare lists the active transactional settings and pending SebaHub credential as encrypted Preview secrets. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
+- Validation deployment `3051bf13` is active at the stable alias with `X-Robots-Tag: noindex, nofollow`; the signed-in Hunter dashboard reports the receipt as sent. Cloudflare holds the active transactional settings as encrypted Preview secrets, and validation D1 contains encrypted Graph rotation state only. Production remains on deployment `ad89ff2a-5818-4546-ba8f-3f1b7cd25359` from source `5552a57`.
 - `npm audit --omit=dev --audit-level=high`: exit 0 with zero high/critical findings. Twelve moderate findings remain in Clerk's optional Solana chain; no forced breaking remediation was applied.
 - Full evidence and reproduction commands are recorded in `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`.
 
@@ -101,7 +101,7 @@ Graph transactional-mail wiring remains complete in `17f70c0` and `c23109f`. Mig
 
 Validation MVP implementation is complete. The remaining owner/provider checks before public launch are:
 
-1. Configure Preview-only Microsoft Graph sender settings, complete delegated authorization and confirm one controlled waiver receipt from `tech@sebahub.com` with Reply-To `casey@sebahub.com`.
+1. Confirm the controlled waiver receipt in the disposable Hunter inbox and the configured sender's Sent Items, including visible From, Reply-To and complete plain/HTML content.
 2. Confirm Staff password sign-in once in a clean browser and complete one real Hunter password-recovery mailbox round trip.
 3. Add visible waypoint progress controls before public launch if progress tracking is part of the launch promise; the protected progress API already exists.
 4. Reset disposable validation identities, D1 records and media as a controlled validation-resource reset before launch.
@@ -109,7 +109,7 @@ Validation MVP implementation is complete. The remaining owner/provider checks b
 
 ## Next approved workflow
 
-Resume with the owner-controlled Microsoft Entra app/delegated sign-in for `tech@sebahub.com`, store the Graph values only as Cloudflare Preview secrets and send one controlled receipt. Then run the clean-browser Staff/password-recovery checks. Production requires another explicit later approval.
+Resume with controlled waiver-receipt inbox/Sent Items verification, the clean-browser Staff sign-in and Hunter password-recovery mailbox checks. Then decide whether visible waypoint progress controls are a launch requirement, reset disposable validation resources, and rehearse production migrations. Production requires another explicit later approval.
 
 ## Decisions in force
 

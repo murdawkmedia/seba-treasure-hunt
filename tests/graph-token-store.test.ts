@@ -87,6 +87,19 @@ test("D1GraphTokenStore encrypts and rotates Graph refresh-token state in real D
     assert.deepEqual(await store.load(), { refreshToken, stateVersion: 1 });
   });
 
+  await t.test("secret-backed key settings tolerate surrounding whitespace", async () => {
+    await db.prepare("DELETE FROM oauth_provider_state").run();
+    const refreshToken = runtimeSecret("refresh");
+    const store = new D1GraphTokenStore(db, `\r\n${key}\n`, " graph-key-v1\r\n");
+
+    assert.equal(await store.save(null, refreshToken), true);
+    assert.deepEqual(await store.load(), { refreshToken, stateVersion: 1 });
+    const row = await db
+      .prepare("SELECT key_version FROM oauth_provider_state WHERE provider = 'microsoft_graph'")
+      .first<{ key_version: string }>();
+    assert.equal(row?.key_version, "graph-key-v1");
+  });
+
   await t.test("versioned saves use fresh 12-byte nonces and increment only on a match", async () => {
     await db.prepare("DELETE FROM oauth_provider_state").run();
     const store = new D1GraphTokenStore(db, key, "graph-key-v1");

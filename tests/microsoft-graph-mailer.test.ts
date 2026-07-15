@@ -310,6 +310,27 @@ test("refreshes from stored state and sends the exact Graph MIME request", async
   });
 });
 
+test("invokes the runtime fetch function without rebinding its receiver", async () => {
+  let calls = 0;
+  const runtimeFetch = async function (
+    this: unknown,
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> {
+    assert.equal(this, undefined);
+    calls += 1;
+    return new URL(String(input)).href === tokenUrl
+      ? tokenResponse("access-token")
+      : graphAccepted("graph-request-unbound");
+  } as typeof globalThis.fetch;
+  const { mailer } = makeMailer({ fetch: runtimeFetch });
+
+  const result = await mailer.send(message);
+
+  assert.equal(calls, 2);
+  assert.equal(result.providerReference, "graph-request-unbound");
+});
+
 test("uses bootstrap state only when the store is empty", async () => {
   const store = new MemoryGraphRefreshTokenStore();
   const { mailer, requests } = makeMailer({ tokenStore: store });
@@ -319,6 +340,21 @@ test("uses bootstrap state only when the store is empty", async () => {
   assert.equal(new URLSearchParams(requests[0]!.body).get("refresh_token"), "bootstrap-refresh-secret");
   assert.deepEqual(store.saves, []);
   assert.equal(store.snapshot(), null);
+});
+
+test("trims secret-input whitespace from the refresh token before exchange", async () => {
+  const store = new MemoryGraphRefreshTokenStore();
+  const { mailer, requests } = makeMailer({
+    tokenStore: store,
+    bootstrapRefreshToken: "\r\n bootstrap-refresh-secret \n"
+  });
+
+  await mailer.send(message);
+
+  assert.equal(
+    new URLSearchParams(requests[0]!.body).get("refresh_token"),
+    "bootstrap-refresh-secret"
+  );
 });
 
 test("persists an initial rotated refresh token with a null CAS version", async () => {
