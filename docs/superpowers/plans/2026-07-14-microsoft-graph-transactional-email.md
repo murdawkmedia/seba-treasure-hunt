@@ -582,7 +582,7 @@ git commit -m "feat: wire Graph mail in validation"
 **Files:**
 - Modify: `docs/qa/2026-07-14-waiver-guardian-receipt-verification.md`
 - Modify: `STATUS.md`
-- Modify: `D:/Users/Murphy/Documents/MurphyOS/AIOS/History/2026-07-14-tim-lost-resend-sender-config.md` (append sanitized operational outcome only)
+- Append the sanitized operational outcome to private operational history outside this public repository.
 
 - [ ] **Step 1: Run the complete local quality gate**
 
