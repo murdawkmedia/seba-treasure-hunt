@@ -12,6 +12,7 @@ const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "tim-lost-unified-shel
 const screenshotRoot = path.join(artifactRoot, "screenshots");
 const logPath = path.join(artifactRoot, "qa-log.json");
 const preserveArtifacts = process.env.UNIFIED_SHELL_QA_PRESERVE_ARTIFACTS !== "0";
+const executionStartedAt = new Date().toISOString();
 const fixedNow = "2026-07-14T18:00:00.000Z";
 const campaignFiles = Object.keys(CAMPAIGN_PAGES);
 const representativeFiles = [
@@ -249,9 +250,48 @@ async function warmLazyImages(page) {
   await page.waitForTimeout(100);
 }
 
-async function capture(page, filename, evidence) {
+async function assertActiveElement(page, locator, label) {
+  await locator.waitFor({ state: "attached" });
+  const active = await locator.evaluate((element) => document.activeElement === element);
+  assert.equal(active, true, `${label} must be the active element`);
+  assert.ok(page.viewportSize(), `${label} requires a real browser viewport`);
+}
+
+async function assertElementInViewport(page, locator, label) {
+  const element = await locator.elementHandle();
+  assert.ok(element, `${label} must exist`);
+  await page.waitForFunction((target) => {
+    const rect = target.getBoundingClientRect();
+    return rect.left >= 0 && rect.top >= 0 && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight;
+  }, element);
+  const viewport = page.viewportSize();
+  const box = await locator.boundingBox();
+  assert.ok(viewport, `${label} requires a viewport`);
+  assert.ok(box, `${label} must have a visible bounding box`);
+  assert.ok(box.x >= 0 && box.y >= 0, `${label} must begin inside the viewport`);
+  assert.ok(box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, `${label} must fit inside the viewport`);
+}
+
+async function assertMainClearsStickyHeader(page, main) {
+  const metrics = await main.evaluate((element) => {
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;height:var(--stacked-header-height);";
+    document.body.append(probe);
+    const headerHeight = probe.getBoundingClientRect().height;
+    probe.remove();
+    const rect = element.getBoundingClientRect();
+    return { headerHeight, top: rect.top, bottom: rect.bottom, viewportHeight: window.innerHeight };
+  });
+  assert.ok(metrics.headerHeight > 0, "--stacked-header-height must resolve to a positive height");
+  assert.ok(metrics.top >= metrics.headerHeight - 1, `#main top ${metrics.top} must clear sticky header ${metrics.headerHeight}`);
+  assert.ok(metrics.top >= 0 && metrics.top < metrics.viewportHeight, "#main must begin inside the viewport");
+  assert.ok(metrics.bottom > 0, "#main must intersect the viewport");
+  assert.equal(metrics.viewportHeight, page.viewportSize()?.height, "#main geometry must use the active viewport");
+}
+
+async function capture(page, filename, evidence, { fullPage = true } = {}) {
   const target = path.join(screenshotRoot, filename);
-  await page.screenshot({ path: target, fullPage: true });
+  await page.screenshot({ path: target, fullPage });
   const artifactName = `screenshots/${filename}`;
   evidence.push({ artifactName, sha256: sha256(await readFile(target)) });
 }
@@ -327,7 +367,11 @@ async function run() {
       }
     }
 
-    const zoomContext = await browser.newContext({ viewport: { width: 720, height: 500 }, deviceScaleFactor: 2 });
+    const zoomContext = await browser.newContext({
+      viewport: { width: 720, height: 500 },
+      deviceScaleFactor: 2,
+      reducedMotion: "reduce",
+    });
     await installQaBoundary(zoomContext, origin, networkLedger);
     const zoomPage = await zoomContext.newPage();
     let zoomLabel = "zoom-200/starting";
@@ -336,18 +380,36 @@ async function run() {
       zoomLabel = "zoom-200/home-tab-focus";
       await openPage(zoomPage, origin, "index.html");
       await zoomPage.keyboard.press("Tab");
-      await capture(zoomPage, "zoom-200-home-tab-focus.png", screenshotEvidence);
+      const homeSkipLink = zoomPage.locator(".skip-link");
+      await assertActiveElement(zoomPage, homeSkipLink, "Home skip link");
+      assert.equal(await homeSkipLink.evaluate((element) => getComputedStyle(element).visibility), "visible");
+      const homeSkipFocus = await homeSkipLink.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, transform: style.transform };
+      });
+      assert.notEqual(homeSkipFocus.outlineStyle, "none", "Home skip link must show a focus outline");
+      assert.ok(parseFloat(homeSkipFocus.outlineWidth) >= 3, "Home skip link focus outline must remain visible");
+      assert.notEqual(homeSkipFocus.transform, "none", "Home skip link must use its focused visible transform");
+      await assertElementInViewport(zoomPage, homeSkipLink, "Home skip link");
+      await capture(zoomPage, "zoom-200-home-tab-focus.png", screenshotEvidence, { fullPage: false });
 
       zoomLabel = "zoom-200/route-menu-open";
       await openPage(zoomPage, origin, "route.html");
       await zoomPage.locator(".campaign-menu-toggle").click();
       await zoomPage.locator("#campaign-nav.open").waitFor({ state: "visible" });
-      await capture(zoomPage, "zoom-200-route-menu-open.png", screenshotEvidence);
+      await capture(zoomPage, "zoom-200-route-menu-open.png", screenshotEvidence, { fullPage: false });
 
       zoomLabel = "zoom-200/waiver-main-focus";
       await openPage(zoomPage, origin, "waiver.html");
-      await zoomPage.locator("a[href='#main-content']").focus().catch(() => undefined);
-      await capture(zoomPage, "zoom-200-waiver-main-focus.png", screenshotEvidence);
+      const waiverSkipLink = zoomPage.locator(".skip-link");
+      assert.equal(await waiverSkipLink.getAttribute("href"), "#main", "Waiver skip link must target #main");
+      await waiverSkipLink.focus();
+      await assertActiveElement(zoomPage, waiverSkipLink, "Waiver skip link before activation");
+      await waiverSkipLink.press("Enter");
+      const waiverMain = zoomPage.locator("#main");
+      await assertActiveElement(zoomPage, waiverMain, "Waiver #main after skip activation");
+      await assertMainClearsStickyHeader(zoomPage, waiverMain);
+      await capture(zoomPage, "zoom-200-waiver-main-focus.png", screenshotEvidence, { fullPage: false });
     } finally {
       await zoomContext.close();
     }
@@ -376,9 +438,11 @@ async function run() {
     );
     const evidence = {
       ok: true,
-      runDate: "2026-07-14",
+      executedAt: executionStartedAt,
+      runDate: executionStartedAt.slice(0, 10),
       isolated: true,
       browser: launched.source,
+      browserFixtureTime: fixedNow,
       sourceRender: { campaignRoutes: campaignFiles.length, temporaryBuild: true, renderer: "renderCampaignPage" },
       audit: {
         pageNavigations,

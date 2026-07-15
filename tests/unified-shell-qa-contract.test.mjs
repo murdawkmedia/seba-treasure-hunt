@@ -74,3 +74,34 @@ test("unified-shell QA fails closed at every network and write boundary", async 
   assert.match(script, /assert\.equal\(networkLedger\.localWriteAttempts\.length,\s*0/);
   assert.match(script, /assert\.equal\(serverLedger\.rejectedWrites\.length,\s*0/);
 });
+
+test("zoom evidence proves real skip-link focus and uses viewport captures", async () => {
+  const script = await readRunner();
+
+  assert.match(script, /assertActiveElement\(zoomPage,\s*homeSkipLink/);
+  assert.match(script, /homeSkipLink\.evaluate\(\(element\)\s*=>\s*getComputedStyle\(element\)\.visibility/);
+  assert.match(script, /assertElementInViewport\(zoomPage,\s*homeSkipLink/);
+  assert.match(script, /const waiverSkipLink = zoomPage\.locator\(["']\.skip-link["']\)/);
+  assert.match(script, /assert\.equal\(await waiverSkipLink\.getAttribute\(["']href["']\),\s*["']#main["']/);
+  assert.match(script, /await waiverSkipLink\.press\(["']Enter["']\)/);
+  assert.match(script, /assertActiveElement\(zoomPage,\s*waiverMain/);
+  assert.match(script, /--stacked-header-height/);
+  assert.match(script, /assertMainClearsStickyHeader\(zoomPage,\s*waiverMain/);
+  for (const artifact of [
+    "zoom-200-home-tab-focus.png",
+    "zoom-200-route-menu-open.png",
+    "zoom-200-waiver-main-focus.png",
+  ]) {
+    assert.match(script, new RegExp(`capture\\(zoomPage,\\s*["']${artifact.replaceAll(".", "\\.")}["'],\\s*screenshotEvidence,\\s*\\{\\s*fullPage:\\s*false\\s*\\}\\)`));
+  }
+});
+
+test("evidence timestamps the real execution separately from the fixed browser clock", async () => {
+  const script = await readRunner();
+
+  assert.match(script, /const executionStartedAt = new Date\(\)\.toISOString\(\)/);
+  assert.match(script, /executedAt:\s*executionStartedAt/);
+  assert.match(script, /runDate:\s*executionStartedAt\.slice\(0,\s*10\)/);
+  assert.match(script, /browserFixtureTime:\s*fixedNow/);
+  assert.doesNotMatch(script, /runDate:\s*["']2026-07-14["']/);
+});
