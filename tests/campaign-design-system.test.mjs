@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { CAMPAIGN_PAGES } from "../scripts/campaign-shell.mjs";
-import { buildSite } from "../scripts/build.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
@@ -68,6 +67,24 @@ const FUNCTIONAL_PAGE_CLASSES = Object.freeze({
   "community-guidelines.html": ["hunter-page"],
   "sponsors.html": ["hunter-page", "sponsor-page"],
 });
+
+const LEGACY_SHELL_CLASSES = Object.freeze([
+  "topbar",
+  "footer",
+  "hunter-header",
+  "hunter-nav",
+  "hunter-footer",
+  "board-topbar",
+  "board-brand",
+  "board-menu-toggle",
+  "board-nav",
+  "board-footer",
+  "case-signal",
+  "sponsor-topbar",
+  "sponsor-footer",
+  "site-header",
+  "site-footer",
+]);
 
 const cssBlock = (css, marker) => {
   const markerMatch = marker.exec(css);
@@ -252,13 +269,14 @@ test("the private Ops console has no campaign page-family or shared-style depend
   assert.doesNotMatch(opsCss, /campaign-page(?:--[a-z]+)?/);
 });
 
-test("legacy stylesheets no longer expose public shell selectors", () => {
-  const css = ["css/style.css", "css/hunter.css", "css/board.css", "css/sponsors.css"]
+test("public stylesheets expose none of the complete legacy shell selector set", () => {
+  const css = ["css/style.css", "css/hunter.css", "css/board.css", "css/sponsors.css", "css/campaign-shell.css"]
     .map(read)
     .join("\n")
     .replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const selector of [".topbar", ".hunter-header", ".board-topbar", ".hunter-nav", ".board-nav", ".case-signal"]) {
-    assert.doesNotMatch(css, new RegExp(`\\${selector}(?![\\w-])`), `${selector} is absent, including compound selectors`);
+  for (const className of LEGACY_SHELL_CLASSES) {
+    const selector = `.${className}`;
+    assert.doesNotMatch(css, new RegExp(`\\.${className}(?![\\w-])`), `${selector} is absent, including compound selectors`);
   }
 });
 
@@ -315,15 +333,6 @@ test("reduced motion resets campaign animations and transitions", () => {
     reducedMotion,
     /\.campaign-page \*,\s*\.campaign-page \*::before,\s*\.campaign-page \*::after\s*\{[^}]*animation-duration:\s*0\.01ms\s*!important;[^}]*animation-iteration-count:\s*1\s*!important;[^}]*transition-duration:\s*0\.01ms\s*!important;[^}]*\}/s,
   );
-});
-
-test("the build publishes the canonical shell stylesheet", async () => {
-  const output = await buildSite({ temporary: true });
-  try {
-    assert.equal(fs.existsSync(path.join(output.dist, "css", "campaign-shell.css")), true);
-  } finally {
-    await output.cleanup();
-  }
 });
 
 test("generated waiver artifacts remain exact", () => {

@@ -13,6 +13,24 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const buildScript = path.join(root, "scripts", "build.mjs");
 
+const legacyShellClasses = Object.freeze([
+  "topbar",
+  "footer",
+  "hunter-header",
+  "hunter-nav",
+  "hunter-footer",
+  "board-topbar",
+  "board-brand",
+  "board-menu-toggle",
+  "board-nav",
+  "board-footer",
+  "case-signal",
+  "sponsor-topbar",
+  "sponsor-footer",
+  "site-header",
+  "site-footer",
+]);
+
 const descriptors = {
   "index.html": { route: "home", skipLabel: "Skip to the campaign", skipTarget: "main" },
   "start.html": { route: "start", skipLabel: "Skip to the hunt guide", skipTarget: "main" },
@@ -425,20 +443,8 @@ test("splits class tokens on HTML form-feed whitespace", () => {
   );
 });
 
-test("rejects legacy public shell classes", () => {
-  for (const className of [
-    "topbar",
-    "footer",
-    "hunter-header",
-    "hunter-nav",
-    "hunter-footer",
-    "board-topbar",
-    "board-nav",
-    "board-footer",
-    "case-signal",
-    "sponsor-topbar",
-    "sponsor-footer",
-  ]) {
+test("rejects every legacy public shell class", () => {
+  for (const className of legacyShellClasses) {
     assert.throws(
       () => renderCampaignPage(source({ beforeFooter: `<div class="${className}"></div>` }), "route.html"),
       /legacy public shell class/i,
@@ -584,5 +590,17 @@ test("every registered source page declares exactly its approved shell descripto
       /<!--\s*CAMPAIGN_FOOTER\s*-->\s*<script\b/,
       `${filename} footer marker must immediately precede its body scripts`,
     );
+  }
+});
+
+test("shell rendering preserves each registered page head byte for byte", () => {
+  for (const filename of Object.keys(CAMPAIGN_PAGES)) {
+    const sourceHtml = readFileSync(path.join(root, filename), "utf8");
+    const renderedHtml = renderCampaignPage(sourceHtml, filename);
+    const sourceHead = sourceHtml.match(/<head\b[^>]*>[\s\S]*?<\/head>/i)?.[0];
+    const renderedHead = renderedHtml.match(/<head\b[^>]*>[\s\S]*?<\/head>/i)?.[0];
+
+    assert.ok(sourceHead, `${filename} source has a complete head`);
+    assert.equal(renderedHead, sourceHead, `${filename} metadata head remains byte-exact`);
   }
 });

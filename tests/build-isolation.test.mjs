@@ -18,11 +18,57 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { buildSite } from "../scripts/build.mjs";
-import { CAMPAIGN_PAGES, renderCampaignPage } from "../scripts/campaign-shell.mjs";
+import { CAMPAIGN_MENU, CAMPAIGN_PAGES, renderCampaignPage } from "../scripts/campaign-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDist = path.join(root, "dist");
 const mediaDist = path.join(root, "dist-media");
+
+const legacyShellClasses = Object.freeze([
+  "topbar",
+  "footer",
+  "hunter-header",
+  "hunter-nav",
+  "hunter-footer",
+  "board-topbar",
+  "board-brand",
+  "board-menu-toggle",
+  "board-nav",
+  "board-footer",
+  "case-signal",
+  "sponsor-topbar",
+  "sponsor-footer",
+  "site-header",
+  "site-footer",
+]);
+
+function classTokens(html) {
+  return [...html.matchAll(/\bclass[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >]+))/gi)]
+    .flatMap((match) => (match[1] ?? match[2] ?? match[3] ?? "")
+      .split(/[\t\n\f\r ]+/)
+      .filter(Boolean));
+}
+
+function renderedShell(html, filename) {
+  const fragments = [
+    html.match(/<a class="skip-link"[\s\S]*?<\/a>/)?.[0],
+    html.match(/<section class="case-strip"[\s\S]*?<\/section>/)?.[0],
+    html.match(/<header class="campaign-header"[\s\S]*?<\/header>/)?.[0],
+    html.match(/<footer class="campaign-footer"[\s\S]*?<\/footer>/)?.[0],
+  ];
+  for (const fragment of fragments) assert.ok(fragment, `${filename} has every canonical shell region`);
+  return fragments.join("\n");
+}
+
+function primaryNav(html) {
+  return html.match(/<nav class="campaign-nav"[\s\S]*?<\/nav>/)?.[0] ?? "";
+}
+
+function expectedCurrentCount(filename) {
+  if (filename === "index.html" || filename === "interview.html") return 0;
+  if (filename === "rules.html" || filename === "sponsors.html") return 2;
+  return 1;
+}
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -98,9 +144,30 @@ test("imported builds use owned temporary outputs without touching repository di
     assert.notEqual(isolatedMedia, mediaDist);
     for (const filename of Object.keys(CAMPAIGN_PAGES)) {
       const html = readFileSync(path.join(dist, filename), "utf8");
+      const shell = renderedShell(html, filename);
+      const tokens = new Set(classTokens(html));
+
       assert.match(html, /class="campaign-header"/, `${filename} has a rendered header`);
-      assert.doesNotMatch(html, /CAMPAIGN_SHELL|CAMPAIGN_FOOTER/);
+      assert.doesNotMatch(html, /CAMPAIGN_(?:SHELL|FOOTER)/, `${filename} has no source marker`);
+      for (const className of legacyShellClasses) {
+        assert.equal(tokens.has(className), false, `${filename} excludes legacy class ${className}`);
+      }
+      for (const href of [...shell.matchAll(/\bhref="([^"]+)"/g)].map((match) => match[1])) {
+        assert.match(href, /^(?:\/(?!\/)|https?:\/\/|#)/i, `${filename} shell link is root-relative: ${href}`);
+        assert.doesNotMatch(href, /\.html(?:$|[?#])/i, `${filename} shell link omits .html: ${href}`);
+      }
+      assert.equal(
+        (html.match(/aria-current="page"/g) ?? []).length,
+        expectedCurrentCount(filename),
+        `${filename} has the approved full-page current-state count`,
+      );
+      assert.equal(
+        (primaryNav(html).match(/aria-current="page"/g) ?? []).length,
+        CAMPAIGN_MENU.some((item) => item.route === CAMPAIGN_PAGES[filename]) ? 1 : 0,
+        `${filename} primary navigation has only its matching current state`,
+      );
     }
+    assert.equal(existsSync(path.join(dist, "css", "campaign-shell.css")), true);
     const sourceOps = readFileSync(path.join(root, "ops.html"), "utf8");
     assert.equal(readFileSync(path.join(dist, "ops.html"), "utf8"), sourceOps);
     assert.doesNotMatch(sourceOps, /class="campaign-header"/);
