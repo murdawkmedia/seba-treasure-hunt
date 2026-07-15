@@ -20,6 +20,33 @@ const mime = {
 let server;
 let origin;
 
+const campaignFiles = Object.freeze([
+  "index.html",
+  "start.html",
+  "route.html",
+  "interview.html",
+  "updates.html",
+  "clue-board.html",
+  "report.html",
+  "rules.html",
+  "dashboard.html",
+  "sponsors.html",
+  "privacy.html",
+  "waiver.html",
+  "community-guidelines.html",
+]);
+
+const menuRoutes = new Set([
+  "start",
+  "route",
+  "updates",
+  "clue-board",
+  "report",
+  "rules",
+  "dashboard",
+  "sponsors",
+]);
+
 const readGeometry = (page, stripSelector, headerSelector) => page.evaluate(([stripSelector, headerSelector]) => {
   const strip = document.querySelector(stripSelector);
   const header = document.querySelector(headerSelector);
@@ -716,6 +743,151 @@ test("navigation remains usable when matchMedia is unavailable", { timeout: 30_0
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
     assert.equal(await toggle.evaluate((element) => document.activeElement === element), true);
     assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("canonical shell geometry and navigation state hold across every route and breakpoint", { timeout: 180_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const width of [360, 768, 1440]) {
+      const context = await browser.newContext({ viewport: { width, height: 900 } });
+      await context.route("**/*", async (route) => {
+        if (route.request().url().startsWith(origin)) await route.continue();
+        else await route.abort();
+      });
+      const page = await context.newPage();
+
+      for (const file of campaignFiles) {
+        await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
+        const geometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
+        const route = CAMPAIGN_PAGES[file];
+        const state = await page.evaluate(() => {
+          const skip = document.querySelector(".skip-link");
+          const nav = document.querySelector('nav[aria-label="Campaign"]#campaign-nav');
+          const toggle = document.querySelector(".campaign-menu-toggle");
+          if (!(skip instanceof HTMLAnchorElement) || !(nav instanceof HTMLElement) || !(toggle instanceof HTMLElement)) return null;
+          const target = document.querySelector(skip.hash);
+          return {
+            currentCount: nav.querySelectorAll('[aria-current="page"]').length,
+            currentHref: nav.querySelector('[aria-current="page"]')?.getAttribute("href") ?? null,
+            headerCount: document.querySelectorAll(".campaign-header").length,
+            navDisplay: getComputedStyle(nav).display,
+            overflow: document.documentElement.scrollWidth - window.innerWidth,
+            skipCount: document.querySelectorAll(".skip-link").length,
+            stripCount: document.querySelectorAll(".case-strip").length,
+            targetExists: target instanceof HTMLElement,
+            toggleDisplay: getComputedStyle(toggle).display,
+            toggleExpanded: toggle.getAttribute("aria-expanded"),
+          };
+        });
+
+        assert.ok(state, `${file} exposes the canonical shell at ${width}px`);
+        assert.equal(state.stripCount, 1, `${file} has one case strip at ${width}px`);
+        assert.equal(state.headerCount, 1, `${file} has one campaign header at ${width}px`);
+        assert.equal(state.skipCount, 1, `${file} has one skip link at ${width}px`);
+        assert.equal(state.targetExists, true, `${file} skip target exists at ${width}px`);
+        assert.ok(state.overflow <= 1, `${file} has ${state.overflow}px horizontal overflow at ${width}px`);
+        assert.ok(Math.abs(geometry.headerTop - geometry.stripHeight) <= 1, `${file} sticky rows stay synchronized at ${width}px`);
+        assert.ok(Math.abs(geometry.stackedVariable - geometry.stripHeight - geometry.headerHeight) <= 1, `${file} stacked variable stays synchronized at ${width}px`);
+
+        if (menuRoutes.has(route)) {
+          assert.equal(state.currentCount, 1, `${file} has one nav-scoped current item`);
+          assert.equal(state.currentHref, `/${route}`, `${file} identifies its current campaign route`);
+        } else {
+          assert.equal(state.currentCount, 0, `${file} does not invent a campaign-menu current item`);
+        }
+
+        if (width <= 760) {
+          assert.equal(state.toggleDisplay, "flex", `${file} shows the mobile toggle at ${width}px`);
+          assert.equal(state.toggleExpanded, "false", `${file} starts collapsed at ${width}px`);
+          assert.equal(state.navDisplay, "none", `${file} starts with its mobile menu hidden at ${width}px`);
+          await page.locator(".campaign-menu-toggle").click();
+          assert.equal(await page.locator('#campaign-nav a[href="/sponsors"]').isVisible(), true, `${file} keeps Sponsors visible in its mobile menu`);
+        } else {
+          assert.equal(state.toggleDisplay, "none", `${file} hides the toggle at ${width}px`);
+          assert.equal(state.navDisplay, "flex", `${file} keeps desktop navigation visible at ${width}px`);
+          assert.equal(await page.locator('#campaign-nav a[href="/sponsors"]').isVisible(), true, `${file} keeps Sponsors visible on desktop`);
+        }
+      }
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test("mobile navigation resets at desktop and preserves the required focus behavior", { timeout: 30_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await context.route("**/*", async (route) => {
+    if (route.request().url().startsWith(origin)) await route.continue();
+    else await route.abort();
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
+    const toggle = page.locator(".campaign-menu-toggle");
+    const nav = page.locator("#campaign-nav");
+    const sponsor = nav.locator('a[href="/sponsors"]');
+
+    await toggle.click();
+    await sponsor.focus();
+    await page.setViewportSize({ width: 900, height: 844 });
+    await page.waitForFunction(() => document.querySelector("#campaign-nav")?.classList.contains("open") === false);
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await sponsor.evaluate((element) => document.activeElement === element), true, "desktop reset does not steal focus");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await toggle.click();
+    await sponsor.evaluate((anchor) => anchor.addEventListener("click", (event) => event.preventDefault(), { once: true }));
+    await sponsor.click();
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await toggle.evaluate((element) => document.activeElement === element), false, "link closure does not steal focus");
+
+    await toggle.click();
+    await page.keyboard.press("Escape");
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await toggle.evaluate((element) => document.activeElement === element), true, "Escape restores focus to the toggle");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("200 percent zoom geometry leaves every primary skip target uncovered", { timeout: 120_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 720, height: 500 } });
+  await context.route("**/*", async (route) => {
+    if (route.request().url().startsWith(origin)) await route.continue();
+    else await route.abort();
+  });
+
+  try {
+    const page = await context.newPage();
+    for (const file of campaignFiles) {
+      await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
+      const geometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
+      await page.locator(".skip-link").focus();
+      await page.keyboard.press("Enter");
+      const primary = await page.evaluate(() => {
+        const main = document.querySelector("main");
+        if (!(main instanceof HTMLElement)) return null;
+        const rect = main.getBoundingClientRect();
+        return {
+          active: document.activeElement === main,
+          bottom: rect.bottom,
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+          top: rect.top,
+        };
+      });
+      assert.ok(primary, `${file} exposes primary content at 720x500`);
+      assert.equal(primary.active, true, `${file} transfers skip-link focus to primary content`);
+      assert.ok(primary.overflow <= 1, `${file} has no horizontal overflow at 720x500`);
+      assert.ok(primary.top >= geometry.stackedVariable - 1, `${file} primary top ${primary.top}px clears ${geometry.stackedVariable}px stacked header`);
+      assert.ok(primary.top < 500 && primary.bottom > geometry.stackedVariable, `${file} primary content remains visible in the short viewport`);
+    }
   } finally {
     await browser.close();
   }

@@ -114,10 +114,11 @@ function renderGallery() {
 }
 
 /* ---------------- Mobile nav ---------------- */
-function closeNav(toggle, nav) {
+function closeNav(toggle, nav, restoreFocus) {
   if (!toggle || !nav) return;
   nav.classList.remove("open");
   toggle.setAttribute("aria-expanded", "false");
+  if (restoreFocus) toggle.focus();
 }
 
 function initStackedHeaderGeometry() {
@@ -173,18 +174,17 @@ function initNav() {
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
   });
   nav.addEventListener("click", function (event) {
-    if (event.target instanceof Element && event.target.closest("a")) closeNav(toggle, nav);
+    if (event.target instanceof Element && event.target.closest("a")) closeNav(toggle, nav, false);
   });
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && nav.classList.contains("open")) {
-      closeNav(toggle, nav);
-      toggle.focus();
+      closeNav(toggle, nav, true);
     }
   });
   if (typeof window.matchMedia !== "function") return;
   var desktop = window.matchMedia("(min-width: 761px)");
   var closeAtDesktop = function (event) {
-    if (event.matches) closeNav(toggle, nav);
+    if (event.matches) closeNav(toggle, nav, false);
   };
   if (typeof desktop.addEventListener === "function") desktop.addEventListener("change", closeAtDesktop);
   else if (typeof desktop.addListener === "function") desktop.addListener(closeAtDesktop);

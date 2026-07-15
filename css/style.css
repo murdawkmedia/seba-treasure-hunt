@@ -532,6 +532,7 @@ section { padding: 70px 0; position: relative; }
 @media (max-width: 720px) {
   .validation-environment-notice { position: relative; flex-direction: column; gap: 2px; }
   body { font-size: 1.05rem; }
+  .contact-card { max-width: 100%; padding-inline: 18px; }
   #map { height: 420px; }
   .scroll { padding: 24px 22px; }
   .faq-grid { grid-template-columns: 1fr; }

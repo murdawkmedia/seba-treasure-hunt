@@ -260,7 +260,7 @@ test("the clue board loads shared status before its board client", () => {
 
 test("shared menu behavior closes consistently without trapping focus", () => {
   const site = read("js/site.js");
-  assert.match(site, /function closeNav\(toggle, nav\)/);
+  assert.match(site, /function closeNav\(toggle, nav, restoreFocus\)/);
   assert.match(site, /if \(!toggle \|\| !nav\) return/);
   assert.match(site, /toggle\.setAttribute\("aria-expanded", "false"\)/);
   assert.match(site, /event\.target instanceof Element/);
@@ -268,7 +268,10 @@ test("shared menu behavior closes consistently without trapping focus", () => {
   assert.match(site, /document\.addEventListener\("keydown"/);
   assert.match(site, /event\.key === "Escape"/);
   assert.match(site, /nav\.classList\.contains\("open"\)/);
-  assert.match(site, /toggle\.focus\(\)/);
+  assert.match(site, /if \(restoreFocus\) toggle\.focus\(\)/);
+  assert.match(site, /closest\("a"\)\) closeNav\(toggle, nav, false\)/);
+  assert.match(site, /event\.key === "Escape"[\s\S]{0,120}closeNav\(toggle, nav, true\)/);
+  assert.match(site, /event\.matches\) closeNav\(toggle, nav, false\)/);
   assert.doesNotMatch(site, /preventDefault\(\)[\s\S]{0,120}(?:Tab|event\.key === "Tab")|focusableElements|focus trap/i);
 });
 
