@@ -324,8 +324,8 @@ test("route stories and photos are public while exact waypoint controls stay ses
     .find((item) => item["@type"] === "ItemList");
   assert.equal(routeItemList?.numberOfItems, 13);
   assert.deepEqual(routeItemList?.itemListElement.map((item) => item.position), Array.from({ length: 13 }, (_, index) => index + 1));
-  assert.match(route, /The Lucky 13 · every stop, every photo, one member field map\./);
-  assert.match(read("index.html"), /🗺️ The Lucky 13: 13 Waypoints, 61 Public-Safe Photos/);
+  assert.match(route, /Lucky 13 · a documentary route record/);
+  assert.match(read("index.html"), /13 waypoints · 61 public-safe photos/i);
   assert.match(route, /stories and photos are public/i);
   assert.match(route, /exact Google Maps links require a Hunter account/i);
   assert.match(route, /data-route-member-state/);

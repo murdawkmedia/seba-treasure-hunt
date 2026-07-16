@@ -38,7 +38,7 @@ const descriptors = {
   "route.html": { route: "route", skipLabel: "Skip to the route", skipTarget: "main" },
   "interview.html": { route: "interview", skipLabel: "Skip to Tim's Account", skipTarget: "main" },
   "updates.html": { route: "updates", skipLabel: "Skip to official updates", skipTarget: "main" },
-  "clue-board.html": { route: "clue-board", skipLabel: "Skip to the clue board", skipTarget: "main" },
+  "clue-board.html": { route: "clue-board", skipLabel: "Skip to Case Notes", skipTarget: "main" },
   "report.html": { route: "report", skipLabel: "Skip to private reporting", skipTarget: "main" },
   "rules.html": { route: "rules", skipLabel: "Skip to the current rules", skipTarget: "main" },
   "dashboard.html": { route: "dashboard", skipLabel: "Skip to Hunter Dashboard", skipTarget: "main" },
@@ -164,7 +164,7 @@ test("the canonical shell loads one global account client after public page cont
   assert.equal((html.match(/src="\/assets\/app\/account\.js"/g) ?? []).length, 1);
 });
 
-test("renders the exact primary menu order, current route, and Sponsors class", () => {
+test("renders the exact primary menu order, current route, and support class", () => {
   const html = renderCampaignPage(source(), "route.html");
   const nav = primaryNav(html);
 
@@ -178,7 +178,7 @@ test("renders the exact primary menu order, current route, and Sponsors class", 
   );
   assert.equal((nav.match(/aria-current="page"/g) ?? []).length, 1);
   assert.match(nav, /href="\/route" aria-current="page">Lucky 13 Route<\/a>/);
-  assert.match(nav, /href="\/sponsors" class="nav-sponsors">Sponsors<\/a>/);
+  assert.match(nav, /href="\/sponsors" class="nav-sponsors">Support the Search<\/a>/);
   assert.doesNotMatch(nav, /\.html/);
 });
 
@@ -605,7 +605,7 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
     { route: "report", label: "Report", href: "/report" },
     { route: "rules", label: "Rules", href: "/rules" },
     { route: "dashboard", label: "Dashboard", href: "/dashboard" },
-    { route: "sponsors", label: "Sponsors", href: "/sponsors" },
+    { route: "sponsors", label: "Support the Search", href: "/sponsors" },
   ]);
 });
 

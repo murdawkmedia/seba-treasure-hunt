@@ -189,7 +189,7 @@ export function validateFieldNote(waypointId: string, body: string, files: reado
   if (parseWaypointId(waypointId) === null) errors.push("Choose one of the 13 waypoints.");
   const note = body.trim();
   if (!note) errors.push("Describe what you observed.");
-  if (note.length > 1200) errors.push("Field Notes must be 1,200 characters or fewer.");
+  if (note.length > 1200) errors.push("Case Notes must be 1,200 characters or fewer.");
   if (files.length > maxImages) errors.push("Choose no more than 3 images.");
   for (const file of files) {
     if (!allowedImageTypes.has(file.type)) errors.push(`${file.name} is not a JPEG, PNG or WebP image.`);
@@ -201,7 +201,7 @@ export function validateFieldNote(waypointId: string, body: string, files: reado
 function renderMedia(media: CommunityMedia[], handle: string): string {
   if (media.length === 0) return "";
   return `<div class="field-note__media">${media
-    .map((item) => `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || `Field Note image shared by ${handle}`)}" loading="lazy" decoding="async" />`)
+    .map((item) => `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || `Case Note image shared by ${handle}`)}" loading="lazy" decoding="async" />`)
     .join("")}</div>`;
 }
 
@@ -235,7 +235,7 @@ function renderNote(note: CommunityNote, canReply: boolean): string {
     <div class="field-note__body">${escapeHtml(note.body)}</div>
     ${renderMedia(note.media, note.authorHandle)}
     <p class="field-note__notice">${communityDisclaimer}</p>
-    <div class="field-note__actions"><button class="note-action" type="button" data-flag-kind="note" data-flag-id="${escapeHtml(note.id)}" aria-label="Report Field Note by ${escapeHtml(note.authorHandle)} for review">Report Field Note for review</button></div>
+    <div class="field-note__actions"><button class="note-action" type="button" data-flag-kind="note" data-flag-id="${escapeHtml(note.id)}" aria-label="Report Case Note by ${escapeHtml(note.authorHandle)} for review">Report Case Note for review</button></div>
     ${renderReplies(note, canReply)}
   </article>`;
 }
@@ -248,7 +248,7 @@ export function renderBoardFeed(state: BoardViewState): string {
     return `<div class="board-state board-state--unavailable"><h3>Board unavailable</h3><p>${escapeHtml(state.detail)}</p><p>Your private report can still be sent from the report page.</p></div>`;
   }
   if (state.notes.length === 0) {
-    return `<div class="board-state board-state--empty"><h3>No approved Field Notes here yet</h3><p>Try another waypoint or return after moderators have reviewed new observations.</p></div>`;
+    return `<div class="board-state board-state--empty"><h3>No approved Case Notes here yet</h3><p>Try another waypoint or return after moderators have reviewed new observations.</p></div>`;
   }
   return state.notes.map((note) => renderNote(note, state.canReply)).join("");
 }
@@ -339,7 +339,7 @@ export async function initialiseBoard(): Promise<void> {
     const state = noteForm.querySelector<HTMLElement>("[data-note-turnstile-state]");
     const submit = noteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (!container || !turnstileApi || !turnstileSiteKey) {
-      disableNoteHumanCheck("Human check unavailable. Field Notes cannot be submitted until it is restored.");
+      disableNoteHumanCheck("Human check unavailable. Case Notes cannot be submitted until it is restored.");
       return;
     }
     state?.remove();
@@ -351,7 +351,7 @@ export async function initialiseBoard(): Promise<void> {
         if (submit) submit.disabled = false;
       },
       "expired-callback": () => disableNoteHumanCheck("Human check expired. Complete it again before submitting."),
-      "error-callback": () => disableNoteHumanCheck("Human check unavailable. Field Notes cannot be submitted until it is restored."),
+      "error-callback": () => disableNoteHumanCheck("Human check unavailable. Case Notes cannot be submitted until it is restored."),
     });
   };
 
@@ -518,17 +518,17 @@ export async function initialiseBoard(): Promise<void> {
     }
     formData.set("cfTurnstileResponse", humanToken);
     if (submit) submit.disabled = true;
-    if (result) result.textContent = "Sending your Field Note for review...";
+    if (result) result.textContent = "Sending your Case Note for review...";
     try {
       const headers = await authHeaders(humanToken ? { "CF-Turnstile-Response": humanToken } : undefined);
       const { response, payload } = await requestJson("/api/v1/board/notes", { method: "POST", body: formData, headers });
-      if (!response.ok) throw new Error(errorMessage(payload, "Your Field Note could not be sent."));
+      if (!response.ok) throw new Error(errorMessage(payload, "Your Case Note could not be sent."));
       noteForm.reset();
       if (characterCount) characterCount.value = "0";
       if (fileList) fileList.innerHTML = "";
       if (result) result.textContent = "Received. Your note and images stay private until a moderator approves them.";
     } catch (error) {
-      if (result) result.textContent = error instanceof Error ? error.message : "Your Field Note could not be sent.";
+      if (result) result.textContent = error instanceof Error ? error.message : "Your Case Note could not be sent.";
     } finally {
       noteTurnstileToken = "";
       if (submit) submit.disabled = true;

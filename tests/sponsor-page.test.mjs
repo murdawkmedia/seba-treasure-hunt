@@ -7,8 +7,8 @@ import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
-const sponsorLink = /<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?\bSponsors\b[\s\S]*?<\/a>/i;
-const sponsorAnchor = (html) => html.match(/<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?\bSponsors\b[\s\S]*?<\/a>/i)?.[0] ?? "";
+const sponsorLink = /<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?Support the Search[\s\S]*?<\/a>/i;
+const sponsorAnchor = (html) => html.match(/<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?Support the Search[\s\S]*?<\/a>/i)?.[0] ?? "";
 
 const extractRegion = (html, tag, context) => {
   const match = html.match(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, "i"));
@@ -27,16 +27,16 @@ const optionEntries = (select) => [...select.matchAll(/<option\b[^>]*\bvalue=["'
 
 test("the sponsor page is a canonical, indexable answer and conversion surface", () => {
   const html = read("sponsors.html");
-  assert.match(html, /<title>Sponsor the Seba Beach Treasure Hunt \| Tim Lost Something\?<\/title>/);
-  assert.match(html, /<meta name="description" content="[^"]*Seba Beach[^"]*cash, prizes, services, or practical in-kind support[^"]*"/i);
+  assert.match(html, /<title>Support the Search \| Tim Lost Something\?<\/title>/);
+  assert.match(html, /<meta name="description" content="[^"]*Seba Beach[^"]*cash, prizes, services, or practical in-kind help[^"]*"/i);
   assert.match(html, /<link rel="canonical" href="https:\/\/www\.timlostsomething\.com\/sponsors"/);
   assert.match(html, /<meta name="robots" content="index,follow/);
   assert.match(html, /<meta property="og:site_name" content="Tim Lost Something\?"/);
   assert.match(html, /<meta property="og:type" content="website"/);
   assert.match(html, /<meta property="og:url" content="https:\/\/www\.timlostsomething\.com\/sponsors"/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/sunny-pirate-treasure-seba-beach\.jpg"/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/hero-aerial\.jpg"/);
   assert.match(html, /<meta name="twitter:card" content="summary_large_image"/);
-  assert.match(html, /<meta name="twitter:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/sunny-pirate-treasure-seba-beach\.jpg"/);
+  assert.match(html, /<meta name="twitter:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/hero-aerial\.jpg"/);
   assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="any">/);
   assert.match(html, /<link rel="icon" href="\/assets\/favicon\.svg" type="image\/svg\+xml">/);
   assert.match(html, /<link rel="icon" href="\/assets\/favicon-32x32\.png" type="image\/png" sizes="32x32">/);
@@ -49,15 +49,16 @@ test("the sponsor page is a canonical, indexable answer and conversion surface",
   assert.ok(html.lastIndexOf('/css/campaign-shell.css') > html.lastIndexOf('/css/sponsors.css'));
 });
 
-test("the sponsor hero uses dedicated campaign artwork, never an enlarged favicon", () => {
+test("the support hero uses the real Seba Beach aerial, never retired campaign artwork", () => {
   const html = read("sponsors.html");
   const hero = extractSection(html, "sponsor-hero");
-  const artifact = hero.match(/<div class="sponsor-hero__artifact"[\s\S]*?<\/div>/i)?.[0] ?? "";
-
-  assert.match(artifact, /src="\/assets\/photos\/sunny-pirate-treasure-seba-beach\.webp"/);
-  assert.doesNotMatch(artifact, /favicon/i);
-  assert.ok(fs.existsSync(path.join(root, "assets", "photos", "sunny-pirate-treasure-seba-beach.webp")));
-  assert.ok(fs.existsSync(path.join(root, "assets", "photos", "sunny-pirate-treasure-seba-beach.jpg")));
+  assert.match(hero, /class="sponsor-hero__media"/);
+  assert.match(hero, /src="\/assets\/photos\/hero-aerial\.jpg"/);
+  assert.match(hero, /alt="[^"]*Seba Beach[^"]*"/i);
+  assert.doesNotMatch(hero, /favicon|sunny-pirate|artifact/i);
+  assert.ok(fs.existsSync(path.join(root, "assets", "photos", "hero-aerial.jpg")));
+  assert.equal(fs.existsSync(path.join(root, "assets", "photos", "sunny-pirate-treasure-seba-beach.webp")), false);
+  assert.equal(fs.existsSync(path.join(root, "assets", "photos", "sunny-pirate-treasure-seba-beach.jpg")), false);
 });
 
 test("the sponsor page shell preserves status, navigation, accessibility, and client hooks", () => {
@@ -71,7 +72,7 @@ test("the sponsor page shell preserves status, navigation, accessibility, and cl
   const header = extractRegion(html, "header", "sponsors.html");
   assert.match(header, /class="[^"]*\bcampaign-brand\b[^"]*"/);
   assert.match(header, /<nav\b(?=[^>]*\bclass="campaign-nav")(?=[^>]*\baria-label="Campaign")[^>]*>/);
-  assert.match(header, /<a\b(?=[^>]*class="[^"]*\bnav-sponsors\b[^"]*")(?=[^>]*href="\/sponsors")(?=[^>]*aria-current="page")[^>]*>Sponsors<\/a>/);
+  assert.match(header, /<a\b(?=[^>]*class="[^"]*\bnav-sponsors\b[^"]*")(?=[^>]*href="\/sponsors")(?=[^>]*aria-current="page")[^>]*>Support the Search<\/a>/);
   const footer = extractRegion(html, "footer", "sponsors.html");
   for (const destination of ["/privacy", "/waiver", "/community-guidelines", "/rules", "/sponsors"]) {
     assert.match(footer, new RegExp(`href=["']${destination.replaceAll("/", "\\/")}["']`));
@@ -93,8 +94,8 @@ test("the sponsor story follows the approved hierarchy without public package pr
   }
 
   const hero = extractSection(html, "sponsor-hero");
-  assert.match(hero, /Sponsor the Seba Beach Treasure Hunt/);
-  assert.match(hero, /<h1[^>]*>Put your name inside the mystery\.<\/h1>/);
+  assert.match(hero, /A local mystery/);
+  assert.match(hero, /<h1[^>]*>Support the Search<\/h1>/);
   assert.match(hero, /href="#inquiry"/);
   assert.match(hero, /href="#opportunities"/);
 
@@ -251,7 +252,7 @@ test("sponsor sticky and anchor offsets derive from live stacked geometry", () =
   assert.match(sponsor, /\.inquiry__brief\s*\{[^}]*top:\s*calc\(var\(--stacked-header-height\) \+ 20px\)/s);
 });
 
-test("every public page reaches Sponsors from navigation and footer", () => {
+test("every public page reaches Support the Search from navigation and footer", () => {
   const missing = [];
 
   for (const name of [
@@ -292,5 +293,5 @@ test("every public page reaches Sponsors from navigation and footer", () => {
     if (/href=["'][^"']*#sponsor["']/i.test(footer)) missing.push(`${name}: legacy teaser used as primary footer link`);
   }
 
-  assert.deepEqual(missing, [], `missing correctly labelled Sponsors links:\n${missing.join("\n")}`);
+  assert.deepEqual(missing, [], `missing correctly labelled Support the Search links:\n${missing.join("\n")}`);
 });

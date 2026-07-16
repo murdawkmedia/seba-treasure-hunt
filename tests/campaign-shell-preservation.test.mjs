@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { CAMPAIGN_PAGES } from "../scripts/campaign-shell.mjs";
 
-const baseCommit = "72109a9088770beb467964e464b091d9b7bbb581";
+const baseCommit = "c92e5984500e0e4de1307b01364fbb4a26f2ab84";
 const manifest = JSON.parse(
   readFileSync(
     new URL("./fixtures/campaign-page-preservation.json", import.meta.url),
@@ -127,7 +127,7 @@ function normalizeBody(html, filename) {
   return `body-attributes:${bodyAttributes}\n${content}`;
 }
 
-function preservationHashes(html, filename) {
+export function preservationHashes(html, filename) {
   let head = requiredMatch(
     normalizeLines(html),
     /<head\b[^>]*>[\s\S]*?<\/head>/i,
@@ -186,7 +186,7 @@ test("preservation hashes detect head, script, and body drift", () => {
     "changing an unrelated script must be detected",
   );
   assert.notEqual(
-    preservationHashes(html.replace("Help Tim Find His ID", "Help Tim Misplace His ID"), filename).bodySha256,
+    preservationHashes(html.replace("<h1>Tim lost his ID.</h1>", "<h1>Tim misplaced his ID.</h1>"), filename).bodySha256,
     expected.bodySha256,
   );
 

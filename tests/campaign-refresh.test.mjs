@@ -91,7 +91,8 @@ test("the campaign prop is disclosed and never replaces evidence", () => {
     html,
     /assets\/photos\/tim-lost-id-campaign-prop\.webp/,
   );
-  assert.match(html, /Campaign prop \/ dramatization/);
+  assert.match(html, /Campaign reference — not the missing card/);
+  assert.match(html, /fictional, not Tim’s real ID, and not an exact picture of the missing card/);
   assert.match(html, /assets\/photos\/evidence-cash\.jpg/);
   assert.ok(
     existsSync(

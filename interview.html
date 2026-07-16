@@ -146,23 +146,19 @@
 
   <!-- ===================== HEADER / HERO ===================== -->
   <section class="hero" id="top">
-    <span class="doodad" style="top:14%;left:6%">🎙️</span>
-    <span class="doodad" style="top:22%;right:8%">🧭</span>
-    <span class="doodad" style="bottom:26%;left:12%">🌲</span>
-    <span class="doodad" style="bottom:20%;right:14%">🔍</span>
     <div class="wrap">
-      <p class="kicker">The full account · read it before you dig</p>
-      <h1>🎙️ Tim’s Account — What Happened to His ID?</h1>
+      <p class="kicker">First-person account · Seba Beach, Alberta</p>
+      <h1>Tim’s Account</h1>
       <p class="campaign-season">This year: Tim lost his ID.</p>
       <p class="sub">Tim drove every Seba Beach property in his side-by-side, showing a group of potential entrepreneurs around. Somewhere along the route — through the back trails, the cliff edge, the new beach, the forest — his ID, $5,000 in cash, and two <strong>diamond rings</strong> disappeared.</p>
-      <p class="sub"><em>His answers contain the clues. Read carefully. The details matter.</em></p>
+      <p class="sub"><em>Read the details in his own words, then compare them with the route record.</em></p>
       <div class="stat-chips">
         <span class="stat-chip">Tim’s Full Account</span>
         <span class="stat-chip">13 Waypoints Covered</span>
-        <span class="stat-chip">11 Hunter's Clues</span>
+        <span class="stat-chip">Search Notes Available</span>
       </div>
       <div class="toggle-row">
-        <button id="notesToggle" class="btn" type="button" aria-pressed="false">🔍 Show Hunter's Notes</button>
+        <button id="notesToggle" class="btn" type="button" aria-pressed="false">Show search notes</button>
       </div>
     </div>
     <div class="wave" aria-hidden="true">
@@ -176,8 +172,8 @@
   <section class="interview-section" id="interview">
     <div class="wrap">
       <h2 class="section-title">Tim’s Account</h2>
-      <div class="rope"></div>
-      <p class="section-lead">Tap any question to read Tim's full answer. Flip on Hunter's Notes above to see what each answer might mean for the hunt.</p>
+      <div class="case-divider"></div>
+      <p class="section-lead">Open any entry to read Tim's full answer. Search notes identify details that may help when comparing his account with the route.</p>
 
       <div class="interview-list">
 
@@ -492,8 +488,8 @@
   <!-- ===================== THE LAST PHOTO (EVIDENCE) ===================== -->
   <section class="evidence-section" id="evidence">
     <div class="wrap">
-      <h2 class="section-title">The Last Photo</h2>
-      <div class="rope"></div>
+      <h2 class="section-title">Last-known evidence</h2>
+      <div class="case-divider"></div>
       <p class="section-lead">Taken just before the tour. This is the last known state of everything that's now missing.</p>
       <figure class="evidence-card">
         <img src="assets/photos/evidence-cash.jpg" alt="Tim's pocket contents — the cash stack, elastic-band ID bundle, and keychain — photographed just before the tour" />
@@ -508,11 +504,11 @@
   <!-- ===================== FINAL CTA ===================== -->
   <section class="final-cta">
     <div class="wrap">
-      <h2 class="section-title">Now Go Find It</h2>
-      <p class="section-lead">Tim’s Account read. Details noted. Time to walk the route.</p>
+      <h2 class="section-title">Continue with the route</h2>
+      <p class="section-lead">Compare Tim's account with the 13 public waypoints or return to the case overview.</p>
       <div class="final-cta-row">
-        <a class="btn" href="route.html">🗺️ See All 13 Waypoints</a>
-        <a class="btn" href="index.html#deal">💰 The Deal</a>
+        <a class="btn" href="route.html">See all 13 waypoints</a>
+        <a class="btn" href="index.html#what-is-tim-lost-something">Case overview</a>
       </div>
     </div>
   </section>
@@ -527,7 +523,7 @@
       if (notesBtn) {
         notesBtn.addEventListener("click", function () {
           var on = document.body.classList.toggle("notes-on");
-          notesBtn.textContent = on ? "🔍 Hunter's Notes ON" : "🔍 Show Hunter's Notes";
+          notesBtn.textContent = on ? "Search notes shown" : "Show search notes";
           notesBtn.setAttribute("aria-pressed", on ? "true" : "false");
         });
       }

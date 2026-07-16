@@ -18,7 +18,7 @@ test("the clue board and operations console entry points exist", () => {
   }
 });
 
-test("the public clue board is an accessible, moderated community surface", () => {
+test("public Case Notes are an accessible, moderated community surface", () => {
   const html = read("clue-board.html");
   const client = read("src/client/board.ts");
 
@@ -38,7 +38,7 @@ test("the public clue board is an accessible, moderated community surface", () =
   assert.match(client, /\/api\/v1\/board\?waypoint=/);
   assert.match(client, /Community observation/);
   assert.match(client, /Board unavailable/i);
-  assert.match(client, /No approved Field Notes/i);
+  assert.match(client, /No approved Case Notes/i);
   assert.match(client, /Report .*for review/i);
   assert.match(client, /action:\s*"field_note"/);
   assert.match(client, /action:\s*"reply"/);

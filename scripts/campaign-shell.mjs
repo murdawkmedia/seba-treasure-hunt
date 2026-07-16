@@ -7,7 +7,7 @@ export const CAMPAIGN_MENU = Object.freeze([
   Object.freeze({ route: "report", label: "Report", href: "/report" }),
   Object.freeze({ route: "rules", label: "Rules", href: "/rules" }),
   Object.freeze({ route: "dashboard", label: "Dashboard", href: "/dashboard" }),
-  Object.freeze({ route: "sponsors", label: "Sponsors", href: "/sponsors" }),
+  Object.freeze({ route: "sponsors", label: "Support the Search", href: "/sponsors" }),
 ]);
 
 export const CAMPAIGN_PAGES = Object.freeze({
@@ -80,7 +80,7 @@ const footerLinks = [
     href: "/community-guidelines",
   },
   { route: "rules", label: "Rules", href: "/rules" },
-  { route: "sponsors", label: "Sponsors", href: "/sponsors" },
+  { route: "sponsors", label: "Support the Search", href: "/sponsors" },
 ];
 
 function escapeHtml(value) {

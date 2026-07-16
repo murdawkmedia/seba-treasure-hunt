@@ -675,7 +675,7 @@ function renderDashboard(data: Record<string, unknown>): void {
   renderLatestUpdate(data.latestUpdate);
   renderWaypoints(data.waypoints, data.status);
   renderRecords("[data-dashboard-reports]", data.reports, "No private reports yet.");
-  renderRecords("[data-dashboard-notes]", data.notes, "No Field Notes yet.");
+  renderRecords("[data-dashboard-notes]", data.notes, "No Case Notes yet.");
   const waiverPanel = document.querySelector<HTMLElement>("[data-waiver-panel]");
   if (waiverPanel) waiverPanel.hidden = !isRecord(data.profile) || data.privacyMediaRequired === true;
   message(

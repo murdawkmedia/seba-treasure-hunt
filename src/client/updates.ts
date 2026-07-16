@@ -241,13 +241,21 @@ function appendUpdates(items: OfficialUpdate[]): void {
 
 let cursor: string | null = null;
 
+function feedOptions(): { limit: number; paginate: boolean } {
+  const feed = document.querySelector<HTMLElement>("[data-updates-feed]");
+  const requested = Number.parseInt(feed?.dataset.updatesLimit ?? "20", 10);
+  const limit = Number.isFinite(requested) ? Math.min(20, Math.max(1, requested)) : 20;
+  return { limit, paginate: feed?.dataset.updatesPaginate !== "false" };
+}
+
 async function loadUpdates(next: string | null = null): Promise<void> {
   const state = document.querySelector<HTMLElement>("[data-updates-state]");
   const more = document.querySelector<HTMLButtonElement>("[data-updates-more]");
+  const options = feedOptions();
   if (more) more.disabled = true;
   try {
     const url = new URL("/api/v1/updates", window.location.origin);
-    url.searchParams.set("limit", "20");
+    url.searchParams.set("limit", String(options.limit));
     if (next) url.searchParams.set("cursor", next);
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
@@ -266,7 +274,7 @@ async function loadUpdates(next: string | null = null): Promise<void> {
       appendUpdates(page.items);
       if (state) state.hidden = true;
     }
-    cursor = page.nextCursor;
+    cursor = options.paginate ? page.nextCursor : null;
     if (more) {
       more.hidden = cursor === null;
       more.disabled = false;

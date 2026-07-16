@@ -4,7 +4,7 @@ Last updated: 2026-07-16
 
 ## Approved future direction: a real local mystery
 
-Status: **Approved direction — not yet implemented.**
+Status: **Implemented and verified in Release 2 source; production rollout pending owner approval.**
 
 The campaign will move away from pirate-themed language, imagery and
 exaggerated gimmicks. The next creative direction is a genuine local mystery:
@@ -24,20 +24,14 @@ subject of the story.
 - Remove pirate expressions, pirate framing and theatrical treasure-hunt
   gimmicks throughout the eventual redesign.
 
-### Future implementation work
+### Release 2 implementation
 
-1. Inventory pirate language, visuals, iconography, labels and supporting tests
-   across every public route.
-2. Define a consistent local-mystery narrative and visual system before making
-   broad page changes.
-3. Rewrite public copy around short, credible case details and progressive clue
-   reveals.
-4. Replace pirate-specific artwork and decorative treatments with grounded
-   mystery imagery that still feels inviting and fun.
-5. Preserve factual route information, safety rules, legal notices,
-   accessibility, account flows and search visibility during the transition.
-6. Build and review the new direction in validation before approving any
-   production rollout.
+Release 2A established the shared Documentary Case File type, shell, favicon and
+design source. Release 2B completes the public content and media transition:
+documentary homepage hierarchy, factual route/account framing, Case Notes,
+Support the Search, real evidence imagery, and recursive public-output guards.
+The stable routes, APIs, auth, legal, moderation and private Ops contracts remain
+unchanged.
 
 ### Release 1 complete in source: interview integrity
 
@@ -51,8 +45,8 @@ public naming and excluded copy.
 Status: **Implemented and verified in release source; production deployment is
 tracked separately.**
 
-The broader local-mystery rebrand remains future work. Release 1 does not
-rewrite Tim’s answers or attempt the site-wide removal of pirate framing.
+Release 2 completes the broader local-mystery rebrand in source without
+rewriting Tim’s answers.
 
 ### Completion signals
 
@@ -65,5 +59,6 @@ rewrite Tim’s answers or attempt the site-wide removal of pirate framing.
 
 ## Scope boundary
 
-Release 1 corrects Tim’s Account and its discovery surfaces only. The approved
-future visual and copy direction above remains pending validation and review.
+Release 2 source is ready for owner review and validation. No deployment is
+authorized by this roadmap update; production remains on the recorded live
+deployment until explicit approval.

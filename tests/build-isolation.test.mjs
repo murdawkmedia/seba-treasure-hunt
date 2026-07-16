@@ -195,7 +195,7 @@ test("shell link validation handles every attribute form and rejects bypasses", 
     );
   }
   assert.throws(
-    () => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/sponsors"[^>]*>Sponsors<\/a>/, ""), "route.html"),
+    () => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/sponsors"[^>]*>Support the Search<\/a>/, ""), "route.html"),
     /expected 18 shell links/i,
   );
 });

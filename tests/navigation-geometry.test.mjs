@@ -346,8 +346,8 @@ test("contextual focus maps public parchment and resets nested dark utilities", 
     await assertFocusColor(page.locator(".stop .stop-meta a").first(), dark, "route stop link uses dark focus on parchment", page.locator(".stop").first());
 
     await page.goto(`${origin}/index.html`, { waitUntil: "domcontentloaded" });
-    await assertFocusColor(page.locator(".step a").first(), dark, "How to Play step link uses dark focus on paper", page.locator(".step").first());
-    await assertFocusColor(page.locator(".legend .btn"), dark, "legend control uses dark focus on paper", page.locator(".legend .scroll"));
+    await assertFocusColor(page.locator(".hunt-faq a").first(), dark, "FAQ link uses dark focus on paper", page.locator(".hunt-faq"));
+    await assertFocusColor(page.locator(".legend .btn"), dark, "chronology control uses dark focus on paper", page.locator(".legend"));
 
     await page.goto(`${origin}/start.html`, { waitUntil: "domcontentloaded" });
     const hunterValidation = page.locator(".field-panel--paper").first().locator(".system-message");

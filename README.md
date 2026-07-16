@@ -1,25 +1,27 @@
 # Tim Lost Something?
 
-The public website and hunter platform for the Seba Beach treasure hunt.
+The public website and hunter platform for Tim's community-led Seba Beach search.
 
 ## Public routes
 
 | Route | Purpose |
 |---|---|
-| `/` | Campaign story and current case status |
+| `/` | Documentary case overview, real evidence and current status |
 | `/route` | Lucky 13 waypoint stories; signed-in hunters receive exact route controls |
 | `/interview` | Tim’s Account, organized as the before, along-route, and after-discovery record |
 | `/updates` | Official updates and approved community reports |
 | `/report` | Private find, tip, and safety reporting |
-| `/clue-board` | Moderated community Field Notes |
-| `/rules` | Versioned hunt rules |
+| `/clue-board` | Moderated community Case Notes; the stable route remains unchanged |
+| `/rules` | Versioned search and safety rules |
 | `/privacy` | Privacy Policy & Media Notice |
 | `/waiver` | Participation Acknowledgement, Waiver and Release |
-| `/sponsors` | Sponsor information and private sponsorship inquiry form |
+| `/sponsors` | Support the Search information and private inquiry form |
 
 Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and are protected by authenticated company-domain access.
 
 Sponsor inquiries submitted through `/sponsors` are stored in private D1 records with an append-only event ledger. Staff review them in the Ops Sponsors ledger; there is no automated email for sponsor inquiries.
+
+Release 2B completes the documentary public-page transition in source. It has not been deployed; production remains on the identifiers recorded in the operations handoff until owner approval.
 
 ## Design source
 
