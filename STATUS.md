@@ -1,97 +1,48 @@
-# STATUS — Tim Lost Something? / The Seba Beach Treasure Hunt
+# STATUS — Tim Lost Something?
 
-Last updated: 2026-07-10
+Last updated: 2026-07-16
 
 ## Current state
 
-The 2026 public campaign has been rebuilt and locally verified under the
-umbrella brand **Tim Lost Something?**
+The Tim Lost Something hunter platform is live at
+`https://www.timlostsomething.com`. The public campaign, password-based hunter
+accounts, company-domain Ops access, private reports, moderated Field Notes,
+Lucky 13 route, participation waiver, transactional email, and operator alerts
+are active in production.
 
-Campaign line: **This year: Tim lost his ID—along with roughly $5,000 in cash
-and two diamond rings.**
+The validation environment remains separate and disposable. Do not copy
+validation accounts, submissions, or credentials into production.
 
-Finders may keep the cash and rings. Tim only asks that his ID bundle be
-returned to SebaHub. The site is a static three-page Cloudflare Pages project
-with a 12-waypoint route, 61 GPS-tagged photographs and a route video.
+## Update 2026-07-16
 
-The refresh is live on Cloudflare Pages. Both custom hostnames are active and
-HTTPS-valid. The bare hostname returns a permanent path/query-preserving
-redirect to the canonical www hostname.
-
-## Public surfaces
-
-- Canonical target: https://www.timlostsomething.com/
-- Bare-domain target: https://timlostsomething.com/ → permanent www redirect
-- Pages fallback: https://seba-treasure-hunt.pages.dev/
-- Pages project: seba-treasure-hunt
-- Pages: home, /route and /interview
-- Verified production deployment: e9a6ca29.seba-treasure-hunt.pages.dev
-
-## 2026-07-10 campaign refresh
-
-- Rebranded navigation, titles, social metadata and visible campaign hierarchy
-  to **Tim Lost Something?**
-- Kept **The Seba Beach Treasure Hunt** as the plain-language geographic
-  descriptor.
-- Added factual SEO/AEO: canonical URLs, page-specific descriptions, Open
-  Graph/X cards, visible quick answers, FAQs, JSON-LD, robots.txt and
-  sitemap.xml.
-- Linked all four **Always Sunny in Seba** badges to
-  https://www.sebastays.com/guarantee with accessible new-tab labels and focus
-  states.
-- Preserved the real blurred cash/ID-bundle photograph as evidence and social
-  artwork.
-- Added the approved fictional Captain Latimer ID artwork as a visibly
-  disclosed campaign prop. It is not evidence and not an exact image of the
-  missing card.
-- Updated canonical copy from “wallet” to “ID bundle” except where Tim's
-  verbatim explanation distinguishes the bundle from a conventional wallet.
-- Added a tested Pages advanced-mode worker that redirects only
-  timlostsomething.com to www.timlostsomething.com and passes www/Pages aliases
-  through unchanged to static assets.
-
-## Route video
-
-- Canonical source: local Remotion composition **SebaRouteRetraced**.
-- Updated only the final URL to **www.timlostsomething.com**.
-- Published output remains 1,949 frames, 24 fps, 1920×1080 and 81.208 seconds.
-- Frames 0–1840 are decoded-frame identical to the previous published video.
-- Only frames 1841–1948 changed.
-- The AAC soundtrack was copied without re-encoding and its decoded SHA-256
-  remains 30928a5ca8991f5d69db5abf443483dcb800b42d6d64de0da25506d1daa275bb.
-- Output is 20.46 MiB with H.264/AAC and faststart, below the Cloudflare Pages
-  25 MiB per-file limit.
+- Kept the RV guest and horseshoe-pit area published as `restricted`.
+- Updated its public instruction to require hunters to check in with office
+  staff before going beyond the public approach and entering the park.
+- Applied production D1 migration `0014_park_office_check_in_guidance.sql`.
+- Verified the production API and rendered `/start` page show the new wording,
+  one Restricted badge, and no browser console errors.
+- Added a migration contract test; the static suite reports 211 passing tests,
+  the worker/client suite reports 370, and TypeScript checks pass.
 
 ## Decisions in force
 
-- The canonical annual brand is **Tim Lost Something?**
-- The 2026 sub-brand is **This year: Tim lost his ID.**
-- The current 12-waypoint/61-photo route is authoritative.
-- Route-photo GPS metadata stays public intentionally.
-- The campaign prop must always carry an explicit dramatization disclosure.
-- The real evidence photo remains the social preview.
-- No fabricated claims or fake urgency on the website.
-- Deploy only from a clean git archive; never publish planning/, source-media/
-  or local Cloudflare state.
-- www is canonical. The apex must preserve path/query strings when redirecting.
+- Exact route controls remain available only to authenticated hunters.
+- Public route stories and approved-report GPS locations remain public.
+- Private evidence is never auto-published; operators make a separate explicit
+  publication decision, with media publication off by default.
+- Production and validation data must remain isolated.
+- The RV guest and horseshoe-pit area remains restricted even when office staff
+  check-in guidance is displayed.
 
-## Verification
+## Current follow-ups
 
-- Campaign and canonical-host contracts: 8 passing tests.
-- JSON-LD parses on all three pages.
-- Git whitespace check passes.
-- Remotion end-card regression test, ESLint and TypeScript pass.
-- Video frame/audio invariants pass.
-- Cloudflare Pages reports both custom hostnames active with active validation.
-- Live apex check: 301 to www with path/query preservation.
-- Live www checks: home, /route, /interview, robots.txt, sitemap.xml, prop image
-  and route MP4 return successfully.
-- Live Sunny Guarantee links: 4, all with accessible new-tab labels.
-- Public-release denylist scan: no tracked-file hits.
+- Add a scheduled retry consumer for transient operator-alert mail failures.
+- Run a real participant waiver acceptance after owner testing to verify the
+  production receipt presentation and email copy.
+- Add visible waypoint-progress tracking later; it remains intentionally
+  deferred.
+- Rotate bootstrap and API credentials after the launch window.
 
-## Remaining release work
-
-1. Integrate and push the verified campaign-refresh branch to main.
-2. Obtain final legal/owner sign-off on the official hunt rules and prize
-   language; this remains an operational review item rather than a deployment
-   blocker requested for this technical refresh.
+See `README.md` for build and operating contracts and
+`docs/operations/2026-07-16-production-release.md` for release and rollback
+details.
