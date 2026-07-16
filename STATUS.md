@@ -51,6 +51,9 @@ validation accounts, submissions, or credentials into production.
 - Rotate bootstrap and API credentials after the launch window.
 - Implement the approved local-mystery direction in validation first, then seek
   explicit approval before any production rollout.
+- Investigate and restore the missing twentieth item in the public 20-question
+  interview. Preserve the authoritative wording and add a future count check;
+  no interview content changed in this roadmap-only update.
 
 See `README.md` for build and operating contracts and
 `docs/operations/2026-07-16-production-release.md` for release and rollback

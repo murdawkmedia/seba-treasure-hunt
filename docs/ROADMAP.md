@@ -39,6 +39,22 @@ subject of the story.
 6. Build and review the new direction in validation before approving any
    production rollout.
 
+### Content integrity issue: missing interview question
+
+The public 20-question interview currently contains only 19 questions. Before
+the interview is considered complete:
+
+1. Trace the authoritative interview source and determine which question or
+   answer is missing.
+2. Restore the original approved twentieth question without inventing or
+   paraphrasing Tim's response.
+3. Confirm the numbering, headings and structured metadata all agree on the
+   final count.
+4. Add a content-count check so a future build cannot silently publish fewer
+   than 20 interview questions.
+
+Status: **Roadmapped for investigation and repair — not yet implemented.**
+
 ### Completion signals
 
 - No pirate expressions or exaggerated pirate gimmicks remain on public pages.
@@ -50,5 +66,5 @@ subject of the story.
 
 ## Scope of this roadmap update
 
-This document records direction only. It does not change current production
-copy, artwork, styling, tests or deployment state.
+This document records direction and known future work only. It does not change
+current production copy, artwork, styling, tests or deployment state.
