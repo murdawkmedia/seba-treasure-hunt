@@ -196,6 +196,7 @@ test("home and legal routes do not invent a primary current item", () => {
 
 test("renders canonical footer links in order and only its matching current state", () => {
   const expected = [
+    "https://www.sebastays.com/guarantee",
     "/privacy",
     "/waiver",
     "/community-guidelines",
@@ -600,7 +601,7 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
     { route: "route", label: "Lucky 13 Route", href: "/route" },
     { route: "interview", label: "Tim's Account", href: "/interview" },
     { route: "updates", label: "Updates", href: "/updates" },
-    { route: "clue-board", label: "Clue Board", href: "/clue-board" },
+    { route: "clue-board", label: "Case Notes", href: "/clue-board" },
     { route: "report", label: "Report", href: "/report" },
     { route: "rules", label: "Rules", href: "/rules" },
     { route: "dashboard", label: "Dashboard", href: "/dashboard" },

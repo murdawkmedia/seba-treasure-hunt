@@ -52,6 +52,7 @@ const expectedShellLinks = Object.freeze([
   "/updates",
   "/",
   ...CAMPAIGN_MENU.map((item) => item.href),
+  "https://www.sebastays.com/guarantee",
   "/privacy",
   "/waiver",
   "/community-guidelines",
@@ -195,7 +196,7 @@ test("shell link validation handles every attribute form and rejects bypasses", 
   }
   assert.throws(
     () => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/sponsors"[^>]*>Sponsors<\/a>/, ""), "route.html"),
-    /expected 17 shell links/i,
+    /expected 18 shell links/i,
   );
 });
 

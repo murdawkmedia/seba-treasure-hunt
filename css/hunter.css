@@ -82,7 +82,7 @@ body.hunter-page {
 .provenance {
   margin: 0;
   color: var(--hunter-gold);
-  font-family: var(--font-mono, "Special Elite", monospace);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
   font-size: 0.76rem;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -286,7 +286,7 @@ button.hunter-button {
 
 .official-note time {
   color: var(--hunter-muted);
-  font-family: var(--font-mono, "Special Elite", monospace);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
   font-size: 0.76rem;
 }
 
@@ -309,7 +309,7 @@ button.hunter-button {
 .official-note .report-eyebrow {
   margin-bottom: 7px;
   color: var(--hunter-gold);
-  font-family: var(--font-mono, "Special Elite", monospace);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -322,7 +322,7 @@ button.hunter-button {
   color: var(--hunter-ink-dark);
   background: var(--hunter-gold);
   border-radius: 999px;
-  font-family: var(--font-mono, "Special Elite", monospace);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
   font-size: 0.76rem;
 }
 
@@ -333,7 +333,7 @@ button.hunter-button {
   gap: 8px 16px;
   margin-top: 14px;
   color: var(--hunter-muted);
-  font-family: var(--font-mono, "Special Elite", monospace);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
   font-size: 0.82rem;
 }
 
@@ -400,7 +400,7 @@ button.hunter-button {
 
 .identity-card__handle {
   color: var(--hunter-gold);
-  font-family: var(--font-mono, "Special Elite", monospace);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
 }
 
 .waypoint-ledger > li,
@@ -430,7 +430,7 @@ button.hunter-button {
   padding: 4px 8px;
   border: 1px solid currentColor;
   border-radius: 999px;
-  font-family: var(--font-mono, "Special Elite", monospace);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;

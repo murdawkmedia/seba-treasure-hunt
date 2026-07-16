@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { CAMPAIGN_PAGES } from "../scripts/campaign-shell.mjs";
 import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 
 const read = (path) =>
@@ -33,16 +34,20 @@ test("all pages use the campaign brand and canonical domain", () => {
   }
 });
 
-test("every remaining Sunny badge links accessibly to the guarantee", () => {
-  const html = pages.map(readRenderedCampaignPage).join("\n");
-  const badges = [
-    ...html.matchAll(
-      /<a\b(?=[^>]*\bclass="[^"]*\bsunny-badge-link\b[^"]*")[^>]*>/g,
-    ),
-  ].map((match) => match[0]);
+test("every rendered campaign page has exactly one accessible Sunny guarantee badge in its footer", () => {
+  for (const filename of Object.keys(CAMPAIGN_PAGES)) {
+    const html = readRenderedCampaignPage(filename);
+    const footer = html.match(/<footer class="campaign-footer">([\s\S]*?)<\/footer>/)?.[0];
+    assert.ok(footer, `${filename} has the shared footer`);
+    const badges = [
+      ...html.matchAll(
+        /<a\b(?=[^>]*\bclass="[^"]*\bsunny-badge-link\b[^"]*")[^>]*>/g,
+      ),
+    ].map((match) => match[0]);
 
-  assert.ok(badges.length > 0, "at least one campaign Sunny badge remains");
-  for (const badge of badges) {
+    assert.equal(badges.length, 1, `${filename} has one Sunny badge`);
+    const [badge] = badges;
+    assert.match(footer, /class="sunny-badge-link"/);
     assert.match(badge, /\bhref="https:\/\/www\.sebastays\.com\/guarantee"/);
     assert.match(badge, /\btarget="_blank"/);
     assert.match(badge, /\brel="noopener"/);
@@ -51,6 +56,10 @@ test("every remaining Sunny badge links accessibly to the guarantee", () => {
       /\baria-label="Visit the SebaStays Sunny Guarantee \(opens in a new tab\)"/,
     );
   }
+
+  const homepageMain = read("index.html").match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[0];
+  assert.ok(homepageMain, "homepage has a main landmark");
+  assert.doesNotMatch(homepageMain, /sunny-badge-link|Always Sunny in Seba/);
 });
 
 test("SEO and answer-engine surfaces are present and parseable", () => {

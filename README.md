@@ -21,6 +21,10 @@ Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and a
 
 Sponsor inquiries submitted through `/sponsors` are stored in private D1 records with an append-only event ledger. Staff review them in the Ops Sponsors ledger; there is no automated email for sponsor inquiries.
 
+## Design source
+
+[`DESIGN.md`](DESIGN.md) records the approved Documentary Case File direction, shared typography and media rules, and the legal, authentication, route and reporting invariants that future public campaign work must preserve.
+
 ## Development
 
 ```powershell

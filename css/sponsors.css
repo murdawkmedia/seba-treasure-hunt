@@ -392,7 +392,7 @@
 .faq-heading { align-self: start; }
 .faq-list { border-top: 1px solid rgba(242, 205, 106, 0.4); }
 .faq-list details { border-bottom: 1px solid rgba(242, 205, 106, 0.28); }
-.faq-list summary { position: relative; padding: 22px 44px 22px 0; color: var(--hunter-ink); font-family: var(--font-pirate); font-size: clamp(1.45rem, 2.7vw, 2rem); cursor: pointer; list-style: none; }
+.faq-list summary { position: relative; padding: 22px 44px 22px 0; color: var(--hunter-ink); font-family: var(--font-display); font-size: clamp(1.45rem, 2.7vw, 2rem); cursor: pointer; list-style: none; }
 .faq-list summary::-webkit-details-marker { display: none; }
 .faq-list summary::after { position: absolute; top: 24px; right: 4px; color: var(--hunter-gold); content: "+"; font-family: var(--font-mono); }
 .faq-list details[open] summary::after { content: "-"; }

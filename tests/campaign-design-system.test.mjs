@@ -337,9 +337,9 @@ test("the canonical stylesheet owns every public campaign shell surface", () => 
 test("the canonical stylesheet defines the shared campaign design tokens", () => {
   const css = read("css/campaign-shell.css");
   for (const [token, value] of Object.entries({
-    "--campaign-font-display": '"Pirata One", Georgia, serif',
-    "--campaign-font-body": '"IM Fell English", Georgia, serif',
-    "--campaign-font-meta": '"Special Elite", "Courier New", monospace',
+    "--campaign-font-display": '"Cormorant Garamond", Georgia, serif',
+    "--campaign-font-body": '"Source Sans 3", "Segoe UI", sans-serif',
+    "--campaign-font-meta": '"IBM Plex Mono", "Courier New", monospace',
     "--campaign-space-section": "clamp(3rem, 7vw, 6rem)",
     "--campaign-radius-control": "10px",
     "--campaign-focus-light": "var(--campaign-gold-300)",
@@ -349,6 +349,52 @@ test("the canonical stylesheet defines the shared campaign design tokens", () =>
     "--campaign-surface-dark": "var(--campaign-forest-950)",
   })) {
     assert.match(css, new RegExp(`${token.replaceAll("-", "\\-")}:\\s*${value.replace(/[()]/g, "\\$&")}\\s*;`));
+  }
+});
+
+test("every public campaign source loads only the documentary type stack", () => {
+  const publicCss = [
+    "css/campaign-shell.css",
+    "css/style.css",
+    "css/hunter.css",
+    "css/board.css",
+    "css/sponsors.css",
+  ];
+  const legacyTypography = /Pirata One|IM Fell English|Special Elite|--font-pirate/i;
+
+  for (const filename of Object.keys(CAMPAIGN_PAGES)) {
+    const html = read(filename);
+    assert.match(html, /family=Cormorant\+Garamond/);
+    assert.match(html, /family=IBM\+Plex\+Mono/);
+    assert.match(html, /family=Source\+Sans\+3/);
+    assert.doesNotMatch(html, legacyTypography, filename);
+  }
+
+  for (const filename of publicCss) {
+    assert.doesNotMatch(read(filename), legacyTypography, filename);
+  }
+});
+
+test("DESIGN.md records the approved documentary case-file source of truth", () => {
+  const design = read("DESIGN.md");
+  for (const required of [
+    /Documentary Case File/i,
+    /genuine local mystery/i,
+    /SebaHub.*host.*not.*subject/i,
+    /dark forest.*cream.*gold/i,
+    /verification red/i,
+    /Cormorant Garamond/i,
+    /Source Sans 3/i,
+    /IBM Plex Mono/i,
+    /no pirate language/i,
+    /mobile/i,
+    /accessibility/i,
+    /legal/i,
+    /auth/i,
+    /route/i,
+    /report/i,
+  ]) {
+    assert.match(design, required);
   }
 });
 

@@ -3,7 +3,7 @@ export const CAMPAIGN_MENU = Object.freeze([
   Object.freeze({ route: "route", label: "Lucky 13 Route", href: "/route" }),
   Object.freeze({ route: "interview", label: "Tim's Account", href: "/interview" }),
   Object.freeze({ route: "updates", label: "Updates", href: "/updates" }),
-  Object.freeze({ route: "clue-board", label: "Clue Board", href: "/clue-board" }),
+  Object.freeze({ route: "clue-board", label: "Case Notes", href: "/clue-board" }),
   Object.freeze({ route: "report", label: "Report", href: "/report" }),
   Object.freeze({ route: "rules", label: "Rules", href: "/rules" }),
   Object.freeze({ route: "dashboard", label: "Dashboard", href: "/dashboard" }),
@@ -143,6 +143,12 @@ function renderCampaignFooter(route) {
   return `<footer class="campaign-footer">
   <div class="campaign-footer__inner">
     <p>Tim Lost Something?</p>
+    <div class="campaign-footer__endorsement">
+      <a class="sunny-badge-link" href="https://www.sebastays.com/guarantee" target="_blank" rel="noopener" aria-label="Visit the SebaStays Sunny Guarantee (opens in a new tab)">
+        <img src="/assets/seba-badge.png" alt="Always Sunny in Seba" />
+        <span>Hosted by SebaHub · Sunny Guarantee</span>
+      </a>
+    </div>
     <nav aria-label="Campaign information">
         ${links}
     </nav>

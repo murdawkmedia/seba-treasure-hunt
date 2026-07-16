@@ -15,6 +15,13 @@ validation accounts, submissions, or credentials into production.
 
 ## Update 2026-07-16
 
+- Prepared Release 2A shared Documentary Case File foundation without deploying it.
+- Added tracked `DESIGN.md` as the live campaign design source, including the approved local-mystery tone, visual/media/accessibility rules and the legal, auth, route and report invariants.
+- Replaced public campaign typography with Cormorant Garamond, Source Sans 3 and IBM Plex Mono while leaving the private Ops console unchanged; regenerated the waiver from its authoritative source without changing any legal body, version or hash.
+- Renamed the visitor navigation label to Case Notes while keeping `/clue-board` and all route/data contracts stable, and moved the existing Sunny Guarantee badge from the homepage hero into every shared campaign footer.
+- Replaced the pirate favicon family with a path-only Missing ID mark and regenerated the ICO and 32/180/192/512 derivatives from the tracked SVG.
+- Intentionally refreshed only the 13 approved font-loader head hashes and the homepage badge-removal body hash in the preservation fixture.
+- Verified 222 static tests and 370 worker/client tests, legal generation, TypeScript checks, the production build and `git diff --check`.
 - Prepared Release 1 interview-integrity source: the public feature is now
   Tim’s Account across page metadata, social previews, structured data,
   navigation and internal links.
@@ -49,10 +56,11 @@ validation accounts, submissions, or credentials into production.
 - Production and validation data must remain isolated.
 - The RV guest and horseshoe-pit area remains restricted even when office staff
   check-in guidance is displayed.
-- The next broad creative direction is suspenseful, conversational,
-  community-led and lightly playful, with SebaHub as host rather than subject.
-  Pirate expressions and exaggerated gimmicks will be retired as one reviewed
-  transition, not through piecemeal production edits.
+- `DESIGN.md` is the source of truth for the suspenseful, conversational,
+  community-led and lightly playful Documentary Case File direction, with
+  SebaHub as host rather than subject. Remaining pirate expressions and artwork
+  will be retired through separately reviewed campaign releases rather than
+  unscoped production edits.
 
 ## Current follow-ups
 
@@ -62,8 +70,8 @@ validation accounts, submissions, or credentials into production.
 - Add visible waypoint-progress tracking later; it remains intentionally
   deferred.
 - Rotate bootstrap and API credentials after the launch window.
-- Implement the approved local-mystery direction in validation first, then seek
-  explicit approval before any production rollout.
+- Continue the remaining approved local-mystery content and artwork transition
+  in validation, then seek explicit approval before any production rollout.
 - Deploy and smoke-test the source-ready Tim’s Account integrity release before
   recording it as the live production state.
 

@@ -42,7 +42,7 @@ test("the sponsor page is a canonical, indexable answer and conversion surface",
   assert.match(html, /<link rel="icon" href="\/assets\/favicon-32x32\.png" type="image\/png" sizes="32x32">/);
   assert.match(html, /<link rel="apple-touch-icon" href="\/assets\/apple-touch-icon\.png">/);
   assert.match(html, /<link rel="manifest" href="\/site\.webmanifest">/);
-  assert.match(html, /family=IM\+Fell\+English[^"']*family=Pirata\+One[^"']*family=Special\+Elite|family=Pirata\+One[^"']*family=IM\+Fell\+English[^"']*family=Special\+Elite/i);
+  assert.match(html, /family=Cormorant\+Garamond[^"']*family=IBM\+Plex\+Mono[^"']*family=Source\+Sans\+3/i);
   for (const stylesheet of ["/css/style.css", "/css/hunter.css", "/css/sponsors.css", "/css/campaign-shell.css"]) {
     assert.match(html, new RegExp(`<link rel=["']stylesheet["'] href=["']${stylesheet.replaceAll("/", "\\/")}["']`));
   }
