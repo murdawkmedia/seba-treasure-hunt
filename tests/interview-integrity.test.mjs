@@ -9,6 +9,20 @@ import { CAMPAIGN_MENU } from "../scripts/campaign-shell.mjs";
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (filename) => readFileSync(path.join(repo, filename), "utf8");
 const interview = read("interview.html");
+const golfBallPhrase = /golf(?:[\s-]+)balls?/i;
+
+function visibleTextFromHtml(html) {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(
+      /&(?:nbsp|ensp|emsp|thinsp|tab|newline);|&#0*(?:9|10|13|32|160);|&#x0*(?:9|a|d|20|a0);/gi,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 test("Tim's Account publishes exactly 19 uniquely and sequentially numbered entries", () => {
   const entries = [...interview.matchAll(/<details class="qa">[\s\S]*?<\/details>/g)];
@@ -91,10 +105,24 @@ test("public sources make no numeric interview-count claim", () => {
 });
 
 test("the unpublished golf-ball question stays absent from public sources", () => {
-  const publicSources = readdirSync(repo)
-    .filter((filename) => filename.endsWith(".html"))
-    .map((filename) => read(filename))
-    .join("\n");
+  for (const filename of readdirSync(repo).filter((candidate) => candidate.endsWith(".html"))) {
+    assert.doesNotMatch(
+      visibleTextFromHtml(read(filename)),
+      golfBallPhrase,
+      `${filename} contains no visible golf-ball phrase`,
+    );
+  }
+});
 
-  assert.doesNotMatch(publicSources, /golf[-\s]?balls?/i);
+test("the golf-ball guard catches whitespace, entity, and inline-markup bypasses", () => {
+  for (const fixture of [
+    "golf   balls",
+    "golf\n\nballs",
+    "golf&nbsp;ball",
+    "golf&#160;balls",
+    "golf&#xA0;ball",
+    "golf <em>ball</em>",
+  ]) {
+    assert.match(visibleTextFromHtml(fixture), golfBallPhrase, `guard catches ${fixture}`);
+  }
 });
