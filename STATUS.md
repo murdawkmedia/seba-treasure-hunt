@@ -23,6 +23,9 @@ validation accounts, submissions, or credentials into production.
   one Restricted badge, and no browser console errors.
 - Added a migration contract test; the static suite reports 211 passing tests,
   the worker/client suite reports 370, and TypeScript checks pass.
+- Added an approved future creative direction to `docs/ROADMAP.md`: move from
+  pirate theatre to a genuine local mystery. No production copy, artwork or
+  styling changed as part of the roadmap update.
 
 ## Decisions in force
 
@@ -33,6 +36,10 @@ validation accounts, submissions, or credentials into production.
 - Production and validation data must remain isolated.
 - The RV guest and horseshoe-pit area remains restricted even when office staff
   check-in guidance is displayed.
+- The next broad creative direction is suspenseful, conversational,
+  community-led and lightly playful, with SebaHub as host rather than subject.
+  Pirate expressions and exaggerated gimmicks will be retired as one reviewed
+  transition, not through piecemeal production edits.
 
 ## Current follow-ups
 
@@ -42,7 +49,9 @@ validation accounts, submissions, or credentials into production.
 - Add visible waypoint-progress tracking later; it remains intentionally
   deferred.
 - Rotate bootstrap and API credentials after the launch window.
+- Implement the approved local-mystery direction in validation first, then seek
+  explicit approval before any production rollout.
 
 See `README.md` for build and operating contracts and
 `docs/operations/2026-07-16-production-release.md` for release and rollback
-details.
+details. See `docs/ROADMAP.md` for approved future direction.
