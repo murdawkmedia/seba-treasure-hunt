@@ -222,6 +222,24 @@ test("the operator submission alert migration defines a durable privacy-safe rec
   assert.doesNotMatch(sql, /report_received[\s\S]*(?:UPDATE|DELETE|INSERT)/i);
 });
 
+test("the park guidance migration keeps the horseshoe area restricted and requires office check-in", async () => {
+  const names = (await readdir(path.resolve("migrations"))).sort();
+  assert.ok(
+    names.indexOf("0014_park_office_check_in_guidance.sql") >
+      names.indexOf("0013_operator_submission_alerts.sql")
+  );
+
+  const sql = await readFile(
+    path.resolve("migrations", "0014_park_office_check_in_guidance.sql"),
+    "utf8"
+  );
+  assert.match(sql, /zone-rv-horseshoe-restricted/i);
+  assert.match(sql, /'restricted'/i);
+  assert.match(sql, /remains restricted/i);
+  assert.match(sql, /check in with office staff/i);
+  assert.match(sql, /ON CONFLICT\(id\) DO UPDATE/i);
+});
+
 test("the second D1 migration adds the current-consent projection index", async () => {
   const sql = await readFile(path.resolve("migrations", "0002_consent_ledger_index.sql"), "utf8");
   assert.match(
