@@ -319,6 +319,11 @@ test("route stories and photos are public while exact waypoint controls stay ses
     assert.match(anchor[0], /\brel="noopener"/);
   }
   assert.match(route, /<link rel="stylesheet" href="\/css\/route-lightbox\.css"/);
+  assert.ok(
+    route.indexOf('<link rel="stylesheet" href="/css/route-lightbox.css"')
+      < route.indexOf('<link rel="stylesheet" href="/css/campaign-shell.css"'),
+    "the canonical campaign shell loads after route lightbox author CSS",
+  );
   assert.equal((route.match(/<dialog\b(?=[^>]*\bdata-route-lightbox\b)(?=[^>]*\baria-labelledby="route-lightbox-title")[^>]*>/g) ?? []).length, 1);
   for (const hook of [
     "image",
@@ -334,12 +339,13 @@ test("route stories and photos are public while exact waypoint controls stay ses
   assert.match(route, /\/assets\/app\/route-lightbox\.js/);
   assert.match(
     lightboxCss,
-    /\.route-lightbox__close:focus-visible,\s*\.route-lightbox__original:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--campaign-focus-dark,\s*#071f1c\)/s,
+    /\.route-lightbox\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);/s,
   );
   assert.match(
     lightboxCss,
-    /\.route-lightbox__nav:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--campaign-focus-light,\s*#f2cd6a\)/s,
+    /\.route-lightbox__stage\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);/s,
   );
+  assert.doesNotMatch(lightboxCss, /:focus-visible\s*\{[^}]*var\(--campaign-focus-(?:light|dark)/s);
   const stopFour = route.match(/<section class="stop" id="stop-4"[\s\S]*?<\/section>/)?.[0] ?? "";
   const stopFive = route.match(/<section class="stop" id="stop-5"[\s\S]*?<\/section>/)?.[0] ?? "";
   assert.match(stopFour, /IMG_5085\.jpg/);

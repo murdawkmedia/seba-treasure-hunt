@@ -3,6 +3,7 @@ body:has(.route-lightbox[open]) {
 }
 
 .route-lightbox {
+  --campaign-focus: var(--campaign-focus-dark);
   width: min(1040px, calc(100vw - 48px));
   max-width: 1040px;
   height: min(820px, calc(100dvh - 48px));
@@ -70,6 +71,7 @@ body:has(.route-lightbox[open]) {
 }
 
 .route-lightbox__stage {
+  --campaign-focus: var(--campaign-focus-light);
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -114,17 +116,6 @@ body:has(.route-lightbox[open]) {
 .route-lightbox__nav:hover {
   color: var(--campaign-paper-100, #f6efdd);
   background: var(--campaign-forest-800, #1c3527);
-}
-
-.route-lightbox__close:focus-visible,
-.route-lightbox__original:focus-visible {
-  outline: 3px solid var(--campaign-focus-dark, #071f1c);
-  outline-offset: 3px;
-}
-
-.route-lightbox__nav:focus-visible {
-  outline: 3px solid var(--campaign-focus-light, #f2cd6a);
-  outline-offset: 3px;
 }
 
 .route-lightbox__nav {
