@@ -111,12 +111,6 @@ details.qa,
 }
 .btn:hover { transform: translateY(2px); box-shadow: 0 3px 0 var(--ink-900), 0 8px 16px rgba(20,38,28,0.35); }
 .btn:active { transform: translateY(5px); box-shadow: 0 0 0 var(--ink-900); }
-.btn--ghost {
-  background: transparent; color: var(--cream-100); border-color: var(--gold-400);
-  box-shadow: none;
-}
-.btn--ghost:hover { background: rgba(234,182,63,0.15); transform: none; box-shadow: none; }
-
 /* ---------- hero ---------- */
 .hero {
   position: relative;

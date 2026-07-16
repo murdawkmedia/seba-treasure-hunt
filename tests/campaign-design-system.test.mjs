@@ -454,6 +454,26 @@ test("contextual focus tokens keep three-to-one outlines on light and dark surfa
   assert.ok(lightOnForest >= 3, `light focus edge contrasts ${lightOnForest.toFixed(2)}:1 on forest`);
 });
 
+test("public case actions use the readable filled button contract", () => {
+  const publicMarkup = Object.keys(CAMPAIGN_PAGES)
+    .filter((name) => name !== "ops.html")
+    .map((name) => read(name))
+    .join("\n");
+  const publicCss = read("css/style.css");
+
+  assert.doesNotMatch(publicMarkup, /\bbtn--ghost\b/);
+  assert.doesNotMatch(publicMarkup, /class="btn"[^>]*style=/);
+  assert.doesNotMatch(publicCss, /\.btn--ghost\b/);
+
+  const properties = {
+    ...customProperties(read("css/campaign-shell.css")),
+    ...customProperties(publicCss),
+  };
+  const ink = resolveHexColor(properties["--campaign-ink"], properties);
+  const gold = resolveHexColor(properties["--campaign-gold-300"], properties);
+  assert.ok(contrastRatio(ink, gold) >= 4.5);
+});
+
 test("light surfaces select dark focus while dark campaign chrome stays gold", () => {
   const shellCss = read("css/campaign-shell.css");
   const sponsorCss = read("css/sponsors.css");
