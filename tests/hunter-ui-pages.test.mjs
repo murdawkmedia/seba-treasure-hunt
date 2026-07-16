@@ -301,6 +301,7 @@ test("route stories and photos are public while exact waypoint controls stay ses
   const route = read("route.html");
   const renderedRoute = readRenderedCampaignPage("route.html");
   const client = read("src/client/route.ts");
+  const lightboxCss = read("css/route-lightbox.css");
   const routeSections = [...renderedRoute.matchAll(/<section class="stop" id="stop-(\d+)" data-waypoint-id="(\d+)">/g)];
   assert.match(route, /data-route-signed-out/);
   assert.match(route, /data-route-member-content/);
@@ -331,6 +332,14 @@ test("route stories and photos are public while exact waypoint controls stay ses
     assert.match(route, new RegExp(`\\bdata-route-lightbox-${hook}\\b`));
   }
   assert.match(route, /\/assets\/app\/route-lightbox\.js/);
+  assert.match(
+    lightboxCss,
+    /\.route-lightbox__close:focus-visible,\s*\.route-lightbox__original:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--campaign-focus-dark,\s*#071f1c\)/s,
+  );
+  assert.match(
+    lightboxCss,
+    /\.route-lightbox__nav:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--campaign-focus-light,\s*#f2cd6a\)/s,
+  );
   const stopFour = route.match(/<section class="stop" id="stop-4"[\s\S]*?<\/section>/)?.[0] ?? "";
   const stopFive = route.match(/<section class="stop" id="stop-5"[\s\S]*?<\/section>/)?.[0] ?? "";
   assert.match(stopFour, /IMG_5085\.jpg/);

@@ -117,8 +117,12 @@ body:has(.route-lightbox[open]) {
 }
 
 .route-lightbox__close:focus-visible,
-.route-lightbox__nav:focus-visible,
 .route-lightbox__original:focus-visible {
+  outline: 3px solid var(--campaign-focus-dark, #071f1c);
+  outline-offset: 3px;
+}
+
+.route-lightbox__nav:focus-visible {
   outline: 3px solid var(--campaign-focus-light, #f2cd6a);
   outline-offset: 3px;
 }
