@@ -51,7 +51,7 @@ function visibleText(html) {
 }
 
 const pirateVocabulary = /\b(?:pirate(?:s|'s)?|ar+r+|matey|first[\s-]+mate|sea[\s-]+legs?|galleons?|kraken|captain[\s-]+latimer)\b/i;
-const pirateSourceReferences = /sunny-pirate-treasure-seba-beach|font-pirate|pirata\s*one|rye\s*,?\s*serif|--font-pirate/i;
+const pirateSourceReferences = /sunny-pirate-treasure-seba-beach|font-pirate|pirata\s*one|rye\s*,?\s*serif|--font-pirate|firstmate/i;
 
 test("all public source and rendered campaign surfaces use documentary language", () => {
   for (const filename of publicPages) {
@@ -195,6 +195,15 @@ test("Support the Search uses the real aerial photograph and no retired pirate a
   assert.equal(fs.existsSync(path.join(root, "assets/photos/sunny-pirate-treasure-seba-beach.jpg")), false);
   assert.equal(fs.existsSync(path.join(root, "assets/photos/sunny-pirate-treasure-seba-beach.webp")), false);
   for (const file of ["sponsors.html", "css/sponsors.css"]) assert.doesNotMatch(read(file), /sponsor-hero__artifact|pirate/i);
+});
+
+test("the sitemap dates every materially rebranded public page to this release", () => {
+  const sitemap = read("sitemap.xml");
+  const rebrandedPaths = ["/", "/route", "/updates", "/rules", "/clue-board", "/interview", "/community-guidelines", "/sponsors"];
+  for (const route of rebrandedPaths) {
+    const escapedUrl = `https://www.timlostsomething.com${route}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(sitemap, new RegExp(`<loc>${escapedUrl}</loc>\\s*<lastmod>2026-07-16</lastmod>`), route);
+  }
 });
 
 test("Tim's 19 answer bodies remain byte-identical", () => {
