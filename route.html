@@ -192,6 +192,7 @@
     .stop-meta[data-zone]::before { content: attr(data-zone); padding: 3px 8px; color: var(--ink-900); background: var(--gold-300); border-radius: 999px; font-family: var(--font-mono); font-size: .76rem; text-transform: uppercase; }
   </style>
   <link rel="stylesheet" href="/css/campaign-shell.css" />
+  <link rel="stylesheet" href="/css/route-lightbox.css" />
 </head>
 <body class="campaign-page campaign-page--route" data-campaign-route="route">
   <!-- CAMPAIGN_SHELL {"route":"route","skipLabel":"Skip to the route","skipTarget":"main"} -->
@@ -775,10 +776,33 @@
     </div>
   </section>
 
+  <dialog class="route-lightbox" data-route-lightbox aria-labelledby="route-lightbox-title">
+    <div class="route-lightbox__panel">
+      <header class="route-lightbox__header">
+        <div>
+          <p class="route-lightbox__eyebrow">Case-file photo viewer</p>
+          <p class="route-lightbox__counter" data-route-lightbox-counter aria-live="polite"></p>
+          <h2 id="route-lightbox-title">Waypoint photo</h2>
+        </div>
+        <button class="route-lightbox__close" type="button" data-route-lightbox-close>Close</button>
+      </header>
+      <div class="route-lightbox__stage">
+        <button class="route-lightbox__nav route-lightbox__nav--previous" type="button" data-route-lightbox-previous aria-label="Previous photo">Previous</button>
+        <img class="route-lightbox__image" data-route-lightbox-image src="" alt="" />
+        <button class="route-lightbox__nav route-lightbox__nav--next" type="button" data-route-lightbox-next aria-label="Next photo">Next</button>
+      </div>
+      <footer class="route-lightbox__footer">
+        <p class="route-lightbox__caption" data-route-lightbox-caption></p>
+        <a class="route-lightbox__original" data-route-lightbox-original href="#" target="_blank" rel="noopener">Open original image</a>
+      </footer>
+    </div>
+  </dialog>
+
   </main>
   <!-- CAMPAIGN_FOOTER -->
   <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
   <script type="module" src="/assets/app/route.js"></script>
+  <script type="module" src="/assets/app/route-lightbox.js"></script>
 </body>
 </html>

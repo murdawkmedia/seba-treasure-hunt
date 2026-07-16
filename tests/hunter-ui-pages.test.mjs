@@ -311,6 +311,26 @@ test("route stories and photos are public while exact waypoint controls stay ses
   assert.equal((renderedRoute.match(/class="stop-meta stop-meta--locked"/g) ?? []).length, 13);
   const routePhotos = [...route.matchAll(/<img src="assets\/route\/stop-[^"]+"/g)];
   assert.equal(routePhotos.length, 61);
+  const routePhotoAnchors = [...route.matchAll(/<a\b[^>]*href="assets\/route\/stop-[^"]+"[^>]*>/g)];
+  assert.equal(routePhotoAnchors.length, 61, "all route photos retain a fallback anchor");
+  for (const anchor of routePhotoAnchors) {
+    assert.match(anchor[0], /\btarget="_blank"/);
+    assert.match(anchor[0], /\brel="noopener"/);
+  }
+  assert.match(route, /<link rel="stylesheet" href="\/css\/route-lightbox\.css"/);
+  assert.equal((route.match(/<dialog\b(?=[^>]*\bdata-route-lightbox\b)(?=[^>]*\baria-labelledby="route-lightbox-title")[^>]*>/g) ?? []).length, 1);
+  for (const hook of [
+    "image",
+    "caption",
+    "counter",
+    "previous",
+    "next",
+    "close",
+    "original",
+  ]) {
+    assert.match(route, new RegExp(`\\bdata-route-lightbox-${hook}\\b`));
+  }
+  assert.match(route, /\/assets\/app\/route-lightbox\.js/);
   const stopFour = route.match(/<section class="stop" id="stop-4"[\s\S]*?<\/section>/)?.[0] ?? "";
   const stopFive = route.match(/<section class="stop" id="stop-5"[\s\S]*?<\/section>/)?.[0] ?? "";
   assert.match(stopFour, /IMG_5085\.jpg/);
