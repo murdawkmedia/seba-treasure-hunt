@@ -210,6 +210,62 @@ body:has(.route-lightbox[open]) {
   }
 }
 
+@media (max-height: 360px) {
+  .route-lightbox__header {
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+  }
+
+  .route-lightbox__eyebrow {
+    display: none;
+  }
+
+  .route-lightbox__counter {
+    margin-top: 0;
+    font-size: 0.625rem;
+    letter-spacing: 0.04em;
+  }
+
+  .route-lightbox h2 {
+    margin-top: 1px;
+    font-size: 0.875rem;
+    line-height: 1;
+  }
+
+  .route-lightbox__stage {
+    padding: 2px;
+  }
+
+  .route-lightbox__close,
+  .route-lightbox__nav {
+    padding: 4px 6px;
+    font-size: 0.7rem;
+  }
+
+  .route-lightbox__footer {
+    display: flex;
+    min-height: 44px;
+    max-height: 44px;
+    gap: 6px;
+    padding: 0 6px;
+  }
+
+  .route-lightbox__caption {
+    max-height: 34px;
+    overflow-y: auto;
+    font-size: 0.7rem;
+    line-height: 1.1;
+  }
+
+  .route-lightbox__original {
+    min-height: 44px;
+    margin-top: 0;
+    padding: 12px 0;
+    font-size: 0.65rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .route-lightbox__close,
   .route-lightbox__nav {

@@ -381,21 +381,40 @@ async function dispatchUninterceptedFallbackClick(trigger, init) {
   }, init);
 }
 
-async function assertReducedMotionControls(controls, label) {
-  for (const [name, locator] of Object.entries(controls)) {
-    const durations = await locator.evaluate((element) => {
-      const toMilliseconds = (value) => {
-        const trimmed = value.trim();
-        return trimmed.endsWith("ms") ? Number.parseFloat(trimmed) : Number.parseFloat(trimmed) * 1000;
+async function assertReducedMotionLightbox(dialog, label) {
+  const audits = await dialog.evaluate((root) => {
+    const toMilliseconds = (value) => {
+      const trimmed = value.trim();
+      return trimmed.endsWith("ms") ? Number.parseFloat(trimmed) : Number.parseFloat(trimmed) * 1000;
+    };
+    const describe = (element) => {
+      const className = typeof element.className === "string" && element.className.trim()
+        ? `.${element.className.trim().split(/\s+/).join(".")}`
+        : "";
+      return `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${className}`;
+    };
+    const collect = (element, pseudo = null) => {
+      const style = getComputedStyle(element, pseudo);
+      return {
+        target: `${describe(element)}${pseudo ?? ""}`,
+        durations: [...style.transitionDuration.split(","), ...style.animationDuration.split(",")].map(toMilliseconds),
       };
-      const style = getComputedStyle(element);
-      return [...style.transitionDuration.split(","), ...style.animationDuration.split(",")].map(toMilliseconds);
-    });
+    };
+    const elements = [root, ...root.querySelectorAll("*")];
+    return elements.flatMap((element) => [
+      collect(element),
+      collect(element, "::before"),
+      collect(element, "::after"),
+      ...(element === root ? [collect(element, "::backdrop")] : []),
+    ]);
+  });
+  for (const audit of audits) {
     assert.ok(
-      durations.every((duration) => Number.isFinite(duration) && duration <= 0.01),
-      `${label} ${name} transition/animation durations must resolve to zero or 0.01ms: ${durations.join(", ")}`,
+      audit.durations.every((duration) => Number.isFinite(duration) && duration <= 0.01),
+      `${label} ${audit.target} transition/animation durations must resolve to zero or 0.01ms: ${audit.durations.join(", ")}`,
     );
   }
+  return audits.length;
 }
 
 async function openRouteAuditPage(page, origin) {
@@ -407,6 +426,7 @@ async function openRouteAuditPage(page, origin) {
 
 async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleErrors, pageErrors, requestFailures, screenshotEvidence }) {
   let statesAudited = 0;
+  let reducedMotionTargetsAudited = 0;
   const desktopContext = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
     reducedMotion: "reduce",
@@ -439,7 +459,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await assertContainedRouteImage(desktopPage, image, "Desktop route photo 1");
     await assertMinimumHitTargets({ Close: close, Previous: previous, Next: next }, "Desktop route lightbox");
     await assertNoHorizontalViewportOverflow(desktopPage, "Desktop route lightbox");
-    await assertReducedMotionControls({ Close: close, Previous: previous, Next: next }, "Reduced-motion route lightbox");
+    reducedMotionTargetsAudited = await assertReducedMotionLightbox(dialog, "Reduced-motion route lightbox");
     statesAudited += 1;
 
     desktopLabel = "route-lightbox/desktop/keyboard";
@@ -484,11 +504,15 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await dialog.waitFor({ state: "visible" });
     const healthySrc = await image.getAttribute("src");
     assert.ok(healthySrc, "route image must have a restorable source before failure audit");
-    await image.evaluate((element) => {
-      element.removeAttribute("src");
+    const errorEventObserved = await image.evaluate((element) => {
+      let observed = false;
+      element.addEventListener("error", () => {
+        observed = true;
+      }, { once: true });
       element.dispatchEvent(new Event("error"));
+      return observed;
     });
-    assert.equal(await image.getAttribute("src"), null, "transient missing source must exercise the image failure state");
+    assert.equal(errorEventObserved, true, "isolated image must exercise its native error event without a network request");
     await caption.waitFor({ state: "visible" });
     await close.waitFor({ state: "visible" });
     await original.waitFor({ state: "visible" });
@@ -560,7 +584,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await mobileContext.close();
   }
 
-  const shortContext = await browser.newContext({ viewport: { width: 640, height: 360 }, deviceScaleFactor: 2 });
+  const shortContext = await browser.newContext({ viewport: { width: 640, height: 360 } });
   await installQaBoundary(shortContext, origin, networkLedger);
   const shortPage = await shortContext.newPage();
   let shortLabel = "route-lightbox/short-viewport/starting";
@@ -588,7 +612,67 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await shortContext.close();
   }
 
-  return { statesAudited, viewports: ["1440x1000", "390x844", "640x360@2x"] };
+  const zoomEquivalentViewport = { width: 320, height: 180 };
+  const zoomEquivalentContext = await browser.newContext({ viewport: zoomEquivalentViewport });
+  await installQaBoundary(zoomEquivalentContext, origin, networkLedger);
+  const zoomEquivalentPage = await zoomEquivalentContext.newPage();
+  let zoomEquivalentLabel = "route-lightbox/200-percent-zoom-equivalent/starting";
+  attachErrorAudit(zoomEquivalentPage, () => zoomEquivalentLabel, consoleErrors, pageErrors, requestFailures);
+  try {
+    assert.deepEqual(
+      zoomEquivalentPage.viewportSize(),
+      zoomEquivalentViewport,
+      "640x360 at 200% zoom must use the equivalent 320x180 CSS layout viewport",
+    );
+    const zoomMetrics = await zoomEquivalentPage.evaluate(() => ({
+      devicePixelRatio: window.devicePixelRatio,
+      innerHeight: window.innerHeight,
+      innerWidth: window.innerWidth,
+    }));
+    assert.deepEqual(
+      { width: zoomMetrics.innerWidth, height: zoomMetrics.innerHeight },
+      zoomEquivalentViewport,
+      "200% zoom evidence must constrain the real CSS layout viewport",
+    );
+    assert.equal(zoomMetrics.devicePixelRatio, 1, "200% zoom evidence must not substitute raster device scale for layout zoom");
+    await openRouteAuditPage(zoomEquivalentPage, origin);
+    const dialog = zoomEquivalentPage.locator("[data-route-lightbox]");
+    const image = dialog.locator("[data-route-lightbox-image]");
+    const close = dialog.locator("[data-route-lightbox-close]");
+    const previous = dialog.locator("[data-route-lightbox-previous]");
+    const next = dialog.locator("[data-route-lightbox-next]");
+    zoomEquivalentLabel = "route-lightbox/200-percent-zoom-equivalent/open";
+    await zoomEquivalentPage.locator("#stop-1 .stop-gallery .photo > a").first().click();
+    await dialog.waitFor({ state: "visible" });
+    await assertContainedRouteImage(zoomEquivalentPage, image, "Route photo at 200% zoom equivalent");
+    await assertMinimumHitTargets({ Close: close, Previous: previous, Next: next }, "Route lightbox at 200% zoom equivalent");
+    await assertElementInViewport(zoomEquivalentPage, close, "200% zoom-equivalent Close control");
+    await assertElementInViewport(zoomEquivalentPage, previous, "200% zoom-equivalent Previous control");
+    await assertElementInViewport(zoomEquivalentPage, next, "200% zoom-equivalent Next control");
+    await assertNoHorizontalViewportOverflow(zoomEquivalentPage, "Route lightbox at 200% zoom equivalent");
+    await next.click();
+    assert.equal(
+      await dialog.locator("[data-route-lightbox-counter]").textContent(),
+      "Photo 2 of 3",
+      "route lightbox must remain operable at the 200% zoom-equivalent layout viewport",
+    );
+    statesAudited += 1;
+  } finally {
+    await zoomEquivalentContext.close();
+  }
+
+  return {
+    statesAudited,
+    reducedMotionTargetsAudited,
+    viewports: ["1440x1000", "390x844", "640x360"],
+    zoomEquivalent: {
+      sourceViewport: "640x360",
+      cssLayoutViewport: "320x180",
+      scalePercent: 200,
+      mechanism: "halved CSS layout viewport",
+      deviceScaleFactor: 1,
+    },
+  };
 }
 
 async function run() {
@@ -664,9 +748,15 @@ async function run() {
       }
     }
 
+    const shellZoomEquivalent = {
+      sourceViewport: { width: 720, height: 500 },
+      cssLayoutViewport: { width: 360, height: 250 },
+      scalePercent: 200,
+      mechanism: "halved CSS layout viewport",
+      deviceScaleFactor: 1,
+    };
     const zoomContext = await browser.newContext({
-      viewport: { width: 720, height: 500 },
-      deviceScaleFactor: 2,
+      viewport: shellZoomEquivalent.cssLayoutViewport,
       reducedMotion: "reduce",
     });
     await installQaBoundary(zoomContext, origin, networkLedger);
@@ -674,6 +764,12 @@ async function run() {
     let zoomLabel = "zoom-200/starting";
     attachErrorAudit(zoomPage, () => zoomLabel, consoleErrors, pageErrors, requestFailures);
     try {
+      assert.deepEqual(zoomPage.viewportSize(), shellZoomEquivalent.cssLayoutViewport, "shell 200% zoom evidence must halve the CSS layout viewport");
+      assert.equal(
+        await zoomPage.evaluate(() => window.devicePixelRatio),
+        shellZoomEquivalent.deviceScaleFactor,
+        "shell 200% zoom evidence must not substitute raster device scale for layout zoom",
+      );
       zoomLabel = "zoom-200/home-tab-focus";
       await openPage(zoomPage, origin, "index.html");
       await zoomPage.keyboard.press("Tab");
@@ -726,7 +822,8 @@ async function run() {
     const requestFailureCount = requestFailures.length;
     assert.equal(pageNavigations, 72, "the canonical matrix must navigate 72 page/view combinations");
     assert.equal(statesAudited, 111, "the canonical matrix must audit 111 shell states");
-    assert.equal(routeLightboxAudit.statesAudited, 9, "the route lightbox audit must exercise 9 browser states");
+    assert.equal(routeLightboxAudit.statesAudited, 10, "the route lightbox audit must exercise 10 browser states");
+    assert.ok(routeLightboxAudit.reducedMotionTargetsAudited >= 40, "the route lightbox audit must inspect the complete element and pseudo-element tree for reduced motion");
     assert.equal(screenshotEvidence.length, 21, "the screenshot suite must contain 21 artifacts");
     assert.deepEqual(
       screenshotEvidence.map(({ artifactName }) => artifactName.replace("screenshots/", "")).sort(),
@@ -755,6 +852,7 @@ async function run() {
       browserFixtureTime: fixedNow,
       sourceRender: { campaignRoutes: campaignFiles.length, temporaryBuild: true, renderer: "renderCampaignPage" },
       reportPublicationSurface: { updatesRouteAudited: true, signedOutPublicShellOnly: true },
+      shellZoomEquivalent,
       routeLightbox: routeLightboxAudit,
       audit: {
         pageNavigations,
