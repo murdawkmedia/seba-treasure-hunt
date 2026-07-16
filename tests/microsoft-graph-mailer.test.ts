@@ -1,0 +1,819 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type {
+  GraphRefreshTokenStore,
+  StoredGraphRefreshToken
+} from "../src/server/graph-token-store";
+import {
+  MicrosoftGraphTransactionalMailer,
+  type MicrosoftGraphMailerConfig
+} from "../src/server/microsoft-graph-mailer";
+import {
+  TransactionalMailError,
+  type TransactionalMessage
+} from "../src/server/transactional-mail";
+
+const tenantId = "11111111-2222-3333-4444-555555555555";
+const clientId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+const tokenUrl =
+  `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+const sendUrl = "https://graph.microsoft.com/v1.0/me/sendMail";
+const scope = "offline_access https://graph.microsoft.com/Mail.Send";
+const acceptedAt = new Date("2026-07-14T20:15:30.000Z");
+
+const message: TransactionalMessage = {
+  to: "hunter@example.test",
+  from: {
+    name: "Tim Lost Something? by SebaHub",
+    address: "tech@sebahub.com"
+  },
+  replyTo: "casey@sebahub.com",
+  subject: "Your legal receipt",
+  text: "Full legal plain-text receipt",
+  html: "<main><h1>Full legal HTML receipt</h1></main>",
+  correlationId: "delivery-correlation-123",
+  sentAt: new Date("2026-07-14T20:00:00.000Z")
+};
+
+interface SaveAttempt {
+  expectedVersion: number | null;
+  refreshToken: string;
+  won: boolean;
+}
+
+class MemoryGraphRefreshTokenStore implements GraphRefreshTokenStore {
+  private state: StoredGraphRefreshToken | null;
+  readonly saves: SaveAttempt[] = [];
+  loadCount = 0;
+  failLoad = false;
+  failSave = false;
+
+  constructor(initial: StoredGraphRefreshToken | null = null) {
+    this.state = initial ? { ...initial } : null;
+  }
+
+  async load(): Promise<StoredGraphRefreshToken | null> {
+    this.loadCount += 1;
+    if (this.failLoad) throw new Error("sensitive D1 load detail");
+    return this.state ? { ...this.state } : null;
+  }
+
+  async save(expectedVersion: number | null, refreshToken: string): Promise<boolean> {
+    if (this.failSave) throw new Error("sensitive D1 save detail");
+
+    const won =
+      expectedVersion === null
+        ? this.state === null
+        : this.state?.stateVersion === expectedVersion;
+    if (won) {
+      this.state = {
+        refreshToken,
+        stateVersion: expectedVersion === null ? 1 : expectedVersion + 1
+      };
+    }
+    this.saves.push({ expectedVersion, refreshToken, won });
+    return won;
+  }
+
+  snapshot(): StoredGraphRefreshToken | null {
+    return this.state ? { ...this.state } : null;
+  }
+}
+
+interface CapturedRequest {
+  url: string;
+  method: string;
+  redirect: Request["redirect"];
+  headers: Headers;
+  body: string;
+}
+
+type FetchResponder = (
+  request: CapturedRequest,
+  requestIndex: number
+) => Response | Promise<Response>;
+
+function capturingFetch(
+  responder: FetchResponder
+): { fetch: typeof globalThis.fetch; requests: CapturedRequest[] } {
+  const requests: CapturedRequest[] = [];
+  const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = new Request(input, init);
+    const captured = {
+      url: request.url,
+      method: request.method,
+      redirect: request.redirect,
+      headers: new Headers(request.headers),
+      body: await request.text()
+    };
+    requests.push(captured);
+    return responder(captured, requests.length - 1);
+  };
+  return { fetch: fetch as typeof globalThis.fetch, requests };
+}
+
+function tokenResponse(
+  accessToken = "access-token-secret",
+  refreshToken?: string
+): Response {
+  return Response.json({
+    token_type: "Bearer",
+    expires_in: 3600,
+    scope,
+    access_token: accessToken,
+    ...(refreshToken === undefined ? {} : { refresh_token: refreshToken })
+  });
+}
+
+function graphAccepted(requestId?: string): Response {
+  return new Response(
+    null,
+    requestId === undefined
+      ? { status: 202 }
+      : { status: 202, headers: { "request-id": requestId } }
+  );
+}
+
+function cancelObservableResponse(
+  body: string,
+  status: number
+): { response: Response; wasCancelled: () => boolean } {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(body));
+      },
+      cancel() {
+        cancelled = true;
+      }
+    }),
+    { status }
+  );
+  return { response, wasCancelled: () => cancelled };
+}
+
+function consumedTokenResponse(): {
+  response: Response;
+  wasCancelled: () => boolean;
+} {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            JSON.stringify({ token_type: "Bearer", access_token: "access-token" })
+          )
+        );
+        controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      }
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+  return { response, wasCancelled: () => cancelled };
+}
+
+function makeMailer(
+  overrides: Partial<MicrosoftGraphMailerConfig> = {},
+  responder: FetchResponder = (request) =>
+    request.url === tokenUrl ? tokenResponse() : graphAccepted("graph-request-123")
+): {
+  mailer: MicrosoftGraphTransactionalMailer;
+  store: MemoryGraphRefreshTokenStore;
+  requests: CapturedRequest[];
+} {
+  const store =
+    overrides.tokenStore instanceof MemoryGraphRefreshTokenStore
+      ? overrides.tokenStore
+      : new MemoryGraphRefreshTokenStore({
+          refreshToken: "stored-refresh-secret",
+          stateVersion: 7
+        });
+  const captured = capturingFetch(responder);
+  return {
+    mailer: new MicrosoftGraphTransactionalMailer({
+      fetch: captured.fetch,
+      clientId,
+      tenantId,
+      bootstrapRefreshToken: "bootstrap-refresh-secret",
+      tokenStore: store,
+      now: () => acceptedAt,
+      ...overrides
+    }),
+    store,
+    requests: captured.requests
+  };
+}
+
+function decodeBase64(value: string): string {
+  const bytes = Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function base64Utf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+async function expectMailError(
+  operation: () => Promise<unknown>,
+  code:
+    | "provider_unavailable"
+    | "provider_rejected"
+    | "provider_response_invalid"
+    | "provider_delivery_uncertain",
+  forbidden: string[] = []
+): Promise<void> {
+  await assert.rejects(operation(), (error: unknown) => {
+    assert.ok(error instanceof TransactionalMailError);
+    assert.equal(error.code, code);
+    assert.equal(error.message, code);
+    const serialized = `${String(error)} ${JSON.stringify(error)}`;
+    for (const secret of forbidden) assert.equal(serialized.includes(secret), false);
+    return true;
+  });
+}
+
+test("refreshes from stored state and sends the exact Graph MIME request", async () => {
+  const accessToken = "access-token-secret";
+  const rotatedRefreshToken = "rotated-refresh-secret";
+  const bootstrapRefreshToken = "bootstrap-refresh-secret";
+  const { mailer, store, requests } = makeMailer(
+    { bootstrapRefreshToken },
+    (request) =>
+      request.url === tokenUrl
+        ? tokenResponse(accessToken, rotatedRefreshToken)
+        : graphAccepted("graph-request-123")
+  );
+
+  const result = await mailer.send(message);
+
+  assert.equal(store.loadCount, 1);
+  assert.deepEqual(store.saves, [
+    { expectedVersion: 7, refreshToken: rotatedRefreshToken, won: true }
+  ]);
+  assert.deepEqual(store.snapshot(), {
+    refreshToken: rotatedRefreshToken,
+    stateVersion: 8
+  });
+  assert.equal(requests.length, 2);
+
+  const tokenRequest = requests[0]!;
+  assert.equal(tokenRequest.url, tokenUrl);
+  assert.equal(tokenRequest.method, "POST");
+  assert.equal(tokenRequest.redirect, "manual");
+  assert.equal(
+    tokenRequest.headers.get("content-type")?.split(";", 1)[0],
+    "application/x-www-form-urlencoded"
+  );
+  const tokenForm = new URLSearchParams(tokenRequest.body);
+  assert.equal(tokenForm.get("grant_type"), "refresh_token");
+  assert.equal(tokenForm.get("client_id"), clientId);
+  assert.equal(tokenForm.get("scope"), scope);
+  assert.equal(tokenForm.get("refresh_token"), "stored-refresh-secret");
+  assert.notEqual(tokenForm.get("refresh_token"), bootstrapRefreshToken);
+  assert.deepEqual([...tokenForm.keys()].sort(), [
+    "client_id",
+    "grant_type",
+    "refresh_token",
+    "scope"
+  ]);
+
+  const sendRequest = requests[1]!;
+  assert.equal(sendRequest.url, sendUrl);
+  assert.equal(sendRequest.method, "POST");
+  assert.equal(sendRequest.redirect, "manual");
+  assert.equal(sendRequest.headers.get("authorization"), `Bearer ${accessToken}`);
+  assert.equal(sendRequest.headers.get("content-type"), "text/plain");
+  assert.equal(sendRequest.headers.get("client-request-id"), message.correlationId);
+  assert.equal(sendRequest.headers.get("return-client-request-id"), "true");
+  assert.match(sendRequest.body, /^[A-Za-z0-9+/]+=*$/);
+  const mime = decodeBase64(sendRequest.body);
+  assert.match(mime, /^Reply-To: casey@sebahub\.com\r$/m);
+  assert.match(mime, /Content-Type: multipart\/alternative/);
+  assert.match(mime, /Content-Type: text\/plain; charset=UTF-8/);
+  assert.match(mime, /Content-Type: text\/html; charset=UTF-8/);
+  assert.ok(mime.includes(base64Utf8(message.text)));
+  assert.ok(mime.includes(base64Utf8(message.html!)));
+
+  assert.deepEqual(result, {
+    provider: "microsoft_graph",
+    providerReference: "graph-request-123",
+    providerReferenceKind: "graph_request_id",
+    acceptedAt: acceptedAt.toISOString()
+  });
+});
+
+test("invokes the runtime fetch function without rebinding its receiver", async () => {
+  let calls = 0;
+  const runtimeFetch = async function (
+    this: unknown,
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> {
+    assert.equal(this, undefined);
+    calls += 1;
+    return new URL(String(input)).href === tokenUrl
+      ? tokenResponse("access-token")
+      : graphAccepted("graph-request-unbound");
+  } as typeof globalThis.fetch;
+  const { mailer } = makeMailer({ fetch: runtimeFetch });
+
+  const result = await mailer.send(message);
+
+  assert.equal(calls, 2);
+  assert.equal(result.providerReference, "graph-request-unbound");
+});
+
+test("uses bootstrap state only when the store is empty", async () => {
+  const store = new MemoryGraphRefreshTokenStore();
+  const { mailer, requests } = makeMailer({ tokenStore: store });
+
+  await mailer.send(message);
+
+  assert.equal(new URLSearchParams(requests[0]!.body).get("refresh_token"), "bootstrap-refresh-secret");
+  assert.deepEqual(store.saves, []);
+  assert.equal(store.snapshot(), null);
+});
+
+test("trims secret-input whitespace from the refresh token before exchange", async () => {
+  const store = new MemoryGraphRefreshTokenStore();
+  const { mailer, requests } = makeMailer({
+    tokenStore: store,
+    bootstrapRefreshToken: "\r\n bootstrap-refresh-secret \n"
+  });
+
+  await mailer.send(message);
+
+  assert.equal(
+    new URLSearchParams(requests[0]!.body).get("refresh_token"),
+    "bootstrap-refresh-secret"
+  );
+});
+
+test("persists an initial rotated refresh token with a null CAS version", async () => {
+  const store = new MemoryGraphRefreshTokenStore();
+  const { mailer } = makeMailer(
+    { tokenStore: store },
+    (request) =>
+      request.url === tokenUrl
+        ? tokenResponse("access-token", "first-rotated-refresh")
+        : graphAccepted()
+  );
+
+  await mailer.send(message);
+
+  assert.deepEqual(store.saves, [
+    { expectedVersion: null, refreshToken: "first-rotated-refresh", won: true }
+  ]);
+  assert.deepEqual(store.snapshot(), {
+    refreshToken: "first-rotated-refresh",
+    stateVersion: 1
+  });
+});
+
+test("does not persist a missing or whitespace-only rotated refresh token", async () => {
+  for (const response of [tokenResponse("access-token"), tokenResponse("access-token", "   ")]) {
+    const store = new MemoryGraphRefreshTokenStore({
+      refreshToken: "stored-refresh",
+      stateVersion: 2
+    });
+    const { mailer } = makeMailer(
+      { tokenStore: store },
+      (request) => (request.url === tokenUrl ? response : graphAccepted())
+    );
+
+    await mailer.send(message);
+    assert.deepEqual(store.saves, []);
+  }
+});
+
+test("two concurrent rotations have one CAS winner and both current sends continue", async () => {
+  const store = new MemoryGraphRefreshTokenStore({
+    refreshToken: "shared-refresh",
+    stateVersion: 5
+  });
+  let tokenCount = 0;
+  let sendCount = 0;
+  const { mailer } = makeMailer({ tokenStore: store }, (request) => {
+    if (request.url === tokenUrl) {
+      tokenCount += 1;
+      return tokenResponse(`access-${tokenCount}`, `rotated-${tokenCount}`);
+    }
+    sendCount += 1;
+    return graphAccepted(`graph-request-${sendCount}`);
+  });
+
+  const results = await Promise.all([mailer.send(message), mailer.send(message)]);
+
+  assert.equal(tokenCount, 2);
+  assert.equal(sendCount, 2);
+  assert.equal(results.length, 2);
+  assert.equal(store.saves.length, 2);
+  assert.deepEqual(store.saves.map((attempt) => attempt.expectedVersion), [5, 5]);
+  assert.equal(store.saves.filter((attempt) => attempt.won).length, 1);
+  assert.equal(store.saves.filter((attempt) => !attempt.won).length, 1);
+  assert.equal(store.snapshot()?.stateVersion, 6);
+});
+
+test("missing configuration and token-store failures fail unavailable before network access", async () => {
+  const missingCases: Array<Partial<MicrosoftGraphMailerConfig>> = [
+    { clientId: null },
+    { clientId: "" },
+    { tenantId: null },
+    { tenantId: "" },
+    {
+      tokenStore: new MemoryGraphRefreshTokenStore(),
+      bootstrapRefreshToken: null
+    },
+    {
+      tokenStore: new MemoryGraphRefreshTokenStore(),
+      bootstrapRefreshToken: "   "
+    }
+  ];
+
+  for (const overrides of missingCases) {
+    const { mailer, requests } = makeMailer(overrides);
+    await expectMailError(() => mailer.send(message), "provider_unavailable");
+    assert.equal(requests.length, 0);
+  }
+
+  const failingStore = new MemoryGraphRefreshTokenStore();
+  failingStore.failLoad = true;
+  const { mailer, requests } = makeMailer({ tokenStore: failingStore });
+  await expectMailError(
+    () => mailer.send(message),
+    "provider_unavailable",
+    ["sensitive D1 load detail"]
+  );
+  assert.equal(requests.length, 0);
+});
+
+test("pins tenant and client configuration to canonical GUIDs before token-state access", async () => {
+  const invalidTenantIds = [
+    "common",
+    "organizations",
+    "consumers",
+    "sebahub.onmicrosoft.com",
+    "tenant-label",
+    "11111111-2222-3333-4444-55555555555",
+    "111111112222-3333-4444-5555-555555555555",
+    "{11111111-2222-3333-4444-555555555555}"
+  ];
+  const invalidClientIds = [
+    "graph-client-id",
+    "common",
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee",
+    "aaaaaaaabbbb-cccc-dddd-eeee-eeeeeeeeeeee",
+    "{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}",
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/redirect"
+  ];
+
+  for (const [field, values] of [
+    ["tenantId", invalidTenantIds],
+    ["clientId", invalidClientIds]
+  ] as const) {
+    for (const value of values) {
+      const store = new MemoryGraphRefreshTokenStore({
+        refreshToken: "stored-refresh",
+        stateVersion: 1
+      });
+      const { mailer, requests } = makeMailer({ [field]: value, tokenStore: store });
+
+      await expectMailError(() => mailer.send(message), "provider_unavailable", [value]);
+      assert.equal(store.loadCount, 0);
+      assert.deepEqual(store.saves, []);
+      assert.equal(requests.length, 0);
+    }
+  }
+});
+
+test("accepts case-insensitive GUIDs with surrounding whitespace and sends normalized IDs", async () => {
+  const configuredTenant = `  ${tenantId.toUpperCase()}  `;
+  const configuredClient = `\t${clientId.toUpperCase()}\r\n`;
+  const { mailer, requests } = makeMailer({
+    tenantId: configuredTenant,
+    clientId: configuredClient
+  });
+
+  await mailer.send(message);
+
+  assert.equal(
+    requests[0]!.url,
+    `https://login.microsoftonline.com/${tenantId.toUpperCase()}/oauth2/v2.0/token`
+  );
+  assert.equal(
+    new URLSearchParams(requests[0]!.body).get("client_id"),
+    clientId.toUpperCase()
+  );
+});
+
+test("rejects tenant path and URL injection before making a request", async () => {
+  for (const unsafeTenant of [
+    "tenant/../attacker",
+    "tenant\\attacker",
+    "tenant%2Fattacker",
+    "tenant?x=1",
+    "tenant#fragment",
+    "..",
+    "tenant\r\nHost: attacker.test"
+  ]) {
+    const { mailer, requests } = makeMailer({ tenantId: unsafeTenant });
+    await expectMailError(() => mailer.send(message), "provider_unavailable", [unsafeTenant]);
+    assert.equal(requests.length, 0);
+  }
+});
+
+test("validates MIME before token state or provider access and returns one typed safe error", async () => {
+  const store = new MemoryGraphRefreshTokenStore({
+    refreshToken: "stored-refresh-secret",
+    stateVersion: 2
+  });
+  const { mailer, requests } = makeMailer({ tokenStore: store });
+
+  await expectMailError(
+    () =>
+      mailer.send({
+        ...message,
+        to: "hunter@example.test\r\nBcc: attacker@example.test"
+      }),
+    "provider_response_invalid",
+    ["attacker@example.test", "Invalid To header value"]
+  );
+
+  assert.equal(store.loadCount, 0);
+  assert.deepEqual(store.saves, []);
+  assert.equal(requests.length, 0);
+});
+
+test("maps every token endpoint failure to one private unavailable error", async () => {
+  const tokenSecret = "stored-refresh-secret";
+  const accessSecret = "access-token-from-bad-payload";
+  const providerBodySecret = "provider-description-secret";
+  const failures: Array<() => Response | Promise<Response>> = [
+    async () => {
+      throw new Error(`network failed with ${tokenSecret}`);
+    },
+    () => new Response(providerBodySecret, { status: 400 }),
+    () => new Response(`not-json-${providerBodySecret}`, { status: 200 }),
+    () =>
+      Response.json({
+        error: "invalid_grant",
+        error_description: providerBodySecret,
+        access_token: accessSecret
+      }),
+    () => Response.json({ token_type: "Bearer" }),
+    () => Response.json({ access_token: "" }),
+    () => Response.json({ access_token: "   " }),
+    () => Response.json({ access_token: accessSecret }),
+    () => Response.json({ token_type: "DPoP", access_token: accessSecret }),
+    () => Response.json({ token_type: "bear", access_token: accessSecret }),
+    () => Response.json({ token_type: 7, access_token: accessSecret }),
+    () => Response.json(null),
+    () => Response.json([accessSecret])
+  ];
+
+  for (const failure of failures) {
+    let tokenCalls = 0;
+    let sendCalls = 0;
+    const { mailer } = makeMailer({}, async (request) => {
+      if (request.url === tokenUrl) {
+        tokenCalls += 1;
+        return failure();
+      }
+      sendCalls += 1;
+      return graphAccepted();
+    });
+
+    await expectMailError(
+      () => mailer.send(message),
+      "provider_unavailable",
+      [tokenSecret, accessSecret, providerBodySecret]
+    );
+    assert.equal(tokenCalls, 1);
+    assert.equal(sendCalls, 0);
+  }
+});
+
+test("accepts Bearer token type case-insensitively", async () => {
+  for (const tokenType of ["Bearer", "bearer", "BEARER", "  BeArEr  "]) {
+    const { mailer } = makeMailer({}, (request) =>
+      request.url === tokenUrl
+        ? Response.json({ token_type: tokenType, access_token: "access-token" })
+        : graphAccepted()
+    );
+    await mailer.send(message);
+  }
+});
+
+test("uses manual redirects and rejects token and Graph redirects without a second request", async () => {
+  const tokenRedirect = cancelObservableResponse("token redirect body", 302);
+  const tokenAttempt = makeMailer({}, () => tokenRedirect.response);
+
+  await expectMailError(
+    () => tokenAttempt.mailer.send(message),
+    "provider_unavailable",
+    ["token redirect body"]
+  );
+  assert.equal(tokenAttempt.requests.length, 1);
+  assert.equal(tokenAttempt.requests[0]!.url, tokenUrl);
+  assert.equal(tokenAttempt.requests[0]!.redirect, "manual");
+
+  const sendRedirect = cancelObservableResponse("send redirect body", 307);
+  const sendAttempt = makeMailer({}, (request) =>
+    request.url === tokenUrl ? tokenResponse() : sendRedirect.response
+  );
+  await expectMailError(
+    () => sendAttempt.mailer.send(message),
+    "provider_rejected",
+    ["send redirect body"]
+  );
+  assert.equal(sendAttempt.requests.length, 2);
+  assert.equal(sendAttempt.requests[1]!.url, sendUrl);
+  assert.equal(sendAttempt.requests[1]!.redirect, "manual");
+});
+
+test("never falls back to bootstrap after a stored refresh token fails", async () => {
+  const { mailer, requests } = makeMailer(
+    { bootstrapRefreshToken: "bootstrap-must-not-be-used" },
+    () => Response.json({ error: "invalid_grant" }, { status: 400 })
+  );
+
+  await expectMailError(() => mailer.send(message), "provider_unavailable");
+
+  assert.equal(requests.length, 1);
+  assert.equal(
+    new URLSearchParams(requests[0]!.body).get("refresh_token"),
+    "stored-refresh-secret"
+  );
+  assert.equal(requests[0]!.body.includes("bootstrap-must-not-be-used"), false);
+});
+
+test("a rotated-token save exception fails closed before Graph submission", async () => {
+  const store = new MemoryGraphRefreshTokenStore({
+    refreshToken: "stored-refresh",
+    stateVersion: 3
+  });
+  store.failSave = true;
+  let sendCalls = 0;
+  const { mailer } = makeMailer({ tokenStore: store }, (request) => {
+    if (request.url === tokenUrl) return tokenResponse("access-secret", "rotated-secret");
+    sendCalls += 1;
+    return graphAccepted();
+  });
+
+  await expectMailError(
+    () => mailer.send(message),
+    "provider_unavailable",
+    ["sensitive D1 save detail", "access-secret", "rotated-secret"]
+  );
+  assert.equal(sendCalls, 0);
+});
+
+test("202 without a safe provider request ID uses the client correlation reference", async () => {
+  for (const unsafeReference of [undefined, "", "   ", "x".repeat(300), "request\u0000id", "a\r\nb"]) {
+    const { mailer } = makeMailer({}, (request) => {
+      if (request.url === tokenUrl) return tokenResponse();
+      if (unsafeReference === undefined) return graphAccepted();
+      const response = graphAccepted();
+      Object.defineProperty(response, "headers", {
+        value: {
+          get(name: string): string | null {
+            return name.toLowerCase() === "request-id" ? unsafeReference : null;
+          }
+        }
+      });
+      return response;
+    });
+
+    const result = await mailer.send(message);
+    assert.deepEqual(result, {
+      provider: "microsoft_graph",
+      providerReference: message.correlationId,
+      providerReferenceKind: "client_request_id",
+      acceptedAt: acceptedAt.toISOString()
+    });
+  }
+});
+
+test("accepts a bounded single-line provider request ID after trimming it", async () => {
+  const { mailer } = makeMailer({}, (request) =>
+    request.url === tokenUrl ? tokenResponse() : graphAccepted("  graph-request-safe_123  ")
+  );
+
+  assert.deepEqual(await mailer.send(message), {
+    provider: "microsoft_graph",
+    providerReference: "graph-request-safe_123",
+    providerReferenceKind: "graph_request_id",
+    acceptedAt: acceptedAt.toISOString()
+  });
+});
+
+test("cancels unneeded Graph bodies and accepts only status 202", async () => {
+  for (const status of [200, 201, 400, 429, 500]) {
+    const rejection = cancelObservableResponse("secret Graph response body", status);
+    const { mailer } = makeMailer({}, (request) =>
+      request.url === tokenUrl ? tokenResponse() : rejection.response
+    );
+
+    await expectMailError(
+      () => mailer.send(message),
+      "provider_rejected",
+      ["secret Graph response body"]
+    );
+    assert.equal(rejection.wasCancelled(), true);
+  }
+
+  const noContentAttempt = makeMailer({}, (request) =>
+    request.url === tokenUrl ? tokenResponse() : new Response(null, { status: 204 })
+  );
+  await expectMailError(
+    () => noContentAttempt.mailer.send(message),
+    "provider_rejected"
+  );
+
+  const accepted = cancelObservableResponse("unexpected accepted body", 202);
+  const acceptedAttempt = makeMailer({}, (request) =>
+    request.url === tokenUrl ? tokenResponse() : accepted.response
+  );
+  await acceptedAttempt.mailer.send(message);
+  assert.equal(accepted.wasCancelled(), true);
+});
+
+test("cancels non-success token bodies without cancelling successfully parsed JSON", async () => {
+  const rejected = cancelObservableResponse("secret rejected token body", 401);
+  const rejectedAttempt = makeMailer({}, () => rejected.response);
+  await expectMailError(
+    () => rejectedAttempt.mailer.send(message),
+    "provider_unavailable",
+    ["secret rejected token body"]
+  );
+  assert.equal(rejected.wasCancelled(), true);
+
+  const accepted = consumedTokenResponse();
+  const acceptedAttempt = makeMailer({}, (request) =>
+    request.url === tokenUrl ? accepted.response : graphAccepted()
+  );
+  await acceptedAttempt.mailer.send(message);
+  assert.equal(accepted.wasCancelled(), false);
+});
+
+test("a thrown Graph send after token acquisition is delivery uncertain", async () => {
+  const accessSecret = "access-token-secret";
+  const { mailer } = makeMailer({}, async (request) => {
+    if (request.url === tokenUrl) return tokenResponse(accessSecret);
+    throw new Error(`socket closed after submission ${accessSecret}`);
+  });
+
+  await expectMailError(
+    () => mailer.send(message),
+    "provider_delivery_uncertain",
+    [accessSecret, "socket closed after submission"]
+  );
+});
+
+test("token values and provider response bodies never enter errors or console output", async () => {
+  const secrets = [
+    "privacy-refresh-secret",
+    "privacy-access-secret",
+    "privacy-provider-body-secret"
+  ];
+  const entries: unknown[][] = [];
+  const original = {
+    error: console.error,
+    warn: console.warn,
+    log: console.log,
+    info: console.info
+  };
+  console.error = (...args: unknown[]) => entries.push(args);
+  console.warn = (...args: unknown[]) => entries.push(args);
+  console.log = (...args: unknown[]) => entries.push(args);
+  console.info = (...args: unknown[]) => entries.push(args);
+
+  try {
+    const store = new MemoryGraphRefreshTokenStore({
+      refreshToken: secrets[0]!,
+      stateVersion: 1
+    });
+    const { mailer } = makeMailer({ tokenStore: store }, (request) =>
+      request.url === tokenUrl
+        ? tokenResponse(secrets[1]!)
+        : new Response(secrets[2], { status: 400 })
+    );
+    await expectMailError(() => mailer.send(message), "provider_rejected", secrets);
+    assert.deepEqual(entries, []);
+    const serializedEntries = JSON.stringify(entries);
+    for (const secret of secrets) assert.equal(serializedEntries.includes(secret), false);
+  } finally {
+    console.error = original.error;
+    console.warn = original.warn;
+    console.log = original.log;
+    console.info = original.info;
+  }
+});

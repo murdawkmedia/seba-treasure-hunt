@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.worker.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": [
+    "src/worker.ts",
+    "src/media-worker.ts",
+    "src/server/**/*.ts",
+    "tests/api-*.test.ts",
+    "tests/api-test-kit.ts",
+    "tests/account-recovery-links.test.ts",
+    "tests/graph-token-store.test.ts",
+    "tests/microsoft-graph-mailer.test.ts",
+    "tests/transactional-mail-factory.test.ts",
+    "tests/waiver-receipts.test.ts",
+    "tests/media-worker.test.ts"
+  ]
+}

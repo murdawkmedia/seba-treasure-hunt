@@ -1,89 +1,76 @@
 # Tim Lost Something?
 
-**This year: Tim lost his ID—along with roughly $5,000 in cash and two diamond
-rings.**
+The public website and hunter platform for the Seba Beach treasure hunt.
 
-This is the public 2026 Seba Beach Treasure Hunt. Finders may keep the cash and
-rings; Tim only asks that his government ID bundle be returned to SebaHub.
+## Public routes
 
-## Live addresses
-
-- Canonical: <https://www.timlostsomething.com/>
-- Bare-domain redirect: <https://timlostsomething.com/>
-- Cloudflare Pages fallback: <https://seba-treasure-hunt.pages.dev/>
-
-The bare hostname permanently redirects to the canonical **www** hostname while
-preserving paths and query strings.
-
-## Pages
-
-| Page | Purpose |
+| Route | Purpose |
 |---|---|
-| index.html | Campaign premise, real evidence, disclosed ID prop, rules, quick answers, contacts and sponsor framing |
-| route.html | Twelve GPS-mapped waypoints, 61 route photos, trail map and the 81-second route video |
-| interview.html | Tim's full 20-question account and 11 optional Hunter's Notes |
+| `/` | Campaign story and current case status |
+| `/route` | Lucky 13 waypoint stories; signed-in hunters receive exact route controls |
+| `/updates` | Official updates and approved community reports |
+| `/report` | Private find, tip, and safety reporting |
+| `/clue-board` | Moderated community Field Notes |
+| `/rules` | Versioned hunt rules |
+| `/privacy` | Privacy Policy & Media Notice |
+| `/waiver` | Participation Acknowledgement, Waiver and Release |
+| `/sponsors` | Sponsor information and private sponsorship inquiry form |
 
-## Brand and marketing bridge
+Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and are protected by authenticated company-domain access.
 
-- Umbrella brand: **Tim Lost Something?**
-- 2026 sub-brand: **This year: Tim lost his ID.**
-- Descriptor: **The Seba Beach Treasure Hunt**
-- Every **Always Sunny in Seba** badge links to the
-  [SebaStays Sunny Guarantee](https://www.sebastays.com/guarantee).
+Sponsor inquiries submitted through `/sponsors` are stored in private D1 records with an append-only event ledger. Staff review them in the Ops Sponsors ledger; there is no automated email for sponsor inquiries.
 
-## Tech
+## Development
 
-- Plain static HTML, CSS and JavaScript; no application build step.
-- Vendored Leaflet with Esri imagery tiles; no map API key.
-- Route photos are web-optimized and intentionally retain GPS metadata because
-  their locations are part of the hunt.
-- assets/route/route-video.mp4 is a 1,949-frame, 24 fps, 1920×1080 H.264/AAC
-  file with faststart. Its canonical end card displays
-  **www.timlostsomething.com**.
-- Search and answer-engine surfaces include page-specific metadata, canonical
-  URLs, Open Graph/X cards, visible quick answers, JSON-LD, robots.txt and
-  sitemap.xml.
+```powershell
+npm install
+npm run legal:verify
+npm run typecheck
+npm test
+npm run build
+```
 
-## Evidence and campaign artwork
+Generated output, local identity configuration, and local provider credentials are ignored. `.env.example` documents variable names only and must never contain values.
 
-- assets/photos/evidence-cash.jpg is the real last-known photo. The readable
-  ID/card details are blurred.
-- assets/photos/tim-lost-id-campaign-prop.webp is deliberately fictional
-  campaign artwork. It is visibly disclosed as a dramatization and must never
-  be presented as evidence, an exact likeness of the missing ID, or social
-  preview artwork.
+## Identity and human verification
 
-## Test and preview
+Hunter and staff authentication use separate Clerk-compatible configuration contracts. The production environment requires live provider credentials; validation uses disposable development instances. Cloudflare Turnstile protects public write surfaces.
 
-    node --test tests/*.test.mjs
-    python -m http.server 8080
+Required identity and verification variables include:
 
-Open <http://localhost:8080>, /route.html and /interview.html.
+- `HUNTER_CLERK_PUBLISHABLE_KEY`
+- `HUNTER_CLERK_SECRET_KEY`
+- `HUNTER_AUTH_ISSUER`
+- `HUNTER_AUTH_JWKS_URL`
+- `STAFF_CLERK_PUBLISHABLE_KEY`
+- `STAFF_CLERK_SECRET_KEY`
+- `STAFF_AUTH_ISSUER`
+- `STAFF_AUTH_JWKS_URL`
+- `CLERK_WEBHOOK_SIGNING_SECRET`
+- `TURNSTILE_SITE_KEY`
+- `TURNSTILE_SECRET_KEY`
 
-The eight contract tests verify the campaign name, canonical domains, four
-Sunny Guarantee links, structured data, crawl files, prop disclosure,
-ID-bundle terminology, apex redirect and static-asset pass-through.
+## Transactional email
 
-## Deploy
+Microsoft Graph is active only when `TRANSACTIONAL_EMAIL_PROVIDER=microsoft_graph`.
+The configured validation mailbox and campaign Reply-To are supplied through Cloudflare Pages Preview secrets, never committed values.
 
-- Cloudflare Pages project: **seba-treasure-hunt**
-- Production source: tracked files from **main**
-- Deployment method: direct Wrangler upload from a clean git archive
-- Canonicalization: Pages advanced-mode worker redirects only the bare hostname
-  and passes all other requests to the static asset binding.
+The Graph contract uses:
 
-Never deploy the working directory directly. The gitignored planning/,
-source-media/ and .wrangler/ directories are not public assets.
+- `TRANSACTIONAL_EMAIL_PROVIDER`
+- `GRAPH_CLIENT_ID`
+- `GRAPH_TENANT_ID`
+- `GRAPH_REFRESH_TOKEN_BOOTSTRAP`
+- `GRAPH_TOKEN_ENCRYPTION_KEY`
+- `GRAPH_TOKEN_KEY_VERSION`
+- `TRANSACTIONAL_EMAIL_FROM_ADDRESS`
+- `TRANSACTIONAL_EMAIL_FROM_NAME`
+- `TRANSACTIONAL_EMAIL_REPLY_TO`
 
-## Decisions in force
+Use `scripts/graph-device-login.mjs` only for controlled delegated setup. Refresh-token changes are encrypted rotations; revoked or expired grants require a fresh delegated authorization.
 
-- Canonical campaign language says Tim lost his **ID bundle**, not a wallet.
-  Verbatim interview material may still explain that he does not carry a
-  conventional wallet.
-- The 12-waypoint/61-photo route is authoritative.
-- GPS metadata on route photographs is public intentionally.
-- The evidence photo remains the social preview.
-- No fabricated claims or fake urgency on the website.
-- The published MP4 must remain below Cloudflare Pages' 25 MiB per-file limit.
-- _worker.js and canonical-host-worker.mjs are the tested production redirect;
-  do not replace them with an unverified client-side redirect.
+## Deployment
+
+Cloudflare Pages serves `www.timlostsomething.com`; the bare hostname redirects to the canonical `www` host while preserving paths and query strings. `wrangler.toml` separates production from disposable Preview bindings, and `wrangler.media.toml` defines the private media processor.
+
+Deployment requires a clean build, a production D1 checkpoint, applied migrations, a verified `production` environment sentinel, production-only provider secrets, and post-deploy checks on both hostnames.

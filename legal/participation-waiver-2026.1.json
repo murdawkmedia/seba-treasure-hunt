@@ -1,0 +1,114 @@
+{
+  "type": "participation_waiver",
+  "version": "2026.1",
+  "effectiveDate": "2026-07-13",
+  "effectiveDateLabel": "July 13, 2026",
+  "title": "SebaHub Tim Lost Something? Participant Acknowledgement, Waiver and Release",
+  "intro": "By registering for and participating in Tim Lost Something?, I confirm and agree that:",
+  "acceptanceStatement": "I have read and agree to the Tim Lost Something? Participation Waiver, Release and Rules. I understand that participation involves outdoor risks, that I must search only in approved areas, and that I participate voluntarily and at my own risk.",
+  "guardianStatement": "I confirm that I am the parent or legal guardian of each minor listed, that the information is accurate, and that I accept this agreement on their behalf. I will directly supervise them throughout their participation.",
+  "sections": [
+    {
+      "number": 1,
+      "slug": "voluntary-participation",
+      "title": "Voluntary participation",
+      "blocks": [
+        { "kind": "paragraph", "text": "I am choosing to participate voluntarily. I understand that participation may involve walking outdoors on trails, grass, sand and uneven ground and may include exposure to weather, insects, vegetation, water, other visitors and changing property conditions." }
+      ]
+    },
+    {
+      "number": 2,
+      "slug": "eligibility-and-minors",
+      "title": "Eligibility and minors",
+      "blocks": [
+        { "kind": "paragraph", "text": "I confirm that I am at least 18 years old." },
+        { "kind": "paragraph", "text": "A participant under 18 may participate only while directly supervised by a parent or legal guardian who has registered and accepted this agreement on the minor's behalf." }
+      ]
+    },
+    {
+      "number": 3,
+      "slug": "approved-areas-only",
+      "title": "Approved areas only",
+      "blocks": [
+        { "kind": "paragraph", "text": "I will search only during posted hunt hours and only in areas marked as approved on the official search map or by SebaHub staff." },
+        { "kind": "paragraph", "text": "I will not enter:" },
+        { "kind": "list", "items": ["Private homes or neighbouring properties", "Guest accommodations or occupied campsites", "Event spaces during private bookings", "Farmyard or animal enclosures", "Construction, maintenance or storage areas", "Fenced, locked or signed restricted areas", "Water, shorelines marked as restricted, steep slopes or cliff-edge areas", "Any location closed by SebaHub staff"] },
+        { "kind": "paragraph", "text": "I understand that appearing on Tim's original route does not automatically mean that a location is open for public searching." }
+      ]
+    },
+    {
+      "number": 4,
+      "slug": "prohibited-conduct",
+      "title": "Prohibited conduct",
+      "blocks": [
+        { "kind": "paragraph", "text": "I will not:" },
+        { "kind": "list", "items": ["Dig, cut trees or remove vegetation", "Climb buildings, fences, trees or structures", "Move heavy objects or damage landscaping", "Enter locked, closed or restricted areas", "Start fires", "Use vehicles, machinery, drones or excavation equipment to search", "Disturb guests, residents, staff or private events", "Feed, touch, chase or otherwise pester the Farmyard Friends", "Leave garbage or damage any part of the village"] },
+        { "kind": "paragraph", "text": "I will follow all signs and staff instructions immediately." }
+      ]
+    },
+    {
+      "number": 5,
+      "slug": "assumption-of-risk",
+      "title": "Assumption of risk",
+      "blocks": [
+        { "kind": "paragraph", "text": "I understand that outdoor participation carries risks, including slips, trips, falls, uneven surfaces, weather, insects, water hazards, natural obstacles and the actions of other people." },
+        { "kind": "paragraph", "text": "I voluntarily accept the ordinary risks associated with participating in the activity." }
+      ]
+    },
+    {
+      "number": 6,
+      "slug": "release-and-responsibility",
+      "title": "Release and responsibility",
+      "blocks": [
+        { "kind": "paragraph", "text": "To the fullest extent permitted by law, I release and hold harmless SebaHub, the participating property owners and operators, and their directors, employees, contractors, volunteers and representatives from claims arising from my participation, including claims connected with personal injury, property loss or property damage." },
+        { "kind": "paragraph", "text": "This release is not intended to exclude liability that cannot legally be excluded." },
+        { "kind": "paragraph", "text": "I understand that I remain responsible for my own conduct, safety and belongings." }
+      ]
+    },
+    {
+      "number": 7,
+      "slug": "reporting-finds-and-clues",
+      "title": "Reporting finds and clues",
+      "blocks": [
+        { "kind": "paragraph", "text": "I will report any potential find through the official website form or another contact method published on the campaign website." },
+        { "kind": "paragraph", "text": "I will not publish photographs or identifying details from Tim's ID or other personal documents." },
+        { "kind": "paragraph", "text": "I understand that a reported find may need to be photographed, documented and verified before it is confirmed." }
+      ]
+    },
+    {
+      "number": 8,
+      "slug": "clue-coin",
+      "title": "Clue coin",
+      "blocks": [
+        { "kind": "paragraph", "text": "After completing registration, I may be asked to show my confirmation to receive a SebaHub clue coin." },
+        { "kind": "paragraph", "text": "The coin identifies me as a registered participant for clue access. It does not grant access to restricted areas and does not replace my responsibility to follow the rules." }
+      ]
+    },
+    {
+      "number": 9,
+      "slug": "removal-from-the-activity",
+      "title": "Removal from the activity",
+      "blocks": [
+        { "kind": "paragraph", "text": "I understand that SebaHub may remove or disqualify anyone who:" },
+        { "kind": "list", "items": ["Enters restricted areas", "Damages property", "Disturbs animals, guests or residents", "Creates a safety concern", "Ignores staff instructions", "Provides false registration information"] }
+      ]
+    },
+    {
+      "number": 10,
+      "slug": "emergency-acknowledgement",
+      "title": "Emergency acknowledgement",
+      "blocks": [
+        { "kind": "paragraph", "text": "I understand that campaign contact methods are not an emergency service. In an emergency, I will call 911." }
+      ]
+    },
+    {
+      "number": 11,
+      "slug": "electronic-agreement",
+      "title": "Electronic agreement",
+      "blocks": [
+        { "kind": "paragraph", "text": "By checking the required box and submitting the form, I confirm that:" },
+        { "kind": "list", "items": ["I have read and understood this agreement", "I have had the opportunity to ask questions", "The name and contact information entered belong to me", "I agree to be bound by this acknowledgement, waiver, release and the official hunt rules"] }
+      ]
+    }
+  ]
+}

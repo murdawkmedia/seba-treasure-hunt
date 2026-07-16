@@ -1,0 +1,43 @@
+{
+  "name": "tim-lost-something",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets:favicons": "node scripts/generate-favicons.mjs",
+    "legal:generate": "node scripts/generate-waiver.mjs",
+    "legal:verify": "node scripts/generate-waiver.mjs --check",
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && wrangler pages dev dist --persist-to .wrangler/state",
+    "test": "node --test tests/*.test.mjs && tsx --test \"tests/**/*.test.ts\"",
+    "verify:sponsor-qa": "node scripts/verify-sponsor-qa.mjs",
+    "verify:unified-shell-qa": "node scripts/verify-unified-shell-qa.mjs",
+    "verify:waiver-qa": "node scripts/verify-waiver-qa.mjs",
+    "test:legacy": "node --test tests/*.test.mjs",
+    "test:unit": "tsx --test \"tests/**/*.test.ts\"",
+    "typecheck": "npm run typecheck:worker && npm run typecheck:client && npm run typecheck:tests",
+    "typecheck:worker": "tsc -p tsconfig.worker.json",
+    "typecheck:client": "tsc -p tsconfig.client.json",
+    "typecheck:tests": "tsc -p tsconfig.tests-worker.json && tsc -p tsconfig.tests-client.json"
+  },
+  "dependencies": {
+    "@clerk/backend": "3.11.4",
+    "@clerk/clerk-js": "6.25.2",
+    "hono": "4.12.29",
+    "jose": "6.2.3",
+    "qrcode": "1.5.4",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260711.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "^24.10.9",
+    "axe-core": "4.12.1",
+    "esbuild": "0.28.1",
+    "miniflare": "4.20260708.1",
+    "sharp": "0.35.3",
+    "tsx": "4.23.0",
+    "typescript": "7.0.2",
+    "wrangler": "4.110.0"
+  }
+}

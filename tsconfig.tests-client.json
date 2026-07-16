@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.client.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [
+    "src/client/**/*.ts",
+    "tests/board-client.test.ts",
+    "tests/hunter-ui-client.test.ts"
+  ]
+}

@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Case Room | Tim Lost Something?</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/assets/favicon-32x32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
+  <meta name="referrer" content="same-origin" />
+  <meta name="staff-clerk-publishable-key" content="" />
+  <link rel="canonical" href="https://www.timlostsomething.com/ops" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&amp;family=Pirata+One&amp;family=Special+Elite&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ops.css" />
+</head>
+<body class="ops-page">
+  <a class="ops-skip" href="#ops-main">Skip to case-room workspace</a>
+
+  <section class="ops-gateway" id="ops-auth-panel" aria-labelledby="ops-gateway-title">
+    <div class="ops-gateway__brand">
+      <span class="ops-gateway__seal" aria-hidden="true">T?</span>
+      <p>Tim Lost Something?</p>
+      <span>Restricted case room</span>
+    </div>
+    <div class="ops-gateway__card">
+      <p class="ops-kicker">Company-domain staff access</p>
+      <h1 id="ops-gateway-title">Open the case room</h1>
+      <p class="ops-gateway__intro">Use your separate staff account. Verified SebaHub and Business as a Force for Good addresses may create one here; public hunter accounts cannot open this console.</p>
+
+      <div class="ops-notice" id="ops-auth-config" role="status" aria-live="polite">Checking staff identity service&hellip;</div>
+
+      <form class="ops-form" id="ops-sign-in-form" novalidate>
+        <div class="ops-form__error" role="alert" hidden></div>
+        <label for="ops-email">Staff email</label>
+        <input id="ops-email" name="email" type="email" autocomplete="username" required />
+        <label for="ops-password">Password</label>
+        <input id="ops-password" name="password" type="password" autocomplete="current-password" minlength="14" required />
+        <button class="ops-button ops-button--primary" type="submit">Sign in</button>
+        <button class="ops-text-button" id="show-staff-sign-up" type="button">Create staff account</button>
+        <button class="ops-text-button" id="show-recovery" type="button">Forgot your password?</button>
+      </form>
+
+      <form class="ops-form" id="ops-sign-up-form" hidden novalidate>
+        <div class="ops-form__error" role="alert" hidden></div>
+        <p class="ops-form__lead">Create an operator identity using an address ending exactly in <strong>sebahub.com</strong> or <strong>businessasaforceforgood.ca</strong>.</p>
+        <label for="ops-sign-up-email">Company email</label>
+        <input id="ops-sign-up-email" name="email" type="email" autocomplete="username" required />
+        <label for="ops-sign-up-password">Create password</label>
+        <input id="ops-sign-up-password" name="password" type="password" autocomplete="new-password" minlength="14" required />
+        <label for="ops-sign-up-confirm">Confirm password</label>
+        <input id="ops-sign-up-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="14" required />
+        <button class="ops-button ops-button--primary" type="submit">Create staff account</button>
+        <button class="ops-text-button" data-back-to-sign-in type="button">Back to sign in</button>
+      </form>
+
+      <form class="ops-form" id="ops-sign-up-verify-form" hidden novalidate>
+        <p class="ops-form__lead">Enter the verification code sent to your company email. Server authorization is applied only after the address is verified.</p>
+        <label for="ops-sign-up-code">Verification code</label>
+        <input id="ops-sign-up-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required />
+        <button class="ops-button ops-button--primary" type="submit">Verify and open case room</button>
+        <button class="ops-text-button" data-back-to-sign-in type="button">Cancel account creation</button>
+      </form>
+
+      <form class="ops-form" id="ops-second-factor-form" hidden novalidate>
+        <p class="ops-form__lead">Enter the six-digit code from your authenticator app.</p>
+        <label for="ops-totp-code">Authenticator code</label>
+        <input id="ops-totp-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required />
+        <button class="ops-button ops-button--primary" type="submit">Verify and continue</button>
+        <button class="ops-text-button" data-back-to-sign-in type="button">Back to sign in</button>
+      </form>
+
+      <form class="ops-form" id="ops-recovery-form" hidden novalidate>
+        <p class="ops-form__lead">We will send a verification code to the invited account. Another admin may trigger these instructions, but only the account owner receives the code.</p>
+        <label for="ops-recovery-email">Staff email</label>
+        <input id="ops-recovery-email" name="email" type="email" autocomplete="username" required />
+        <button class="ops-button ops-button--primary" type="submit">Send verification code</button>
+        <button class="ops-text-button" data-back-to-sign-in type="button">Back to sign in</button>
+      </form>
+
+      <form class="ops-form" id="ops-recovery-complete-form" hidden novalidate>
+        <p class="ops-form__lead">Enter the emailed verification code and choose a new password. All other sessions will be signed out.</p>
+        <label for="ops-recovery-code">Verification code</label>
+        <input id="ops-recovery-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required />
+        <label for="ops-new-password">New password</label>
+        <input id="ops-new-password" name="newPassword" type="password" autocomplete="new-password" minlength="14" required />
+        <label for="ops-confirm-password">Confirm new password</label>
+        <input id="ops-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="14" required />
+        <button class="ops-button ops-button--primary" type="submit">Reset password and sign in</button>
+        <button class="ops-text-button" data-back-to-sign-in type="button">Cancel recovery</button>
+      </form>
+
+      <p class="ops-gateway__safety"><strong>Password safety:</strong> each operator has their own account. An operator cannot see or choose another operator&rsquo;s password.</p>
+      <a class="ops-gateway__public" href="/">Return to the public campaign</a>
+    </div>
+  </section>
+
+  <div class="ops-shell" id="ops-app" hidden>
+    <header class="ops-header">
+      <button class="ops-menu" id="ops-menu" type="button" aria-expanded="false" aria-controls="ops-navigation"><span aria-hidden="true">&#9776;</span><span>Case ledgers</span></button>
+      <a class="ops-header__brand" href="/ops"><span class="ops-header__seal" aria-hidden="true">T?</span><span><strong>Case Room</strong><small>Tim Lost Something?</small></span></a>
+      <div class="ops-connection" id="ops-connection" data-state="checking" role="status" aria-live="polite"><span aria-hidden="true"></span>Checking source</div>
+      <button class="ops-operator" id="ops-account-button" type="button" aria-haspopup="dialog"><span class="ops-operator__initials" aria-hidden="true">OP</span><span><strong id="ops-operator-name">Operator</strong><small>Account security</small></span></button>
+      <button class="ops-button ops-button--quiet" id="ops-sign-out" type="button">Sign out</button>
+    </header>
+
+    <div class="ops-workspace">
+      <aside class="ops-sidebar" id="ops-navigation">
+        <p class="ops-sidebar__label">Case ledgers</p>
+        <nav aria-label="Operations ledgers">
+          <button class="ops-nav-item is-active" type="button" data-view="command"><span aria-hidden="true">01</span>Command Desk</button>
+          <button class="ops-nav-item" type="button" data-view="updates"><span aria-hidden="true">02</span>Official Updates</button>
+          <button class="ops-nav-item" type="button" data-view="reports"><span aria-hidden="true">03</span>Private Reports <em id="nav-report-count">--</em></button>
+          <button class="ops-nav-item" type="button" data-view="sponsors"><span aria-hidden="true">04</span>Sponsors</button>
+          <button class="ops-nav-item" type="button" data-view="moderation"><span aria-hidden="true">05</span>Moderation Queue <em id="nav-moderation-count">--</em></button>
+          <button class="ops-nav-item" type="button" data-view="zones"><span aria-hidden="true">06</span>Search Zones</button>
+          <button class="ops-nav-item" type="button" data-view="rules"><span aria-hidden="true">07</span>Rules Ledger</button>
+          <button class="ops-nav-item" type="button" data-view="subscribers"><span aria-hidden="true">08</span>Players</button>
+          <button class="ops-nav-item" type="button" data-view="access"><span aria-hidden="true">09</span>Users &amp; Access</button>
+          <button class="ops-nav-item" type="button" data-view="audit"><span aria-hidden="true">10</span>Audit Trail</button>
+        </nav>
+        <div class="ops-sidebar__foot">
+          <p>All times</p><strong>America/Edmonton</strong>
+          <button class="ops-text-button" id="ops-refresh" type="button">Refresh source data</button>
+        </div>
+      </aside>
+
+      <main class="ops-main" id="ops-main" tabindex="-1">
+        <div class="ops-banner" id="ops-page-error" role="alert" hidden></div>
+
+        <section class="ops-view is-active" data-view-panel="command" aria-labelledby="command-title">
+          <header class="ops-view__header"><div><p class="ops-kicker">Case control / official source</p><h1 id="command-title">Command Desk</h1></div><p id="command-updated">Awaiting a verified source timestamp</p></header>
+          <div class="ops-metrics" aria-label="Current case totals">
+            <article><span>Case status</span><strong id="metric-status">--</strong><small id="metric-status-time">Not loaded</small></article>
+            <article><span>Reports awaiting review</span><strong id="metric-reports">--</strong><small>Private queue</small></article>
+            <article><span>Field Notes pending</span><strong id="metric-moderation">--</strong><small>Nothing auto-publishes</small></article>
+            <article><span>Active hunters</span><strong id="metric-hunters">--</strong><small>Signed-in profiles</small></article>
+          </div>
+
+          <div class="ops-columns ops-columns--command">
+            <form class="ops-panel ops-status-form" id="case-status-form" novalidate>
+              <header class="ops-panel__header"><div><p class="ops-kicker">Public signal</p><h2>Case status</h2></div><span class="ops-chip" id="case-status-chip">Unavailable</span></header>
+              <p class="ops-panel__note">This changes the signal shown across every public page. Backend failure never defaults the case to open.</p>
+              <label for="case-status-select">New status</label>
+              <select id="case-status-select" name="state" required><option value="open">CASE OPEN</option><option value="paused">HUNT PAUSED</option><option value="found">CASE FOUND</option></select>
+              <label for="case-status-reason">Operator note or adjudication reason</label>
+              <textarea id="case-status-reason" name="reason" rows="3" maxlength="500" required></textarea>
+              <div class="ops-time-grid">
+                <label for="case-hours-open">Search opens<input id="case-hours-open" name="hoursOpen" type="time" value="09:00" required /></label>
+                <label for="case-hours-close">Search closes<input id="case-hours-close" name="hoursClose" type="time" value="20:00" required /></label>
+              </div>
+              <label for="case-report-reference">Verified report reference <span>(required for FOUND unless an adjudication reason is recorded)</span></label>
+              <input id="case-report-reference" name="reportId" type="text" autocomplete="off" />
+              <label for="case-next-clue">Next-clue note <span>(optional)</span></label>
+              <input id="case-next-clue" name="nextClue" type="text" maxlength="240" />
+              <label for="case-next-clue-at">Next clue publishes <span>(optional, America/Edmonton)</span></label>
+              <input id="case-next-clue-at" name="nextClueAt" type="datetime-local" />
+              <label class="ops-confirm"><input name="confirmed" type="checkbox" required /><span>I understand this publishes an official case-state change and creates an audit record.</span></label>
+              <div class="ops-action-row"><button class="ops-button ops-button--primary" type="submit">Publish status change</button><span class="ops-inline-result" role="status" aria-live="polite"></span></div>
+            </form>
+
+            <section class="ops-panel" aria-labelledby="quick-queue-title">
+              <header class="ops-panel__header"><div><p class="ops-kicker">Attention queue</p><h2 id="quick-queue-title">Needs a decision</h2></div><button class="ops-text-button" type="button" data-view-link="reports">Open full queues</button></header>
+              <div class="ops-empty" id="command-attention"><strong>Source not loaded</strong><span>Refresh to check private reports and moderation.</span></div>
+            </section>
+          </div>
+
+          <section class="ops-panel" aria-labelledby="kill-switch-title">
+            <header class="ops-panel__header"><div><p class="ops-kicker">Emergency controls</p><h2 id="kill-switch-title">Community kill switches</h2></div><span class="ops-chip ops-chip--warning">Deliberate action</span></header>
+            <p class="ops-panel__note">These controls are displayed only when the backend exposes current values. They never assume a permissive default.</p>
+            <div class="ops-switches" id="kill-switches"><div class="ops-empty"><strong>Control state unavailable</strong><span>No switches can be changed until the source confirms their current state.</span></div></div>
+          </section>
+        </section>
+
+        <section class="ops-view" data-view-panel="updates" aria-labelledby="updates-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Official publishing</p><h1 id="updates-title">Official Updates</h1></div><p>Publisher and timestamp appear publicly</p></header>
+          <div class="ops-columns">
+            <form class="ops-panel" id="official-update-form" novalidate>
+              <header class="ops-panel__header"><div><p class="ops-kicker">New entry</p><h2>Draft an update</h2></div><span class="ops-chip">Official</span></header>
+              <label for="update-title">Headline</label><input id="update-title" name="title" maxlength="120" required />
+              <label for="update-body">Answer-first update</label><textarea id="update-body" name="body" rows="7" maxlength="2000" required></textarea>
+              <label for="update-publish-at">Publish at <span>(leave empty to publish now)</span></label><input id="update-publish-at" name="publishAt" type="datetime-local" />
+              <label class="ops-confirm"><input name="confirmed" type="checkbox" required /><span>I reviewed this for private contact details, raw GPS and unverified claims.</span></label>
+              <div class="ops-action-row"><button class="ops-button ops-button--primary" type="submit">Publish official update</button><span class="ops-inline-result" role="status" aria-live="polite"></span></div>
+            </form>
+            <section class="ops-panel"><header class="ops-panel__header"><div><p class="ops-kicker">Published and scheduled</p><h2>Update ledger</h2></div></header><div class="ops-table-wrap"><table><thead><tr><th>State</th><th>Headline</th><th>When</th></tr></thead><tbody id="updates-table"><tr><td colspan="3"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+          </div>
+        </section>
+
+        <section class="ops-view" data-view-panel="reports" aria-labelledby="reports-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Private and never auto-published</p><h1 id="reports-title">Private Reports</h1></div><p>Finds / tips / safety</p></header>
+          <section class="ops-panel"><div class="ops-toolbar"><label for="report-filter">Show</label><select id="report-filter"><option value="all">All reports</option><option value="find">Find claims</option><option value="tip">Tips</option><option value="safety">Safety</option></select><button class="ops-button ops-button--quiet" type="button" id="refresh-reports">Refresh</button></div><div class="ops-table-wrap"><table><thead><tr><th>Received</th><th>Type</th><th>Waypoint</th><th>Evidence</th><th>State</th><th><span class="sr-only">Action</span></th></tr></thead><tbody id="reports-table"><tr><td colspan="6"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="ops-view" data-view-panel="sponsors" aria-labelledby="sponsors-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Private partnership pipeline</p><h1 id="sponsors-title">Sponsors</h1></div><p>Inquiry is not an agreement</p></header>
+          <div class="ops-metrics" aria-label="Sponsor inquiry totals">
+            <article><span>New</span><strong id="sponsor-new-count">--</strong><small>Awaiting review</small></article>
+            <article><span>Contacted</span><strong id="sponsor-contacted-count">--</strong><small>Follow-up started</small></article>
+            <article><span>Qualified</span><strong id="sponsor-qualified-count">--</strong><small>Potential fit</small></article>
+            <article><span>Accepted</span><strong id="sponsor-accepted-count">--</strong><small>Internal pipeline state</small></article>
+          </div>
+          <section class="ops-panel">
+            <form class="ops-toolbar ops-sponsor-toolbar" id="sponsor-filters">
+              <label for="sponsor-state-filter">State</label>
+              <select id="sponsor-state-filter"><option value="">All states</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="accepted">Accepted</option><option value="closed">Closed</option></select>
+              <label for="sponsor-support-filter">Support type</label>
+              <select id="sponsor-support-filter"><option value="">All support types</option><option value="community">Community</option><option value="lead">Lead</option><option value="prize_in_kind">Prize / in-kind</option><option value="other">Other</option></select>
+              <label for="sponsor-search">Search</label>
+              <input id="sponsor-search" type="search" maxlength="100" autocomplete="off" />
+              <button class="ops-button ops-button--quiet" type="submit">Apply filters</button>
+              <button class="ops-button ops-button--quiet" id="refresh-sponsors" type="button">Refresh</button>
+            </form>
+            <p class="ops-ledger-state" id="sponsors-state" role="status" aria-live="polite">Open this ledger to load private inquiries.</p>
+            <p class="ops-panel__note">Accepted is an internal pipeline state. It does not publish a sponsor.</p>
+            <div class="ops-table-wrap"><table><thead><tr><th>Received</th><th>Reference</th><th>Organization</th><th>Contact</th><th>Support</th><th>State</th><th>Action</th></tr></thead><tbody id="sponsors-table"><tr><td colspan="7"><span class="ops-table-empty">No sponsor records loaded.</span></td></tr></tbody></table></div>
+          </section>
+        </section>
+
+        <section class="ops-view" data-view-panel="moderation" aria-labelledby="moderation-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Nothing auto-publishes</p><h1 id="moderation-title">Moderation Queue</h1></div><p>Field Notes and image derivatives</p></header>
+          <section class="ops-panel"><div class="ops-table-wrap"><table><thead><tr><th>Submitted</th><th>Hunter</th><th>Waypoint</th><th>Media</th><th>Excerpt</th><th><span class="sr-only">Decision</span></th></tr></thead><tbody id="moderation-table"><tr><td colspan="6"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="ops-view" data-view-panel="zones" aria-labelledby="zones-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Ops-approved boundaries only</p><h1 id="zones-title">Search Zones</h1></div><p>Unknown areas fail closed</p></header>
+          <section class="ops-panel"><div class="ops-zone-key" aria-label="Zone-state legend"><span data-zone="open">Open</span><span data-zone="restricted">Restricted</span><span data-zone="hazardous">Hazardous</span><span data-zone="closed">Temporarily closed</span></div><div class="ops-table-wrap"><table><thead><tr><th>Waypoint</th><th>State</th><th>Public instruction</th><th>Verified</th></tr></thead><tbody id="zones-table"><tr><td colspan="4"><span class="ops-table-empty">No approved zone source loaded. Exact directions remain locked.</span></td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="ops-view" data-view-panel="rules" aria-labelledby="rules-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Dated public record</p><h1 id="rules-title">Rules Ledger</h1></div><p>Versioned, never silently overwritten</p></header>
+          <section class="ops-panel"><header class="ops-panel__header"><div><p class="ops-kicker">Published versions</p><h2>Rules history</h2></div><span class="ops-chip" id="rules-current-version">No current version</span></header><div class="ops-table-wrap"><table><thead><tr><th>Version</th><th>Published</th><th>Summary</th><th>State</th></tr></thead><tbody id="rules-table"><tr><td colspan="4"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="ops-view" data-view-panel="subscribers" aria-labelledby="subscribers-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Private participation ledger</p><h1 id="subscribers-title">Players</h1></div><p>Account stage, legal versions and separate email permissions</p></header>
+          <div class="ops-metrics"><article><span>Verified accounts</span><strong id="subscriber-accounts">--</strong><small>Provider-verified email</small></article><article><span>Profiles complete</span><strong id="subscriber-profiles">--</strong><small>Onboarding complete</small></article><article><span>Hunter updates</span><strong id="subscriber-hunt">--</strong><small>Explicit consent</small></article><article><span>SebaHub marketing</span><strong id="subscriber-marketing">--</strong><small>Separate consent</small></article></div>
+          <section class="ops-panel">
+            <header class="ops-panel__header"><div><p class="ops-kicker">Authorized private data</p><h2>Subscriber ledger</h2></div><div class="ops-row-actions"><button class="ops-button ops-button--quiet" id="subscriber-refresh" type="button">Refresh</button><button class="ops-button ops-button--quiet" id="subscriber-export" type="button" disabled>Export loaded CSV</button></div></header>
+            <p class="ops-ledger-state" id="subscribers-state" role="status" aria-live="polite">Source not loaded. Counts and export remain unavailable until this private ledger is opened.</p>
+            <div class="ops-table-wrap"><table><thead><tr><th>Verified email</th><th>Hunter</th><th>Town / area</th><th>Funnel stage</th><th>Privacy/media</th><th>Waiver</th><th>Hunt email</th><th>Marketing</th><th>Account actions</th></tr></thead><tbody id="subscribers-table"><tr><td colspan="9"><span class="ops-table-empty">Open this ledger to load authorized player records.</span></td></tr></tbody></table></div>
+            <div class="ops-ledger-actions"><button class="ops-button ops-button--quiet" id="subscriber-load-more" type="button" hidden>Load more players</button><span id="subscriber-loaded-count">No player records loaded</span></div>
+          </section>
+        </section>
+
+        <section class="ops-view" data-view-panel="access" aria-labelledby="access-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Invitation-only operators</p><h1 id="access-title">Users &amp; Access</h1></div><p>Equal publishing rights / audited recovery</p></header>
+          <section class="ops-panel ops-access-note"><strong>Peer recovery is not peer password control.</strong><span>An active operator may send recovery instructions, revoke sessions or suspend access. The account owner receives the verification code and chooses their own password.</span></section>
+          <section class="ops-panel"><div class="ops-table-wrap"><table><thead><tr><th>Operator</th><th>Invitation</th><th>Last sign-in</th><th>Sessions</th><th>Access</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="staff-table"><tr><td colspan="6"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div><div class="ops-action-explainer"><span><strong>Send recovery instructions</strong> Emails a verified recovery flow.</span><span><strong>Revoke sessions</strong> Signs the operator out on other devices.</span><span><strong>Suspend access</strong> Blocks the D1 authorization check immediately.</span></div></section>
+        </section>
+
+        <section class="ops-view" data-view-panel="audit" aria-labelledby="audit-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Append-only accountability</p><h1 id="audit-title">Audit Trail</h1></div><p>Security and publishing events</p></header>
+          <section class="ops-panel"><div class="ops-table-wrap"><table><thead><tr><th>When</th><th>Operator</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody id="audit-table"><tr><td colspan="5"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="ops-dialog ops-report-dialog" data-report-review-dialog aria-labelledby="report-review-title">
+    <form method="dialog" class="ops-dialog__head"><div><p class="ops-kicker">Private report review</p><h2 id="report-review-title">Review report</h2></div><button class="ops-icon-button" value="close" data-report-review-close aria-label="Close report review">&times;</button></form>
+    <div class="ops-dialog__body ops-report-dialog__body">
+      <p class="ops-ledger-state" id="report-review-state" role="status" aria-live="polite">Choose Review report to load one private submission.</p>
+      <div class="ops-report-dialog__grid">
+        <section class="ops-report-private" aria-labelledby="report-private-title">
+          <p class="ops-kicker">Private &mdash; never copied automatically</p>
+          <h3 id="report-private-title">Submitted case details</h3>
+          <div data-report-private-detail></div>
+          <h4>Processed private evidence</h4>
+          <div class="ops-report-evidence" data-report-evidence></div>
+          <div class="ops-report-status" data-report-status-actions>
+            <h4>Review state</h4>
+            <p>State changes are private and audited. Publication is a separate confirmed action.</p>
+            <div class="ops-row-actions">
+              <button class="ops-button ops-button--quiet" type="button" data-report-begin-review disabled>Begin review</button>
+              <label for="report-next-status">Next state<span class="sr-only"> for this private report</span></label>
+              <select id="report-next-status" data-report-next-status disabled><option value="contacted">Contacted</option><option value="escalated">Escalated</option><option value="rejected">Rejected</option><option value="resolved">Resolved</option></select>
+              <button class="ops-button ops-button--quiet" type="button" data-report-save-status disabled>Save private state</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="ops-report-public" aria-labelledby="report-public-title">
+          <p class="ops-kicker">Public allowlist preview</p>
+          <h3 id="report-public-title">Approve for Updates</h3>
+          <p>Email, phone, private name and account identifiers are never included. Waypoint and submitted GPS are public game facts after approval.</p>
+          <form class="ops-form ops-form--compact" data-report-publication-form novalidate>
+            <label for="report-public-title-input">Public headline</label>
+            <input id="report-public-title-input" name="title" maxlength="200" required disabled />
+            <label for="report-public-body">Edited public story</label>
+            <textarea id="report-public-body" name="body" rows="7" maxlength="10000" required disabled></textarea>
+            <div data-report-public-preview></div>
+            <label class="ops-confirm"><input name="confirmPublication" type="checkbox" required disabled /><span>I reviewed this exact public preview. Contact details and children&rsquo;s identities are excluded, while the shown waypoint, GPS and checked images will be public.</span></label>
+            <div class="ops-action-row">
+              <button class="ops-button ops-button--primary" type="submit" data-report-publish disabled>Approve &amp; publish</button>
+              <button class="ops-button ops-button--danger" type="button" data-report-unpublish hidden>Unpublish report post</button>
+            </div>
+            <p class="ops-inline-result" id="report-publication-result" role="status" aria-live="polite" tabindex="-1"></p>
+          </form>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="ops-dialog" id="ops-waiver-dialog" aria-labelledby="waiver-dialog-title">
+    <form method="dialog" class="ops-dialog__head"><div><p class="ops-kicker">Private legal record</p><h2 id="waiver-dialog-title">Participation waiver</h2></div><button class="ops-icon-button" value="close" aria-label="Close legal record">&times;</button></form>
+    <div class="ops-dialog__body">
+      <p class="ops-ledger-state" id="waiver-detail-state" role="status" aria-live="polite">Choose Review legal record for one player to load the private acceptance.</p>
+      <div data-waiver-detail-output></div>
+      <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-retry-waiver-receipt disabled>Retry receipt</button></div>
+      <p class="ops-panel__note">Participant names and birth years stay in this deliberately opened record. They are not included in the player export.</p>
+    </div>
+  </dialog>
+
+  <dialog class="ops-dialog" id="ops-account-dialog" aria-labelledby="account-dialog-title">
+    <form method="dialog" class="ops-dialog__head"><div><p class="ops-kicker">Managed identity</p><h2 id="account-dialog-title">Account security</h2></div><button class="ops-icon-button" value="close" aria-label="Close account security">&times;</button></form>
+    <div class="ops-dialog__body">
+      <section><h3>Change my password</h3><p>This changes only your account and signs out your other sessions.</p><form class="ops-form ops-form--compact" id="change-password-form" novalidate><label for="current-password">Current password</label><input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required /><label for="new-account-password">New password</label><input id="new-account-password" name="newPassword" type="password" autocomplete="new-password" minlength="14" required /><label for="confirm-account-password">Confirm new password</label><input id="confirm-account-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="14" required /><button class="ops-button ops-button--primary" type="submit">Change my password</button><span class="ops-inline-result" role="status" aria-live="polite"></span></form></section>
+      <section><h3>Optional authenticator MFA</h3><p>Add or manage a time-based authenticator and backup codes through the protected identity profile.</p><button class="ops-button ops-button--quiet" id="manage-mfa" type="button">Manage authenticator and backup codes</button></section>
+    </div>
+  </dialog>
+
+  <template id="ops-empty-row"><tr><td colspan="6"><span class="ops-table-empty">No records in this ledger.</span></td></tr></template>
+  <script type="module" src="/assets/app/ops.js"></script>
+</body>
+</html>

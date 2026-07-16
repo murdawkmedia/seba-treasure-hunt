@@ -1,0 +1,54 @@
+name = "tim-lost-media-processor"
+main = "./dist-media/worker.js"
+compatibility_date = "2026-07-11"
+workers_dev = false
+preview_urls = false
+
+[vars]
+DEPLOYMENT_ENV = "production"
+
+[images]
+binding = "IMAGES"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tim-lost-hunter-platform"
+database_id = "6cd93ca6-7a4b-46eb-bfb3-e71040f405d7"
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "tim-lost-private-media"
+
+[[queues.consumers]]
+queue = "tim-lost-media-processing"
+max_batch_size = 5
+max_batch_timeout = 3
+max_retries = 5
+retry_delay = 15
+dead_letter_queue = "tim-lost-media-dlq"
+
+[env.validation]
+name = "tim-lost-media-processor-validation"
+
+[env.validation.vars]
+DEPLOYMENT_ENV = "validation"
+
+[env.validation.images]
+binding = "IMAGES"
+
+[[env.validation.d1_databases]]
+binding = "DB"
+database_name = "tim-lost-hunter-platform-validation"
+database_id = "2ad5e924-39df-48ce-aec8-d3029b7a4abf"
+
+[[env.validation.r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "tim-lost-private-media-validation"
+
+[[env.validation.queues.consumers]]
+queue = "tim-lost-media-processing-validation"
+max_batch_size = 5
+max_batch_timeout = 3
+max_retries = 5
+retry_delay = 15
+dead_letter_queue = "tim-lost-media-dlq-validation"

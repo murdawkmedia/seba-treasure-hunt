@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Report a Find, Tip, or Safety Concern | Tim Lost Something?</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/assets/favicon-32x32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="description" content="Privately report a possible find, a treasure-hunt tip, or a safety concern to the Tim Lost Something? campaign team." />
+  <meta name="robots" content="noindex,follow" />
+  <link rel="canonical" href="https://www.timlostsomething.com/report" />
+  <meta property="og:site_name" content="Tim Lost Something?" />
+  <meta property="og:title" content="Report Something | Tim Lost Something?" />
+  <meta property="og:description" content="Send a private find, tip, or safety report for the Seba Beach treasure hunt." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://www.timlostsomething.com/report" />
+  <meta property="og:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Pirata+One&family=Special+Elite&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/hunter.css" />
+  <link rel="stylesheet" href="/css/campaign-shell.css" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
+</head>
+<body class="campaign-page campaign-page--workspace hunter-page" data-campaign-route="report">
+  <!-- CAMPAIGN_SHELL {"route":"report","skipLabel":"Skip to private reporting","skipTarget":"main"} -->
+
+  <main id="main" tabindex="-1">
+    <section class="hunter-hero" aria-labelledby="report-title">
+      <div class="hunter-hero__inner">
+        <p class="hunter-kicker">Private intake · Reviewed by campaign operators</p>
+        <h1 id="report-title">Report Something</h1>
+        <p class="hunter-hero__lead">Send a find claim, useful tip, or safety concern privately. Nothing submitted here goes onto the public clue board automatically.</p>
+      </div>
+    </section>
+
+    <div class="hunter-main">
+      <section class="answer-first" aria-labelledby="report-answer">
+        <p class="field-label">The short answer</p>
+        <h2 id="report-answer">What should I do if I find Tim's ID bundle?</h2>
+        <p>Leave the scene undisturbed when safe, take a clear photograph, note the nearest waypoint, and submit a find report below. A campaign operator will review the evidence and contact you privately.</p>
+      </section>
+
+      <div class="report-grid">
+        <section class="field-panel form-shell" data-report-form-panel aria-labelledby="report-form-title">
+          <p class="field-label">Private campaign intake</p>
+          <h2 id="report-form-title">Find, tip, or safety report</h2>
+          <div class="system-message" data-report-result role="status" aria-live="polite" tabindex="-1" hidden></div>
+          <div class="system-message" data-report-errors role="alert" tabindex="-1" hidden></div>
+
+          <form data-report-form novalidate enctype="multipart/form-data">
+            <div class="form-grid">
+              <div class="form-field form-field--full">
+                <label for="report-type">What are you reporting? <span class="required-mark" aria-hidden="true">*</span></label>
+                <select id="report-type" name="type" required aria-describedby="report-type-hint report-type-error">
+                  <option value="">Choose one</option>
+                  <option value="find">Possible find</option>
+                  <option value="tip">Tip or observation</option>
+                  <option value="safety">Safety concern</option>
+                </select>
+                <span class="field-hint" id="report-type-hint">Find claims require at least one clear photograph.</span>
+                <span class="field-error" id="report-type-error" data-error-for="type"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-name">Your name <span class="required-mark" aria-hidden="true">*</span></label>
+                <input id="report-name" name="name" type="text" autocomplete="name" maxlength="100" required aria-describedby="report-name-error" />
+                <span class="field-error" id="report-name-error" data-error-for="name"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-email">Email <span class="required-mark" aria-hidden="true">*</span></label>
+                <input id="report-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required aria-describedby="report-email-error" />
+                <span class="field-error" id="report-email-error" data-error-for="email"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-phone">Phone (optional)</label>
+                <input id="report-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="30" aria-describedby="report-phone-error" />
+                <span class="field-error" id="report-phone-error" data-error-for="phone"></span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-waypoint">Nearest waypoint (optional)</label>
+                <select id="report-waypoint" name="waypointId" aria-describedby="report-waypoint-hint">
+                  <option value="not_sure">Not sure / between waypoints</option>
+                  <option value="1" data-report-waypoint data-route-order="1">Waypoint 1</option>
+                  <option value="2" data-report-waypoint data-route-order="2">Waypoint 2</option>
+                  <option value="3" data-report-waypoint data-route-order="3">Waypoint 3</option>
+                  <option value="4" data-report-waypoint data-route-order="4">Waypoint 4</option>
+                  <option value="13" data-report-waypoint data-route-order="5">Waypoint 5</option>
+                  <option value="5" data-report-waypoint data-route-order="6">Waypoint 6</option>
+                  <option value="6" data-report-waypoint data-route-order="7">Waypoint 7</option>
+                  <option value="7" data-report-waypoint data-route-order="8">Waypoint 8</option>
+                  <option value="8" data-report-waypoint data-route-order="9">Waypoint 9</option>
+                  <option value="9" data-report-waypoint data-route-order="10">Waypoint 10</option>
+                  <option value="10" data-report-waypoint data-route-order="11">Waypoint 11</option>
+                  <option value="11" data-report-waypoint data-route-order="12">Waypoint 12</option>
+                  <option value="12" data-report-waypoint data-route-order="13">Waypoint 13</option>
+                  <option value="different_location">Different location</option>
+                </select>
+                <span class="field-hint" id="report-waypoint-hint" data-waypoint-load-state>Loading the public waypoint list…</span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-location">Describe the location <span class="required-mark" aria-hidden="true">*</span></label>
+                <input id="report-location" name="locationDescription" type="text" maxlength="300" required placeholder="Nearby sign, trail feature, or waypoint—do not enter a home address" aria-describedby="report-location-error" />
+                <span class="field-error" id="report-location-error" data-error-for="locationDescription"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <span id="location-sharing-label"><strong>Optional browser location</strong></span>
+                <div class="location-capture" aria-labelledby="location-sharing-label">
+                  <button type="button" data-report-use-location>Use my current location</button>
+                  <span data-report-location-state>Location sharing is optional and starts only when you press the button.</span>
+                </div>
+                <input type="hidden" name="latitude" data-report-latitude />
+                <input type="hidden" name="longitude" data-report-longitude />
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-details">What happened? <span class="required-mark" aria-hidden="true">*</span></label>
+                <textarea id="report-details" name="details" maxlength="3000" required placeholder="Tell the review team what you saw, when you saw it, and what makes it relevant." aria-describedby="report-details-error"></textarea>
+                <span class="field-error" id="report-details-error" data-error-for="details"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-photo">Photographs <span data-photo-required-copy>(required for a find)</span></label>
+                <input id="report-photo" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="report-photo-hint report-photo-error" />
+                <span class="field-hint" id="report-photo-hint">Up to three JPEG, PNG, or WebP images; maximum 10 MiB each. Images are private unless an operator separately approves a metadata-free public derivative.</span>
+                <span class="field-error" id="report-photo-error" data-error-for="photo"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <span id="report-turnstile-label"><strong>Prove you're human</strong> <span class="required-mark" aria-hidden="true">*</span></span>
+                <div class="turnstile-shell" data-turnstile tabindex="-1" role="group" aria-labelledby="report-turnstile-label" aria-describedby="report-turnstile-hint report-turnstile-error">
+                  <span id="report-turnstile-hint" data-turnstile-state>Preparing the human check…</span>
+                </div>
+                <span class="field-error" id="report-turnstile-error" data-error-for="turnstileToken"></span>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label for="report-accuracy">
+                  <input id="report-accuracy" name="accuracy" type="checkbox" required aria-describedby="report-accuracy-error" />
+                  I believe this report is accurate and understand the team may contact me to verify it.
+                </label>
+                <span class="field-error" id="report-accuracy-error" data-error-for="accuracy"></span>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="hunter-button" type="submit" data-report-submit>Send private report</button>
+            </div>
+            <p class="field-hint">Submitting creates a private review record. It does not publish your name, contact details, photo, or location.</p>
+          </form>
+        </section>
+
+        <section class="field-panel report-receipt" data-report-receipt hidden tabindex="-1" aria-labelledby="report-receipt-title">
+          <p class="field-label">Private report receipt</p>
+          <h2 id="report-receipt-title">Report received privately</h2>
+          <p>Your reference is <strong data-report-reference></strong>.</p>
+          <p>An operator will review the report before anything is published.</p>
+          <div class="action-row">
+            <button type="button" class="hunter-button" data-report-another>Submit another report</button>
+            <a class="hunter-button hunter-button--quiet" href="/dashboard">Open my Dashboard</a>
+          </div>
+        </section>
+
+        <aside class="field-panel report-aside" aria-labelledby="report-next-title">
+          <p class="field-label">What happens next</p>
+          <h2 id="report-next-title">A human reviews it</h2>
+          <ol class="plain-list">
+            <li><strong>Received:</strong> the system stores your report privately.</li>
+            <li><strong>Reviewing:</strong> an operator checks the details and evidence.</li>
+            <li><strong>Contacted or escalated:</strong> the team follows up when needed.</li>
+            <li><strong>Verified, rejected, or resolved:</strong> the review outcome is recorded.</li>
+          </ol>
+          <p>A sanitized official update can be drafted later, but only through a separate operator decision.</p>
+          <p class="field-panel__action"><a href="/privacy">How report data is handled →</a></p>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <!-- CAMPAIGN_FOOTER -->
+  <script src="/js/site.js"></script>
+  <script type="module" src="/assets/app/status.js"></script>
+  <script type="module" src="/assets/app/report.js"></script>
+</body>
+</html>

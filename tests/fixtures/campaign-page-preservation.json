@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "72109a9088770beb467964e464b091d9b7bbb581",
+  "normalizationVersion": "campaign-shell-v2",
+  "pages": {
+    "index.html": {
+      "headSha256": "340f78bbe3426fc155970df38dee1129591866a93e2d3d24f22563346a08c1b0",
+      "scriptsSha256": "732599a94fe23863f4877f5e5065fbbf77312f3c5f996ff8f98e73b73fdf9cb6",
+      "bodySha256": "cdffa3ee77ae91fbc234ebc193a0bf790d9c61f28a7df590740363113c2378d6"
+    },
+    "start.html": {
+      "headSha256": "0f13db80f1744734b92acec435a446a453a1d5c022a8ce8c9969c171aa2fdefb",
+      "scriptsSha256": "262f8f0930497e8050dfb3978007566d6248423c30bea3db1fca7d356b1d9bf9",
+      "bodySha256": "94ccec58c560f5cff6567bccc54526fddabc4c63a5d3e3bd6f80738e9f69970e"
+    },
+    "route.html": {
+      "headSha256": "3f59c3a42c9145e4456f384aa42621290219c2d6e2d9310af2d605e6dc0c88ec",
+      "scriptsSha256": "b89ba8f0b6240673595f590082120020ae9ca5f8dafc71d7d93628e607eab959",
+      "bodySha256": "de44372ec01a54d8c05d9f114b55541f9472f3bdd5b16e16863f1003ac81a98b"
+    },
+    "interview.html": {
+      "headSha256": "ca23f8a7fdfad34189d5a954f9b53d297b415dea2658c9f03e6978950b2b377d",
+      "scriptsSha256": "42cac129f993ce24f5d7e4edc35ef88743c6ec8ac92d5d6caeba68d4c1a2060f",
+      "bodySha256": "6636eb13b82a1b56d9d2d6a76a177aadfc40a3e983181e0baa70dd62336abb6a"
+    },
+    "updates.html": {
+      "headSha256": "fc14ebc7bb89266871e7e0f8addfaffc9eaa77f776169b9e6dc3326afed54225",
+      "scriptsSha256": "4cae1450b14fbdf22df10132c2214394dcdf228c36e23b67588af655f1da89df",
+      "bodySha256": "eda209ad444d1b6d3eb389c304c588d275021c98a874e63c617918903a4185ae"
+    },
+    "clue-board.html": {
+      "headSha256": "f322a2d8e211390544714fd512d69e5a179ef392767f6587be8d13fbc3ad7cc5",
+      "scriptsSha256": "33cfcfe06b304f951a5c68269a423adf42ed4d20e845dbb045298d45b3b565a7",
+      "bodySha256": "98a6e628900755a6028e2a6b8836200973eb7035f0f43bd08e7f124b7c323d77"
+    },
+    "report.html": {
+      "headSha256": "22d87d78c6f0081ade8c8d04db85798bcb0402b9b3fd5ea8d8587defdab288c8",
+      "scriptsSha256": "575859454cb1e1cd0c049bc2683e44d54e849d460c707e105c92fc8144b7387c",
+      "bodySha256": "a9bac6c0fa84b91b839c67bfacba87e69e526a5f537b79625c4141fa7710221d"
+    },
+    "rules.html": {
+      "headSha256": "d8b5ea5e6fb682b1e515cdd8ea6fc1f431081d90157c6dce354d63be507d559c",
+      "scriptsSha256": "367ff84bd6251a75b0b1aa6aee7311e295a2336208a4ab09eb9f6958a9d2aa2f",
+      "bodySha256": "f1b9ccae3b21e13d8d7d9fc16f9884fcacb6375f259e5b3be0a3e349ccacdaca"
+    },
+    "dashboard.html": {
+      "headSha256": "ca974a53879646027b7963e3d44951a12daa668c9ad95b6faf2463fef006913b",
+      "scriptsSha256": "e05ab979782e680caf291b2f77e492f28d3ecbfadaff5abc4e2e1f18ed5bef2d",
+      "bodySha256": "8d4e7c0b8bb1378b99dad874fdedf4d6325ada27f907504aee2966638630ea6d"
+    },
+    "sponsors.html": {
+      "headSha256": "6c1bdffd7a0d0d723aa6781c139fc32fa1f33cb920c7d3156f923bae5059e5b1",
+      "scriptsSha256": "e750a5f7e43531944e9454afb1c60ca4736d76699ca98a65d9052a3f4e251711",
+      "bodySha256": "4d2b56427a9aac4361ebd45d001eb7b13d09c74f2fb99aea3598a71573d15189"
+    },
+    "privacy.html": {
+      "headSha256": "baf3b12404a3e2be1076289cefd81e329c872f4049b7a645659a17da6add6c35",
+      "scriptsSha256": "1401289e16acc7528e52ffec169a0ac9075a169914aa014a02c4ccd61be8c6ec",
+      "bodySha256": "28b1a065f1d8f30d53f568cb6712940e10ebcd1d59342b64a322851abceeed3c"
+    },
+    "waiver.html": {
+      "headSha256": "a8299274588d621a2645d67958e7e5ea8c615e659139abaa6fa374a948c3580f",
+      "scriptsSha256": "5833cd69d2f9d7f8962234eaf8a3ad95a0dffa58d78cb5498dc007dfcdd1ca6e",
+      "bodySha256": "5cc2983f0513ad7fcc8f433563aaabcdc39a141d17e385ca95ff077f15d1f8d7"
+    },
+    "community-guidelines.html": {
+      "headSha256": "fb6f816f5965e3ed87aeb3e86b0c8e4c6038b463403a5fee0c0bb26cfd6d18eb",
+      "scriptsSha256": "dd7444b4dad735acac2fb07be0e163e92e841ace087b3944cea5f03b19f78f96",
+      "bodySha256": "2d6586f8c0ac81cd338f652dcc016e5c77033e286375efce2e5d3ed9a4fc315d"
+    }
+  }
+}

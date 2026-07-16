@@ -1,16 +1,4 @@
-/* ============================================================
-   The Great Seba Beach Treasure Hunt — behaviour
-   One data source (SPOTS) feeds both the map and the cards.
-   Coordinates are approximate on purpose (we're pirates).
-   TODO(coords): values verified via OpenStreetMap geocoding.
-   ============================================================ */
-
-// Anchor: the village of Seba Beach, Alberta (west end of Wabamun Lake).
-// Coordinates below verified via OpenStreetMap Nominatim / geocoder.ca.
-var SEBA_BEACH = { lat: 53.5647671, lng: -114.7296895 };
-
-// The four legendary spots. url = the real property site (or a map link).
-// linkLabel lets us say "Visit ..." for sites and "Chart a course ..." for map pins.
+/* Public property cards and gallery. Precise hunt geography is member-only. */
 var SPOTS = [
   {
     key: "sebahub",
@@ -18,7 +6,6 @@ var SPOTS = [
     name: "SebaHub",
     island: "Skull Rock HQ",
     emoji: "🏴‍☠️",
-    lat: 53.5603733, lng: -114.7397426,   // the old Seba Beach School — owner-confirmed exact coords
     url: "https://sebahub.com",
     linkLabel: "Visit SebaHub →",
     img: "assets/photos/card-sebahub.jpg",
@@ -32,7 +19,6 @@ var SPOTS = [
     name: "SebaStays",
     island: "Cozy Cove",
     emoji: "🏕️",
-    lat: 53.567, lng: -114.7451,           // Forest Lodge, just NORTH of Kokanee (nudged off Village Vows)
     url: "https://sebastays.com",
     linkLabel: "Visit SebaStays →",
     img: "assets/photos/card-sebastays.jpg",
@@ -46,7 +32,6 @@ var SPOTS = [
     name: "Village Vows",
     island: "Lovers' Lagoon",
     emoji: "💍",
-    lat: 53.5666, lng: -114.7458,          // The Forest Lodge (53117 Hwy 31), just north of Kokanee
     url: "https://villagevows.com",
     linkLabel: "Visit Village Vows →",
     img: "assets/photos/card-villagevows.jpg",
@@ -60,7 +45,6 @@ var SPOTS = [
     name: "Kokanee Springs RV Park",
     island: "Wheelhouse Wharf",
     emoji: "🚐",
-    lat: 53.5645731, lng: -114.7464346,    // 53118 Highway 31, Parkland County
     url: "https://www.google.com/maps/search/?api=1&query=Kokanee+Springs+RV+Park+Seba+Beach+Alberta",
     linkLabel: "Chart a course →",
     img: "assets/photos/card-kokanee.jpg",
@@ -70,92 +54,6 @@ var SPOTS = [
   }
 ];
 
-// Real Seba Beach landmarks (OSM-verified), sprinkled as bonus clue markers.
-var LANDMARKS = [
-  { name: "Seba Beach Heritage Museum", lat: 53.5599331, lng: -114.7361936, note: "An old church full o' lake relics and a Memory Wall. Ask the ghosts about Tim's missing ID." },
-  { name: "Mini Golf & Ice Cream", lat: 53.5564909, lng: -114.7382734, note: "Windmills, waffle cones, and a hole-in-one worthy of a doubloon. A fine spot to re-provision the crew." },
-  { name: "The Beach & Pier", lat: 53.5535, lng: -114.7356, note: "The sandy shore and pier on Wabamun Lake, where gulls plot mutiny and stones beg to be skipped." }
-];
-
-// Known designated parking (confirmed by owner). More may be added when the hunt goes live.
-var PARKING = [
-  { name: "SebaHub parking lot", lat: 53.559917, lng: -114.739583, note: "Park at the old Seba Beach School, then set off on foot." },
-  { name: "Kokanee Springs parking", lat: 53.5633344, lng: -114.7399789, note: "At the front main entrance, right next to the RV Pub & Grill. Grab a bite, then hunt." }
-];
-
-/* ---------------- Map ---------------- */
-function initMap() {
-  var mapEl = document.getElementById("map");
-  if (!mapEl || typeof L === "undefined") return;
-
-  var map = L.map("map", { scrollWheelZoom: false }).setView([SEBA_BEACH.lat, SEBA_BEACH.lng], 14);
-
-  // Esri World Imagery — free satellite tiles, no API key.
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    {
-      maxZoom: 19,
-      attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics"
-    }
-  ).addTo(map);
-
-  // Faint place-label overlay so folks can read street/town names.
-  // Esri reference layer (same provider as the imagery, no API key).
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, opacity: 0.9, attribution: "Labels &copy; Esri" }
-  ).addTo(map);
-
-  var bounds = [];
-
-  function emojiIcon(emoji, big) {
-    return L.divIcon({
-      className: "",
-      html: '<div class="emoji-pin" style="font-size:' + (big ? 34 : 24) + 'px">' + emoji + "</div>",
-      iconSize: [36, 36],
-      iconAnchor: [18, 34],
-      popupAnchor: [0, -30]
-    });
-  }
-
-  SPOTS.forEach(function (s) {
-    var external = s.url.charAt(0) !== "#";
-    var popup =
-      (s.img ? '<img class="pop-img" src="' + s.img + '" alt="' + (s.alt || s.name) + '" />' : "") +
-      '<h3>' + s.emoji + " " + s.island + "</h3>" +
-      '<strong>' + s.name + "</strong>" +
-      '<div class="riddle">🧭 ' + s.riddle + "</div>" +
-      '<a class="pop-link" href="' + s.url + '"' +
-        (external ? ' target="_blank" rel="noopener"' : "") +
-        ">" + s.linkLabel + "</a>";
-    L.marker([s.lat, s.lng], { icon: emojiIcon(s.emoji, true), title: s.name })
-      .addTo(map)
-      .bindPopup(popup);
-    bounds.push([s.lat, s.lng]);
-  });
-
-  LANDMARKS.forEach(function (m) {
-    L.marker([m.lat, m.lng], { icon: emojiIcon("🪧", false), title: m.name })
-      .addTo(map)
-      .bindPopup('<h3>🪧 ' + m.name + "</h3><div class=\"riddle\">" + m.note + "</div>");
-    bounds.push([m.lat, m.lng]);
-  });
-
-  PARKING.forEach(function (p) {
-    L.marker([p.lat, p.lng], { icon: emojiIcon("🅿️", false), title: p.name })
-      .addTo(map)
-      .bindPopup('<h3>🅿️ ' + p.name + "</h3><div class=\"riddle\">" + p.note + "</div>");
-    bounds.push([p.lat, p.lng]);
-  });
-
-  if (bounds.length) {
-    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-  }
-
-  // Only grab the scroll wheel once the user commits to the map.
-  map.on("focus", function () { map.scrollWheelZoom.enable(); });
-  map.on("blur", function () { map.scrollWheelZoom.disable(); });
-}
 
 /* ---------------- Property cards ---------------- */
 function renderCards() {
@@ -194,8 +92,7 @@ function renderGallery() {
     { src: "assets/photos/gallery-kokanee-sign.jpg", label: "Kokanee Springs — the front gate", alt: "The Kokanee Springs campground entrance sign with Adirondack chairs and flags" },
     { src: "assets/photos/gallery-ceremony.jpg", label: "The lakeside ceremony grounds", alt: "A lakeside wedding ceremony at the Forest Lodge" },
     { src: "assets/photos/gallery-sebahub-open.jpg", label: "SebaHub is open — return the ID here", alt: "A SEBAHUB IS OPEN banner on a chain-link fence by the ball field" },
-    { src: "assets/photos/gallery-powwow.jpg", label: "Community days at the old school", alt: "A dancer in regalia at a Seba Beach community gathering" },
-    { src: "assets/route/route-video-poster.jpg", label: "🎬 Watch: The Route in 81 Seconds", alt: "Title card of the route video: The Route — Retraced", href: "route.html#route-video" }
+    { src: "assets/photos/gallery-powwow.jpg", label: "Community days at the old school", alt: "A dancer in regalia at a Seba Beach community gathering" }
   ];
   grid.innerHTML = tiles.map(function (t) {
     if (t.src) {
@@ -216,25 +113,85 @@ function renderGallery() {
 }
 
 /* ---------------- Mobile nav ---------------- */
+function closeNav(toggle, nav, restoreFocus) {
+  if (!toggle || !nav) return;
+  nav.classList.remove("open");
+  toggle.setAttribute("aria-expanded", "false");
+  if (restoreFocus) toggle.focus();
+}
+
+function initStackedHeaderGeometry() {
+  var firstRow = document.querySelector(".case-strip");
+  if (!(firstRow instanceof HTMLElement)) return;
+  var secondRow = document.querySelector(".campaign-header");
+  if (!(secondRow instanceof HTMLElement)) return;
+
+  var root = document.documentElement;
+  var frame = 0;
+
+  function minimumHeight(name, fallback) {
+    var value = Number.parseFloat(window.getComputedStyle(root).getPropertyValue(name));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function writeGeometry() {
+    frame = 0;
+    var firstHeight = Math.max(firstRow.getBoundingClientRect().height, minimumHeight("--campaign-case-min-height", 54));
+    var secondHeight = Math.max(secondRow.getBoundingClientRect().height, minimumHeight("--campaign-nav-min-height", 66));
+    root.style.setProperty("--case-strip-height", firstHeight + "px");
+    root.style.setProperty("--campaign-nav-height", secondHeight + "px");
+    root.style.setProperty("--stacked-header-height", firstHeight + secondHeight + "px");
+  }
+
+  function scheduleGeometry() {
+    if (frame) return;
+    frame = window.requestAnimationFrame(writeGeometry);
+  }
+
+  writeGeometry();
+  window.addEventListener("resize", scheduleGeometry);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleGeometry);
+
+  if (typeof window.ResizeObserver === "function") {
+    var resizeObserver = new window.ResizeObserver(scheduleGeometry);
+    resizeObserver.observe(firstRow);
+    resizeObserver.observe(secondRow);
+  } else if (typeof window.MutationObserver === "function") {
+    var mutationObserver = new window.MutationObserver(scheduleGeometry);
+    var mutationOptions = { attributes: true, childList: true, characterData: true, subtree: true };
+    mutationObserver.observe(firstRow, mutationOptions);
+    mutationObserver.observe(secondRow, mutationOptions);
+  }
+}
+
 function initNav() {
-  var toggle = document.querySelector(".menu-toggle");
-  var nav = document.getElementById("nav");
+  var toggle = document.querySelector(".campaign-menu-toggle");
+  var nav = document.getElementById("campaign-nav");
   if (!toggle || !nav) return;
   toggle.addEventListener("click", function () {
     var open = nav.classList.toggle("open");
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
   });
-  nav.addEventListener("click", function (e) {
-    if (e.target.tagName === "A") {
-      nav.classList.remove("open");
-      toggle.setAttribute("aria-expanded", "false");
+  nav.addEventListener("click", function (event) {
+    if (event.target instanceof Element && event.target.closest("a")) closeNav(toggle, nav, false);
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && nav.classList.contains("open")) {
+      closeNav(toggle, nav, true);
     }
   });
+  if (typeof window.matchMedia !== "function") return;
+  var desktop = window.matchMedia("(min-width: 761px)");
+  var closeAtDesktop = function (event) {
+    if (event.matches) closeNav(toggle, nav, false);
+  };
+  if (typeof desktop.addEventListener === "function") desktop.addEventListener("change", closeAtDesktop);
+  else if (typeof desktop.addListener === "function") desktop.addListener(closeAtDesktop);
 }
 
 document.addEventListener("DOMContentLoaded", function () {
   renderCards();
   renderGallery();
+  initStackedHeaderGeometry();
   initNav();
-  initMap();
 });

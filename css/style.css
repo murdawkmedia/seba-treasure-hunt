@@ -5,32 +5,30 @@
    ============================================================ */
 
 :root {
-  --green-950: #14261c;
-  --green-900: #1c3527;
+  --green-950: var(--campaign-forest-900);
+  --green-900: var(--campaign-forest-800);
   --green-800: #234331;
   --green-700: #2f5741;
-  --gold-500:  #e0a01e;
-  --gold-400:  #eab63f;
-  --gold-300:  #f2cd6a;
-  --cream-100: #f6efdd;
-  --cream-200: #efe4c6;
-  --cream-300: #e5d5ac;
+  --gold-500:  var(--campaign-gold-500);
+  --gold-400:  var(--campaign-gold-400);
+  --gold-300:  var(--campaign-gold-300);
+  --cream-100: var(--campaign-paper-100);
+  --cream-200: var(--campaign-paper-200);
+  --cream-300: var(--campaign-paper-300);
   --ink-700:   #3a2e1c;
-  --ink-900:   #241b0f;
-  --rust-600:  #a6452a;
+  --ink-900:   var(--campaign-ink);
+  --rust-600:  var(--campaign-rust);
   --rust-500:  #c25a37;
 
-  --font-pirate: "Pirata One", "Georgia", serif;
-  --font-body:   "IM Fell English", "Georgia", "Times New Roman", serif;
-  --font-mono:   "Special Elite", "Courier New", monospace;
+  --font-pirate: var(--campaign-font-display);
+  --font-body:   var(--campaign-font-body);
+  --font-mono:   var(--campaign-font-meta);
 
   --shadow-card: 0 10px 30px rgba(20, 38, 28, 0.28);
-  --max: 1120px;
+  --max: var(--campaign-max);
 }
 
 * { box-sizing: border-box; }
-
-html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
@@ -52,6 +50,46 @@ a { color: var(--rust-600); }
 
 h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.05; letter-spacing: 0.5px; }
 
+.answer-block,
+.campaign-prop,
+.rules,
+.legend,
+.islands,
+.card,
+.howto,
+.step,
+.evidence,
+.found,
+.longgame,
+.fineprint,
+.hunt-faq,
+.interview-section,
+details.qa,
+.lookfor,
+.stops-intro,
+.stop,
+.anchor-sponsor {
+  --campaign-focus: var(--campaign-focus-dark);
+}
+
+.hero,
+.prize,
+.festival,
+.mapsection,
+.gallery,
+.route-teaser,
+.sponsor,
+.contact-card,
+.hours-banner,
+.checklist,
+.route-hero,
+.routevideo,
+.route-footnote,
+.evidence-section,
+.final-cta {
+  --campaign-focus: var(--campaign-focus-light);
+}
+
 .wrap { max-width: var(--max); margin: 0 auto; padding: 0 22px; }
 
 .center { text-align: center; }
@@ -66,7 +104,7 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   color: var(--ink-900);
   background: linear-gradient(180deg, var(--gold-300), var(--gold-500));
   border: 3px solid var(--ink-900);
-  border-radius: 10px;
+  border-radius: var(--campaign-radius-control);
   padding: 12px 30px;
   box-shadow: 0 5px 0 var(--ink-900), 0 12px 22px rgba(20,38,28,0.35);
   transition: transform .08s ease, box-shadow .08s ease;
@@ -79,32 +117,6 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   box-shadow: none;
 }
 .btn--ghost:hover { background: rgba(234,182,63,0.15); transform: none; box-shadow: none; }
-
-/* ---------- top nav ---------- */
-.topbar {
-  position: sticky; top: 0; z-index: 1000;
-  background: rgba(20, 38, 28, 0.96);
-  border-bottom: 3px solid var(--gold-500);
-  backdrop-filter: blur(4px);
-}
-.topbar .wrap { display: flex; align-items: center; gap: 16px; min-height: 62px; padding-top: 6px; padding-bottom: 6px; }
-.topbar .brand { font-family: var(--font-pirate); color: var(--gold-300); font-size: 1.5rem; text-decoration: none; white-space: nowrap; }
-.topbar nav { margin-left: auto; display: flex; gap: 15px; flex-wrap: wrap; }
-.topbar nav a { color: var(--cream-100); text-decoration: none; font-size: 1rem; letter-spacing: .2px; white-space: nowrap; }
-.topbar nav a:hover { color: var(--gold-300); }
-.topbar .menu-toggle { display: none; }
-
-/* ---------- CFCW partner strip ---------- */
-.partner-strip {
-  display: flex; align-items: center; justify-content: center; gap: 16px;
-  background: var(--green-950); border-bottom: 2px solid var(--gold-500);
-  padding: 8px 22px; text-decoration: none; color: var(--cream-100);
-}
-.partner-strip__logo { height: 46px; width: auto; flex: 0 0 auto; }
-.partner-strip__text { font-family: var(--font-mono); font-size: .82rem; letter-spacing: .3px; color: var(--cream-200); }
-.partner-strip__text strong { color: var(--gold-300); }
-.partner-strip:hover .partner-strip__text strong { color: var(--gold-400); }
-@media (max-width: 560px) { .partner-strip { gap: 10px; padding: 7px 14px; } .partner-strip__logo { height: 36px; } .partner-strip__text { font-size: .68rem; } }
 
 /* ---------- hero ---------- */
 .hero {
@@ -146,6 +158,10 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
 }
 .hero .sub { font-size: 1.35rem; max-width: 720px; margin: 10px auto 26px; color: var(--cream-200); }
 .hero .cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.hero .hero-actions { max-width: 900px; margin-inline: auto; }
+.hero .hero-actions .btn { min-width: 190px; padding-inline: 22px; }
+.hero .hero-secondary { margin: 22px auto 0; color: var(--cream-300); font-family: var(--font-mono); font-size: .88rem; }
+.hero .hero-secondary a { color: var(--gold-300); text-underline-offset: 4px; }
 .hero .prizeflash { font-family: var(--font-pirate); font-size: clamp(1.4rem, 4vw, 2.3rem); color: var(--cream-100); margin: 4px 0 2px; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
 .hero .prizeflash .amt { color: var(--gold-300); }
 .hero .hero-rings { font-family: var(--font-mono); font-size: .98rem; letter-spacing: .3px; color: var(--gold-300); margin: 2px 0 0; }
@@ -190,7 +206,7 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   text-transform: uppercase;
 }
 .campaign-prop figure {
-  max-width: 900px;
+  max-width: 700px;
   margin: 0 auto;
   overflow: hidden;
   background: var(--cream-100);
@@ -202,7 +218,7 @@ h1, h2, h3 { font-family: var(--font-pirate); font-weight: 400; line-height: 1.0
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 1587 / 991;
+  aspect-ratio: 1009 / 1559;
   object-fit: cover;
 }
 .campaign-prop figcaption {
@@ -404,10 +420,6 @@ section { padding: 70px 0; position: relative; }
 .checklist .box { flex: 0 0 auto; width: 22px; height: 22px; margin-top: 3px; border: 3px solid var(--gold-400); border-radius: 5px; background: rgba(0,0,0,0.2); }
 .checklist .firstmate { font-size: .98rem; color: var(--cream-200); background: rgba(0,0,0,0.22); border-left: 3px solid var(--gold-500); padding: 10px 14px; border-radius: 6px; margin: 0; }
 
-/* ---------- prize CFCW line ---------- */
-.prize-cfcw { max-width: 760px; margin: 14px auto 0; text-align: center; font-family: var(--font-mono); font-size: .95rem; color: var(--cream-200); }
-.prize-cfcw strong { color: var(--gold-300); }
-
 /* ---------- evidence (last known photo) ---------- */
 .evidence { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }
 .evidence-fig { max-width: 680px; margin: 0 auto; }
@@ -492,35 +504,43 @@ section { padding: 70px 0; position: relative; }
 .faq-grid dt { color: var(--green-900); font-family: var(--font-pirate); font-size: 1.4rem; margin-bottom: 6px; }
 .faq-grid dd { color: var(--ink-700); margin: 0; }
 
-/* ---------- footer ---------- */
-.footer-cfcw { display: inline-flex; align-items: center; gap: 14px; margin: 0 auto 16px; text-decoration: none; }
-.footer-cfcw img { height: 58px; width: auto; }
-.footer-cfcw span { font-family: var(--font-mono); font-size: .8rem; color: var(--cream-200); max-width: 260px; text-align: left; }
-.footer { background: var(--green-950); color: var(--cream-200); padding: 50px 0 40px; text-align: center; border-top: 3px solid var(--gold-500); }
-.footer .badge-mini { width: 90px; margin: 0 auto 14px; opacity: .95; }
-.campaign-season-footer { color: var(--gold-300); font-family: var(--font-mono); font-size: .85rem; margin: 0 0 12px; }
-.footer a { color: var(--gold-300); }
-.footer .fine { font-family: var(--font-mono); font-size: .8rem; opacity: .7; margin-top: 18px; }
-.footer .links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin: 12px 0; }
-.footer .links a { text-decoration: none; }
-
 /* ---------- little floating doodads ---------- */
 .doodad { position: absolute; opacity: .18; font-size: 3rem; pointer-events: none; user-select: none; }
 
+/* ---------- validation environment ---------- */
+.validation-environment-notice {
+  position: relative;
+  top: auto;
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  border-bottom: 2px solid var(--gold-500);
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  line-height: 1.35;
+  text-align: center;
+}
+.validation-environment-notice strong { color: var(--gold-300); }
+
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
+  .validation-environment-notice { position: relative; flex-direction: column; gap: 2px; }
   body { font-size: 1.05rem; }
-  .topbar nav { display: none; position: absolute; top: 62px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--green-950); border-bottom: 3px solid var(--gold-500); }
-  .topbar nav.open { display: flex; }
-  .topbar nav a { padding: 14px 22px; border-top: 1px solid rgba(234,182,63,0.2); }
-  .topbar .menu-toggle { display: inline-block; margin-left: auto; background: transparent; border: 2px solid var(--gold-400); color: var(--gold-300); font-size: 1.3rem; border-radius: 8px; padding: 2px 12px; cursor: pointer; }
+  .contact-card { max-width: 100%; padding-inline: 18px; }
   #map { height: 420px; }
   .scroll { padding: 24px 22px; }
   .faq-grid { grid-template-columns: 1fr; }
+  .hero .hero-actions { display: grid; grid-template-columns: 1fr; max-width: 340px; }
+  .hero .hero-actions .btn { width: 100%; min-width: 0; }
 }
 
 /* respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .hero__badge { animation: none; }
-  html { scroll-behavior: auto; }
 }
