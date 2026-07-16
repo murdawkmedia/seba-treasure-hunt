@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { CAMPAIGN_PAGES } from "../scripts/campaign-shell.mjs";
+import { CAMPAIGN_PAGES, scanCampaignHtmlStartTags } from "../scripts/campaign-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
@@ -37,6 +37,55 @@ const relativeLuminance = (hex) => {
 const contrastRatio = (first, second) => {
   const luminances = [relativeLuminance(first), relativeLuminance(second)].sort((a, b) => b - a);
   return (luminances[0] + 0.05) / (luminances[1] + 0.05);
+};
+
+const buttonStartTagsWithInlineStyle = (html) =>
+  scanCampaignHtmlStartTags(html).filter(({ attributes }) => {
+    const classAttribute = attributes.find(({ name }) => name === "class");
+    const classTokens = classAttribute?.value?.split(/[\t\n\f\r ]+/).filter(Boolean) ?? [];
+    return classTokens.includes("btn") && attributes.some(({ name }) => name === "style");
+  });
+
+const cssDeclaration = (block, property) => {
+  const declarations = [...block.matchAll(
+    new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "gi"),
+  )];
+  assert.equal(declarations.length, 1, `.btn has one ${property} declaration`);
+  return declarations[0][1].trim();
+};
+
+const cssVariableReference = (value, label) => {
+  const reference = value.match(/^var\((--[a-z0-9-]+)\)$/i)?.[1];
+  assert.ok(reference, `${label} is one custom-property reference`);
+  return reference;
+};
+
+const assertReadableFilledButtonContract = (css, properties) => {
+  const button = cssBlock(css, /^\.btn\s*\{/m);
+  const foregroundToken = cssVariableReference(cssDeclaration(button, "color"), ".btn color");
+  const background = cssDeclaration(button, "background");
+  const gradient = background.match(
+    /^linear-gradient\(\s*180deg\s*,\s*var\((--[a-z0-9-]+)\)\s*,\s*var\((--[a-z0-9-]+)\)\s*\)$/i,
+  );
+  assert.ok(gradient, ".btn background is a two-token 180-degree linear gradient");
+  const backgroundTokens = gradient.slice(1);
+
+  assert.equal(foregroundToken, "--ink-900", ".btn foreground uses the canonical ink token");
+  assert.deepEqual(
+    backgroundTokens,
+    ["--gold-300", "--gold-500"],
+    ".btn gradient uses both canonical gold endpoints",
+  );
+
+  const foreground = resolveHexColor(`var(${foregroundToken})`, properties);
+  for (const backgroundToken of backgroundTokens) {
+    const endpoint = resolveHexColor(`var(${backgroundToken})`, properties);
+    const ratio = contrastRatio(foreground, endpoint);
+    assert.ok(
+      ratio >= 4.5,
+      `.btn foreground contrasts ${ratio.toFixed(2)}:1 against ${backgroundToken}`,
+    );
+  }
 };
 
 const PAGE_FAMILIES = Object.freeze({
@@ -462,16 +511,66 @@ test("public case actions use the readable filled button contract", () => {
   const publicCss = read("css/style.css");
 
   assert.doesNotMatch(publicMarkup, /\bbtn--ghost\b/);
-  assert.doesNotMatch(publicMarkup, /class="btn"[^>]*style=/);
+  assert.deepEqual(buttonStartTagsWithInlineStyle(publicMarkup), []);
   assert.doesNotMatch(publicCss, /\.btn--ghost\b/);
 
   const properties = {
     ...customProperties(read("css/campaign-shell.css")),
     ...customProperties(publicCss),
   };
-  const ink = resolveHexColor(properties["--campaign-ink"], properties);
-  const gold = resolveHexColor(properties["--campaign-gold-300"], properties);
-  assert.ok(contrastRatio(ink, gold) >= 4.5);
+  assertReadableFilledButtonContract(publicCss, properties);
+});
+
+test("the inline-style guard parses live button attributes without inert false positives", () => {
+  const activeButtons = [
+    '<a class="btn" style="color: red">Double quoted</a>',
+    "<a STYLE='color: red' CLASS='secondary btn'>Single quoted and reordered</a>",
+    "<a class=btn style=color:red>Unquoted</a>",
+    '<a StYlE="color: red" ClAsS="btn secondary">Mixed case attributes</a>',
+  ];
+  const inertMarkup = `
+    <!-- <a class="btn" style="color: red">Commented out</a> -->
+    <script>const example = '<a class="btn" style="color: red">Script text</a>';</script>
+    <template><a class="btn" style="color: red">Template content</a></template>
+    <a class="btnish" style="color: red">Different class token</a>
+  `;
+
+  for (const html of activeButtons) {
+    assert.equal(buttonStartTagsWithInlineStyle(html).length, 1);
+  }
+  assert.deepEqual(buttonStartTagsWithInlineStyle(inertMarkup), []);
+});
+
+test("the filled button contrast check is bound to its live declarations and both gradient stops", () => {
+  const publicCss = read("css/style.css");
+  const campaignProperties = customProperties(read("css/campaign-shell.css"));
+  const mutations = [
+    publicCss.replace(
+      /(\.btn\s*\{[^}]*?\bcolor:\s*)var\(--ink-900\)/s,
+      "$1var(--cream-100)",
+    ),
+    publicCss.replace(
+      /(\.btn\s*\{[^}]*?\bbackground:\s*linear-gradient\([^)]*?var\(--gold-300\)\s*,\s*)var\(--gold-500\)/s,
+      "$1var(--cream-100)",
+    ),
+    publicCss.replace(
+      /(--gold-300:\s*)var\(--campaign-gold-300\)/,
+      "$1var(--campaign-ink)",
+    ),
+    publicCss.replace(
+      /(--gold-500:\s*)var\(--campaign-gold-500\)/,
+      "$1var(--campaign-ink)",
+    ),
+  ];
+
+  for (const mutation of mutations) {
+    assert.notEqual(mutation, publicCss, "the fixture mutates the live button contract");
+    const properties = {
+      ...campaignProperties,
+      ...customProperties(mutation),
+    };
+    assert.throws(() => assertReadableFilledButtonContract(mutation, properties));
+  }
 });
 
 test("light surfaces select dark focus while dark campaign chrome stays gold", () => {
