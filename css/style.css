@@ -518,7 +518,8 @@ section { padding: 70px 0; position: relative; }
 .latest-update .official-note { display: grid; grid-template-columns: minmax(120px, .3fr) minmax(0, 1fr); gap: 20px; padding: 22px; color: var(--ink-900); background: var(--cream-100); border-left: 4px solid var(--gold-500); border-radius: 6px; }
 .latest-update .official-note h2 { margin: 0 0 6px; color: var(--green-900); }
 .latest-update .official-note p { margin: 4px 0; }
-.latest-update .provenance, .latest-update time, .section-note { color: var(--cream-300); }
+.latest-update .section-note { color: var(--cream-300); }
+.latest-update .official-note time { color: var(--ink-700); }
 .latest-update .official-note .provenance { color: var(--rust-600); }
 .latest-update a { color: var(--gold-300); }
 .follow-case { margin-top: 24px; }

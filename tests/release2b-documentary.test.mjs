@@ -154,6 +154,26 @@ test("the homepage reuses the approved updates client with one bounded item and 
   assert.match(read("updates.html"), /data-updates-more/);
 });
 
+test("the latest update card keeps its timestamp readable on the cream surface", () => {
+  const css = read("css/style.css");
+  const shellCss = read("css/campaign-shell.css");
+  assert.match(css, /\.latest-update \.section-note\s*{\s*color:\s*var\(--cream-300\);\s*}/);
+  assert.match(css, /\.latest-update \.official-note time\s*{\s*color:\s*var\(--ink-700\);\s*}/);
+  assert.doesNotMatch(css, /\.latest-update\s+time[^{}]*{[^{}]*color:\s*var\(--cream-/);
+  assert.match(css, /\.latest-update \.official-note \.provenance\s*{\s*color:\s*var\(--rust-600\);\s*}/);
+
+  const hexToken = (source, name) => source.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6})`, "i"))?.[1];
+  const luminance = (hex) => {
+    const channels = hex.slice(1).match(/.{2}/g).map((value) => Number.parseInt(value, 16) / 255);
+    const linear = channels.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const foreground = luminance(hexToken(css, "--ink-700"));
+  const background = luminance(hexToken(shellCss, "--campaign-paper-100"));
+  const contrast = (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  assert.ok(contrast >= 4.5, `update timestamp contrast ${contrast.toFixed(2)}:1 meets WCAG AA`);
+});
+
 test("public naming is Case Notes and Support the Search while routes and hooks stay stable", () => {
   const namedPages = ["clue-board.html", "community-guidelines.html", "updates.html", "start.html", "dashboard.html", "report.html"];
   for (const filename of namedPages) {
