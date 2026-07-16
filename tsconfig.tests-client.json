@@ -6,6 +6,7 @@
   "include": [
     "src/client/**/*.ts",
     "tests/board-client.test.ts",
-    "tests/hunter-ui-client.test.ts"
+    "tests/hunter-ui-client.test.ts",
+    "tests/route-lightbox.test.ts"
   ]
 }
