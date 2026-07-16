@@ -55,6 +55,8 @@ const expectedScreenshotNames = [
   "zoom-200-home-tab-focus.png",
   "zoom-200-route-menu-open.png",
   "zoom-200-waiver-main-focus.png",
+  "desktop-route-lightbox.png",
+  "mobile-route-lightbox.png",
 ];
 const auditMatrix = [
   { name: "360x900", width: 360, height: 900, files: campaignFiles, auditMenuOpen: true },
@@ -121,7 +123,11 @@ async function startReadOnlyServer(distRoot, serverLedger) {
 
     try {
       const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://127.0.0.1").pathname);
-      const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+      const relative = pathname === "/"
+        ? "index.html"
+        : pathname === "/route"
+          ? "route.html"
+          : pathname.replace(/^\/+/, "");
       const candidate = path.resolve(normalizedRoot, relative);
       const insideRoot = candidate === normalizedRoot || candidate.startsWith(`${normalizedRoot}${path.sep}`);
       if (!insideRoot) {
@@ -227,13 +233,19 @@ async function installQaBoundary(context, origin, networkLedger) {
   });
 }
 
-function attachErrorAudit(page, label, consoleErrors, pageErrors) {
+function attachErrorAudit(page, label, consoleErrors, pageErrors, requestFailures) {
   page.on("console", (message) => {
     if (message.type() === "error") {
       consoleErrors.push({ label: label(), message: message.text(), location: message.location() });
     }
   });
   page.on("pageerror", (error) => pageErrors.push({ label: label(), message: error.message }));
+  page.on("requestfailed", (request) => requestFailures.push({
+    label: label(),
+    method: request.method(),
+    url: request.url(),
+    errorText: request.failure()?.errorText ?? "unknown request failure",
+  }));
 }
 
 async function openPage(page, origin, filename) {
@@ -299,6 +311,286 @@ async function capture(page, filename, evidence, { fullPage = true } = {}) {
   evidence.push({ artifactName, sha256: sha256(await readFile(target)) });
 }
 
+async function assertNoHorizontalViewportOverflow(page, label) {
+  const geometry = await page.evaluate(() => ({
+    bodyScrollWidth: document.body.scrollWidth,
+    documentClientWidth: document.documentElement.clientWidth,
+    documentScrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  assert.ok(
+    geometry.documentScrollWidth <= geometry.viewportWidth + 1,
+    `${label} document width ${geometry.documentScrollWidth} must not overflow viewport ${geometry.viewportWidth}`,
+  );
+  assert.ok(
+    geometry.bodyScrollWidth <= geometry.viewportWidth + 1,
+    `${label} body width ${geometry.bodyScrollWidth} must not overflow viewport ${geometry.viewportWidth}`,
+  );
+  assert.equal(geometry.documentClientWidth, geometry.viewportWidth, `${label} must not reserve horizontal overflow space`);
+}
+
+async function assertMinimumHitTargets(locators, label) {
+  for (const [name, locator] of Object.entries(locators)) {
+    await locator.waitFor({ state: "visible" });
+    const box = await locator.boundingBox();
+    assert.ok(box, `${label} ${name} control must have a visible box`);
+    assert.ok(box.width >= 44, `${label} ${name} control width ${box.width} must be at least 44px`);
+    assert.ok(box.height >= 44, `${label} ${name} control height ${box.height} must be at least 44px`);
+  }
+}
+
+async function assertContainedRouteImage(page, image, label) {
+  await image.waitFor({ state: "visible" });
+  await page.waitForFunction((target) => target.complete && target.naturalWidth > 0 && target.naturalHeight > 0, await image.elementHandle());
+  const geometry = await image.evaluate((element) => {
+    const imageRect = element.getBoundingClientRect();
+    const stageRect = element.closest(".route-lightbox__stage")?.getBoundingClientRect();
+    return {
+      complete: element.complete,
+      naturalHeight: element.naturalHeight,
+      naturalWidth: element.naturalWidth,
+      objectFit: getComputedStyle(element).objectFit,
+      image: { top: imageRect.top, right: imageRect.right, bottom: imageRect.bottom, left: imageRect.left, width: imageRect.width, height: imageRect.height },
+      stage: stageRect
+        ? { top: stageRect.top, right: stageRect.right, bottom: stageRect.bottom, left: stageRect.left }
+        : null,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    };
+  });
+  assert.equal(geometry.complete, true, `${label} image must finish loading`);
+  assert.ok(geometry.naturalWidth > 0 && geometry.naturalHeight > 0, `${label} image must have nonzero intrinsic dimensions`);
+  assert.ok(geometry.image.width > 0 && geometry.image.height > 0, `${label} image must have a nonzero rendered box`);
+  assert.equal(geometry.objectFit, "contain", `${label} image must use contained rendering`);
+  assert.ok(geometry.stage, `${label} image must remain inside its stage`);
+  assert.ok(geometry.image.left >= geometry.stage.left - 1 && geometry.image.right <= geometry.stage.right + 1, `${label} image must fit the stage horizontally`);
+  assert.ok(geometry.image.top >= geometry.stage.top - 1 && geometry.image.bottom <= geometry.stage.bottom + 1, `${label} image must fit the stage vertically`);
+  assert.ok(geometry.image.left >= -1 && geometry.image.right <= geometry.viewport.width + 1, `${label} image must fit the viewport horizontally`);
+  assert.ok(geometry.image.top >= -1 && geometry.image.bottom <= geometry.viewport.height + 1, `${label} image must fit the viewport vertically`);
+}
+
+async function dispatchUninterceptedFallbackClick(trigger, init) {
+  return trigger.evaluate((element, clickInit) => {
+    let defaultPreventedByLightbox = null;
+    const qaNavigationGuard = (event) => {
+      defaultPreventedByLightbox = event.defaultPrevented;
+      event.preventDefault();
+    };
+    element.addEventListener("click", qaNavigationGuard, { once: true });
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...clickInit }));
+    return defaultPreventedByLightbox;
+  }, init);
+}
+
+async function assertReducedMotionControls(controls, label) {
+  for (const [name, locator] of Object.entries(controls)) {
+    const durations = await locator.evaluate((element) => {
+      const toMilliseconds = (value) => {
+        const trimmed = value.trim();
+        return trimmed.endsWith("ms") ? Number.parseFloat(trimmed) : Number.parseFloat(trimmed) * 1000;
+      };
+      const style = getComputedStyle(element);
+      return [...style.transitionDuration.split(","), ...style.animationDuration.split(",")].map(toMilliseconds);
+    });
+    assert.ok(
+      durations.every((duration) => Number.isFinite(duration) && duration <= 0.01),
+      `${label} ${name} transition/animation durations must resolve to zero or 0.01ms: ${durations.join(", ")}`,
+    );
+  }
+}
+
+async function openRouteAuditPage(page, origin) {
+  await page.goto(`${origin}/route`, { waitUntil: "domcontentloaded" });
+  await page.locator("[data-case-status]").waitFor({ state: "visible" });
+  await page.locator("[data-route-lightbox]").waitFor({ state: "attached" });
+  await page.waitForTimeout(100);
+}
+
+async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleErrors, pageErrors, requestFailures, screenshotEvidence }) {
+  let statesAudited = 0;
+  const desktopContext = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    reducedMotion: "reduce",
+  });
+  await installQaBoundary(desktopContext, origin, networkLedger);
+  const desktopPage = await desktopContext.newPage();
+  let desktopLabel = "route-lightbox/desktop/starting";
+  attachErrorAudit(desktopPage, () => desktopLabel, consoleErrors, pageErrors, requestFailures);
+  try {
+    await openRouteAuditPage(desktopPage, origin);
+    const firstPhoto = desktopPage.locator("#stop-1 .stop-gallery .photo > a").first();
+    const dialog = desktopPage.locator("[data-route-lightbox]");
+    const title = dialog.locator("#route-lightbox-title");
+    const counter = dialog.locator("[data-route-lightbox-counter]");
+    const image = dialog.locator("[data-route-lightbox-image]");
+    const caption = dialog.locator("[data-route-lightbox-caption]");
+    const close = dialog.locator("[data-route-lightbox-close]");
+    const previous = dialog.locator("[data-route-lightbox-previous]");
+    const next = dialog.locator("[data-route-lightbox-next]");
+    const original = dialog.locator("[data-route-lightbox-original]");
+
+    desktopLabel = "route-lightbox/desktop/open-photo-1";
+    await firstPhoto.click();
+    await dialog.waitFor({ state: "visible" });
+    assert.equal(await desktopPage.locator("dialog[open]").count(), 1, "desktop route must have exactly one open dialog");
+    assert.equal(await desktopPage.locator("dialog[open]:visible").count(), 1, "desktop route must have exactly one visible dialog");
+    assert.equal(await title.textContent(), "The Creek Property — The Starting Point");
+    assert.equal(await counter.textContent(), "Photo 1 of 3");
+    assert.match(await original.evaluate((element) => element.href), /\/assets\/route\/stop-01\/IMG_5034\.jpg$/);
+    await assertContainedRouteImage(desktopPage, image, "Desktop route photo 1");
+    await assertMinimumHitTargets({ Close: close, Previous: previous, Next: next }, "Desktop route lightbox");
+    await assertNoHorizontalViewportOverflow(desktopPage, "Desktop route lightbox");
+    await assertReducedMotionControls({ Close: close, Previous: previous, Next: next }, "Reduced-motion route lightbox");
+    statesAudited += 1;
+
+    desktopLabel = "route-lightbox/desktop/keyboard";
+    await desktopPage.keyboard.press("ArrowRight");
+    assert.equal(await counter.textContent(), "Photo 2 of 3", "ArrowRight must advance the route lightbox");
+    await desktopPage.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    await assertActiveElement(desktopPage, firstPhoto, "Route photo trigger after Escape");
+    statesAudited += 1;
+
+    desktopLabel = "route-lightbox/desktop/progressive-fallback";
+    for (const [name, clickInit] of [
+      ["Control-click", { button: 0, ctrlKey: true }],
+      ["Meta-click", { button: 0, metaKey: true }],
+      ["middle-click", { button: 1 }],
+    ]) {
+      assert.equal(
+        await dispatchUninterceptedFallbackClick(firstPhoto, clickInit),
+        false,
+        `${name} must reach the fallback anchor without being default-prevented by the lightbox`,
+      );
+      assert.equal(await dialog.isVisible(), false, `${name} must leave the dialog closed`);
+    }
+    statesAudited += 1;
+
+    desktopLabel = "route-lightbox/desktop/singleton";
+    const singletonPhoto = desktopPage.locator("#stop-4 .stop-gallery .photo > a").first();
+    await singletonPhoto.click();
+    await dialog.waitFor({ state: "visible" });
+    assert.equal(await counter.textContent(), "Photo 1 of 1");
+    assert.equal(await previous.isHidden(), true, "singleton Previous must be hidden");
+    assert.equal(await previous.isDisabled(), true, "singleton Previous must be disabled");
+    assert.equal(await next.isHidden(), true, "singleton Next must be hidden");
+    assert.equal(await next.isDisabled(), true, "singleton Next must be disabled");
+    await close.click();
+    await dialog.waitFor({ state: "hidden" });
+    await assertActiveElement(desktopPage, singletonPhoto, "Singleton route photo trigger after Close");
+    statesAudited += 1;
+
+    desktopLabel = "route-lightbox/desktop/image-failure";
+    await firstPhoto.click();
+    await dialog.waitFor({ state: "visible" });
+    const healthySrc = await image.getAttribute("src");
+    assert.ok(healthySrc, "route image must have a restorable source before failure audit");
+    await image.evaluate((element) => {
+      element.removeAttribute("src");
+      element.dispatchEvent(new Event("error"));
+    });
+    assert.equal(await image.getAttribute("src"), null, "transient missing source must exercise the image failure state");
+    await caption.waitFor({ state: "visible" });
+    await close.waitFor({ state: "visible" });
+    await original.waitFor({ state: "visible" });
+    assert.ok((await caption.textContent())?.trim(), "caption must remain populated after image failure");
+    assert.match(await original.evaluate((element) => element.href), /\/assets\/route\/stop-01\/IMG_5034\.jpg$/);
+    await original.focus();
+    await assertActiveElement(desktopPage, original, "Open original link after image failure");
+    await close.click();
+    await dialog.waitFor({ state: "hidden" });
+    await assertActiveElement(desktopPage, firstPhoto, "Route photo trigger after image-failure Close");
+    await firstPhoto.click();
+    await dialog.waitFor({ state: "visible" });
+    assert.equal(await image.getAttribute("src"), healthySrc, "reopening the viewer must restore the healthy image source");
+    await assertContainedRouteImage(desktopPage, image, "Recovered desktop route photo 1");
+    await close.click();
+    await dialog.waitFor({ state: "hidden" });
+    await assertActiveElement(desktopPage, firstPhoto, "Route photo trigger after recovered-image Close");
+    statesAudited += 1;
+
+    desktopLabel = "route-lightbox/desktop/screenshot";
+    await firstPhoto.click();
+    await dialog.waitFor({ state: "visible" });
+    await assertContainedRouteImage(desktopPage, image, "Desktop screenshot route photo");
+    await capture(desktopPage, "desktop-route-lightbox.png", screenshotEvidence, { fullPage: false });
+    statesAudited += 1;
+  } finally {
+    await desktopContext.close();
+  }
+
+  const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  await installQaBoundary(mobileContext, origin, networkLedger);
+  const mobilePage = await mobileContext.newPage();
+  let mobileLabel = "route-lightbox/mobile/starting";
+  attachErrorAudit(mobilePage, () => mobileLabel, consoleErrors, pageErrors, requestFailures);
+  try {
+    await openRouteAuditPage(mobilePage, origin);
+    const firstPhoto = mobilePage.locator("#stop-1 .stop-gallery .photo > a").first();
+    const dialog = mobilePage.locator("[data-route-lightbox]");
+    const counter = dialog.locator("[data-route-lightbox-counter]");
+    const image = dialog.locator("[data-route-lightbox-image]");
+    const close = dialog.locator("[data-route-lightbox-close]");
+    const previous = dialog.locator("[data-route-lightbox-previous]");
+    const next = dialog.locator("[data-route-lightbox-next]");
+    await firstPhoto.click();
+    await dialog.waitFor({ state: "visible" });
+    await assertContainedRouteImage(mobilePage, image, "Mobile route photo 1");
+
+    mobileLabel = "route-lightbox/mobile/horizontal-swipe";
+    const imageBox = await image.boundingBox();
+    assert.ok(imageBox, "mobile route image must have swipe geometry");
+    await mobilePage.mouse.move(imageBox.x + imageBox.width * 0.75, imageBox.y + imageBox.height * 0.5);
+    await mobilePage.mouse.down();
+    await mobilePage.mouse.move(imageBox.x + imageBox.width * 0.25, imageBox.y + imageBox.height * 0.53, { steps: 4 });
+    await mobilePage.mouse.up();
+    assert.equal(await counter.textContent(), "Photo 2 of 3", "horizontally dominant left swipe must advance to photo 2");
+    statesAudited += 1;
+
+    mobileLabel = "route-lightbox/mobile/vertical-gesture";
+    await mobilePage.mouse.move(imageBox.x + imageBox.width * 0.45, imageBox.y + imageBox.height * 0.3);
+    await mobilePage.mouse.down();
+    await mobilePage.mouse.move(imageBox.x + imageBox.width * 0.55, imageBox.y + imageBox.height * 0.7, { steps: 4 });
+    await mobilePage.mouse.up();
+    assert.equal(await counter.textContent(), "Photo 2 of 3", "vertically dominant gesture must not change the route photo");
+    await assertNoHorizontalViewportOverflow(mobilePage, "Mobile route lightbox");
+    await assertMinimumHitTargets({ Close: close, Previous: previous, Next: next }, "Mobile route lightbox");
+    await capture(mobilePage, "mobile-route-lightbox.png", screenshotEvidence, { fullPage: false });
+    statesAudited += 1;
+  } finally {
+    await mobileContext.close();
+  }
+
+  const shortContext = await browser.newContext({ viewport: { width: 640, height: 360 }, deviceScaleFactor: 2 });
+  await installQaBoundary(shortContext, origin, networkLedger);
+  const shortPage = await shortContext.newPage();
+  let shortLabel = "route-lightbox/short-viewport/starting";
+  attachErrorAudit(shortPage, () => shortLabel, consoleErrors, pageErrors, requestFailures);
+  try {
+    await openRouteAuditPage(shortPage, origin);
+    const dialog = shortPage.locator("[data-route-lightbox]");
+    const image = dialog.locator("[data-route-lightbox-image]");
+    const close = dialog.locator("[data-route-lightbox-close]");
+    const previous = dialog.locator("[data-route-lightbox-previous]");
+    const next = dialog.locator("[data-route-lightbox-next]");
+    shortLabel = "route-lightbox/short-viewport/open";
+    await shortPage.locator("#stop-1 .stop-gallery .photo > a").first().click();
+    await dialog.waitFor({ state: "visible" });
+    await assertContainedRouteImage(shortPage, image, "Short 640x360 route photo");
+    await assertMinimumHitTargets({ Close: close, Previous: previous, Next: next }, "Short 640x360 route lightbox");
+    await assertElementInViewport(shortPage, close, "Short route Close control");
+    await assertElementInViewport(shortPage, previous, "Short route Previous control");
+    await assertElementInViewport(shortPage, next, "Short route Next control");
+    await assertNoHorizontalViewportOverflow(shortPage, "Short 640x360 route lightbox");
+    await next.click();
+    assert.equal(await dialog.locator("[data-route-lightbox-counter]").textContent(), "Photo 2 of 3", "short route lightbox must remain operable");
+    statesAudited += 1;
+  } finally {
+    await shortContext.close();
+  }
+
+  return { statesAudited, viewports: ["1440x1000", "390x844", "640x360@2x"] };
+}
+
 async function run() {
   let temporaryBuild;
   let server;
@@ -322,6 +614,7 @@ async function run() {
     browser = launched.browser;
     const consoleErrors = [];
     const pageErrors = [];
+    const requestFailures = [];
     let pageNavigations = 0;
     let statesAudited = 0;
 
@@ -330,7 +623,7 @@ async function run() {
       await installQaBoundary(context, origin, networkLedger);
       const page = await context.newPage();
       let label = `${matrixEntry.name}/starting`;
-      attachErrorAudit(page, () => label, consoleErrors, pageErrors);
+      attachErrorAudit(page, () => label, consoleErrors, pageErrors, requestFailures);
       try {
         for (const filename of matrixEntry.files) {
           label = `${matrixEntry.name}/${filename}`;
@@ -358,7 +651,7 @@ async function run() {
       await installQaBoundary(context, origin, networkLedger);
       const page = await context.newPage();
       let label = `${viewport.name}/starting`;
-      attachErrorAudit(page, () => label, consoleErrors, pageErrors);
+      attachErrorAudit(page, () => label, consoleErrors, pageErrors, requestFailures);
       try {
         for (const filename of screenshotFiles) {
           label = `${viewport.name}/${filename}`;
@@ -379,7 +672,7 @@ async function run() {
     await installQaBoundary(zoomContext, origin, networkLedger);
     const zoomPage = await zoomContext.newPage();
     let zoomLabel = "zoom-200/starting";
-    attachErrorAudit(zoomPage, () => zoomLabel, consoleErrors, pageErrors);
+    attachErrorAudit(zoomPage, () => zoomLabel, consoleErrors, pageErrors, requestFailures);
     try {
       zoomLabel = "zoom-200/home-tab-focus";
       await openPage(zoomPage, origin, "index.html");
@@ -418,11 +711,23 @@ async function run() {
       await zoomContext.close();
     }
 
+    const routeLightboxAudit = await runRouteLightboxAudit({
+      browser,
+      origin,
+      networkLedger,
+      consoleErrors,
+      pageErrors,
+      requestFailures,
+      screenshotEvidence,
+    });
+
     const consoleErrorCount = consoleErrors.length;
     const pageErrorCount = pageErrors.length;
+    const requestFailureCount = requestFailures.length;
     assert.equal(pageNavigations, 72, "the canonical matrix must navigate 72 page/view combinations");
     assert.equal(statesAudited, 111, "the canonical matrix must audit 111 shell states");
-    assert.equal(screenshotEvidence.length, 19, "the screenshot suite must contain 19 artifacts");
+    assert.equal(routeLightboxAudit.statesAudited, 9, "the route lightbox audit must exercise 9 browser states");
+    assert.equal(screenshotEvidence.length, 21, "the screenshot suite must contain 21 artifacts");
     assert.deepEqual(
       screenshotEvidence.map(({ artifactName }) => artifactName.replace("screenshots/", "")).sort(),
       expectedScreenshotNames.toSorted(),
@@ -430,6 +735,7 @@ async function run() {
     );
     assert.equal(consoleErrorCount, 0, `console errors: ${JSON.stringify(consoleErrors)}`);
     assert.equal(pageErrorCount, 0, `page errors: ${JSON.stringify(pageErrors)}`);
+    assert.equal(requestFailureCount, 0, `request failures: ${JSON.stringify(requestFailures)}`);
     assert.equal(networkLedger.externalWriteAttempts.length, 0, "no external write may be attempted");
     assert.equal(networkLedger.continuedExternalRequests.length, 0, "no external request may leave the QA boundary");
     assert.equal(networkLedger.localWriteAttempts.length, 0, "the shell audit must not attempt local writes");
@@ -449,12 +755,14 @@ async function run() {
       browserFixtureTime: fixedNow,
       sourceRender: { campaignRoutes: campaignFiles.length, temporaryBuild: true, renderer: "renderCampaignPage" },
       reportPublicationSurface: { updatesRouteAudited: true, signedOutPublicShellOnly: true },
+      routeLightbox: routeLightboxAudit,
       audit: {
         pageNavigations,
         statesAudited,
         matrix: auditMatrix.map(({ name, width, height, files, auditMenuOpen }) => ({ name, width, height, routes: files.length, auditMenuOpen })),
         consoleErrorCount,
         pageErrorCount,
+        requestFailureCount,
       },
       screenshots: { count: screenshotEvidence.length, artifacts: screenshotEvidence },
       networkBoundary: {
