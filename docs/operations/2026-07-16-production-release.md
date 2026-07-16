@@ -27,6 +27,21 @@
 - Microsoft Graph delegated mail: accepted a self-addressed production delivery test from the configured campaign mailbox with the campaign contact as Reply-To.
 - Production crawl state: no `noindex` and no CFCW references in the live home output.
 
+## Source-ready follow-on: Release 1 interview integrity
+
+- The public `/interview` feature is renamed Tim’s Account in source metadata,
+  structured data, navigation and internal discovery copy.
+- Its authoritative entries remain at 19, now numbered uniquely from 1 through
+  19 and grouped into three labelled editorial sections.
+- The unpublished golf-ball question remains absent, and regression tests guard
+  the count, order, headings, naming and excluded copy.
+- Source verification passes 218 static tests, 370 worker/client tests, legal
+  generation, TypeScript checks and the production build.
+- This follow-on is not yet recorded as a production Pages deployment. After
+  deployment, smoke-test `/`, `/route`, `/interview` and `/start`, then update
+  the production commit and deployment identifiers above.
+- The broader local-mystery rebrand remains pending and is outside this release.
+
 ## Rollback
 
 - Git tag: `production-pre-hunter-platform-2026-07-16`

@@ -104,7 +104,7 @@ function assertCanonicalShellLinks(html, filename) {
 }
 
 function expectedCurrentCount(filename) {
-  if (filename === "index.html" || filename === "interview.html") return 0;
+  if (filename === "index.html") return 0;
   if (filename === "rules.html" || filename === "sponsors.html") return 2;
   return 1;
 }
@@ -195,7 +195,7 @@ test("shell link validation handles every attribute form and rejects bypasses", 
   }
   assert.throws(
     () => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/sponsors"[^>]*>Sponsors<\/a>/, ""), "route.html"),
-    /expected 16 shell links/i,
+    /expected 17 shell links/i,
   );
 });
 

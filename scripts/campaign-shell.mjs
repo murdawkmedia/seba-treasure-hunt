@@ -1,6 +1,7 @@
 export const CAMPAIGN_MENU = Object.freeze([
   Object.freeze({ route: "start", label: "Start", href: "/start" }),
   Object.freeze({ route: "route", label: "Lucky 13 Route", href: "/route" }),
+  Object.freeze({ route: "interview", label: "Tim's Account", href: "/interview" }),
   Object.freeze({ route: "updates", label: "Updates", href: "/updates" }),
   Object.freeze({ route: "clue-board", label: "Clue Board", href: "/clue-board" }),
   Object.freeze({ route: "report", label: "Report", href: "/report" }),

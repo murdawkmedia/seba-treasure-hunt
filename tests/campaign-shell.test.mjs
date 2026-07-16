@@ -36,7 +36,7 @@ const descriptors = {
   "index.html": { route: "home", skipLabel: "Skip to the campaign", skipTarget: "main" },
   "start.html": { route: "start", skipLabel: "Skip to the hunt guide", skipTarget: "main" },
   "route.html": { route: "route", skipLabel: "Skip to the route", skipTarget: "main" },
-  "interview.html": { route: "interview", skipLabel: "Skip to the interview", skipTarget: "main" },
+  "interview.html": { route: "interview", skipLabel: "Skip to Tim's Account", skipTarget: "main" },
   "updates.html": { route: "updates", skipLabel: "Skip to official updates", skipTarget: "main" },
   "clue-board.html": { route: "clue-board", skipLabel: "Skip to the clue board", skipTarget: "main" },
   "report.html": { route: "report", skipLabel: "Skip to private reporting", skipTarget: "main" },
@@ -182,10 +182,9 @@ test("renders the exact primary menu order, current route, and Sponsors class", 
   assert.doesNotMatch(nav, /\.html/);
 });
 
-test("home, interview, and legal routes do not invent a primary current item", () => {
+test("home and legal routes do not invent a primary current item", () => {
   for (const route of [
     "home",
-    "interview",
     "privacy",
     "waiver",
     "community-guidelines",
@@ -599,6 +598,7 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
   assert.deepEqual(CAMPAIGN_MENU, [
     { route: "start", label: "Start", href: "/start" },
     { route: "route", label: "Lucky 13 Route", href: "/route" },
+    { route: "interview", label: "Tim's Account", href: "/interview" },
     { route: "updates", label: "Updates", href: "/updates" },
     { route: "clue-board", label: "Clue Board", href: "/clue-board" },
     { route: "report", label: "Report", href: "/report" },

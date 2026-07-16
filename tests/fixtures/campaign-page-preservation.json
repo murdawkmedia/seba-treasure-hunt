@@ -6,22 +6,22 @@
     "index.html": {
       "headSha256": "340f78bbe3426fc155970df38dee1129591866a93e2d3d24f22563346a08c1b0",
       "scriptsSha256": "732599a94fe23863f4877f5e5065fbbf77312f3c5f996ff8f98e73b73fdf9cb6",
-      "bodySha256": "cdffa3ee77ae91fbc234ebc193a0bf790d9c61f28a7df590740363113c2378d6"
+      "bodySha256": "a373edcb49831c6a1c64325ba324beb39dbd375cc0e324f340ba277007238375"
     },
     "start.html": {
       "headSha256": "0f13db80f1744734b92acec435a446a453a1d5c022a8ce8c9969c171aa2fdefb",
       "scriptsSha256": "262f8f0930497e8050dfb3978007566d6248423c30bea3db1fca7d356b1d9bf9",
-      "bodySha256": "94ccec58c560f5cff6567bccc54526fddabc4c63a5d3e3bd6f80738e9f69970e"
+      "bodySha256": "ca3d7bd39048ad1cc85f66d74a863a4086a8cbe1cb154f610f8fbd602d3f3c99"
     },
     "route.html": {
       "headSha256": "3f59c3a42c9145e4456f384aa42621290219c2d6e2d9310af2d605e6dc0c88ec",
       "scriptsSha256": "b89ba8f0b6240673595f590082120020ae9ca5f8dafc71d7d93628e607eab959",
-      "bodySha256": "de44372ec01a54d8c05d9f114b55541f9472f3bdd5b16e16863f1003ac81a98b"
+      "bodySha256": "a3083d2de207c29b9243d29b8b65953350a1a68745453324e24a55e0fc426851"
     },
     "interview.html": {
-      "headSha256": "ca23f8a7fdfad34189d5a954f9b53d297b415dea2658c9f03e6978950b2b377d",
-      "scriptsSha256": "42cac129f993ce24f5d7e4edc35ef88743c6ec8ac92d5d6caeba68d4c1a2060f",
-      "bodySha256": "6636eb13b82a1b56d9d2d6a76a177aadfc40a3e983181e0baa70dd62336abb6a"
+      "headSha256": "53e5f454b726ea2da9a922d3db5ae1b1d39cd9e0bb1e4b9a7c40c4cb113461c5",
+      "scriptsSha256": "80fc9e7f68b5b03b4786b221f76dc12ea85f383f112cb559205f7e55a9d4c373",
+      "bodySha256": "def8ad5fc310d6ddf8beab1644eecd05cc1edb5b77e907e7512708424551be53"
     },
     "updates.html": {
       "headSha256": "fc14ebc7bb89266871e7e0f8addfaffc9eaa77f776169b9e6dc3326afed54225",

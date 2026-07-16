@@ -8,6 +8,7 @@ The public website and hunter platform for the Seba Beach treasure hunt.
 |---|---|
 | `/` | Campaign story and current case status |
 | `/route` | Lucky 13 waypoint stories; signed-in hunters receive exact route controls |
+| `/interview` | Tim’s Account, organized as the before, along-route, and after-discovery record |
 | `/updates` | Official updates and approved community reports |
 | `/report` | Private find, tip, and safety reporting |
 | `/clue-board` | Moderated community Field Notes |

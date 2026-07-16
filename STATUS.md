@@ -15,6 +15,19 @@ validation accounts, submissions, or credentials into production.
 
 ## Update 2026-07-16
 
+- Prepared Release 1 interview-integrity source: the public feature is now
+  Tim’s Account across page metadata, social previews, structured data,
+  navigation and internal links.
+- Kept the authoritative 19 entries and Tim’s answers intact, corrected the
+  entry sequence to 1–19, and grouped the account under Before the route, Along
+  the route and After the discovery.
+- Kept the unpublished golf-ball question out of public sources and added
+  focused regression coverage for count, numbering, sections, naming and
+  excluded copy.
+- Verified 218 static tests and 370 worker/client tests, legal generation,
+  TypeScript checks and the production build.
+- Release 1 changes are source-ready but are not recorded here as deployed to
+  production. The later site-wide local-mystery rebrand remains pending.
 - Kept the RV guest and horseshoe-pit area published as `restricted`.
 - Updated its public instruction to require hunters to check in with office
   staff before going beyond the public approach and entering the park.
@@ -51,9 +64,8 @@ validation accounts, submissions, or credentials into production.
 - Rotate bootstrap and API credentials after the launch window.
 - Implement the approved local-mystery direction in validation first, then seek
   explicit approval before any production rollout.
-- Investigate and restore the missing twentieth item in the public 20-question
-  interview. Preserve the authoritative wording and add a future count check;
-  no interview content changed in this roadmap-only update.
+- Deploy and smoke-test the source-ready Tim’s Account integrity release before
+  recording it as the live production state.
 
 See `README.md` for build and operating contracts and
 `docs/operations/2026-07-16-production-release.md` for release and rollback

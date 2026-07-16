@@ -39,6 +39,7 @@ const campaignFiles = Object.freeze([
 const menuRoutes = new Set([
   "start",
   "route",
+  "interview",
   "updates",
   "clue-board",
   "report",

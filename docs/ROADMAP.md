@@ -39,21 +39,20 @@ subject of the story.
 6. Build and review the new direction in validation before approving any
    production rollout.
 
-### Content integrity issue: missing interview question
+### Release 1 complete in source: interview integrity
 
-The public 20-question interview currently contains only 19 questions. Before
-the interview is considered complete:
+The public feature is now named **Tim’s Account**. Its 19 authoritative entries
+are published in unique sequence and grouped under three accessible editorial
+headings: Before the route, Along the route and After the discovery. The
+unpublished golf-ball question remains excluded rather than being recreated.
+Regression coverage now protects the entry count, numbering, section structure,
+public naming and excluded copy.
 
-1. Trace the authoritative interview source and determine which question or
-   answer is missing.
-2. Restore the original approved twentieth question without inventing or
-   paraphrasing Tim's response.
-3. Confirm the numbering, headings and structured metadata all agree on the
-   final count.
-4. Add a content-count check so a future build cannot silently publish fewer
-   than 20 interview questions.
+Status: **Implemented and verified in release source; production deployment is
+tracked separately.**
 
-Status: **Roadmapped for investigation and repair — not yet implemented.**
+The broader local-mystery rebrand remains future work. Release 1 does not
+rewrite Tim’s answers or attempt the site-wide removal of pirate framing.
 
 ### Completion signals
 
@@ -64,7 +63,7 @@ Status: **Roadmapped for investigation and repair — not yet implemented.**
 - Safety, privacy, participation and reporting instructions remain direct and
   unambiguous.
 
-## Scope of this roadmap update
+## Scope boundary
 
-This document records direction and known future work only. It does not change
-current production copy, artwork, styling, tests or deployment state.
+Release 1 corrects Tim’s Account and its discovery surfaces only. The approved
+future visual and copy direction above remains pending validation and review.
