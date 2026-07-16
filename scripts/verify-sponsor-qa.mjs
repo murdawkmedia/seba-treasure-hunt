@@ -316,8 +316,8 @@ async function validationNoticeGeometry(browser) {
     const initialGeometry = await initialStickyGeometry(
       page,
       ".case-strip",
-      ".sponsor-topbar",
-      { stripHeight: 54, headerHeight: 67, stack: 121 },
+      ".campaign-header",
+      { stripHeight: 54, headerHeight: 113, stack: 167 },
       "Validation notice fixture",
     );
     assert.equal(initialGeometry.notice.present, true, "Validation notice fixture must always exercise notice-present geometry.");
@@ -325,7 +325,7 @@ async function validationNoticeGeometry(browser) {
     const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
       page,
       ".case-strip",
-      ".sponsor-topbar",
+      ".campaign-header",
       "Validation notice fixture",
     );
     assert.equal(tracker.sponsorPosts, 0, "Validation notice fixture must observe zero sponsor POSTs.");
@@ -352,8 +352,8 @@ async function sponsorDesktop(browser) {
     const initialGeometry = await initialStickyGeometry(
       page,
       ".case-strip",
-      ".sponsor-topbar",
-      { stripHeight: 54, headerHeight: 67, stack: 121 },
+      ".campaign-header",
+      { stripHeight: 54, headerHeight: 113, stack: 167 },
       "Sponsor desktop",
     );
     const current = await assertSponsorCurrent(page);
@@ -366,9 +366,9 @@ async function sponsorDesktop(browser) {
       await page.evaluate(() => window.scrollY > 0),
       "Sponsor inquiry scroll action must move past the validation notice.",
     );
-    const postScrollGeometry = await assertStickyRowsAfterScroll(page, ".case-strip", ".sponsor-topbar", "Sponsor inquiry");
+    const postScrollGeometry = await assertStickyRowsAfterScroll(page, ".case-strip", ".campaign-header", "Sponsor inquiry");
     await page.locator("#inquiry").evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
-    await assertStickyRowsAfterScroll(page, ".case-strip", ".sponsor-topbar", "Sponsor inquiry clearance");
+    await assertStickyRowsAfterScroll(page, ".case-strip", ".campaign-header", "Sponsor inquiry clearance");
     const inquiryTop = await page.locator("#inquiry").evaluate((element) => element.getBoundingClientRect().top);
     assert.ok(inquiryTop >= postScrollGeometry.stack - 2, "Inquiry anchor must clear both sticky rows.");
 
@@ -377,11 +377,11 @@ async function sponsorDesktop(browser) {
       ".opportunity-card:last-child",
       "[data-sponsor-form]",
       "#sponsor-faq",
-      ".sponsor-footer",
+      ".campaign-footer",
     ]) {
       await page.locator(selector).scrollIntoViewIfNeeded();
       await page.waitForTimeout(50);
-      await assertStickyRowsAfterSurfaceScroll(page, ".case-strip", ".sponsor-topbar", `Sponsor ${selector}`);
+      await assertStickyRowsAfterSurfaceScroll(page, ".case-strip", ".campaign-header", `Sponsor ${selector}`);
     }
 
     const submit = page.locator("[data-sponsor-submit]");
@@ -441,17 +441,17 @@ async function sponsorMobile(browser) {
     const geometry = await initialStickyGeometry(
       page,
       ".case-strip",
-      ".sponsor-topbar",
-      { stripHeight: 76, headerHeight: 59, stack: 135 },
+      ".campaign-header",
+      { stripHeight: 72, headerHeight: 60, stack: 132 },
       "Sponsor mobile",
     );
     const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
       page,
       ".case-strip",
-      ".sponsor-topbar",
+      ".campaign-header",
       "Sponsor mobile",
     );
-    await exerciseMobileMenu(page, ".menu-toggle", "#nav", "#nav .nav-sponsors", true);
+    await exerciseMobileMenu(page, ".campaign-menu-toggle", "#campaign-nav", "#campaign-nav .nav-sponsors", true);
 
     const layout = await page.evaluate(() => {
       const cards = [...document.querySelectorAll(".opportunity-card")];
@@ -515,8 +515,8 @@ async function sponsorZoomEquivalent(browser) {
     const geometry = await initialStickyGeometry(
       page,
       ".case-strip",
-      ".sponsor-topbar",
-      { stripHeight: 76, headerHeight: 59, stack: 135 },
+      ".campaign-header",
+      { stripHeight: 72, headerHeight: 60, stack: 132 },
       "Sponsor zoom-equivalent",
     );
     const heroTop = await page.locator("#sponsor-hero").evaluate((element) => element.getBoundingClientRect().top);
@@ -524,7 +524,7 @@ async function sponsorZoomEquivalent(browser) {
     const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
       page,
       ".case-strip",
-      ".sponsor-topbar",
+      ".campaign-header",
       "Sponsor zoom-equivalent",
     );
     evidence.sponsorPosts += tracker.sponsorPosts;
@@ -550,18 +550,18 @@ async function clueBoardMobile(browser) {
     const overflow = await noOverflow(page, "Clue Board mobile");
     const geometry = await initialStickyGeometry(
       page,
-      ".case-signal",
-      ".board-topbar",
-      { stripHeight: 76, headerHeight: 58, stack: 134 },
+      ".case-strip",
+      ".campaign-header",
+      { stripHeight: 72, headerHeight: 60, stack: 132 },
       "Clue Board mobile",
     );
     const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
       page,
-      ".case-signal",
-      ".board-topbar",
+      ".case-strip",
+      ".campaign-header",
       "Clue Board mobile",
     );
-    await exerciseMobileMenu(page, ".board-menu-toggle", "#nav", "#nav .nav-sponsors", false);
+    await exerciseMobileMenu(page, ".campaign-menu-toggle", "#campaign-nav", "#campaign-nav .nav-sponsors", false);
     evidence.sponsorPosts += tracker.sponsorPosts;
     await page.evaluate(() => window.scrollTo(0, 0));
     const screenshot = await saveScreenshot(page, "clue-board-mobile-390x844");
@@ -664,8 +664,8 @@ async function builtOutputScans() {
     sponsor_inquiries: new Set(["dist/_worker.js"]),
     sponsor_inquiry_events: new Set(["dist/_worker.js"]),
     "private note": new Set(["dist/assets/app/ops.js"]),
-    "@sebahub.com": new Set(["dist/index.html", "dist/privacy.html", "dist/route.html"]),
-    "@businessasaforceforgood.ca": new Set(["dist/index.html"]),
+    "@sebahub.com": new Set(["dist/privacy.html", "dist/route.html"]),
+    "@businessasaforceforgood.ca": new Set(),
     cfcw: new Set(),
   };
   const broadMatches = [];
@@ -686,20 +686,23 @@ async function builtOutputScans() {
   }
   const opsDocument = documents.find((document) => document.path === "dist/assets/app/ops.js");
   assert.ok(opsDocument, "The built Ops implementation bundle must exist.");
-  assert.ok(
-    opsDocument.text.includes("Add a private note for this sponsor state change (optional, 2,000 characters maximum):"),
-    "The classified private-note prompt must retain its exact reviewed copy.",
+  const reviewedPrivateNoteCopy = [
+    "Add an optional private note for this status change:",
+    "Add a private note for this sponsor state change (optional, 2,000 characters maximum):",
+    "Private notes must be 2,000 characters or fewer.",
+  ];
+  for (const reviewedCopy of reviewedPrivateNoteCopy) {
+    assert.ok(opsDocument.text.includes(reviewedCopy), `The classified private-note copy must retain: ${reviewedCopy}`);
+  }
+  assert.equal(
+    matches(opsDocument.text, /private note/i).length,
+    reviewedPrivateNoteCopy.length,
+    "Only the reviewed private-note copy strings are allowed.",
   );
-  assert.ok(
-    opsDocument.text.includes("Private notes must be 2,000 characters or fewer."),
-    "The classified private-note limit must retain its exact reviewed copy.",
-  );
-  assert.equal(matches(opsDocument.text, /private note/i).length, 2, "Only the two reviewed private-note copy strings are allowed.");
 
   const exactPublicContacts = new Map([
-    ["casey@sebahub.com", new Set(["dist/index.html", "dist/route.html"])],
+    ["casey@sebahub.com", new Set(["dist/route.html"])],
     ["info@sebahub.com", new Set(["dist/privacy.html"])],
-    ["tim@businessasaforceforgood.ca", new Set(["dist/index.html"])],
   ]);
   const contactMatches = [];
   for (const document of documents) {
@@ -741,10 +744,7 @@ async function builtOutputScans() {
         broadMatches.filter((match) => match.value.toLowerCase() === value).length,
       ])),
       exactPublicContacts: Object.fromEntries([...exactPublicContacts].map(([address, paths]) => [address, [...paths]])),
-      privateNoteCopy: [
-        "Add a private note for this sponsor state change (optional, 2,000 characters maximum):",
-        "Private notes must be 2,000 characters or fewer.",
-      ],
+      privateNoteCopy: reviewedPrivateNoteCopy,
     },
     correctedRenderedPublicScan: {
       pattern: correctedPattern.source,
