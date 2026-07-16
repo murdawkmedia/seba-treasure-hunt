@@ -188,9 +188,11 @@ test("Tim's 19 answer bodies remain byte-identical", () => {
 
 test("the retraced route keeps all stable waypoints and documentary endpoints", () => {
   const route = read("route.html");
+  const routeText = visibleText(route).replace(/\s+/g, " ");
   assert.match(route, /<title>The Route, Retraced \| Tim Lost Something\?<\/title>/);
   assert.match(route, /<h1>The route Tim took<\/h1>/);
   assert.deepEqual([...route.matchAll(/data-waypoint-id="(\d+)"/g)].map((match) => Number(match[1])), [1, 2, 3, 4, 13, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.match(routeText, /Tim(?:'|’)s number is his personal cell\. Please treat it with the same respect you would want for your own\./);
   for (const [href, label] of [["interview.html", "Tim’s Account"], ["rules.html", "Current rules"], ["report.html", "Private report"]]) {
     assert.match(route, new RegExp(`href="${href}"[^>]*>${label}<`, "i"));
   }
