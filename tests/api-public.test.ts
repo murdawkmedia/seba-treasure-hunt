@@ -672,6 +672,8 @@ test("canonicalizes the apex with method-safe redirects and falls through to sta
   assert.equal(requestedPaths.at(-1), "/route");
   assert.match(staticResponse.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
   assert.match(staticResponse.headers.get("content-security-policy") ?? "", /challenges\.cloudflare\.com/);
+  assert.match(staticResponse.headers.get("content-security-policy") ?? "", /clerk\.timlostsomething\.com/);
+  assert.match(staticResponse.headers.get("content-security-policy") ?? "", /clerk\.www\.timlostsomething\.com/);
   assert.equal(staticResponse.headers.get("x-frame-options"), "DENY");
   assert.equal(staticResponse.headers.get("x-content-type-options"), "nosniff");
   assert.equal(staticResponse.headers.get("permissions-policy"), "camera=(), microphone=(), geolocation=(self)");
