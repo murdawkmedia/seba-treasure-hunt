@@ -860,6 +860,8 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
     latitude: 53.123,
     longitude: -114.456,
     status: "reviewing",
+    publicAttribution: "Hunter A7F3",
+    attributionKind: "hunter_handle",
     media: [
       {
         id: "media-publish-1",

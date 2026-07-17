@@ -353,7 +353,7 @@ test("publishes only the approved minor-safe report projection and selected deri
   );
 });
 
-test("derives adult and unsigned report attribution only from stored ownership", async () => {
+test("publishes only snapshotted adult and forced anonymous report attribution", async () => {
   const store = new FakeStore();
   store.profiles.set("adult-subject", {
     subject: "adult-subject",
@@ -366,6 +366,8 @@ test("derives adult and unsigned report attribution only from stored ownership",
       hunterSubject: "adult-subject",
       waypointId: 2,
       status: "verified",
+      publicAttribution: "Hunter A7F3",
+      attributionKind: "hunter_handle",
       media: []
     },
     {

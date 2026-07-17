@@ -20,6 +20,13 @@ export interface ResolvedPublicAttribution {
   label: string;
 }
 
+export interface ReportPublicAttributionSnapshot {
+  hunterSubject: string | null;
+  publicAttribution: unknown;
+  attributionKind: unknown;
+  protectsMinor: boolean;
+}
+
 export const REPORT_REVIEW_STATES = [
   "received",
   "reviewing",
@@ -96,6 +103,28 @@ export function resolvePublicAttribution(
     return { kind: "hunter_handle", label: handle };
   }
   return { kind: "community", label: "Community Hunter" };
+}
+
+export function publicAttributionFromReportSnapshot(
+  snapshot: ReportPublicAttributionSnapshot
+): string | null {
+  if (snapshot.protectsMinor) return "Young Hunter";
+  if (!snapshot.hunterSubject) return "Community Hunter";
+
+  const label = typeof snapshot.publicAttribution === "string"
+    ? snapshot.publicAttribution.trim()
+    : "";
+  if (!label) return null;
+  if (snapshot.attributionKind === "display_name" || snapshot.attributionKind === "hunter_handle") {
+    return label;
+  }
+  if (snapshot.attributionKind === "community" && label === "Community Hunter") {
+    return label;
+  }
+  if (snapshot.attributionKind === "young_hunter" && label === "Young Hunter") {
+    return label;
+  }
+  return null;
 }
 
 export function isPublicationDestination(value: unknown): value is PublicationDestination {

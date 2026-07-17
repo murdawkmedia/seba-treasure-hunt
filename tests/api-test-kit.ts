@@ -19,7 +19,7 @@ import type {
   WaiverReviewRecord
 } from "../src/server/types";
 import { ApiError } from "../src/server/errors";
-import { isRequestedPublicAttributionKind } from "../src/shared/publication";
+import { publicAttributionFromReportSnapshot } from "../src/shared/publication";
 import { publicHunterIdentity } from "../src/shared/public-identity";
 
 export type Principal = {
@@ -101,21 +101,12 @@ const parseModerationCursor = (cursor: string | null | undefined): ModerationCur
 const reportPublicAttribution = (
   report: Record<string, unknown>,
   profile: Record<string, unknown> | null
-) => {
-  const snapshot = typeof report.publicAttribution === "string"
-    ? report.publicAttribution.trim()
-    : "";
-  if (
-    profile?.participationBasis === "minor_guardian_permission" ||
-    report.attributionKind === "young_hunter"
-  ) {
-    return "Young Hunter";
-  }
-  if (typeof report.hunterSubject !== "string") return "Community Hunter";
-  if (snapshot && isRequestedPublicAttributionKind(report.attributionKind)) return snapshot;
-  const currentHandle = typeof profile?.publicHandle === "string" ? profile.publicHandle.trim() : "";
-  return currentHandle || "Community Hunter";
-};
+) => publicAttributionFromReportSnapshot({
+  hunterSubject: typeof report.hunterSubject === "string" ? report.hunterSubject : null,
+  publicAttribution: report.publicAttribution,
+  attributionKind: report.attributionKind,
+  protectsMinor: profile?.participationBasis === "minor_guardian_permission"
+});
 
 const beforeModerationCursor = (record: Record<string, unknown>, cursor: ModerationCursor | null) =>
   !cursor || String(record.createdAt ?? "") < cursor.createdAt ||
@@ -962,7 +953,8 @@ export class FakeStore {
       : !terminal && profile
         ? resolvedAttribution
         : null;
-    const publicationEligible = !terminal && (!hunterSubject || Boolean(profile));
+    const publicationEligible = !terminal && Boolean(resolvedAttribution) &&
+      (!hunterSubject || Boolean(profile));
     const publicationId = this.reportPublicationIds.get(id) ?? null;
     const linkedUpdate = publicationId ? this.updates.find((update) => update.id === publicationId) : null;
     const updateStatus = typeof linkedUpdate?.status === "string" ? linkedUpdate.status : null;
@@ -979,7 +971,9 @@ export class FakeStore {
         ? "eligible"
         : terminal
           ? "report_state_invalid"
-          : "current_legal_acceptance_required",
+          : hunterSubject && profile && !resolvedAttribution
+            ? "public_attribution_required"
+            : "current_legal_acceptance_required",
       publication: {
         published,
         updateId: publicationId,
@@ -1095,6 +1089,13 @@ export class FakeStore {
       ? this.profiles.get(report.hunterSubject)
       : null;
     const publisherName = reportPublicAttribution(report, profile ?? null);
+    if (!publisherName) {
+      throw new ApiError(
+        409,
+        "report_publication_ineligible",
+        "This report is not eligible for a public attribution."
+      );
+    }
     const updateId = existingUpdateId ??
       `approved-report-${this.reportPublicationIds.size + 1}`;
     const previousMedia = this.reportPublicationMedia.get(reportId) ?? [];

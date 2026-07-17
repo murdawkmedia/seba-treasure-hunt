@@ -2876,6 +2876,10 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     reportInsert("report-minor", "hunter-minor-public", "Private Minor Name", 1, 53.123, -114.456),
     reportInsert("report-adult", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
     reportInsert("report-adult-community", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
+    reportInsert("report-young-snapshot", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
+    reportInsert("report-missing-snapshot", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
+    reportInsert("report-blank-snapshot", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
+    reportInsert("report-invalid-snapshot", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
     reportInsert("report-community", null, "Private Community Name", null, null, null),
     reportInsert("report-stale", "hunter-stale-public", "Private Stale Name", 1, 53.125, -114.458),
     reportInsert("report-mismatch", "hunter-mismatch-public", "Original Account Name", 1, 53.127, -114.460),
@@ -2917,6 +2921,21 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       `UPDATE private_reports
        SET public_attribution = 'Young Hunter', attribution_kind = 'young_hunter'
        WHERE id = 'report-minor'`
+    ),
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = 'Young Hunter', attribution_kind = 'young_hunter'
+       WHERE id = 'report-young-snapshot'`
+    ),
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = '', attribution_kind = 'display_name'
+       WHERE id = 'report-blank-snapshot'`
+    ),
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = 'Invalid stored label', attribution_kind = NULL
+       WHERE id = 'report-invalid-snapshot'`
     ),
     db.prepare(
       `UPDATE hunter_profiles
@@ -3049,6 +3068,29 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.equal(adultCommunityPreview?.publicAttribution, "Community Hunter");
   assert.equal(adultCommunityPreview?.publicationEligible, true);
 
+  const youngSnapshotPreview = await store.getReportDetail(
+    "report-young-snapshot",
+    "staff-preview-young-snapshot"
+  );
+  assert.equal(youngSnapshotPreview?.publicAttribution, "Young Hunter");
+  assert.equal(youngSnapshotPreview?.publicationEligible, true);
+
+  for (const reportId of [
+    "report-missing-snapshot",
+    "report-blank-snapshot",
+    "report-invalid-snapshot"
+  ]) {
+    const ineligible = await store.getReportDetail(reportId, `staff-preview-${reportId}`);
+    assert.equal(ineligible?.publicAttribution, null, reportId);
+    assert.equal(ineligible?.publicationEligible, false, reportId);
+    assert.equal(ineligible?.publicationEligibilityReason, "public_attribution_required", reportId);
+    assert.doesNotMatch(
+      JSON.stringify(ineligible),
+      /Current Handle Must Not Leak|Current Display Must Not Leak/,
+      reportId
+    );
+  }
+
   const transitionedPreview = await store.getReportDetail("report-adult-to-minor", "staff-preview-transitioned");
   assert.equal(transitionedPreview?.publicAttribution, "Young Hunter");
   assert.equal(transitionedPreview?.publicationEligible, true);
@@ -3128,7 +3170,9 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     .prepare(
       `UPDATE private_reports SET status = 'verified'
        WHERE id IN ('report-adult-to-minor', 'report-minor', 'report-adult',
-                     'report-adult-community', 'report-community', 'report-concurrent',
+                     'report-adult-community', 'report-young-snapshot',
+                     'report-missing-snapshot', 'report-blank-snapshot',
+                     'report-invalid-snapshot', 'report-community', 'report-concurrent',
                      'report-schedule')`
     )
     .run();
@@ -3338,6 +3382,27 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     { title: "Adult community report", body: "Edited adult community story", mediaIds: [] },
     "staff-publisher"
   );
+  const youngSnapshotUpdate = await store.publishReport(
+    "report-young-snapshot",
+    { title: "Young Hunter report", body: "Edited privacy-safe story", mediaIds: [] },
+    "staff-publisher"
+  );
+  for (const reportId of [
+    "report-missing-snapshot",
+    "report-blank-snapshot",
+    "report-invalid-snapshot"
+  ]) {
+    await assert.rejects(
+      store.publishReport(
+        reportId,
+        { title: "Unsafe attribution", body: "Must remain private", mediaIds: [] },
+        "staff-publisher"
+      ),
+      (error: unknown) =>
+        error instanceof ApiError && error.code === "report_publication_ineligible",
+      reportId
+    );
+  }
   const communityUpdate = await store.publishReport(
     "report-community",
     { title: "Community report", body: "Edited community story", mediaIds: [] },
@@ -3347,11 +3412,13 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.equal(adultUpdate?.publisherName, "Trail Friends");
   assert.equal(adultCommunityUpdate?.publisherName, adultCommunityPreview?.publicAttribution);
   assert.equal(adultCommunityUpdate?.publisherName, "Community Hunter");
+  assert.equal(youngSnapshotUpdate?.publisherName, youngSnapshotPreview?.publicAttribution);
+  assert.equal(youngSnapshotUpdate?.publisherName, "Young Hunter");
   assert.equal(communityUpdate?.publisherName, "Community Hunter");
   const storedAttributionSnapshots = await db.prepare(
     `SELECT id, public_attribution, attribution_kind
      FROM private_reports
-     WHERE id IN ('report-adult', 'report-adult-community', 'report-minor')
+     WHERE id IN ('report-adult', 'report-adult-community', 'report-minor', 'report-young-snapshot')
      ORDER BY id`
   ).all<{ id: string; public_attribution: string; attribution_kind: string }>();
   assert.deepEqual(storedAttributionSnapshots.results, [
@@ -3369,12 +3436,18 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       id: "report-minor",
       public_attribution: "Young Hunter",
       attribution_kind: "young_hunter"
+    },
+    {
+      id: "report-young-snapshot",
+      public_attribution: "Young Hunter",
+      attribution_kind: "young_hunter"
     }
   ]);
   const storedPublishedAttributions = await db.prepare(
     `SELECT source_report_id, publisher_name, public_attribution
      FROM official_updates
-     WHERE source_report_id IN ('report-adult', 'report-adult-community', 'report-minor')
+     WHERE source_report_id IN ('report-adult', 'report-adult-community', 'report-minor',
+                                'report-young-snapshot')
      ORDER BY source_report_id`
   ).all<{ source_report_id: string; publisher_name: string; public_attribution: string }>();
   assert.deepEqual(storedPublishedAttributions.results, [
@@ -3392,11 +3465,24 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       source_report_id: "report-minor",
       publisher_name: "Young Hunter",
       public_attribution: "Young Hunter"
+    },
+    {
+      source_report_id: "report-young-snapshot",
+      publisher_name: "Young Hunter",
+      public_attribution: "Young Hunter"
     }
   ]);
   assert.doesNotMatch(
-    JSON.stringify([adultUpdate, adultCommunityUpdate, minorUpdate]),
+    JSON.stringify([adultUpdate, adultCommunityUpdate, minorUpdate, youngSnapshotUpdate]),
     /Current Handle Must Not Leak|Current Display Must Not Leak/
+  );
+  assert.equal(
+    (await db.prepare(
+      `SELECT COUNT(*) AS count FROM official_updates
+       WHERE source_report_id IN ('report-missing-snapshot', 'report-blank-snapshot',
+                                  'report-invalid-snapshot')`
+    ).first<{ count: number }>())?.count,
+    0
   );
 
   await legalAcceptance(
@@ -3419,7 +3505,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   );
 
   const feed = await store.listUpdates({ limit: 10 });
-  assert.equal(feed.items.length, 7);
+  assert.equal(feed.items.length, 8);
   assert.equal(feed.items.some((item) => item.kind === "approved_report"), true);
   assert.equal(
     feed.items.find((item) => item.title === "Ordinary update")?.publisherName,
@@ -3711,6 +3797,33 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
       publicAttribution: "Young Hunter",
       attributionKind: "young_hunter",
       media: []
+    },
+    {
+      id: "fake-report-missing-snapshot",
+      hunterSubject: "hunter-display-snapshot",
+      status: "verified",
+      media: []
+    },
+    {
+      id: "fake-report-blank-snapshot",
+      hunterSubject: "hunter-display-snapshot",
+      status: "verified",
+      publicAttribution: "",
+      attributionKind: "display_name",
+      media: []
+    },
+    {
+      id: "fake-report-invalid-snapshot",
+      hunterSubject: "hunter-display-snapshot",
+      status: "verified",
+      publicAttribution: "Invalid stored label",
+      media: []
+    },
+    {
+      id: "fake-report-anonymous",
+      hunterSubject: null,
+      status: "verified",
+      media: []
     }
   );
   const storedSnapshots = structuredClone(store.reports);
@@ -3731,6 +3844,37 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
     assert.equal(update?.publisherName, preview?.publicAttribution);
     assert.equal(update?.publisherName, expectedAttribution);
   }
+
+  for (const reportId of [
+    "fake-report-missing-snapshot",
+    "fake-report-blank-snapshot",
+    "fake-report-invalid-snapshot"
+  ]) {
+    const preview = await store.getReportDetail(reportId, "staff-preview");
+    assert.equal(preview?.publicAttribution, null, reportId);
+    assert.equal(preview?.publicationEligible, false, reportId);
+    assert.equal(preview?.publicationEligibilityReason, "public_attribution_required", reportId);
+    await assert.rejects(
+      store.publishReport(
+        reportId,
+        { title: "Unsafe attribution", body: "Must remain private", mediaIds: [] },
+        "staff-publisher"
+      ),
+      (error: unknown) =>
+        error instanceof ApiError && error.code === "report_publication_ineligible",
+      reportId
+    );
+  }
+
+  const anonymousPreview = await store.getReportDetail("fake-report-anonymous", "staff-preview");
+  assert.equal(anonymousPreview?.publicAttribution, "Community Hunter");
+  assert.equal(anonymousPreview?.publicationEligible, true);
+  const anonymousUpdate = await store.publishReport(
+    "fake-report-anonymous",
+    { title: "Anonymous report", body: "Reviewed public story", mediaIds: [] },
+    "staff-publisher"
+  );
+  assert.equal(anonymousUpdate?.publisherName, "Community Hunter");
 
   assert.deepEqual(store.reports, storedSnapshots);
   assert.doesNotMatch(

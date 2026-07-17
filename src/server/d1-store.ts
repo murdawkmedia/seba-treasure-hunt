@@ -1,7 +1,11 @@
 import { ApiError, ConflictError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument } from "./legal-documents";
 import { isAllowedStaffEmail, staffDisplayName } from "./staff-domains";
-import { isReportReviewState, nextReportStates } from "../shared/publication";
+import {
+  isReportReviewState,
+  nextReportStates,
+  publicAttributionFromReportSnapshot
+} from "../shared/publication";
 import { publicHunterIdentity } from "../shared/public-identity";
 import type {
   CaseStatus,
@@ -3438,7 +3442,7 @@ export class D1DataStore implements DataStore {
     if (!attributionPreview.publicationEligible || !attributionPreview.publicAttribution) {
       throw new ApiError(
         409,
-        "report_publication_legal_required",
+        "report_publication_ineligible",
         "The report is not eligible for public attribution."
       );
     }
@@ -4573,7 +4577,6 @@ export class D1DataStore implements DataStore {
     const row = await this.db
       .prepare(
         `SELECT r.hunter_subject, r.status, r.public_attribution, r.attribution_kind,
-                profile.public_handle,
                 profile.participation_basis,
                 report_time.action AS report_time_action,
                 report_account.participation_basis AS report_time_basis,
@@ -4669,12 +4672,12 @@ export class D1DataStore implements DataStore {
     const protectsMinor = currentBasis === "minor_guardian_permission" ||
       reportTimeBasis === "minor_guardian_permission";
     const safeMinorAttribution = protectsMinor ? "Young Hunter" : null;
-    const snapshottedAttribution = nullable(row.public_attribution)?.trim() ?? "";
-    const snapshottedKind = nullable(row.attribution_kind);
-    const safeSnapshot = snapshottedAttribution &&
-      (snapshottedKind === "display_name" || snapshottedKind === "hunter_handle" || snapshottedKind === "community")
-      ? snapshottedAttribution
-      : null;
+    const safeSnapshot = publicAttributionFromReportSnapshot({
+      hunterSubject,
+      publicAttribution: row.public_attribution,
+      attributionKind: row.attribution_kind,
+      protectsMinor
+    });
     if (row.status === "rejected" || row.status === "resolved") {
       return preview({
         publicAttribution: safeMinorAttribution ?? (hunterSubject ? null : "Community Hunter"),
@@ -4728,18 +4731,10 @@ export class D1DataStore implements DataStore {
         publicationEligibilityReason: "eligible"
       });
     }
-    const publicHandle = nullable(row.public_handle)?.trim() ?? "";
-    if (!publicHandle) {
-      return preview({
-        publicAttribution: null,
-        publicationEligible: false,
-        publicationEligibilityReason: "public_handle_required"
-      });
-    }
     return preview({
-      publicAttribution: publicHandle,
-      publicationEligible: true,
-      publicationEligibilityReason: "eligible"
+      publicAttribution: null,
+      publicationEligible: false,
+      publicationEligibilityReason: "public_attribution_required"
     });
   }
 
