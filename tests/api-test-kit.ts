@@ -19,6 +19,7 @@ import type {
   WaiverReviewRecord
 } from "../src/server/types";
 import { ApiError } from "../src/server/errors";
+import { isRequestedPublicAttributionKind } from "../src/shared/publication";
 import { publicHunterIdentity } from "../src/shared/public-identity";
 
 export type Principal = {
@@ -95,6 +96,25 @@ const parseModerationCursor = (cursor: string | null | undefined): ModerationCur
   } catch {
     throw invalidModerationCursor();
   }
+};
+
+const reportPublicAttribution = (
+  report: Record<string, unknown>,
+  profile: Record<string, unknown> | null
+) => {
+  const snapshot = typeof report.publicAttribution === "string"
+    ? report.publicAttribution.trim()
+    : "";
+  if (
+    profile?.participationBasis === "minor_guardian_permission" ||
+    report.attributionKind === "young_hunter"
+  ) {
+    return "Young Hunter";
+  }
+  if (typeof report.hunterSubject !== "string") return "Community Hunter";
+  if (snapshot && isRequestedPublicAttributionKind(report.attributionKind)) return snapshot;
+  const currentHandle = typeof profile?.publicHandle === "string" ? profile.publicHandle.trim() : "";
+  return currentHandle || "Community Hunter";
 };
 
 const beforeModerationCursor = (record: Record<string, unknown>, cursor: ModerationCursor | null) =>
@@ -936,13 +956,12 @@ export class FakeStore {
     const profile = hunterSubject ? this.profiles.get(hunterSubject) : null;
     const terminal = report.status === "rejected" || report.status === "resolved";
     const minor = profile?.participationBasis === "minor_guardian_permission";
-    const publicAttribution = minor
-      ? "Young Hunter"
-      : !hunterSubject
-        ? "Community Hunter"
-        : !terminal && profile && typeof profile.publicHandle === "string" && profile.publicHandle.trim()
-          ? profile.publicHandle.trim()
-          : null;
+    const resolvedAttribution = reportPublicAttribution(report, profile ?? null);
+    const publicAttribution = minor || !hunterSubject
+      ? resolvedAttribution
+      : !terminal && profile
+        ? resolvedAttribution
+        : null;
     const publicationEligible = !terminal && (!hunterSubject || Boolean(profile));
     const publicationId = this.reportPublicationIds.get(id) ?? null;
     const linkedUpdate = publicationId ? this.updates.find((update) => update.id === publicationId) : null;
@@ -1075,11 +1094,7 @@ export class FakeStore {
     const profile = typeof report.hunterSubject === "string"
       ? this.profiles.get(report.hunterSubject)
       : null;
-    const publisherName = !profile
-      ? "Community Hunter"
-      : profile.participationBasis === "minor_guardian_permission"
-        ? "Young Hunter"
-        : String(profile.publicHandle ?? "Community Hunter");
+    const publisherName = reportPublicAttribution(report, profile ?? null);
     const updateId = existingUpdateId ??
       `approved-report-${this.reportPublicationIds.size + 1}`;
     const previousMedia = this.reportPublicationMedia.get(reportId) ?? [];

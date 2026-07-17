@@ -2875,6 +2875,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   await db.batch([
     reportInsert("report-minor", "hunter-minor-public", "Private Minor Name", 1, 53.123, -114.456),
     reportInsert("report-adult", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
+    reportInsert("report-adult-community", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
     reportInsert("report-community", null, "Private Community Name", null, null, null),
     reportInsert("report-stale", "hunter-stale-public", "Private Stale Name", 1, 53.125, -114.458),
     reportInsert("report-mismatch", "hunter-mismatch-public", "Original Account Name", 1, 53.127, -114.460),
@@ -2901,6 +2902,29 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     )
     .bind("2026-07-15T19:00:00.000Z", "2026-07-15T19:00:00.000Z")
     .run();
+  await db.batch([
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = 'Trail Friends', attribution_kind = 'display_name'
+       WHERE id = 'report-adult'`
+    ),
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = 'Community Hunter', attribution_kind = 'community'
+       WHERE id = 'report-adult-community'`
+    ),
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = 'Young Hunter', attribution_kind = 'young_hunter'
+       WHERE id = 'report-minor'`
+    ),
+    db.prepare(
+      `UPDATE hunter_profiles
+       SET public_handle = 'Current Handle Must Not Leak',
+           public_display_name = 'Current Display Must Not Leak', updated_at = ?
+       WHERE subject = 'hunter-adult-public'`
+    ).bind("2026-07-15T20:00:30.000Z")
+  ]);
   await db
     .prepare(
       `UPDATE hunter_profiles
@@ -3015,8 +3039,15 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.doesNotMatch(JSON.stringify(minorPreview), /Minor Handle Must Stay Private|participationBasis/);
 
   const adultPreview = await store.getReportDetail("report-adult", "staff-preview-adult");
-  assert.equal(adultPreview?.publicAttribution, "Hunter A7F3");
+  assert.equal(adultPreview?.publicAttribution, "Trail Friends");
   assert.equal(adultPreview?.publicationEligible, true);
+
+  const adultCommunityPreview = await store.getReportDetail(
+    "report-adult-community",
+    "staff-preview-adult-community"
+  );
+  assert.equal(adultCommunityPreview?.publicAttribution, "Community Hunter");
+  assert.equal(adultCommunityPreview?.publicationEligible, true);
 
   const transitionedPreview = await store.getReportDetail("report-adult-to-minor", "staff-preview-transitioned");
   assert.equal(transitionedPreview?.publicAttribution, "Young Hunter");
@@ -3097,7 +3128,8 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     .prepare(
       `UPDATE private_reports SET status = 'verified'
        WHERE id IN ('report-adult-to-minor', 'report-minor', 'report-adult',
-                    'report-community', 'report-concurrent', 'report-schedule')`
+                     'report-adult-community', 'report-community', 'report-concurrent',
+                     'report-schedule')`
     )
     .run();
   const savedDraft = await store.publishReport(
@@ -3301,13 +3333,71 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     { title: "Adult report", body: "Edited adult story", mediaIds: [] },
     "staff-publisher"
   );
+  const adultCommunityUpdate = await store.publishReport(
+    "report-adult-community",
+    { title: "Adult community report", body: "Edited adult community story", mediaIds: [] },
+    "staff-publisher"
+  );
   const communityUpdate = await store.publishReport(
     "report-community",
     { title: "Community report", body: "Edited community story", mediaIds: [] },
     "staff-publisher"
   );
-  assert.equal(adultUpdate?.publisherName, "Hunter A7F3");
+  assert.equal(adultUpdate?.publisherName, adultPreview?.publicAttribution);
+  assert.equal(adultUpdate?.publisherName, "Trail Friends");
+  assert.equal(adultCommunityUpdate?.publisherName, adultCommunityPreview?.publicAttribution);
+  assert.equal(adultCommunityUpdate?.publisherName, "Community Hunter");
   assert.equal(communityUpdate?.publisherName, "Community Hunter");
+  const storedAttributionSnapshots = await db.prepare(
+    `SELECT id, public_attribution, attribution_kind
+     FROM private_reports
+     WHERE id IN ('report-adult', 'report-adult-community', 'report-minor')
+     ORDER BY id`
+  ).all<{ id: string; public_attribution: string; attribution_kind: string }>();
+  assert.deepEqual(storedAttributionSnapshots.results, [
+    {
+      id: "report-adult",
+      public_attribution: "Trail Friends",
+      attribution_kind: "display_name"
+    },
+    {
+      id: "report-adult-community",
+      public_attribution: "Community Hunter",
+      attribution_kind: "community"
+    },
+    {
+      id: "report-minor",
+      public_attribution: "Young Hunter",
+      attribution_kind: "young_hunter"
+    }
+  ]);
+  const storedPublishedAttributions = await db.prepare(
+    `SELECT source_report_id, publisher_name, public_attribution
+     FROM official_updates
+     WHERE source_report_id IN ('report-adult', 'report-adult-community', 'report-minor')
+     ORDER BY source_report_id`
+  ).all<{ source_report_id: string; publisher_name: string; public_attribution: string }>();
+  assert.deepEqual(storedPublishedAttributions.results, [
+    {
+      source_report_id: "report-adult",
+      publisher_name: "Trail Friends",
+      public_attribution: "Trail Friends"
+    },
+    {
+      source_report_id: "report-adult-community",
+      publisher_name: "Community Hunter",
+      public_attribution: "Community Hunter"
+    },
+    {
+      source_report_id: "report-minor",
+      publisher_name: "Young Hunter",
+      public_attribution: "Young Hunter"
+    }
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify([adultUpdate, adultCommunityUpdate, minorUpdate]),
+    /Current Handle Must Not Leak|Current Display Must Not Leak/
+  );
 
   await legalAcceptance(
     "privacy-adult-withdrawn",
@@ -3329,7 +3419,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   );
 
   const feed = await store.listUpdates({ limit: 10 });
-  assert.equal(feed.items.length, 6);
+  assert.equal(feed.items.length, 7);
   assert.equal(feed.items.some((item) => item.kind === "approved_report"), true);
   assert.equal(
     feed.items.find((item) => item.title === "Ordinary update")?.publisherName,
@@ -3577,6 +3667,76 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     "staff-terminal-after-unpublish"
   );
   assert.equal(resolvedAfterUnpublish?.status, "resolved");
+});
+
+test("FakeStore publishes the exact snapshotted report attribution after profile changes", async () => {
+  const store = new FakeStore();
+  store.profiles.set("hunter-display-snapshot", {
+    subject: "hunter-display-snapshot",
+    participationBasis: "adult",
+    publicHandle: "Current Handle Must Not Leak",
+    publicDisplayName: "Current Display Must Not Leak"
+  });
+  store.profiles.set("hunter-community-snapshot", {
+    subject: "hunter-community-snapshot",
+    participationBasis: "adult",
+    publicHandle: "Current Community Handle Must Not Leak"
+  });
+  store.profiles.set("hunter-minor-snapshot", {
+    subject: "hunter-minor-snapshot",
+    participationBasis: "adult",
+    publicHandle: "Former Minor Current Handle Must Not Leak"
+  });
+  store.reports.push(
+    {
+      id: "fake-report-display-snapshot",
+      hunterSubject: "hunter-display-snapshot",
+      status: "verified",
+      publicAttribution: "Trail Friends",
+      attributionKind: "display_name",
+      media: []
+    },
+    {
+      id: "fake-report-community-snapshot",
+      hunterSubject: "hunter-community-snapshot",
+      status: "verified",
+      publicAttribution: "Community Hunter",
+      attributionKind: "community",
+      media: []
+    },
+    {
+      id: "fake-report-minor-snapshot",
+      hunterSubject: "hunter-minor-snapshot",
+      status: "verified",
+      publicAttribution: "Young Hunter",
+      attributionKind: "young_hunter",
+      media: []
+    }
+  );
+  const storedSnapshots = structuredClone(store.reports);
+
+  for (const [reportId, expectedAttribution] of [
+    ["fake-report-display-snapshot", "Trail Friends"],
+    ["fake-report-community-snapshot", "Community Hunter"],
+    ["fake-report-minor-snapshot", "Young Hunter"]
+  ] as const) {
+    const preview = await store.getReportDetail(reportId, "staff-preview");
+    assert.equal(preview?.publicAttribution, expectedAttribution);
+
+    const update = await store.publishReport(
+      reportId,
+      { title: `Update for ${reportId}`, body: "Reviewed public story", mediaIds: [] },
+      "staff-publisher"
+    );
+    assert.equal(update?.publisherName, preview?.publicAttribution);
+    assert.equal(update?.publisherName, expectedAttribution);
+  }
+
+  assert.deepEqual(store.reports, storedSnapshots);
+  assert.doesNotMatch(
+    JSON.stringify(store.updates),
+    /Current Handle Must Not Leak|Current Display Must Not Leak|Current Community Handle Must Not Leak|Former Minor Current Handle Must Not Leak/
+  );
 });
 
 test("the Lucky 13 D1 upgrade preserves stable references and projects public route order", async (t) => {

@@ -3434,6 +3434,14 @@ export class D1DataStore implements DataStore {
         );
       }
     }
+    const attributionPreview = await this.reportPublicationPreview(reportId);
+    if (!attributionPreview.publicationEligible || !attributionPreview.publicAttribution) {
+      throw new ApiError(
+        409,
+        "report_publication_legal_required",
+        "The report is not eligible for public attribution."
+      );
+    }
 
     if ((action === "schedule" || action === "publish_now") && report.status !== "verified") {
       throw new ApiError(
@@ -3555,14 +3563,7 @@ export class D1DataStore implements DataStore {
     const latitude = validCoordinates ? rawLatitude : null;
     const longitude = validCoordinates ? rawLongitude : null;
     const currentBasis = nullable(report.participation_basis);
-    const publisherName = !hunterSubject
-      ? "Community Hunter"
-      : reportTimeBasis === "minor_guardian_permission" ||
-          currentBasis === "minor_guardian_permission"
-        ? "Young Hunter"
-        : reportTimeBasis === "adult" && currentBasis === "adult" && nullable(report.public_handle)
-          ? value(report.public_handle)
-          : "Community Hunter";
+    const publisherName = attributionPreview.publicAttribution;
     const waypointId = numberOrNull(report.waypoint_id);
     if (
       existing &&
