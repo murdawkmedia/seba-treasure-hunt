@@ -424,6 +424,23 @@ test("every public campaign source loads only the documentary type stack", () =>
   }
 });
 
+test("the private Case Room uses the same documentary identity without pirate-era styling", () => {
+  const html = read("ops.html");
+  const css = read("css/ops.css");
+  const source = `${html}\n${css}`;
+  assert.match(html, /family=Cormorant\+Garamond/);
+  assert.match(html, /family=Source\+Sans\+3/);
+  assert.match(html, /family=IBM\+Plex\+Mono/);
+  assert.doesNotMatch(source, /Pirata One|IM Fell English|Special Elite|>T\?</i);
+  assert.match(html, /class="ops-gateway__seal"[^>]+src="\/assets\/favicon\.svg"/);
+  assert.match(html, /class="ops-header__seal"[^>]+src="\/assets\/favicon\.svg"/);
+  assert.match(css, /--ops-font-display:\s*"Cormorant Garamond"/);
+  assert.match(css, /--ops-font-body:\s*"Source Sans 3"/);
+  assert.match(css, /--ops-font-ledger:\s*"IBM Plex Mono"/);
+  assert.match(css, /\.ops-button--danger\s*\{/);
+  assert.match(css, /\.ops-page\s+:focus-visible\s*\{/);
+});
+
 test("DESIGN.md records the approved documentary case-file source of truth", () => {
   const design = read("DESIGN.md");
   for (const required of [

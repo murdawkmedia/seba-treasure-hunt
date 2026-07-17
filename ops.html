@@ -15,7 +15,7 @@
   <link rel="canonical" href="https://www.timlostsomething.com/ops" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&amp;family=Pirata+One&amp;family=Special+Elite&amp;display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/ops.css" />
   <link rel="stylesheet" href="/css/route-lightbox.css" />
 </head>
@@ -24,7 +24,7 @@
 
   <section class="ops-gateway" id="ops-auth-panel" aria-labelledby="ops-gateway-title">
     <div class="ops-gateway__brand">
-      <span class="ops-gateway__seal" aria-hidden="true">T?</span>
+      <img class="ops-gateway__seal" src="/assets/favicon.svg" alt="" width="106" height="106" />
       <p>Tim Lost Something?</p>
       <span>Restricted case room</span>
     </div>
@@ -103,7 +103,7 @@
   <div class="ops-shell" id="ops-app" hidden>
     <header class="ops-header">
       <button class="ops-menu" id="ops-menu" type="button" aria-expanded="false" aria-controls="ops-navigation"><span aria-hidden="true">&#9776;</span><span>Case ledgers</span></button>
-      <a class="ops-header__brand" href="/ops"><span class="ops-header__seal" aria-hidden="true">T?</span><span><strong>Case Room</strong><small>Tim Lost Something?</small></span></a>
+      <a class="ops-header__brand" href="/ops"><img class="ops-header__seal" src="/assets/favicon.svg" alt="" width="39" height="39" /><span><strong>Case Room</strong><small>Tim Lost Something?</small></span></a>
       <div class="ops-connection" id="ops-connection" data-state="checking" role="status" aria-live="polite"><span aria-hidden="true"></span>Checking source</div>
       <button class="ops-operator" id="ops-account-button" type="button" aria-haspopup="dialog"><span class="ops-operator__initials" aria-hidden="true">OP</span><span><strong id="ops-operator-name">Operator</strong><small>Account security</small></span></button>
       <button class="ops-button ops-button--quiet" id="ops-sign-out" type="button">Sign out</button>
