@@ -158,8 +158,9 @@ test("the moderation queue provides separate accessible reply and flag controls"
   assert.match(client, /window\.prompt\([^)]*private reason/i);
   assert.match(client, /window\.confirm\([^)]*reversible[^)]*audited/i);
   assert.match(client, /Promise\.allSettled\(/);
-  assert.match(client, /moderationRepliesNextCursor/);
-  assert.match(client, /moderationFlagsNextCursor/);
+  assert.match(client, /moderationRepliesController/);
+  assert.match(client, /moderationFlagsController/);
+  assert.match(client, /createModerationPaginationController/);
   assert.match(client, /appendDistinctModerationRecords/);
   assert.match(client, /\?limit=50\$\{cursor/);
   assert.match(client, /loadModerationReplies\(\), loadContentFlags\(\), loadDashboard\(\), loadAudit\(\)/);

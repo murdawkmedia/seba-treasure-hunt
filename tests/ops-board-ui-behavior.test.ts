@@ -10,6 +10,7 @@ import {
   buildSubscriberCsv,
   applyWaiverReceiptRetryState,
   appendDistinctModerationRecords,
+  createModerationPaginationController,
   createReportReviewGuard,
   normalizeModeration,
   normalizeModerationReplies,
@@ -91,6 +92,7 @@ test("reply and flag moderation discard malformed rows and render distinct escap
     { id: "reply-negative-flag-count", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: 4, waypointName: "Bridge", body: "Bad count", authorHandle: "Hunter", status: "published", flagCount: -1, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
     { id: "reply-negative-route", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: -1, waypointName: "Bridge", body: "Bad route", authorHandle: "Hunter", status: "published", flagCount: 1, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
     { id: "reply-fractional-route", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: 4.5, waypointName: "Bridge", body: "Bad route", authorHandle: "Hunter", status: "published", flagCount: 1, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
+    { id: "reply-route-14", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: 14, waypointName: "Bridge", body: "Bad route", authorHandle: "Hunter", status: "published", flagCount: 1, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
   ] });
   const flags = normalizeContentFlags({ data: [
     {
@@ -110,6 +112,7 @@ test("reply and flag moderation discard malformed rows and render distinct escap
     { id: "flag-note", targetKind: "note", targetId: "note-1" },
     { id: "flag-negative-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: -1, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
     { id: "flag-fractional-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: 4.5, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
+    { id: "flag-route-14", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: 14, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
   ] });
 
   assert.equal(replies.length, 1);
@@ -144,6 +147,67 @@ test("older moderation pages append only distinct records", () => {
   assert.equal(combined.length, 51);
   assert.equal(combined.at(-1)?.id, "reply-older");
   assert.equal(combined.filter((record) => record.id === "reply-1").length, 1);
+});
+
+test("fetch-mocked moderation pagers keep reply and flag cursors independent", async () => {
+  type Row = { id: string };
+  type ElementState = { innerHTML: string; textContent: string; dataset: Record<string, string>; hidden: boolean; disabled: boolean };
+  const elements: Record<string, ElementState> = {
+    "#replies-table": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#replies-state": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#replies-more": { innerHTML: "", textContent: "", dataset: {}, hidden: true, disabled: false },
+    "#flags-table": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#flags-state": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#flags-more": { innerHTML: "", textContent: "", dataset: {}, hidden: true, disabled: false },
+  };
+  const documentLike = { querySelector: (selector: string) => elements[selector] ?? null } as unknown as Pick<Document, "querySelector">;
+  const urls: string[] = [];
+  let releaseReplyPage!: () => void;
+  const replyPageWait = new Promise<void>((resolve) => { releaseReplyPage = resolve; });
+  const fetchMock = async (url: string): Promise<Response> => {
+    urls.push(url);
+    if (url.includes("replies") && url.includes("reply-cursor")) {
+      await replyPageWait;
+      return Response.json({ data: [{ id: "reply-1" }, { id: "reply-older" }, { id: "reply-older" }], page: { nextCursor: null } });
+    }
+    if (url.includes("flags") && url.includes("flag-cursor")) return new Response("unavailable", { status: 503 });
+    if (url.includes("replies")) return Response.json({ data: [{ id: "reply-1" }], page: { nextCursor: "reply-cursor" } });
+    return Response.json({ data: [{ id: "flag-1" }], page: { nextCursor: "flag-cursor" } });
+  };
+  const request = async (url: string) => {
+    const response = await fetchMock(url);
+    return { response, payload: await response.json().catch(() => null) };
+  };
+  const create = (kind: "replies" | "flags") => createModerationPaginationController<Row>({
+    endpoint: `/api/${kind}`,
+    tableSelector: `#${kind}-table`, stateSelector: `#${kind}-state`, loadMoreSelector: `#${kind}-more`,
+    document: documentLike, request, normalize: (payload) => Array.isArray((payload as { data?: unknown[] } | null)?.data) ? (payload as { data: Row[] }).data : [],
+    render: (records) => records.map((record) => record.id).join(","),
+    unavailableRows: "unavailable",
+    loadedMessage: (records, more) => `${records.length} ${kind}${more ? " more" : " end"}`,
+  });
+  const replies = create("replies");
+  const flags = create("flags");
+
+  await Promise.all([replies.refresh(), flags.refresh()]);
+  assert.equal(elements["#replies-more"].hidden, false);
+  assert.equal(elements["#flags-more"].hidden, false);
+
+  const replyMore = replies.loadMore();
+  assert.equal(elements["#replies-more"].disabled, true);
+  releaseReplyPage();
+  await replyMore;
+  assert.equal(elements["#replies-table"].innerHTML, "reply-1,reply-older");
+  assert.equal(elements["#replies-more"].hidden, true);
+
+  await flags.loadMore();
+  assert.equal(elements["#flags-more"].hidden, true);
+  assert.equal(elements["#flags-more"].disabled, true);
+  assert.deepEqual(urls.filter((url) => url.includes("cursor=")), ["/api/replies?limit=50&cursor=reply-cursor", "/api/flags?limit=50&cursor=flag-cursor"]);
+
+  await replies.refresh();
+  assert.equal(elements["#replies-table"].innerHTML, "reply-1");
+  assert.equal(elements["#replies-more"].hidden, false);
 });
 
 test("production snapshot normalization and rows preserve private review data without mutation controls", () => {

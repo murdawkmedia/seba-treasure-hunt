@@ -273,12 +273,8 @@ let productionSnapshotAvailable = false;
 let productionSnapshotAbortController: AbortController | null = null;
 let productionSnapshotTrigger: HTMLButtonElement | null = null;
 let productionSnapshotObjectUrls: string[] = [];
-let moderationReplies: OpsModerationReply[] = [];
-let moderationRepliesNextCursor: string | null = null;
-let moderationRepliesLoading = false;
-let moderationFlags: OpsContentFlag[] = [];
-let moderationFlagsNextCursor: string | null = null;
-let moderationFlagsLoading = false;
+let moderationRepliesController: ModerationPaginationController<OpsModerationReply> | null = null;
+let moderationFlagsController: ModerationPaginationController<OpsContentFlag> | null = null;
 
 export interface ReportReviewIntent {
   generation: number;
@@ -992,7 +988,7 @@ function validModerationTime(value: unknown): string | null {
 }
 
 function publicRouteOrder(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+  return typeof value === "number" && Number.isSafeInteger(value) ? routeOrder(value) : null;
 }
 
 export function normalizeModerationReplies(payload: unknown): OpsModerationReply[] {
@@ -1057,6 +1053,84 @@ export function appendDistinctModerationRecords<T extends { id: string }>(
     seen.add(record.id);
     return true;
   })];
+}
+
+export interface ModerationPaginationController<T extends { id: string }> {
+  refresh(): Promise<void>;
+  loadMore(): Promise<void>;
+  records(): readonly T[];
+}
+
+export interface ModerationPaginationConfig<T extends { id: string }> {
+  endpoint: string;
+  tableSelector: string;
+  stateSelector: string;
+  loadMoreSelector: string;
+  document: Pick<Document, "querySelector">;
+  request(url: string): Promise<{ response: Response; payload: unknown }>;
+  normalize(payload: unknown): T[];
+  render(records: readonly T[]): string;
+  unavailableRows: string;
+  loadedMessage(records: readonly T[], more: boolean): string;
+}
+
+export function createModerationPaginationController<T extends { id: string }>(
+  config: ModerationPaginationConfig<T>,
+): ModerationPaginationController<T> {
+  let loaded: T[] = [];
+  let nextCursor: string | null = null;
+  let loading = false;
+  const table = () => config.document.querySelector<HTMLElement>(config.tableSelector);
+  const state = () => config.document.querySelector<HTMLElement>(config.stateSelector);
+  const loadMore = () => config.document.querySelector<HTMLButtonElement>(config.loadMoreSelector);
+  const setState = (message: string, kind: "normal" | "error" = "normal") => {
+    const element = state();
+    if (!element) return;
+    element.textContent = message;
+    if (kind === "error") element.dataset.kind = "error";
+    else delete element.dataset.kind;
+  };
+  const setLoadMore = (failed = false) => {
+    const button = loadMore();
+    if (!button) return;
+    button.hidden = !nextCursor || failed;
+    button.disabled = loading || failed;
+  };
+  const load = async (append: boolean): Promise<void> => {
+    if (loading || (append && !nextCursor)) return;
+    if (!append) {
+      loaded = [];
+      nextCursor = null;
+    }
+    const cursor = append ? `&cursor=${encodeURIComponent(nextCursor!)}` : "";
+    loading = true;
+    setLoadMore();
+    setState(append ? "Loading older records..." : "Loading records...");
+    try {
+      const { response, payload } = await config.request(`${config.endpoint}?limit=50${cursor}`);
+      if (!response.ok) throw new Error(apiError(payload, "The moderation queue is unavailable."));
+      const page = config.normalize(payload);
+      loaded = append ? appendDistinctModerationRecords(loaded, page) : page;
+      nextCursor = moderationNextCursor(payload);
+      const target = table();
+      if (target) target.innerHTML = config.render(loaded);
+      setState(config.loadedMessage(loaded, nextCursor !== null));
+    } catch (error) {
+      if (!append) {
+        loaded = [];
+        nextCursor = null;
+        const target = table();
+        if (target) target.innerHTML = config.unavailableRows;
+      }
+      setState(error instanceof Error ? error.message : "The moderation queue is unavailable.", "error");
+      setLoadMore(true);
+    } finally {
+      loading = false;
+      const failed = state()?.dataset.kind === "error";
+      setLoadMore(failed);
+    }
+  };
+  return { refresh: () => load(false), loadMore: () => load(true), records: () => loaded };
 }
 
 export function renderProductionSnapshotReportRows(records: readonly ProductionSnapshotReport[]): string {
@@ -2200,6 +2274,11 @@ async function loadModerationNotes(): Promise<void> {
   }
 }
 
+function moderationNextCursor(payload: unknown): string | null {
+  const page = isRecord(payload) && isRecord(payload.page) ? payload.page : {};
+  return asString(page.nextCursor).trim() || null;
+}
+
 function setModerationState(selector: "#moderation-replies-state" | "#moderation-flags-state", message: string, kind: "normal" | "error" = "normal"): void {
   const state = document.querySelector<HTMLElement>(selector);
   if (!state) return;
@@ -2208,89 +2287,36 @@ function setModerationState(selector: "#moderation-replies-state" | "#moderation
   else delete state.dataset.kind;
 }
 
-function moderationNextCursor(payload: unknown): string | null {
-  const page = isRecord(payload) && isRecord(payload.page) ? payload.page : {};
-  return asString(page.nextCursor).trim() || null;
+function repliesPager(): ModerationPaginationController<OpsModerationReply> {
+  return moderationRepliesController ??= createModerationPaginationController({
+    endpoint: "/api/v1/ops/moderation/replies",
+    tableSelector: "#moderation-replies-table", stateSelector: "#moderation-replies-state", loadMoreSelector: "#moderation-replies-load-more",
+    document, request: opsRequest, normalize: normalizeModerationReplies, render: renderModerationReplyRows,
+    unavailableRows: `<tr><td colspan="7"><span class="ops-table-empty">The public replies queue is unavailable from the source.</span></td></tr>`,
+    loadedMessage: (records, more) => records.length === 0
+      ? "Public replies loaded. No reply action is currently needed."
+      : `${records.length} public ${records.length === 1 ? "reply" : "replies"} loaded for review.${more ? " More older replies are available." : " End of reply queue."}`,
+  });
 }
 
-function setModerationLoadMore(
-  selector: "#moderation-replies-load-more" | "#moderation-flags-load-more",
-  nextCursor: string | null,
-  loading: boolean,
-  failed = false,
-): void {
-  const button = document.querySelector<HTMLButtonElement>(selector);
-  if (!button) return;
-  button.hidden = !nextCursor || failed;
-  button.disabled = loading || failed;
+function flagsPager(): ModerationPaginationController<OpsContentFlag> {
+  return moderationFlagsController ??= createModerationPaginationController({
+    endpoint: "/api/v1/ops/moderation/flags",
+    tableSelector: "#moderation-flags-table", stateSelector: "#moderation-flags-state", loadMoreSelector: "#moderation-flags-load-more",
+    document, request: opsRequest, normalize: normalizeContentFlags, render: renderContentFlagRows,
+    unavailableRows: `<tr><td colspan="7"><span class="ops-table-empty">The received flags queue is unavailable from the source.</span></td></tr>`,
+    loadedMessage: (records, more) => records.length === 0
+      ? "Received flags loaded. No flag action is currently needed."
+      : `${records.length} received ${records.length === 1 ? "flag" : "flags"} loaded for review.${more ? " More older flags are available." : " End of flag queue."}`,
+  });
 }
 
 async function loadModerationReplies(append = false): Promise<void> {
-  if (moderationRepliesLoading || (append && !moderationRepliesNextCursor)) return;
-  if (!append) {
-    moderationReplies = [];
-    moderationRepliesNextCursor = null;
-  }
-  const cursor = append ? `&cursor=${encodeURIComponent(moderationRepliesNextCursor!)}` : "";
-  moderationRepliesLoading = true;
-  setModerationLoadMore("#moderation-replies-load-more", moderationRepliesNextCursor, true);
-  setModerationState("#moderation-replies-state", append ? "Loading older public replies..." : "Loading public replies...");
-  try {
-    const { response, payload } = await opsRequest(`/api/v1/ops/moderation/replies?limit=50${cursor}`);
-    if (!response.ok) throw new Error(apiError(payload, "The public replies queue is unavailable."));
-    const records = normalizeModerationReplies(payload);
-    moderationReplies = append ? appendDistinctModerationRecords(moderationReplies, records) : records;
-    moderationRepliesNextCursor = moderationNextCursor(payload);
-    setTable("#moderation-replies-table", renderModerationReplyRows(moderationReplies));
-    const suffix = moderationRepliesNextCursor ? " More older replies are available." : " End of reply queue.";
-    setModerationState("#moderation-replies-state", moderationReplies.length === 0 ? "Public replies loaded. No reply action is currently needed." : `${moderationReplies.length} public ${moderationReplies.length === 1 ? "reply" : "replies"} loaded for review.${suffix}`);
-  } catch (error) {
-    if (!append) {
-      moderationReplies = [];
-      moderationRepliesNextCursor = null;
-      setTable("#moderation-replies-table", `<tr><td colspan="7"><span class="ops-table-empty">The public replies queue is unavailable from the source.</span></td></tr>`);
-    }
-    setModerationState("#moderation-replies-state", error instanceof Error ? error.message : "The public replies queue is unavailable.", "error");
-    setModerationLoadMore("#moderation-replies-load-more", moderationRepliesNextCursor, false, true);
-  } finally {
-    moderationRepliesLoading = false;
-    const failed = document.querySelector<HTMLElement>("#moderation-replies-state")?.dataset.kind === "error";
-    setModerationLoadMore("#moderation-replies-load-more", moderationRepliesNextCursor, false, failed);
-  }
+  await (append ? repliesPager().loadMore() : repliesPager().refresh());
 }
 
 async function loadContentFlags(append = false): Promise<void> {
-  if (moderationFlagsLoading || (append && !moderationFlagsNextCursor)) return;
-  if (!append) {
-    moderationFlags = [];
-    moderationFlagsNextCursor = null;
-  }
-  const cursor = append ? `&cursor=${encodeURIComponent(moderationFlagsNextCursor!)}` : "";
-  moderationFlagsLoading = true;
-  setModerationLoadMore("#moderation-flags-load-more", moderationFlagsNextCursor, true);
-  setModerationState("#moderation-flags-state", append ? "Loading older received flags..." : "Loading received flags...");
-  try {
-    const { response, payload } = await opsRequest(`/api/v1/ops/moderation/flags?limit=50${cursor}`);
-    if (!response.ok) throw new Error(apiError(payload, "The received flags queue is unavailable."));
-    const records = normalizeContentFlags(payload);
-    moderationFlags = append ? appendDistinctModerationRecords(moderationFlags, records) : records;
-    moderationFlagsNextCursor = moderationNextCursor(payload);
-    setTable("#moderation-flags-table", renderContentFlagRows(moderationFlags));
-    const suffix = moderationFlagsNextCursor ? " More older flags are available." : " End of flag queue.";
-    setModerationState("#moderation-flags-state", moderationFlags.length === 0 ? "Received flags loaded. No flag action is currently needed." : `${moderationFlags.length} received ${moderationFlags.length === 1 ? "flag" : "flags"} loaded for review.${suffix}`);
-  } catch (error) {
-    if (!append) {
-      moderationFlags = [];
-      moderationFlagsNextCursor = null;
-      setTable("#moderation-flags-table", `<tr><td colspan="7"><span class="ops-table-empty">The received flags queue is unavailable from the source.</span></td></tr>`);
-    }
-    setModerationState("#moderation-flags-state", error instanceof Error ? error.message : "The received flags queue is unavailable.", "error");
-    setModerationLoadMore("#moderation-flags-load-more", moderationFlagsNextCursor, false, true);
-  } finally {
-    moderationFlagsLoading = false;
-    const failed = document.querySelector<HTMLElement>("#moderation-flags-state")?.dataset.kind === "error";
-    setModerationLoadMore("#moderation-flags-load-more", moderationFlagsNextCursor, false, failed);
-  }
+  await (append ? flagsPager().loadMore() : flagsPager().refresh());
 }
 
 function setSponsorsState(message: string, kind: "normal" | "error" = "normal"): void {
