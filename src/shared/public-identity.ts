@@ -4,11 +4,13 @@ export interface PublicIdentityProfile {
   publicHandle?: string | null;
 }
 
+const trimmedString = (value: unknown): string => typeof value === "string" ? value.trim() : "";
+
 export function publicHunterIdentity(profile: PublicIdentityProfile): string {
   if (profile.participationBasis === "minor_guardian_permission") return "Young Hunter";
-  return profile.publicDisplayName?.trim() || profile.publicHandle?.trim() || "Community Hunter";
+  return trimmedString(profile.publicDisplayName) || trimmedString(profile.publicHandle) || "Community Hunter";
 }
 
 export function privateAccountIdentity(profile: PublicIdentityProfile): string {
-  return profile.publicDisplayName?.trim() || profile.publicHandle?.trim() || "Hunter";
+  return trimmedString(profile.publicDisplayName) || trimmedString(profile.publicHandle) || "Hunter";
 }

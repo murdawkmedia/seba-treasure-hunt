@@ -38,3 +38,26 @@ test("private account identity may use a custom display name", () => {
     "Nancy & Ron"
   );
 });
+
+test("identity resolvers ignore malformed profile name fields", () => {
+  const malformedDisplayName = {
+    publicDisplayName: 42 as unknown as string,
+    publicHandle: "Hunter 43BA"
+  };
+  assert.equal(publicHunterIdentity(malformedDisplayName), "Hunter 43BA");
+  assert.equal(privateAccountIdentity(malformedDisplayName), "Hunter 43BA");
+
+  const malformedHandle = {
+    publicDisplayName: null,
+    publicHandle: 42 as unknown as string
+  };
+  assert.equal(publicHunterIdentity(malformedHandle), "Community Hunter");
+  assert.equal(privateAccountIdentity(malformedHandle), "Hunter");
+
+  const bothMalformed = {
+    publicDisplayName: 42 as unknown as string,
+    publicHandle: 7 as unknown as string
+  };
+  assert.equal(publicHunterIdentity(bothMalformed), "Community Hunter");
+  assert.equal(privateAccountIdentity(bothMalformed), "Hunter");
+});
