@@ -4404,6 +4404,50 @@ test("real D1 leases operator recipients exclusively and reconciles partial and 
   );
 });
 
+const assertPublicBoardEnvelopeShape = (value: unknown): void => {
+  const assertRecordKeys = (
+    candidate: unknown,
+    required: readonly string[],
+    optional: readonly string[],
+    path: string
+  ): Record<string, unknown> => {
+    assert.ok(candidate && typeof candidate === "object" && !Array.isArray(candidate), `${path} must be an object`);
+    const record = candidate as Record<string, unknown>;
+    const unexpected = Object.keys(record).filter((key) => !required.includes(key) && !optional.includes(key));
+    assert.deepEqual(unexpected, [], `${path} contains unexpected public board keys`);
+    assert.deepEqual(
+      required.filter((key) => !(key in record)),
+      [],
+      `${path} is missing required public board keys`
+    );
+    return record;
+  };
+
+  const envelope = assertRecordKeys(value, ["data", "page"], [], "envelope");
+  const page = assertRecordKeys(envelope.page, ["nextCursor"], [], "page");
+  assert.ok(page.nextCursor === null || typeof page.nextCursor === "string", "page.nextCursor must be a nullable cursor");
+  assert.ok(Array.isArray(envelope.data), "envelope.data must be an array");
+  for (const [index, item] of envelope.data.entries()) {
+    const note = assertRecordKeys(
+      item,
+      [
+        "id", "waypointId", "waypointRouteOrder", "waypointName", "body", "authorHandle", "noteKind",
+        "latitude", "longitude", "createdAt", "publishedAt", "media", "replies"
+      ],
+      [],
+      `data[${index}]`
+    );
+    assert.ok(Array.isArray(note.replies), `data[${index}].replies must be an array`);
+    for (const [replyIndex, reply] of note.replies.entries()) {
+      assertRecordKeys(reply, ["id", "body", "authorHandle", "createdAt"], [], `data[${index}].replies[${replyIndex}]`);
+    }
+    assert.ok(Array.isArray(note.media), `data[${index}].media must be an array`);
+    for (const [mediaIndex, media] of note.media.entries()) {
+      assertRecordKeys(media, ["id", "url"], ["alt"], `data[${index}].media[${mediaIndex}]`);
+    }
+  }
+};
+
 test("real D1 resolves public Case Note and reply identities without exposing minor profile fields", async (t) => {
   const migrationFiles = [
     "0001_hunter_platform.sql",
@@ -4511,6 +4555,15 @@ test("real D1 resolves public Case Note and reply identities without exposing mi
   assert.deepEqual(labels.get("note-minor"), { author: "Young Hunter", reply: "Young Hunter" });
   await store.moderateReply("reply-custom", "hide", "Private moderation reason", "staff-identity");
   const boardWithModerationHistory = await store.listBoard(null);
+  const publicEnvelope = {
+    data: boardWithModerationHistory.items,
+    page: { nextCursor: boardWithModerationHistory.nextCursor }
+  };
+  assertPublicBoardEnvelopeShape(publicEnvelope);
+  assert.throws(
+    () => assertPublicBoardEnvelopeShape({ ...publicEnvelope, subject: "fixture-independent-private-key" }),
+    /unexpected public board keys/
+  );
   const serializedBoard = JSON.stringify(boardWithModerationHistory);
   for (const privateValue of [
     "adult-custom",
@@ -4765,6 +4818,49 @@ test("real D1 projects recent published replies with public parent context and r
       .first<{ count: number }>())?.count,
     1
   );
+
+  await db.batch([
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, status, created_at)
+       VALUES ('note-received-flag', 'flag-reporter', 'note', 'moderation-note', 'spam', 'received', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, status, created_at)
+       VALUES ('note-reviewing-flag', 'flag-reporter', 'note', 'moderation-note', 'harassment', 'reviewing', ?)`
+    ).bind(timestamp)
+  ]);
+  assert.deepEqual((await store.getOpsDashboard()).counts, {
+    pendingNotes: 1,
+    receivedReports: 1,
+    receivedFlags: 2
+  });
+  assert.deepEqual(
+    (await store.listContentFlags()).items.map((flag) => [flag.id, flag.targetKind, flag.status]),
+    [
+      ["note-reviewing-flag", "note", "reviewing"],
+      ["note-received-flag", "note", "received"]
+    ]
+  );
+  assert.equal(
+    (await store.moderateContentFlag("note-received-flag", "dismiss", "Not actionable", "staff-3"))?.status,
+    "dismissed"
+  );
+  assert.deepEqual((await store.getOpsDashboard()).counts, {
+    pendingNotes: 1,
+    receivedReports: 1,
+    receivedFlags: 1
+  });
+  assert.equal(
+    (await store.moderateContentFlag("note-reviewing-flag", "dismiss", "Not actionable", "staff-3"))?.status,
+    "dismissed"
+  );
+  assert.deepEqual((await store.getOpsDashboard()).counts, {
+    pendingNotes: 1,
+    receivedReports: 1,
+    receivedFlags: 0
+  });
 
   await db.prepare(
     `INSERT INTO content_flags
