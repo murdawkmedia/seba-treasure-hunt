@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Current state
 
@@ -110,6 +110,22 @@ validation accounts, submissions, or credentials into production.
   pirate theatre to a genuine local mystery. No production copy, artwork or
   styling changed as part of the roadmap update.
 
+## Update 2026-07-17
+
+- Approved and documented the validation-first Submission, Ops and
+  Publication Refinement design. It clarifies Case Notes versus private
+  reports, repairs moderation media counts and the overlapping Ops checkbox,
+  introduces privacy-safe report-time attribution, and defines separate Keep
+  private, Publish to Case Notes and Create official Update outcomes.
+- The approved design adds a draft-first official Update workflow with
+  preview, scheduling and withdrawal; direct Update media; a shared uncropped,
+  orientation-correct approved-media viewer; Lucky 13 short labels; Turnstile
+  friction diagnostics; and Documentary Case File styling for Ops.
+- No application code, database, Cloudflare resource, production record or
+  live Nancy & Ron Update changed during design documentation. Implementation
+  remains gated on owner review of the written specification and a subsequent
+  implementation plan.
+
 ## Decisions in force
 
 - Any production snapshot used by validation must be a manual, one-way,
@@ -139,6 +155,11 @@ validation accounts, submissions, or credentials into production.
   public source while production remains unchanged pending approval.
 
 ## Current follow-ups
+
+- Review
+  `docs/superpowers/specs/2026-07-17-submission-ops-publication-refinement-design.md`,
+  then prepare the implementation plan only after owner approval of the written
+  specification.
 
 - Monitor the production report-photo flow and operator alerts during ordinary
   use; retain the previous immutable production deployment for immediate code
