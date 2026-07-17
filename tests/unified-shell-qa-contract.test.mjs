@@ -35,8 +35,9 @@ test("unified-shell QA is a durable isolated command with the exact route-state 
   assert.match(script, /statesAudited/);
   assert.match(script, /consoleErrorCount/);
   assert.match(script, /pageErrorCount/);
-  assert.match(script, /statesAudited,\s*111/);
-  assert.match(script, /pageNavigations,\s*72/);
+  assert.match(script, /statesAudited,\s*102/);
+  assert.match(script, /pageNavigations,\s*66/);
+  assert.doesNotMatch(script, /sponsors\.html|sponsors\.png/);
 });
 
 test("unified-shell QA keeps screenshots and its JSON ledger in a unique OS temp directory", async () => {

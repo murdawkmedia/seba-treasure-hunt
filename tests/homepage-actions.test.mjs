@@ -8,7 +8,6 @@ import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = fs.readFileSync(path.join(repo, "index.html"), "utf8");
 const rendered = () => readRenderedCampaignPage("index.html");
-const sponsorLink = /<a\b(?=[^>]*\bhref=["']\/sponsors["'])[^>]*>[\s\S]*?Support the Search[\s\S]*?<\/a>/i;
 
 const extractRegion = (source, tag, context) => {
   const match = source.match(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, "i"));
@@ -31,7 +30,7 @@ test("the first public screen exposes the live case state and primary actions", 
   assert.match(sourceFirstScreen, /href="rules\.html"/i);
 });
 
-test("homepage navigation reaches the living campaign surfaces", () => {
+test("homepage navigation reaches the living campaign surfaces without sponsorship", () => {
   for (const target of [
     "/start",
     "/dashboard",
@@ -44,26 +43,10 @@ test("homepage navigation reaches the living campaign surfaces", () => {
   }
 
   const renderedHtml = rendered();
-  const header = extractRegion(renderedHtml, "header", "homepage");
-  const navigation = extractRegion(header, "nav", "homepage header");
-  const footer = extractRegion(renderedHtml, "footer", "homepage");
-  const missing = [];
-
-  if (!sponsorLink.test(navigation)) missing.push("homepage campaign navigation");
-  if (!sponsorLink.test(footer)) missing.push("homepage footer");
-
-  assert.deepEqual(missing, [], `missing correctly labelled Support the Search links:\n${missing.join("\n")}`);
+  assert.doesNotMatch(renderedHtml, /Support the Search|href=["']\/?sponsors(?:\.html)?["']/i);
 });
 
-test("homepage sponsor deep link is a concise path to the qualified inquiry", () => {
-  const section = html.match(/<section\b(?=[^>]*\bid=["']sponsor["'])[^>]*>[\s\S]*?<\/section>/i)?.[0];
-  assert.ok(section, "homepage must retain #sponsor for old deep links");
-  assert.match(section, /Support the Search/i);
-  for (const support of ["cash", "prizes", "services", "practical in-kind"]) {
-    assert.match(section, new RegExp(support, "i"));
-  }
-  assert.match(section, /<a\b[^>]*href=["']sponsors\.html["'][^>]*>[\s\S]*Support the Search/i);
-  assert.match(section, /does not create an agreement/i);
-  assert.match(section, /does not authorize publication/i);
-  assert.doesNotMatch(section, /href=["']https?:\/\/(?:www\.)?sebahub\.com|\$\s*\d|package|tier/i);
+test("homepage has no sponsor section or inquiry call to action", () => {
+  assert.doesNotMatch(html, /<section\b(?=[^>]*\bid=["']sponsor["'])/i);
+  assert.doesNotMatch(html, /Support the Search|sponsors\.html/i);
 });

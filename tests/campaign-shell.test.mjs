@@ -42,7 +42,6 @@ const descriptors = {
   "report.html": { route: "report", skipLabel: "Skip to private reporting", skipTarget: "main" },
   "rules.html": { route: "rules", skipLabel: "Skip to the current rules", skipTarget: "main" },
   "dashboard.html": { route: "dashboard", skipLabel: "Skip to Hunter Dashboard", skipTarget: "main" },
-  "sponsors.html": { route: "sponsors", skipLabel: "Skip to sponsor opportunities", skipTarget: "main" },
   "privacy.html": { route: "privacy", skipLabel: "Skip to the privacy policy", skipTarget: "main" },
   "waiver.html": { route: "waiver", skipLabel: "Skip to the participation waiver", skipTarget: "main" },
   "community-guidelines.html": { route: "community-guidelines", skipLabel: "Skip to the community guidelines", skipTarget: "main" },
@@ -66,7 +65,6 @@ const filenames = Object.fromEntries(
     "report.html": "report",
     "rules.html": "rules",
     "dashboard.html": "dashboard",
-    "sponsors.html": "sponsors",
     "privacy.html": "privacy",
     "waiver.html": "waiver",
     "community-guidelines.html": "community-guidelines",
@@ -143,7 +141,7 @@ test("renders one complete canonical shell and footer without changing page cont
   assert.match(html, /<header class="campaign-header">\s*<div class="campaign-header__inner">/);
   assert.match(
     html,
-    /<a class="campaign-brand" href="\/">Tim Lost Something\?<span>This year: Tim lost his ID<\/span><\/a>/,
+    /<a class="campaign-brand" href="\/">Tim Lost Something\?<span>Tim lost his ID<\/span><\/a>/,
   );
   assert.match(
     html,
@@ -164,7 +162,7 @@ test("the canonical shell loads one global account client after public page cont
   assert.equal((html.match(/src="\/assets\/app\/account\.js"/g) ?? []).length, 1);
 });
 
-test("renders the exact primary menu order, current route, and support class", () => {
+test("renders the exact primary menu order and current route without sponsorship", () => {
   const html = renderCampaignPage(source(), "route.html");
   const nav = primaryNav(html);
 
@@ -177,8 +175,8 @@ test("renders the exact primary menu order, current route, and support class", (
     CAMPAIGN_MENU.map((item) => item.label),
   );
   assert.equal((nav.match(/aria-current="page"/g) ?? []).length, 1);
-  assert.match(nav, /href="\/route" aria-current="page">Lucky 13 Route<\/a>/);
-  assert.match(nav, /href="\/sponsors" class="nav-sponsors">Support the Search<\/a>/);
+  assert.match(nav, /href="\/route" aria-current="page">13 Stops<\/a>/);
+  assert.doesNotMatch(nav, /sponsors|Support the Search/i);
   assert.doesNotMatch(nav, /\.html/);
 });
 
@@ -201,10 +199,9 @@ test("renders canonical footer links in order and only its matching current stat
     "/waiver",
     "/community-guidelines",
     "/rules",
-    "/sponsors",
   ];
 
-  for (const route of ["privacy", "waiver", "community-guidelines", "rules", "sponsors", "home"]) {
+  for (const route of ["privacy", "waiver", "community-guidelines", "rules", "home"]) {
     const rendered = footer(renderCampaignPage(source({ route }), filenames[route]));
     assert.deepEqual(
       [...rendered.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
@@ -591,21 +588,19 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
     "report.html": "report",
     "rules.html": "rules",
     "dashboard.html": "dashboard",
-    "sponsors.html": "sponsors",
     "privacy.html": "privacy",
     "waiver.html": "waiver",
     "community-guidelines.html": "community-guidelines",
   });
   assert.deepEqual(CAMPAIGN_MENU, [
     { route: "start", label: "Start", href: "/start" },
-    { route: "route", label: "Lucky 13 Route", href: "/route" },
+    { route: "route", label: "13 Stops", href: "/route" },
     { route: "interview", label: "Tim's Account", href: "/interview" },
     { route: "updates", label: "Updates", href: "/updates" },
     { route: "clue-board", label: "Case Notes", href: "/clue-board" },
     { route: "report", label: "Report", href: "/report" },
     { route: "rules", label: "Rules", href: "/rules" },
     { route: "dashboard", label: "Dashboard", href: "/dashboard" },
-    { route: "sponsors", label: "Support the Search", href: "/sponsors" },
   ]);
 });
 

@@ -8,7 +8,6 @@ import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
 const sponsorLink = /<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?Support the Search[\s\S]*?<\/a>/i;
-const sponsorAnchor = (html) => html.match(/<a\b(?=[^>]*\bhref=["'](?:\/sponsors|sponsors\.html)["'])[^>]*>[\s\S]*?Support the Search[\s\S]*?<\/a>/i)?.[0] ?? "";
 
 const extractRegion = (html, tag, context) => {
   const match = html.match(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, "i"));
@@ -25,7 +24,7 @@ const extractSection = (html, id) => {
 const optionEntries = (select) => [...select.matchAll(/<option\b[^>]*\bvalue=["']([^"']*)["'][^>]*>([^<]+)<\/option>/gi)]
   .map((match) => [match[1], match[2].trim().replaceAll("&amp;", "&")]);
 
-test("the sponsor page is a canonical, indexable answer and conversion surface", () => {
+test("the retained sponsor source preserves its future-release metadata and inquiry surface", () => {
   const html = read("sponsors.html");
   assert.match(html, /<title>Support the Search \| Tim Lost Something\?<\/title>/);
   assert.match(html, /<meta name="description" content="[^"]*Seba Beach[^"]*cash, prizes, services, or practical in-kind help[^"]*"/i);
@@ -61,22 +60,8 @@ test("the support hero uses the real Seba Beach aerial, never retired campaign a
   assert.equal(fs.existsSync(path.join(root, "assets", "photos", "sunny-pirate-treasure-seba-beach.jpg")), false);
 });
 
-test("the sponsor page shell preserves status, navigation, accessibility, and client hooks", () => {
-  const html = readRenderedCampaignPage("sponsors.html");
+test("the dormant sponsor source preserves its private client hooks without joining the public shell", () => {
   const source = read("sponsors.html");
-  assert.match(html, /<a class="skip-link" href="#main">/);
-  assert.match(html, /<main id="main" tabindex="-1">/);
-  for (const hook of ["data-case-status", "data-status-mark", "data-status-label", "data-status-detail", "data-status-next"]) {
-    assert.match(html, new RegExp(`\\b${hook}\\b`));
-  }
-  const header = extractRegion(html, "header", "sponsors.html");
-  assert.match(header, /class="[^"]*\bcampaign-brand\b[^"]*"/);
-  assert.match(header, /<nav\b(?=[^>]*\bclass="campaign-nav")(?=[^>]*\baria-label="Campaign")[^>]*>/);
-  assert.match(header, /<a\b(?=[^>]*class="[^"]*\bnav-sponsors\b[^"]*")(?=[^>]*href="\/sponsors")(?=[^>]*aria-current="page")[^>]*>Support the Search<\/a>/);
-  const footer = extractRegion(html, "footer", "sponsors.html");
-  for (const destination of ["/privacy", "/waiver", "/community-guidelines", "/rules", "/sponsors"]) {
-    assert.match(footer, new RegExp(`href=["']${destination.replaceAll("/", "\\/")}["']`));
-  }
   assert.match(source, /<script src="\/js\/site\.js"><\/script>/);
   assert.match(source, /<script type="module" src="\/assets\/app\/status\.js"><\/script>/);
   assert.match(source, /<script type="module" src="\/assets\/app\/sponsors\.js"><\/script>/);
@@ -219,8 +204,9 @@ test("the sponsor page contains no public lead data or invented partner claim", 
   assert.doesNotMatch(html, /CFCW|radio partner|media partner|impressions|guaranteed reach|exclusive sponsor/i);
 });
 
-test("the build allowlist includes the sponsor page", () => {
-  assert.match(read("scripts/build.mjs"), /["']sponsors\.html["']/);
+test("the sponsor source remains in the repository but is excluded from public delivery", () => {
+  assert.equal(fs.existsSync(path.join(root, "sponsors.html")), true);
+  assert.doesNotMatch(read("scripts/build.mjs"), /\n\s*["']sponsors\.html["'],/);
 });
 
 test("desktop uses the approved stacked sticky header and mobile menus remain explicit", () => {
@@ -252,16 +238,16 @@ test("sponsor sticky and anchor offsets derive from live stacked geometry", () =
   assert.match(sponsor, /\.inquiry__brief\s*\{[^}]*top:\s*calc\(var\(--stacked-header-height\) \+ 20px\)/s);
 });
 
-test("every public page reaches Support the Search from navigation and footer", () => {
-  const missing = [];
+test("public campaign pages do not expose sponsorship navigation or footer links", () => {
+  const exposed = [];
 
   for (const name of [
     "index.html", "route.html", "interview.html", "start.html", "dashboard.html",
     "updates.html", "report.html", "rules.html", "privacy.html",
-    "community-guidelines.html", "clue-board.html", "sponsors.html"
+    "community-guidelines.html", "clue-board.html"
   ]) {
     if (!fs.existsSync(path.join(root, name))) {
-      missing.push(`${name}: page`);
+      exposed.push(`${name}: page missing`);
       continue;
     }
 
@@ -270,28 +256,9 @@ test("every public page reaches Support the Search from navigation and footer", 
     const navigation = extractRegion(header, "nav", `${name} header`);
     const footer = extractRegion(html, "footer", name);
 
-    if (!sponsorLink.test(navigation)) missing.push(`${name}: campaign navigation`);
-    if (!sponsorLink.test(footer)) missing.push(`${name}: footer`);
-
-    const headerSponsor = sponsorAnchor(navigation);
-    const footerSponsor = sponsorAnchor(footer);
-    const expectedHref = "/sponsors";
-    if (!new RegExp(`href=["']${expectedHref.replaceAll("/", "\\/").replace(".", "\\.")}["']`, "i").test(headerSponsor)) {
-      missing.push(`${name}: correct Sponsors header destination`);
-    }
-    if (!/class=["'][^"']*\bnav-sponsors\b[^"']*["']/i.test(headerSponsor)) {
-      missing.push(`${name}: gold Sponsors navigation class`);
-    }
-    if (!new RegExp(`href=["']${expectedHref.replaceAll("/", "\\/").replace(".", "\\.")}["']`, "i").test(footerSponsor)) {
-      missing.push(`${name}: correct Sponsors footer destination`);
-    }
-    if (name === "sponsors.html") {
-      if (!/aria-current=["']page["']/i.test(headerSponsor)) missing.push(`${name}: active Sponsors state`);
-    } else if (/aria-current=["']page["']/i.test(headerSponsor)) {
-      missing.push(`${name}: incorrect active Sponsors state`);
-    }
-    if (/href=["'][^"']*#sponsor["']/i.test(footer)) missing.push(`${name}: legacy teaser used as primary footer link`);
+    if (sponsorLink.test(navigation)) exposed.push(`${name}: campaign navigation`);
+    if (sponsorLink.test(footer)) exposed.push(`${name}: footer`);
   }
 
-  assert.deepEqual(missing, [], `missing correctly labelled Support the Search links:\n${missing.join("\n")}`);
+  assert.deepEqual(exposed, []);
 });

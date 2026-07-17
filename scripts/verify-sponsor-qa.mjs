@@ -297,7 +297,7 @@ async function assertStickyRowsAfterSurfaceScroll(page, stripSelector, headerSel
 async function validationNoticeGeometry(browser) {
   const { context, page, tracker } = await createQaPage(browser, { width: 1440, height: 1000 });
   try {
-    await goto(page, "/sponsors");
+    await goto(page, "/start");
     const fixture = await page.evaluate((markup) => {
       const beforeCount = document.querySelectorAll(".validation-environment-notice").length;
       if (beforeCount > 1) throw new Error(`Expected at most one validation notice before fixture setup, received ${beforeCount}.`);
@@ -728,8 +728,17 @@ async function builtOutputScans() {
   const cfcwMatches = documents.flatMap((document) => matches(document.text, /CFCW/i).map((value) => ({ path: document.path, value })));
   assert.deepEqual(cfcwMatches, [], `Built output contains CFCW: ${JSON.stringify(cfcwMatches)}`);
 
-  const sponsorsHtml = await readFile(path.join(distRoot, "sponsors.html"), "utf8");
-  assert.deepEqual(matches(sponsorsHtml, /@sebahub\.com|@businessasaforceforgood\.ca/i), [], "Sponsor page must not publish contact addresses.");
+  for (const withdrawnPath of [
+    path.join(distRoot, "sponsors.html"),
+    path.join(distRoot, "css", "sponsors.css"),
+    path.join(distRoot, "assets", "app", "sponsors.js"),
+    path.join(distRoot, "assets", "app", "sponsor-submission.js"),
+  ]) {
+    await readFile(withdrawnPath).then(
+      () => assert.fail(`Withdrawn public artifact remains in the build: ${withdrawnPath}`),
+      (error) => assert.equal(error?.code, "ENOENT", `Unable to inspect withdrawn artifact: ${withdrawnPath}`),
+    );
+  }
 
   return {
     broadPattern: broadPattern.source,
@@ -760,13 +769,17 @@ async function builtOutputScans() {
     fixturePattern: fixturePatternText,
     fixtureMatches: 0,
     cfcwMatches: 0,
-    sponsorContactMatches: 0,
+    withdrawnSponsorArtifacts: true,
   };
 }
 
 async function httpChecks() {
-  const sponsors = await fetch(routeUrl("/sponsors"), { redirect: "manual" });
-  assert.equal(sponsors.status, 200, "/sponsors must return HTTP 200.");
+  const withdrawnSponsorRoutes = {};
+  for (const pathname of ["/sponsors", "/sponsors.html"]) {
+    const response = await fetch(routeUrl(pathname), { redirect: "manual" });
+    assert.equal(response.status, 404, `${pathname} must return HTTP 404.`);
+    withdrawnSponsorRoutes[pathname] = response.status;
+  }
 
   const status = await fetch(routeUrl("/api/v1/status"), { headers: { Accept: "application/json" } });
   const statusBody = await status.json();
@@ -783,7 +796,7 @@ async function httpChecks() {
   assert.equal(Object.hasOwn(opsBody, "data"), false, "Unauthenticated Ops sponsors must return no inquiry data.");
 
   return {
-    sponsors: sponsors.status,
+    withdrawnSponsorRoutes,
     status: { http: status.status, state: statusBody.data.state, version: statusBody.data.version },
     workerBundle: worker.status,
     unauthenticatedOpsSponsors: { http: ops.status, code: opsBody.error.code, hasData: false },
@@ -803,12 +816,7 @@ async function main() {
   evidence.browser = source;
   try {
     evidence.checks.validationNoticeGeometry = await validationNoticeGeometry(browser);
-    evidence.checks.sponsorDesktop = await sponsorDesktop(browser);
-    evidence.checks.sponsorMobile = await sponsorMobile(browser);
-    evidence.checks.sponsorZoomEquivalent = await sponsorZoomEquivalent(browser);
-    evidence.checks.clueBoardMobile = await clueBoardMobile(browser);
     evidence.checks.opsGate = await opsGate(browser);
-    evidence.checks.mockedInvalidForm = await mockedInvalidForm(browser);
   } finally {
     await browser.close();
   }

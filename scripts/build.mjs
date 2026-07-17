@@ -34,7 +34,6 @@ const staticFiles = [
   "waiver.html",
   "community-guidelines.html",
   "clue-board.html",
-  "sponsors.html",
   "ops.html",
   "favicon.ico",
   "site.webmanifest",
@@ -173,12 +172,17 @@ async function emitBuild({ dist, mediaDist, renderedCampaignPages }) {
   for (const directory of staticDirectories) {
     await cp(path.join(root, directory), path.join(dist, directory), { recursive: true });
   }
+  await rm(path.join(dist, "css", "sponsors.css"), { force: true });
 
   const clientDirectory = path.join(root, "src", "client");
   const clientEntries = [];
   try {
     for (const entry of await readdir(clientDirectory, { withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith(".ts")) {
+      if (
+        entry.isFile() &&
+        entry.name.endsWith(".ts") &&
+        !["sponsors.ts", "sponsor-submission.ts"].includes(entry.name)
+      ) {
         clientEntries.push(path.join(clientDirectory, entry.name));
       }
     }

@@ -22,7 +22,6 @@ const representativeFiles = [
   "interview.html",
   "clue-board.html",
   "dashboard.html",
-  "sponsors.html",
   "privacy.html",
 ];
 const screenshotFiles = [
@@ -31,7 +30,6 @@ const screenshotFiles = [
   "interview.html",
   "clue-board.html",
   "dashboard.html",
-  "sponsors.html",
   "privacy.html",
   "waiver.html",
 ];
@@ -41,7 +39,6 @@ const expectedScreenshotNames = [
   "mobile-390x844-interview.png",
   "mobile-390x844-clue-board.png",
   "mobile-390x844-dashboard.png",
-  "mobile-390x844-sponsors.png",
   "mobile-390x844-privacy.png",
   "mobile-390x844-waiver.png",
   "desktop-1440x1000-home.png",
@@ -49,7 +46,6 @@ const expectedScreenshotNames = [
   "desktop-1440x1000-interview.png",
   "desktop-1440x1000-clue-board.png",
   "desktop-1440x1000-dashboard.png",
-  "desktop-1440x1000-sponsors.png",
   "desktop-1440x1000-privacy.png",
   "desktop-1440x1000-waiver.png",
   "zoom-200-home-tab-focus.png",
@@ -820,11 +816,11 @@ async function run() {
     const consoleErrorCount = consoleErrors.length;
     const pageErrorCount = pageErrors.length;
     const requestFailureCount = requestFailures.length;
-    assert.equal(pageNavigations, 72, "the canonical matrix must navigate 72 page/view combinations");
-    assert.equal(statesAudited, 111, "the canonical matrix must audit 111 shell states");
+    assert.equal(pageNavigations, 66, "the canonical matrix must navigate 66 page/view combinations");
+    assert.equal(statesAudited, 102, "the canonical matrix must audit 102 shell states");
     assert.equal(routeLightboxAudit.statesAudited, 10, "the route lightbox audit must exercise 10 browser states");
     assert.ok(routeLightboxAudit.reducedMotionTargetsAudited >= 40, "the route lightbox audit must inspect the complete element and pseudo-element tree for reduced motion");
-    assert.equal(screenshotEvidence.length, 21, "the screenshot suite must contain 21 artifacts");
+    assert.equal(screenshotEvidence.length, 19, "the screenshot suite must contain 19 artifacts");
     assert.deepEqual(
       screenshotEvidence.map(({ artifactName }) => artifactName.replace("screenshots/", "")).sort(),
       expectedScreenshotNames.toSorted(),

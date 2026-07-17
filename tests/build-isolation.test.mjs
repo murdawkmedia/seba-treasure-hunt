@@ -57,7 +57,6 @@ const expectedShellLinks = Object.freeze([
   "/waiver",
   "/community-guidelines",
   "/rules",
-  "/sponsors",
 ]);
 
 function liveAttributeValues(html, name) {
@@ -106,7 +105,7 @@ function assertCanonicalShellLinks(html, filename) {
 
 function expectedCurrentCount(filename) {
   if (filename === "index.html") return 0;
-  if (filename === "rules.html" || filename === "sponsors.html") return 2;
+  if (filename === "rules.html") return 2;
   return 1;
 }
 
@@ -194,10 +193,7 @@ test("shell link validation handles every attribute form and rejects bypasses", 
       /shell link|root-relative|expected/i,
     );
   }
-  assert.throws(
-    () => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/sponsors"[^>]*>Support the Search<\/a>/, ""), "route.html"),
-    /expected 18 shell links/i,
-  );
+  assert.throws(() => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/rules"[^>]*>Rules<\/a>/, ""), "route.html"), /expected 16 shell links/i);
 });
 
 test("imported builds use owned temporary outputs without touching repository dist", async () => {
@@ -228,6 +224,10 @@ test("imported builds use owned temporary outputs without touching repository di
       );
     }
     assert.equal(existsSync(path.join(dist, "css", "campaign-shell.css")), true);
+    assert.equal(existsSync(path.join(dist, "sponsors.html")), false);
+    assert.equal(existsSync(path.join(dist, "css", "sponsors.css")), false);
+    assert.equal(existsSync(path.join(dist, "assets", "app", "sponsors.js")), false);
+    assert.equal(existsSync(path.join(dist, "assets", "app", "sponsor-submission.js")), false);
     const sourceOps = readFileSync(path.join(root, "ops.html"), "utf8");
     assert.equal(readFileSync(path.join(dist, "ops.html"), "utf8"), sourceOps);
     assert.doesNotMatch(sourceOps, /class="campaign-header"/);

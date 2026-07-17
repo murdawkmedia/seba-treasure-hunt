@@ -1,13 +1,12 @@
 export const CAMPAIGN_MENU = Object.freeze([
   Object.freeze({ route: "start", label: "Start", href: "/start" }),
-  Object.freeze({ route: "route", label: "Lucky 13 Route", href: "/route" }),
+  Object.freeze({ route: "route", label: "13 Stops", href: "/route" }),
   Object.freeze({ route: "interview", label: "Tim's Account", href: "/interview" }),
   Object.freeze({ route: "updates", label: "Updates", href: "/updates" }),
   Object.freeze({ route: "clue-board", label: "Case Notes", href: "/clue-board" }),
   Object.freeze({ route: "report", label: "Report", href: "/report" }),
   Object.freeze({ route: "rules", label: "Rules", href: "/rules" }),
   Object.freeze({ route: "dashboard", label: "Dashboard", href: "/dashboard" }),
-  Object.freeze({ route: "sponsors", label: "Support the Search", href: "/sponsors" }),
 ]);
 
 export const CAMPAIGN_PAGES = Object.freeze({
@@ -20,7 +19,6 @@ export const CAMPAIGN_PAGES = Object.freeze({
   "report.html": "report",
   "rules.html": "rules",
   "dashboard.html": "dashboard",
-  "sponsors.html": "sponsors",
   "privacy.html": "privacy",
   "waiver.html": "waiver",
   "community-guidelines.html": "community-guidelines",
@@ -80,7 +78,6 @@ const footerLinks = [
     href: "/community-guidelines",
   },
   { route: "rules", label: "Rules", href: "/rules" },
-  { route: "sponsors", label: "Support the Search", href: "/sponsors" },
 ];
 
 function escapeHtml(value) {
@@ -104,9 +101,7 @@ function renderLink(item, route, className = "") {
 }
 
 function renderCampaignShell({ route, skipLabel, skipTarget }) {
-  const navigation = CAMPAIGN_MENU.map((item) =>
-    renderLink(item, route, item.route === "sponsors" ? "nav-sponsors" : ""),
-  ).join("\n        ");
+  const navigation = CAMPAIGN_MENU.map((item) => renderLink(item, route)).join("\n        ");
 
   return `<a class="skip-link" href="#${skipTarget}">${escapeHtml(skipLabel)}</a>
 <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
@@ -120,7 +115,7 @@ function renderCampaignShell({ route, skipLabel, skipTarget }) {
 </section>
 <header class="campaign-header">
   <div class="campaign-header__inner">
-    <a class="campaign-brand" href="/">Tim Lost Something?<span>This year: Tim lost his ID</span></a>
+    <a class="campaign-brand" href="/">Tim Lost Something?<span>Tim lost his ID</span></a>
     <button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle campaign menu</span><span aria-hidden="true">&#9776;</span></button>
     <nav class="campaign-nav" id="campaign-nav" aria-label="Campaign">
         ${navigation}

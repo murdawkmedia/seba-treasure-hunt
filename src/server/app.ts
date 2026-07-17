@@ -61,7 +61,6 @@ const cleanRoutes = new Map([
   ["/dashboard", "/dashboard.html"],
   ["/updates", "/updates.html"],
   ["/report", "/report.html"],
-  ["/sponsors", "/sponsors.html"],
   ["/rules", "/rules.html"],
   ["/privacy", "/privacy.html"],
   ["/waiver", "/waiver.html"],
@@ -69,6 +68,7 @@ const cleanRoutes = new Map([
   ["/clue-board", "/clue-board.html"],
   ["/ops", "/ops.html"]
 ]);
+const withdrawnPublicPaths = new Set(["/sponsors", "/sponsors.html"]);
 const staticHtmlPaths = new Set(cleanRoutes.values());
 const legalFrameablePaths = new Set(["/privacy", "/privacy.html", "/waiver", "/waiver.html"]);
 const privateReportMediaPath =
@@ -2117,11 +2117,17 @@ export const createApi = (deps: ApiDependencies) => {
   app.all("*", async (c) => {
     const assets = c.env?.ASSETS;
     if (!assets) return new Response("Not found", { status: 404 });
+    const pathname = new URL(c.req.url).pathname;
+    if (withdrawnPublicPaths.has(pathname)) {
+      return new Response("Not found", {
+        status: 404,
+        headers: { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" }
+      });
+    }
     // Cloudflare Pages' asset binding owns clean-URL resolution. Rewriting
     // `/start` to `/start.html` here causes Pages to redirect it back to
     // `/start`, producing a loop in the real runtime.
     const response = await assets.fetch(c.req.raw);
-    const pathname = new URL(c.req.url).pathname;
     const cleanPath = pathname.replace(/\/$/, "") || "/";
     const contentType = response.headers.get("content-type") ?? "";
     if (
