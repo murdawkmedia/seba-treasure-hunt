@@ -108,6 +108,34 @@ const reportPublicAttribution = (
   protectsMinor: profile?.participationBasis === "minor_guardian_permission"
 });
 
+const reportPublicationPreview = (
+  report: Record<string, unknown>,
+  profile: Record<string, unknown> | null
+) => {
+  const hunterSubject = typeof report.hunterSubject === "string" ? report.hunterSubject : null;
+  const terminal = report.status === "rejected" || report.status === "resolved";
+  const resolvedAttribution = reportPublicAttribution(report, profile);
+  const protectsMinor = profile?.participationBasis === "minor_guardian_permission";
+  const publicAttribution = protectsMinor || !hunterSubject
+    ? resolvedAttribution
+    : !terminal && profile
+      ? resolvedAttribution
+      : null;
+  const publicationEligible = !terminal && Boolean(resolvedAttribution) &&
+    (!hunterSubject || Boolean(profile));
+  return {
+    publicAttribution,
+    publicationEligible,
+    publicationEligibilityReason: publicationEligible
+      ? "eligible"
+      : terminal
+        ? "report_state_invalid"
+        : hunterSubject && profile && !resolvedAttribution
+          ? "public_attribution_required"
+          : "current_legal_acceptance_required"
+  };
+};
+
 const beforeModerationCursor = (record: Record<string, unknown>, cursor: ModerationCursor | null) =>
   !cursor || String(record.createdAt ?? "") < cursor.createdAt ||
     (String(record.createdAt ?? "") === cursor.createdAt && String(record.id ?? "") < cursor.id);
@@ -945,16 +973,7 @@ export class FakeStore {
     } = report;
     const hunterSubject = typeof report.hunterSubject === "string" ? report.hunterSubject : null;
     const profile = hunterSubject ? this.profiles.get(hunterSubject) : null;
-    const terminal = report.status === "rejected" || report.status === "resolved";
-    const minor = profile?.participationBasis === "minor_guardian_permission";
-    const resolvedAttribution = reportPublicAttribution(report, profile ?? null);
-    const publicAttribution = minor || !hunterSubject
-      ? resolvedAttribution
-      : !terminal && profile
-        ? resolvedAttribution
-        : null;
-    const publicationEligible = !terminal && Boolean(resolvedAttribution) &&
-      (!hunterSubject || Boolean(profile));
+    const attributionPreview = reportPublicationPreview(report, profile ?? null);
     const publicationId = this.reportPublicationIds.get(id) ?? null;
     const linkedUpdate = publicationId ? this.updates.find((update) => update.id === publicationId) : null;
     const updateStatus = typeof linkedUpdate?.status === "string" ? linkedUpdate.status : null;
@@ -965,15 +984,7 @@ export class FakeStore {
     return {
       ...safeReport,
       media,
-      publicAttribution,
-      publicationEligible,
-      publicationEligibilityReason: publicationEligible
-        ? "eligible"
-        : terminal
-          ? "report_state_invalid"
-          : hunterSubject && profile && !resolvedAttribution
-            ? "public_attribution_required"
-            : "current_legal_acceptance_required",
+      ...attributionPreview,
       publication: {
         published,
         updateId: publicationId,
@@ -1088,14 +1099,15 @@ export class FakeStore {
     const profile = typeof report.hunterSubject === "string"
       ? this.profiles.get(report.hunterSubject)
       : null;
-    const publisherName = reportPublicAttribution(report, profile ?? null);
-    if (!publisherName) {
+    const attributionPreview = reportPublicationPreview(report, profile ?? null);
+    if (!attributionPreview.publicationEligible || !attributionPreview.publicAttribution) {
       throw new ApiError(
         409,
         "report_publication_ineligible",
         "This report is not eligible for a public attribution."
       );
     }
+    const publisherName = attributionPreview.publicAttribution;
     const updateId = existingUpdateId ??
       `approved-report-${this.reportPublicationIds.size + 1}`;
     const previousMedia = this.reportPublicationMedia.get(reportId) ?? [];

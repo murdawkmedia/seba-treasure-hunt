@@ -3824,6 +3824,14 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
       hunterSubject: null,
       status: "verified",
       media: []
+    },
+    {
+      id: "fake-report-profile-missing",
+      hunterSubject: "hunter-profile-missing",
+      status: "verified",
+      publicAttribution: "Trail Friends",
+      attributionKind: "display_name",
+      media: []
     }
   );
   const storedSnapshots = structuredClone(store.reports);
@@ -3875,6 +3883,27 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
     "staff-publisher"
   );
   assert.equal(anonymousUpdate?.publisherName, "Community Hunter");
+
+  const missingProfilePreview = await store.getReportDetail(
+    "fake-report-profile-missing",
+    "staff-preview"
+  );
+  assert.equal(missingProfilePreview?.publicAttribution, null);
+  assert.equal(missingProfilePreview?.publicationEligible, false);
+  assert.equal(
+    missingProfilePreview?.publicationEligibilityReason,
+    "current_legal_acceptance_required"
+  );
+  await assert.rejects(
+    store.publishReport(
+      "fake-report-profile-missing",
+      { title: "Missing profile", body: "Must remain private", mediaIds: [] },
+      "staff-publisher"
+    ),
+    (error: unknown) =>
+      error instanceof ApiError && error.code === "report_publication_ineligible"
+  );
+  assert.equal(store.updates.some((update) => update.title === "Missing profile"), false);
 
   assert.deepEqual(store.reports, storedSnapshots);
   assert.doesNotMatch(
