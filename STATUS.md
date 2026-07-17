@@ -182,6 +182,39 @@ validation accounts, submissions, or credentials into production.
 
 ## Decisions in force
 
+## Shutdown checkpoint — 2026-07-17 09:32 MDT
+
+- Objective: finish the validation-only shared image, public reply rate-limit,
+  reply/flag moderation, public identity and story-copy refinement plan without
+  mutating production data.
+- Completed and independently reviewed: privacy-safe public identity
+  (`9c0c963`, `1ab755e`), shared 20/50/30 MB Case Note image preparation
+  (`12bef9b`), and five-per-ten-minute reply limiting (`24588be`).
+- Task 4 D1/FakeStore reply and flag moderation work is preserved in local WIP
+  commit `a1874e0`. Its isolated moderation tests passed. The broader
+  `tests/api-store-integration.test.ts` run reported 23/24 passing; the single
+  failure was a Miniflare local-proxy `EADDRINUSE 127.0.0.1:53309` in an
+  unrelated waiver-lifecycle case, not an assertion failure. The interrupted
+  retry, typecheck, spec review and code-quality review remain outstanding.
+- Worktree: `C:\Users\Murphy\.config\superpowers\worktrees\tim-lost-production-release`;
+  branch `codex/tim-lost-production-release`; clean after the checkpoint
+  commits; 24 commits ahead of the tracked remote at checkpoint time.
+- No test runner, local server, build, migration, deployment or database
+  operation remained running. Production and validation services/data were
+  not changed during this checkpoint.
+- Approved remaining work, in order: finish and review Task 4; add Staff-only
+  moderation APIs; add Ops reply/flag controls; reconcile privacy/counts;
+  apply the public-story cleanup (remove public “campaign,” “Lucky,” “This
+  year,” and sponsorship surfaces; revise fictional-ID and SebaHub wording);
+  run full verification; deploy validation only.
+- Exact resume action: verify Git/process reality first, then run the focused
+  Task 4 integration tests against commit `a1874e0`; if green, run typecheck and
+  diff checks, complete spec and quality reviews, and continue with Task 5.
+
+Suggested resume instruction: “Resume from the 2026-07-17 shutdown checkpoint,
+verify the worktree and processes first, then continue Task 4 from `a1874e0`
+without repeating completed Tasks 1–3.”
+
 - Any production snapshot used by validation must be a manual, one-way,
   read-only copy in dedicated D1/R2 resources. Full-fidelity personal and
   private report data is permitted only behind existing server-side Ops
