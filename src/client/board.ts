@@ -318,6 +318,16 @@ function errorMessage(payload: unknown, fallback: string): string {
   return asString(error.message) || fallback;
 }
 
+export function replyFailureMessage(response: Response, payload: unknown): string {
+  if (response.status !== 429) return errorMessage(payload, "Your reply could not be posted.");
+  const retryAfter = Number(response.headers.get("retry-after"));
+  const boundedSeconds = Number.isFinite(retryAfter) && retryAfter > 0
+    ? Math.min(retryAfter, 600)
+    : 600;
+  const minutes = Math.max(1, Math.ceil(boundedSeconds / 60));
+  return `You've reached the reply limit. Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+}
+
 async function authHeaders(base?: HeadersInit): Promise<Headers> {
   const headers = new Headers(base);
   const token = await window.timLostAuth?.getToken().catch(() => null);
@@ -760,7 +770,7 @@ export async function initialiseBoard(): Promise<void> {
         headers,
         body: JSON.stringify({ body: field.value.trim(), cfTurnstileResponse: humanToken || undefined }),
       });
-      if (!response.ok) throw new Error(errorMessage(payload, "Your reply could not be posted."));
+      if (!response.ok) throw new Error(replyFailureMessage(response, payload));
       if (result) result.textContent = "Reply posted.";
       await load();
     } catch (error) {

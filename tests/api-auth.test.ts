@@ -645,6 +645,39 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
   assert.equal(store.reports.find((report) => report.id === "report-publish-1")?.status, "resolved");
 });
 
+test("limits a hunter to five public replies per ten minutes", async () => {
+  const { app, store, rateLimits } = makeApp();
+  store.profiles.set("hunter-1", {
+    subject: "hunter-1",
+    email: "hunter@example.test",
+    publicHandle: "Hunter A7F3"
+  });
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  store.legalEvents.push({ subject: "hunter-1", documentType: "privacy_media" });
+  store.waiverStatus = "accepted";
+  store.participationUnlocked = true;
+
+  const replies = await Promise.all(Array.from({ length: 6 }, (_, index) =>
+    app.request("https://www.timlostsomething.com/api/v1/board/notes/note-1/replies", {
+      method: "POST",
+      ...json({ body: `Bounded public reply ${index + 1}` }, {
+        ...hunterHeaders,
+        "cf-connecting-ip": "203.0.113.44"
+      })
+    })
+  ));
+
+  assert.deepEqual(replies.map((response) => response.status), [201, 201, 201, 201, 201, 429]);
+  assert.equal(replies[5]?.headers.get("retry-after"), "600");
+  assert.equal(store.replies.length, 5);
+  assert.deepEqual(rateLimits.seen.at(0), {
+    scope: "reply",
+    identifiers: ["ip:203.0.113.44", "subject:hunter-1"],
+    limit: 5,
+    windowSeconds: 600
+  });
+});
+
 test("publishes a reviewed report to Case Notes without creating an official Update", async () => {
   const { app, store } = makeApp();
   store.reports.push({

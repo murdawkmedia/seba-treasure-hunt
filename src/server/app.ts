@@ -111,7 +111,7 @@ const rateLimitRules = {
   profile: { limit: 10, windowSeconds: 600 },
   progress: { limit: 60, windowSeconds: 600 },
   field_note: { limit: 5, windowSeconds: 600 },
-  reply: { limit: 20, windowSeconds: 600 },
+  reply: { limit: 5, windowSeconds: 600 },
   flag: { limit: 10, windowSeconds: 600 },
   waiver_review: { limit: 10, windowSeconds: 600 },
   waiver_accept: { limit: 10, windowSeconds: 600 },

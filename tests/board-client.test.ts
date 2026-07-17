@@ -51,6 +51,33 @@ test("Case Note validation leaves shared image limits to preparation", () => {
   assert.deepEqual(validateFieldNote("1", "A public observation.", [imageFile(11_000_000)]), []);
 });
 
+test("reply rate-limit errors use the bounded Retry-After wait", () => {
+  const replyFailureMessage = boardModule.replyFailureMessage as (
+    response: Response,
+    payload: unknown,
+  ) => string;
+  assert.equal(typeof replyFailureMessage, "function");
+  if (typeof replyFailureMessage !== "function") return;
+
+  assert.equal(
+    replyFailureMessage(
+      new Response(JSON.stringify({ error: { message: "Too many requests." } }), {
+        status: 429,
+        headers: { "Retry-After": "600" },
+      }),
+      { error: { message: "Too many requests." } },
+    ),
+    "You've reached the reply limit. Try again in about 10 minutes.",
+  );
+  assert.equal(
+    replyFailureMessage(
+      new Response(null, { status: 429, headers: { "Retry-After": "86400" } }),
+      null,
+    ),
+    "You've reached the reply limit. Try again in about 10 minutes.",
+  );
+});
+
 test("Case Note receipts stay pending and retry headers preserve one idempotency key", () => {
   const caseNoteReceipt = boardModule.caseNoteReceipt;
   const buildCaseNoteRequestHeaders = boardModule.buildCaseNoteRequestHeaders;

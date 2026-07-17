@@ -66,7 +66,7 @@ test("D1 limiter atomically allows no more than the configured concurrent reques
   assert.equal(row?.window_expires_at, Math.floor(now / 1_000 / 600) * 600 + 600);
 });
 
-test("D1 limiter prevents either account or IP rotation from resetting a bucket", async (t) => {
+test("D1 reply limiter prevents either subject or IP rotation from resetting a bucket", async (t) => {
   const db = await createRateLimitDatabase(t);
   const limiter = new D1RateLimiter(
     db,
@@ -77,24 +77,24 @@ test("D1 limiter prevents either account or IP rotation from resetting a bucket"
 
   assert.equal((await limiter.consume({
     ...rule,
-    scope: "waiver_review",
+    scope: "reply",
     identifiers: ["ip:203.0.113.8", "subject:hunter-1"]
   })).allowed, true);
   assert.equal((await limiter.consume({
     ...rule,
-    scope: "waiver_review",
+    scope: "reply",
     identifiers: ["ip:203.0.113.9", "subject:hunter-1"]
   })).allowed, false, "changing IP does not reset the account bucket");
 
   assert.equal((await limiter.consume({
     ...rule,
-    scope: "waiver_accept",
-    identifiers: ["ip:203.0.113.8", "subject:hunter-1"]
+    scope: "reply",
+    identifiers: ["ip:203.0.113.200", "subject:hunter-shared"]
   })).allowed, true);
   assert.equal((await limiter.consume({
     ...rule,
-    scope: "waiver_accept",
-    identifiers: ["ip:203.0.113.8", "subject:hunter-2"]
+    scope: "reply",
+    identifiers: ["ip:203.0.113.200", "subject:hunter-2"]
   })).allowed, false, "changing account does not reset the IP bucket");
 });
 
