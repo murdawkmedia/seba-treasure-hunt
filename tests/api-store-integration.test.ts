@@ -4663,6 +4663,11 @@ test("real D1 projects recent published replies with public parent context and r
      (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
      VALUES ('hide-target-flag', 'flag-reporter', 'reply', 'moderation-reply', 'spam', NULL, 'reviewing', ?)`
   ).bind(timestamp).run();
+  await db.prepare(
+    `INSERT INTO content_flags
+     (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
+     VALUES ('hide-target-sibling-flag', 'flag-reporter', 'reply', 'moderation-reply', 'harassment', NULL, 'received', ?)`
+  ).bind(timestamp).run();
   const hiddenByFlag = await store.moderateContentFlag(
     "hide-target-flag", "hide_target", "Confirmed abuse", "staff-4"
   );
@@ -4670,6 +4675,10 @@ test("real D1 projects recent published replies with public parent context and r
   assert.equal(await boardReplyCount(), 0);
   assert.deepEqual(
     await db.prepare("SELECT status, resolved_by FROM content_flags WHERE id = 'hide-target-flag'").first(),
+    { status: "resolved", resolved_by: "staff-4" }
+  );
+  assert.deepEqual(
+    await db.prepare("SELECT status, resolved_by FROM content_flags WHERE id = 'hide-target-sibling-flag'").first(),
     { status: "resolved", resolved_by: "staff-4" }
   );
   assert.deepEqual(
@@ -4763,4 +4772,31 @@ test("FakeStore mirrors public reply moderation state and audited conditional tr
   assert.equal(store.flags[0]?.status, "resolved");
   assert.equal(await store.moderateReply("fake-reply", "hide", "Repeat", "staff-1"), null);
   assert.equal(store.audits.filter((audit) => audit.targetId === "fake-reply").length, 1);
+
+  assert.equal((await store.moderateReply("fake-reply", "restore", "False positive", "staff-2"))?.status, "published");
+  store.flags.push(
+    {
+      id: "fake-hide-target-flag",
+      targetKind: "reply",
+      targetId: "fake-reply",
+      reason: "harassment",
+      status: "reviewing",
+      createdAt: "2026-07-15T18:00:00.000Z"
+    },
+    {
+      id: "fake-hide-target-sibling-flag",
+      targetKind: "reply",
+      targetId: "fake-reply",
+      reason: "spam",
+      status: "received",
+      createdAt: "2026-07-15T18:00:00.000Z"
+    }
+  );
+  assert.equal(
+    (await store.moderateContentFlag("fake-hide-target-flag", "hide_target", "Confirmed abuse", "staff-3"))?.status,
+    "resolved"
+  );
+  assert.deepEqual(store.flags.slice(-2).map((flag) => flag.status), ["resolved", "resolved"]);
+  assert.equal(await store.moderateContentFlag("fake-hide-target-flag", "hide_target", "Repeat", "staff-3"), null);
+  assert.equal(store.audits.filter((audit) => audit.targetId === "fake-hide-target-flag").length, 1);
 });

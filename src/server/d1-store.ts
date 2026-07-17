@@ -2653,18 +2653,6 @@ export class D1DataStore implements DataStore {
         .prepare(
           `UPDATE content_flags
            SET status = 'resolved', resolved_at = ?, resolved_by = ?
-           WHERE id = ? AND target_kind = 'reply' AND status IN ('received', 'reviewing')
-             AND EXISTS (
-               SELECT 1 FROM field_note_replies r
-               WHERE r.id = content_flags.target_id AND r.status = 'hidden'
-                 AND r.moderated_at = ? AND r.moderated_by = ?
-             )`
-        )
-        .bind(timestamp, actorSubject, flagId, timestamp, actorSubject),
-      this.db
-        .prepare(
-          `UPDATE content_flags
-           SET status = 'resolved', resolved_at = ?, resolved_by = ?
            WHERE target_kind = 'reply'
              AND target_id = (
                SELECT target_id FROM content_flags

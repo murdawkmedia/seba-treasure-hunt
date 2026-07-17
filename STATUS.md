@@ -215,6 +215,24 @@ Suggested resume instruction: “Resume from the 2026-07-17 shutdown checkpoint,
 verify the worktree and processes first, then continue Task 4 from `a1874e0`
 without repeating completed Tasks 1–3.”
 
+## Resume update — 2026-07-17 12:07 MDT
+
+- Completed and reviewed Task 4’s validation-only reply and content-flag
+  moderation datastore slice. D1 and FakeStore now provide privacy-safe
+  moderation projections plus conditional, audited hide, restore, dismiss and
+  hide-target transitions. Hiding a reply resolves every outstanding reply
+  flag; restoring leaves resolved flags intact.
+- Corrected the preserved D1 `hide_target` batch so it resolves sibling
+  outstanding flags before the selected flag no longer qualifies as pending.
+  The new regression covers both D1 and FakeStore behavior. No migration was
+  required.
+- Verification: the two focused Task 4 tests pass (real D1 and FakeStore), all
+  TypeScript projects pass, and `git diff --check` is clean. A prior full
+  integration-file retry exceeded the local command timeout without output, so
+  it was safely isolated to the named Task 4 cases; no process was terminated.
+- No production or validation deployment, database migration, or data mutation
+  occurred. Next: Task 5, Staff-only reply and flag moderation APIs.
+
 - Any production snapshot used by validation must be a manual, one-way,
   read-only copy in dedicated D1/R2 resources. Full-fidelity personal and
   private report data is permitted only behind existing server-side Ops
