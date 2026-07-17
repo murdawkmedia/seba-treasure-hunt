@@ -622,6 +622,51 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
   assert.equal(store.reports[0]?.status, "rejected");
 });
 
+test("publishes a reviewed report to Case Notes without creating an official Update", async () => {
+  const { app, store } = makeApp();
+  store.reports.push({
+    id: "report-case-note-1",
+    hunterSubject: null,
+    publicAttribution: "Community Hunter",
+    attributionKind: "community",
+    waypointId: 11,
+    latitude: 53.5,
+    longitude: -114.5,
+    status: "reviewing",
+    media: [{
+      id: "media-case-note-1",
+      derivativeObjectKey: "derivatives/media-case-note-1.webp",
+      contentType: "image/webp",
+      status: "ready"
+    }]
+  });
+  const endpoint = "https://www.timlostsomething.com/api/v1/ops/reports/report-case-note-1/case-note";
+  const input = { body: "A routine finding reviewed by an operator.", mediaIds: ["media-case-note-1"] };
+  assert.equal((await app.request(endpoint, { method: "POST", ...json(input) })).status, 401);
+  const published = await app.request(endpoint, {
+    method: "POST",
+    ...json(input, { authorization: "Bearer staff-token" })
+  });
+  assert.equal(published.status, 200);
+  const note = (await responseJson(published)).data;
+  assert.equal(note.noteKind, "operator_reviewed");
+  assert.equal(note.authorHandle, "Community Hunter");
+  assert.equal(JSON.stringify(note).includes("report-case-note-1"), false);
+  assert.equal(store.updates.some((item) => item.title === input.body), false);
+
+  const replay = await app.request(endpoint, {
+    method: "POST",
+    ...json(input, { authorization: "Bearer staff-token" })
+  });
+  assert.equal((await responseJson(replay)).data.id, note.id);
+
+  const withdrawn = await app.request(`${endpoint}/withdraw`, {
+    method: "POST",
+    ...json({}, { authorization: "Bearer staff-token" })
+  });
+  assert.equal(withdrawn.status, 200);
+});
+
 test("rejects publication-controlled fields and more than three selected images", async () => {
   const { app, store } = makeApp();
   store.reports.push({ id: "report-publish-fields", status: "reviewing", media: [] });

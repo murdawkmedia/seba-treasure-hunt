@@ -36,6 +36,37 @@ test("Case Note Turnstile uses interaction-only rendering and a one-render lifec
   assert.match(source, /recordReset\("field_note"/);
 });
 
+test("operator-reviewed Case Notes are labelled, source-private, and do not offer broken reply controls", () => {
+  const normalizeBoardPayload = boardModule.normalizeBoardPayload;
+  const renderBoardFeed = boardModule.renderBoardFeed;
+  assert.equal(typeof normalizeBoardPayload, "function");
+  assert.equal(typeof renderBoardFeed, "function");
+  if (typeof normalizeBoardPayload !== "function" || typeof renderBoardFeed !== "function") return;
+  const sourceReportId = "private-report-must-not-render";
+  const notes = normalizeBoardPayload({ data: [{
+    id: "reviewed-note-1",
+    noteKind: "operator_reviewed",
+    waypointId: 11,
+    waypointRouteOrder: 11,
+    waypointName: "The Driving Range & the Digger Café",
+    body: "A reviewed public finding.",
+    authorHandle: "Nancy & Ron",
+    latitude: 53.5,
+    longitude: -114.5,
+    createdAt: "2026-07-17T18:00:00.000Z",
+    media: [{ id: "media-1", url: "/api/v1/media/media-1" }],
+    replies: [],
+    sourceReportId,
+  }] }) as Array<Record<string, unknown>>;
+  assert.equal(notes[0]?.noteKind, "operator_reviewed");
+  const html = renderBoardFeed({ kind: "ready", notes, canReply: true }) as string;
+  assert.match(html, /Operator-reviewed Case Note/);
+  assert.match(html, /53\.5, -114\.5/);
+  assert.doesNotMatch(html, /reply-form/);
+  assert.doesNotMatch(html, new RegExp(sourceReportId));
+  assert.doesNotMatch(JSON.stringify(notes), new RegExp(sourceReportId));
+});
+
 type DashboardOutcome = "ok" | "unauthorized" | "network-error";
 
 class FakeElement {

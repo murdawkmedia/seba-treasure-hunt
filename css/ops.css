@@ -326,6 +326,11 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
 .ops-report-dialog__grid > section { min-width: 0; }
 .ops-report-private { box-shadow: inset 4px 0 rgba(231, 91, 79, .65); }
 .ops-report-public { box-shadow: inset 4px 0 rgba(105, 197, 141, .65); }
+.ops-report-destinations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.ops-report-destinations article { min-width: 0; padding: 10px; border: 1px solid var(--ops-line); border-radius: 5px; background: rgba(7, 31, 28, .4); }
+.ops-report-destinations strong,
+.ops-report-destinations span { display: block; }
+.ops-report-destinations span { margin-top: 4px; color: var(--ops-muted); font-size: .82rem; line-height: 1.35; }
 .ops-report-dialog h4 { margin: 18px 0 9px; color: var(--ops-ink); font-family: var(--ops-font-ledger); font-size: .72rem; }
 .ops-report-facts { display: grid; gap: 1px; margin: 14px 0 0; overflow: hidden; border: 1px solid rgba(248, 240, 213, .12); border-radius: 6px; }
 .ops-report-facts > div { display: grid; grid-template-columns: minmax(110px, .42fr) minmax(0, 1fr); gap: 10px; padding: 9px 10px; background: rgba(4, 22, 19, .45); }
@@ -421,6 +426,7 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
   .ops-report-dialog__body { padding: 10px; }
   .ops-report-evidence { grid-template-columns: 1fr; }
   .ops-report-public-card dl { grid-template-columns: 1fr; }
+  .ops-report-destinations { grid-template-columns: 1fr; }
   .ops-report-facts > div { grid-template-columns: 1fr; gap: 2px; }
   .ops-snapshot-banner { position: static; align-items: flex-start; flex-direction: column; }
 }

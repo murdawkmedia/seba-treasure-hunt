@@ -437,6 +437,42 @@ const validateImages = async (files: File[]) => {
   }
 };
 
+const caseNotePublicationInput = (body: Record<string, unknown>) => {
+  const allowed = new Set(["body", "mediaIds"]);
+  const forbidden = Object.keys(body).find((key) => !allowed.has(key));
+  if (forbidden) {
+    throw new ApiError(
+      422,
+      "publication_field_forbidden",
+      "Case Note publication fields are derived from the private report.",
+      { field: forbidden }
+    );
+  }
+  const rawMediaIds = body.mediaIds ?? [];
+  if (
+    !Array.isArray(rawMediaIds) ||
+    rawMediaIds.length > 3 ||
+    rawMediaIds.some((item) => typeof item !== "string" || !item.trim() || item.trim().length > 200)
+  ) {
+    throw new ApiError(
+      422,
+      "validation_failed",
+      "Select up to three report images for the Case Note.",
+      { field: "mediaIds" }
+    );
+  }
+  const mediaIds = rawMediaIds.map((item) => item.trim());
+  if (new Set(mediaIds).size !== mediaIds.length) {
+    throw new ApiError(422, "validation_failed", "Each selected report image must be unique.", {
+      field: "mediaIds"
+    });
+  }
+  return {
+    body: requiredString(body, "body", { max: 1_200, label: "Case Note" }),
+    mediaIds
+  };
+};
+
 const publicMedia = (input: unknown) =>
   Array.isArray(input)
     ? input.map((item) => {
@@ -1619,6 +1655,34 @@ export const createApi = (deps: ApiDependencies) => {
     );
     if (!report) throw new ApiError(404, "report_not_found", "Report not found.");
     return success(c, report);
+  });
+  app.post("/api/v1/ops/reports/:id/case-note", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw);
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length) {
+      throw new ApiError(415, "unsupported_media_type", "Case Note publication accepts JSON only.");
+    }
+    const note = await deps.store.publishReportToCaseNotes(
+      c.req.param("id"),
+      caseNotePublicationInput(body),
+      staff.subject
+    );
+    if (!note) throw new ApiError(404, "report_not_found", "Report not found.");
+    return success(c, note);
+  });
+  app.post("/api/v1/ops/reports/:id/case-note/withdraw", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw);
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length || Object.keys(body).length > 0) {
+      throw new ApiError(422, "validation_failed", "Case Note withdrawal does not accept fields.");
+    }
+    const note = await deps.store.withdrawReportCaseNote(c.req.param("id"), staff.subject);
+    if (!note) throw new ApiError(404, "report_case_note_not_found", "Published Case Note not found.");
+    return success(c, note);
   });
   app.post("/api/v1/ops/reports/:id/publish", async (c) => {
     sameOrigin(c.req.raw);

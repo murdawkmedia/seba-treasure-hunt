@@ -305,8 +305,13 @@
 
         <section class="ops-report-public" aria-labelledby="report-public-title">
           <p class="ops-kicker">Public allowlist preview</p>
-          <h3 id="report-public-title">Approve for Updates</h3>
+          <h3 id="report-public-title">Choose public destination</h3>
           <p>Email, phone, private name and account identifiers are never included. Waypoint and submitted GPS are public game facts after approval.</p>
+          <div class="ops-report-destinations" aria-label="Publication choices">
+            <article><strong>Keep private</strong><span>Continue the audited review without publishing anything.</span></article>
+            <article><strong>Case Notes</strong><span>Share a reviewed community observation. It is not an official clue.</span></article>
+            <article><strong>Official Update</strong><span>Reserve for meaningful verified evidence or a campaign announcement.</span></article>
+          </div>
           <form class="ops-form ops-form--compact" data-report-publication-form novalidate>
             <label for="report-public-title-input">Public headline</label>
             <input id="report-public-title-input" name="title" maxlength="200" required disabled />
@@ -315,8 +320,10 @@
             <div data-report-public-preview></div>
             <label class="ops-confirm"><input name="confirmPublication" type="checkbox" required disabled /><span>I reviewed this exact public preview. Contact details and children&rsquo;s identities are excluded, while the shown waypoint, GPS and checked images will be public.</span></label>
             <div class="ops-action-row">
-              <button class="ops-button ops-button--primary" type="submit" data-report-publish disabled>Approve &amp; publish</button>
-              <button class="ops-button ops-button--danger" type="button" data-report-unpublish hidden>Unpublish report post</button>
+              <button class="ops-button ops-button--primary" type="button" data-report-publish-case-note disabled>Publish to Case Notes</button>
+              <button class="ops-button ops-button--danger" type="button" data-report-withdraw-case-note hidden>Withdraw Case Note</button>
+              <button class="ops-button ops-button--quiet" type="submit" data-report-publish disabled>Publish Official Update</button>
+              <button class="ops-button ops-button--danger" type="button" data-report-unpublish hidden>Withdraw Official Update</button>
             </div>
             <p class="ops-inline-result" id="report-publication-result" role="status" aria-live="polite" tabindex="-1"></p>
           </form>

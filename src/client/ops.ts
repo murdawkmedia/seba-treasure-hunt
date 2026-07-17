@@ -72,6 +72,11 @@ export interface OpsReportDetail extends OpsReportRecord {
     published: boolean;
     updateId: string | null;
   };
+  caseNote: {
+    published: boolean;
+    noteId: string | null;
+    status: string | null;
+  };
   locationDescription: string;
   latitude: number | null;
   longitude: number | null;
@@ -487,13 +492,22 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
   const publicationUpdateId = publicationValue?.updateId === null
     ? null
     : asString(publicationValue?.updateId).trim() || null;
+  const caseNoteValue = isRecord(value.caseNote) ? value.caseNote : null;
+  const caseNotePublished = caseNoteValue ? asBoolean(caseNoteValue.published) : false;
+  const caseNoteId = caseNoteValue?.noteId === null || !caseNoteValue
+    ? null
+    : asString(caseNoteValue.noteId).trim() || null;
+  const caseNoteStatus = caseNoteValue?.status === null || !caseNoteValue
+    ? null
+    : asString(caseNoteValue.status).trim() || null;
   const rawAttribution = value.publicAttribution === null ? "" : asString(value.publicAttribution).trim();
   const publicAttribution = rawAttribution && rawAttribution.length <= 80 && !rawAttribution.includes("@")
     ? rawAttribution
     : null;
   if (
-    publicationEligible === null || !publicationEligibilityReason || published === null ||
+    publicationEligible === null || !publicationEligibilityReason || published === null || caseNotePublished === null ||
     (published ? !publicationUpdateId : publicationUpdateId !== null) ||
+    (caseNotePublished ? !caseNoteId || caseNoteStatus !== "published" : caseNoteId !== null) ||
     (publicationEligible && (!publicAttribution || publicationEligibilityReason !== "eligible"))
   ) return null;
   const media = asArray(value.media).flatMap((candidate): OpsReportMedia[] => {
@@ -523,6 +537,7 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     publicationEligible,
     publicationEligibilityReason,
     publication: { published, updateId: publicationUpdateId },
+    caseNote: { published: caseNotePublished, noteId: caseNoteId, status: caseNoteStatus },
     locationDescription: asString(value.locationDescription).trim(),
     latitude: coordinatesValid ? latitudeValue : null,
     longitude: coordinatesValid ? longitudeValue : null,
@@ -962,6 +977,7 @@ export function renderReportPrivateDetail(detail: OpsReportDetail): string {
     <div><dt>Received</dt><dd>${escapeOpsHtml(formatOpsTime(detail.createdAt))}</dd></div>
     <div><dt>Updated</dt><dd>${escapeOpsHtml(detail.updatedAt ? formatOpsTime(detail.updatedAt) : "Not supplied")}</dd></div>
     <div><dt>Current state</dt><dd>${escapeOpsHtml(detail.status)}</dd></div>
+    <div><dt>Public Case Note</dt><dd>${escapeOpsHtml(detail.caseNote.published ? "Published" : "Not published")}</dd></div>
     <div><dt>Public Updates post</dt><dd>${escapeOpsHtml(detail.publication.published ? "Published" : "Not published")}</dd></div>
     <div><dt>Reporter name</dt><dd>${escapeOpsHtml(detail.name)}</dd></div>
     <div><dt>Email</dt><dd class="ops-mono">${escapeOpsHtml(detail.email)}</dd></div>
@@ -1078,6 +1094,20 @@ export function renderModerationRows(records: readonly OpsModerationRecord[]): s
     <td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="approved">Approve</button><button class="ops-button ops-button--danger" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="rejected">Reject</button></div></td>
   </tr>`;
   }).join("");
+}
+
+export function reportDestinationControls(detail: OpsReportDetail): {
+  caseNotePublished: boolean;
+  showPublishCaseNote: boolean;
+  showWithdrawCaseNote: boolean;
+  updatePublished: boolean;
+} {
+  return {
+    caseNotePublished: detail.caseNote.published,
+    showPublishCaseNote: !detail.caseNote.published,
+    showWithdrawCaseNote: detail.caseNote.published,
+    updatePublished: detail.publication.published,
+  };
 }
 
 const reportStateLabel = (state: string): string => ({
@@ -1689,6 +1719,8 @@ function renderReportDialog(
   const saveStatus = dialog.querySelector<HTMLButtonElement>("[data-report-save-status]");
   const publish = dialog.querySelector<HTMLButtonElement>("[data-report-publish]");
   const unpublish = dialog.querySelector<HTMLButtonElement>("[data-report-unpublish]");
+  const publishCaseNote = dialog.querySelector<HTMLButtonElement>("[data-report-publish-case-note]");
+  const withdrawCaseNote = dialog.querySelector<HTMLButtonElement>("[data-report-withdraw-case-note]");
   if (stateSummary) stateSummary.innerHTML = renderReportState(detail);
   const transitions = nextReportStates(detail.status);
   const selectableTransitions = detail.status === "received"
@@ -1718,9 +1750,15 @@ function renderReportDialog(
   }
   if (publish) {
     publish.disabled = !detail.publicationEligible;
-    publish.textContent = detail.publication.published ? "Update publication" : "Approve & publish";
+    publish.textContent = detail.publication.published ? "Update Official Update" : "Publish Official Update";
   }
   if (unpublish) unpublish.hidden = !controls.showUnpublish;
+  const destinations = reportDestinationControls(detail);
+  if (publishCaseNote) {
+    publishCaseNote.hidden = !destinations.showPublishCaseNote;
+    publishCaseNote.disabled = !detail.publicationEligible;
+  }
+  if (withdrawCaseNote) withdrawCaseNote.hidden = !destinations.showWithdrawCaseNote;
   updateReportPublicationPreview();
   const eligibility = detail.publicationEligible
     ? "This report is eligible for a deliberate public preview and publication."
@@ -1757,6 +1795,8 @@ async function openReportDetail(reportId: string, trigger: HTMLButtonElement): P
   }
   const unpublish = dialog.querySelector<HTMLButtonElement>("[data-report-unpublish]");
   if (unpublish) unpublish.hidden = true;
+  const withdrawCaseNote = dialog.querySelector<HTMLButtonElement>("[data-report-withdraw-case-note]");
+  if (withdrawCaseNote) withdrawCaseNote.hidden = true;
   setReportPublicationResult("");
   setReportReviewState("Loading the selected private report and audited evidence controls...");
   if (!dialog.open) dialog.showModal();
@@ -2420,6 +2460,101 @@ function setupWorkspace(): void {
         );
       }
       updateReportPublicationPreview();
+    }
+  });
+
+  reportDialog?.querySelector("[data-report-publish-case-note]")?.addEventListener("click", async (event) => {
+    const intent = reportReviewGuard.capture();
+    const signal = reportReviewAbortController?.signal;
+    if (
+      !intent || !signal || !activeReportDetail || activeReportDetail.id !== intent.reportId ||
+      !reportReviewIsLive(intent, reportDialog)
+    ) return;
+    const reportId = intent.reportId;
+    const form = reportDialog.querySelector<HTMLFormElement>("[data-report-publication-form]");
+    const body = form?.querySelector<HTMLTextAreaElement>('[name="body"]')?.value.trim() ?? "";
+    const confirmed = form?.querySelector<HTMLInputElement>('[name="confirmPublication"]')?.checked ?? false;
+    const mediaIds = reportSelectedMediaIds();
+    if (!activeReportDetail.publicationEligible) {
+      setReportPublicationResult("Publication is blocked until the report has current legal and profile eligibility.", "error");
+      return;
+    }
+    if (!body || !confirmed || mediaIds.length > 3) {
+      setReportPublicationResult("Enter the edited public story, select up to three images, and confirm the exact preview.", "error");
+      (body ? form?.querySelector<HTMLInputElement>('[name="confirmPublication"]') : form?.querySelector<HTMLTextAreaElement>('[name="body"]'))?.focus();
+      return;
+    }
+    if (
+      !window.confirm("Publish this exact reviewed observation to Case Notes? It will not become an Official Update.") ||
+      !reportReviewIsLive(intent, reportDialog) || signal.aborted
+    ) return;
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.disabled = true;
+    setReportPublicationResult("Publishing the reviewed observation to Case Notes...");
+    try {
+      const { response, payload } = await opsRequest(
+        `/api/v1/ops/reports/${encodeURIComponent(reportId)}/case-note`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body, mediaIds }),
+          signal,
+        }
+      );
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
+      if (!response.ok) throw new Error(apiError(payload, "The reviewed Case Note was not published."));
+      const published = envelopeData(payload);
+      if (!isRecord(published) || !asString(published.id)) throw new Error("The Case Note response was incomplete.");
+      await Promise.all([refreshActiveReportDetail(intent), loadReports(), loadDashboard(), loadAudit()]);
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
+      const result = reportPublicationResult();
+      if (result) {
+        const link = document.createElement("a");
+        link.href = `/clue-board#${encodeURIComponent(asString(published.id))}`;
+        link.textContent = "Open the public Case Note";
+        result.replaceChildren(document.createTextNode("Reviewed Case Note published and audited. "), link);
+        result.dataset.kind = "normal";
+      }
+    } catch (error) {
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted || isAbortError(error)) return;
+      setReportPublicationResult(error instanceof Error ? error.message : "The reviewed Case Note was not published.", "error");
+    } finally {
+      if (reportReviewIsLive(intent, reportDialog) && activeReportDetail?.id === reportId) {
+        button.disabled = !activeReportDetail.publicationEligible || activeReportDetail.caseNote.published;
+      }
+    }
+  });
+
+  reportDialog?.querySelector("[data-report-withdraw-case-note]")?.addEventListener("click", async (event) => {
+    const intent = reportReviewGuard.capture();
+    const signal = reportReviewAbortController?.signal;
+    if (
+      !intent || !signal || !activeReportDetail || activeReportDetail.id !== intent.reportId ||
+      !reportReviewIsLive(intent, reportDialog) ||
+      !window.confirm("Withdraw this reviewed observation from public Case Notes? The private report and audit history will remain.") ||
+      !reportReviewIsLive(intent, reportDialog) || signal.aborted
+    ) return;
+    const reportId = intent.reportId;
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.disabled = true;
+    setReportPublicationResult("Withdrawing the public Case Note...");
+    try {
+      const { response, payload } = await opsRequest(
+        `/api/v1/ops/reports/${encodeURIComponent(reportId)}/case-note/withdraw`,
+        { method: "POST", signal }
+      );
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
+      if (!response.ok) throw new Error(apiError(payload, "The reviewed Case Note was not withdrawn."));
+      await Promise.all([refreshActiveReportDetail(intent), loadReports(), loadDashboard(), loadAudit()]);
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
+      setReportPublicationResult("The Case Note was withdrawn. The private report and audit history remain available.");
+    } catch (error) {
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted || isAbortError(error)) return;
+      setReportPublicationResult(error instanceof Error ? error.message : "The reviewed Case Note was not withdrawn.", "error");
+    } finally {
+      if (reportReviewIsLive(intent, reportDialog) && activeReportDetail?.id === reportId) button.disabled = false;
     }
   });
 

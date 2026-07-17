@@ -408,15 +408,28 @@ export class D1DataStore implements DataStore {
   ): Promise<Page> {
     const limit = pageLimit(options.limit);
     const cursor = options.cursor ?? now();
-    const condition = waypointId ? "AND n.waypoint_id = ?" : "";
+    const condition = waypointId ? "AND notes.waypoint_id = ?" : "";
     let notesStatement = this.db.prepare(
-        `SELECT n.id, n.waypoint_id, n.body, n.created_at, n.published_at, p.public_handle,
+        `SELECT notes.id, notes.waypoint_id, notes.body, notes.created_at, notes.published_at,
+                notes.author_handle, notes.note_kind, notes.latitude, notes.longitude,
                 w.route_order AS waypoint_route_order, w.name AS waypoint_name
-         FROM field_notes n
-         JOIN hunter_profiles p ON p.subject = n.author_subject
-         LEFT JOIN waypoints w ON w.id = n.waypoint_id AND w.is_published = 1
-         WHERE n.status = 'approved' AND n.published_at <= ? ${condition}
-         ORDER BY n.published_at DESC, n.id DESC LIMIT ?`
+         FROM (
+           SELECT n.id, n.waypoint_id, n.body, n.created_at, n.published_at,
+                  p.public_handle AS author_handle, 'community' AS note_kind,
+                  NULL AS latitude, NULL AS longitude
+           FROM field_notes n
+           JOIN hunter_profiles p ON p.subject = n.author_subject
+           WHERE n.status = 'approved'
+           UNION ALL
+           SELECT reviewed.id, reviewed.waypoint_id, reviewed.body, reviewed.created_at,
+                  reviewed.published_at, reviewed.public_attribution AS author_handle,
+                  'operator_reviewed' AS note_kind, reviewed.latitude, reviewed.longitude
+           FROM operator_reviewed_case_notes reviewed
+           WHERE reviewed.status = 'published'
+         ) notes
+         LEFT JOIN waypoints w ON w.id = notes.waypoint_id AND w.is_published = 1
+         WHERE notes.published_at <= ? ${condition}
+         ORDER BY notes.published_at DESC, notes.id DESC LIMIT ?`
       );
     notesStatement = waypointId
       ? notesStatement.bind(cursor, waypointId, limit + 1)
@@ -443,11 +456,20 @@ export class D1DataStore implements DataStore {
           .all<Row>(),
         this.db
           .prepare(
-            `SELECT id, owner_id FROM media_uploads
-             WHERE owner_kind = 'field_note' AND status = 'ready' AND owner_id IN (${placeholders})
-             ORDER BY created_at`
+            `SELECT m.id, m.owner_id AS note_id, NULL AS alt_text, 0 AS position
+             FROM media_uploads m
+             WHERE m.owner_kind = 'field_note' AND m.status = 'ready'
+               AND m.owner_id IN (${placeholders})
+             UNION ALL
+             SELECT m.id, selected.note_id, selected.alt_text, selected.position
+             FROM operator_reviewed_case_note_media selected
+             JOIN media_uploads m ON m.id = selected.media_id
+             JOIN operator_reviewed_case_notes note ON note.id = selected.note_id
+             WHERE note.status = 'published' AND m.owner_kind = 'report' AND m.status = 'ready'
+               AND selected.note_id IN (${placeholders})
+             ORDER BY position, id`
           )
-          .bind(...noteIds)
+          .bind(...noteIds, ...noteIds)
           .all<Row>()
       ]);
       for (const row of repliesResult.results) {
@@ -462,9 +484,10 @@ export class D1DataStore implements DataStore {
         repliesByNote.set(owner, replies);
       }
       for (const row of mediaResult.results) {
-        const owner = value(row.owner_id);
+        const owner = value(row.note_id);
         const media = mediaByNote.get(owner) ?? [];
-        media.push({ id: row.id, url: `/api/v1/media/${row.id}` });
+        const alt = nullable(row.alt_text);
+        media.push({ id: row.id, url: `/api/v1/media/${row.id}`, ...(alt ? { alt } : {}) });
         mediaByNote.set(owner, media);
       }
     }
@@ -475,7 +498,10 @@ export class D1DataStore implements DataStore {
       waypointRouteOrder: numberOrNull(row.waypoint_route_order),
       waypointName: nullable(row.waypoint_name),
       body: row.body,
-      authorHandle: row.public_handle,
+      authorHandle: row.author_handle,
+      noteKind: row.note_kind,
+      latitude: numberOrNull(row.latitude),
+      longitude: numberOrNull(row.longitude),
       createdAt: row.created_at,
       publishedAt: row.published_at,
       media: mediaByNote.get(value(row.id)) ?? [],
@@ -483,7 +509,7 @@ export class D1DataStore implements DataStore {
     }));
     return {
       items,
-      nextCursor: hasMore ? value(selected.at(-1)?.publishedAt) : null
+      nextCursor: hasMore ? value(selected.at(-1)?.published_at) : null
     };
   }
 
@@ -513,10 +539,20 @@ export class D1DataStore implements DataStore {
                  AND published_update.status = 'published'
                  AND published_update.published_at <= ?
              )
+             OR EXISTS (
+               SELECT 1
+               FROM operator_reviewed_case_note_media selected
+               JOIN operator_reviewed_case_notes reviewed ON reviewed.id = selected.note_id
+               WHERE selected.media_id = m.id
+                 AND reviewed.source_report_id = m.owner_id
+                 AND m.owner_kind = 'report'
+                 AND reviewed.status = 'published'
+                 AND reviewed.published_at <= ?
+             )
            )
          LIMIT 1`
       )
-      .bind(mediaId, now())
+      .bind(mediaId, now(), now())
       .first<Row>();
     if (!row || !value(row.derivative_object_key).startsWith("derivatives/")) return null;
     return {
@@ -2648,9 +2684,20 @@ export class D1DataStore implements DataStore {
   ): Promise<Record<string, unknown> | null> {
     const report = await this.reportById(reportId);
     if (!report) return null;
-    const publication = await this.reportPublicationPreview(reportId);
+    const [publication, caseNote] = await Promise.all([
+      this.reportPublicationPreview(reportId),
+      this.reportCaseNoteBySource(reportId)
+    ]);
     await this.audit(actorSubject, "report.detail.viewed", "report", reportId, {});
-    return { ...report, ...publication };
+    return {
+      ...report,
+      ...publication,
+      caseNote: {
+        published: caseNote?.status === "published",
+        noteId: caseNote?.status === "published" ? caseNote.id : null,
+        status: caseNote?.status ?? null
+      }
+    };
   }
 
   async getReportMedia(
@@ -2781,6 +2828,206 @@ export class D1DataStore implements DataStore {
       throw new ConflictError("The report changed. Refresh and try again.");
     }
     return this.reportById(reportId);
+  }
+
+  async publishReportToCaseNotes(
+    reportId: string,
+    input: { body: string; mediaIds: string[] },
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.reportCaseNoteBySource(reportId);
+    if (existing) {
+      if (existing.status === "withdrawn") {
+        throw new ApiError(
+          409,
+          "report_case_note_withdrawn",
+          "This report's Case Note is withdrawn. Create a new editorial action before republishing it."
+        );
+      }
+      return existing;
+    }
+    const report = await this.db
+      .prepare(
+        `SELECT id, status, waypoint_id, latitude, longitude, public_attribution, attribution_kind
+         FROM private_reports WHERE id = ? LIMIT 1`
+      )
+      .bind(reportId)
+      .first<Row>();
+    if (!report) return null;
+    if (!["reviewing", "contacted", "escalated", "verified"].includes(value(report.status))) {
+      throw new ApiError(
+        409,
+        "report_case_note_state_invalid",
+        "Begin or complete private review before publishing a Case Note."
+      );
+    }
+    const body = input.body.trim();
+    if (!body || body.length > 1_200) {
+      throw new ApiError(422, "validation_failed", "Case Note copy must be 1 to 1,200 characters.");
+    }
+    const mediaIds = [...new Set(input.mediaIds)];
+    if (mediaIds.length !== input.mediaIds.length || mediaIds.length > 3) {
+      throw new ApiError(422, "publication_media_invalid", "Select up to three unique report images.");
+    }
+    if (mediaIds.length > 0) {
+      const placeholders = mediaIds.map(() => "?").join(",");
+      const selected = await this.db
+        .prepare(
+          `SELECT id, derivative_object_key FROM media_uploads
+           WHERE owner_kind = 'report' AND owner_id = ? AND status = 'ready'
+             AND derivative_object_key IS NOT NULL AND id IN (${placeholders})`
+        )
+        .bind(reportId, ...mediaIds)
+        .all<Row>();
+      if (
+        selected.results.length !== mediaIds.length ||
+        selected.results.some((row) => {
+          const key = value(row.derivative_object_key);
+          return !key.startsWith("derivatives/") || key === "derivatives/";
+        })
+      ) {
+        throw new ApiError(
+          422,
+          "publication_media_invalid",
+          "Selected report media is not ready for publication."
+        );
+      }
+    }
+    const preview = await this.reportPublicationPreview(reportId);
+    if (!preview.publicationEligible || !preview.publicAttribution) {
+      throw new ApiError(
+        409,
+        "report_publication_ineligible",
+        "This report is not eligible for a public attribution."
+      );
+    }
+    const rawKind = nullable(report.attribution_kind);
+    const attributionKind = rawKind === "display_name" || rawKind === "hunter_handle" ||
+      rawKind === "community" || rawKind === "young_hunter"
+      ? rawKind
+      : preview.publicAttribution === "Young Hunter"
+        ? "young_hunter"
+        : preview.publicAttribution === "Community Hunter"
+          ? "community"
+          : "hunter_handle";
+    const noteId = id();
+    const timestamp = now();
+    const statements = [
+      this.db.prepare(
+        `INSERT INTO operator_reviewed_case_notes
+         (id, source_report_id, public_attribution, attribution_kind, waypoint_id,
+          latitude, longitude, body, status, created_at, published_at, moderated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?, ?)`
+      ).bind(
+        noteId,
+        reportId,
+        preview.publicAttribution,
+        attributionKind,
+        report.waypoint_id ?? null,
+        report.latitude ?? null,
+        report.longitude ?? null,
+        body,
+        timestamp,
+        timestamp,
+        actorSubject
+      ),
+      this.db.prepare(
+        `INSERT INTO report_events (id, report_id, event_type, actor_subject, note, occurred_at)
+         VALUES (?, ?, 'case_note.published', ?, ?, ?)`
+      ).bind(id(), reportId, actorSubject, `Operator-reviewed Case Note ${noteId}`, timestamp),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'report.case-note.published', 'report', ?, ?, ?)`
+      ).bind(
+        id(),
+        actorSubject,
+        reportId,
+        json({ destination: "case_note", noteId, mediaIds }),
+        timestamp
+      )
+    ];
+    for (const [position, mediaId] of mediaIds.entries()) {
+      statements.push(
+        this.db.prepare(
+          `INSERT INTO operator_reviewed_case_note_media
+           (note_id, media_id, selected_by, selected_at, position)
+           VALUES (?, ?, ?, ?, ?)`
+        ).bind(noteId, mediaId, actorSubject, timestamp, position)
+      );
+    }
+    try {
+      await this.db.batch(statements);
+    } catch (error) {
+      const winner = await this.reportCaseNoteBySource(reportId);
+      if (winner) return winner;
+      throw error;
+    }
+    return this.reportCaseNoteBySource(reportId);
+  }
+
+  async withdrawReportCaseNote(
+    reportId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.reportCaseNoteBySource(reportId);
+    if (!existing) return null;
+    if (existing.status === "withdrawn") return existing;
+    const noteId = value(existing.id);
+    const timestamp = now();
+    const operationToken = `case-note-withdraw:${id()}`;
+    const reportEventId = id();
+    const auditId = id();
+    const results = await this.db.batch([
+      this.db.prepare(
+        `UPDATE operator_reviewed_case_notes
+         SET status = 'withdrawn', withdrawn_at = ?, withdrawn_by = ?
+         WHERE id = ? AND source_report_id = ? AND status = 'published'`
+      ).bind(timestamp, operationToken, noteId, reportId),
+      this.db.prepare(
+        `INSERT INTO report_events (id, report_id, event_type, actor_subject, note, occurred_at)
+         SELECT ?, ?, 'case_note.withdrawn', ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM operator_reviewed_case_notes
+           WHERE id = ? AND withdrawn_by = ?
+         )`
+      ).bind(
+        reportEventId,
+        reportId,
+        actorSubject,
+        `Operator-reviewed Case Note ${noteId}`,
+        timestamp,
+        noteId,
+        operationToken
+      ),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         SELECT ?, ?, 'report.case-note.withdrawn', 'report', ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM operator_reviewed_case_notes
+           WHERE id = ? AND withdrawn_by = ?
+         )`
+      ).bind(
+        auditId,
+        actorSubject,
+        reportId,
+        json({ destination: "case_note", noteId }),
+        timestamp,
+        noteId,
+        operationToken
+      ),
+      this.db.prepare(
+        `UPDATE operator_reviewed_case_notes SET withdrawn_by = ?
+         WHERE id = ? AND withdrawn_by = ?
+           AND EXISTS (SELECT 1 FROM report_events WHERE id = ?)
+           AND EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`
+      ).bind(actorSubject, noteId, operationToken, reportEventId, auditId)
+    ]);
+    if (results.some((result) => Number(result.meta.changes) !== 1)) {
+      throw new ConflictError("The Case Note changed. Refresh and try again.");
+    }
+    return this.reportCaseNoteBySource(reportId);
   }
 
   async publishReport(
@@ -3671,6 +3918,53 @@ export class D1DataStore implements DataStore {
         size: Number(item.byte_size),
         status: item.status
       }))
+    };
+  }
+
+  private async reportCaseNoteBySource(reportId: string): Promise<Record<string, unknown> | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT note.id, note.public_attribution, note.attribution_kind, note.waypoint_id,
+                note.latitude, note.longitude, note.body, note.status, note.created_at,
+                note.published_at, w.route_order AS waypoint_route_order, w.name AS waypoint_name
+         FROM operator_reviewed_case_notes note
+         LEFT JOIN waypoints w ON w.id = note.waypoint_id AND w.is_published = 1
+         WHERE note.source_report_id = ? LIMIT 1`
+      )
+      .bind(reportId)
+      .first<Row>();
+    if (!row) return null;
+    const media = await this.db
+      .prepare(
+        `SELECT media.id, media.content_type, selected.alt_text
+         FROM operator_reviewed_case_note_media selected
+         JOIN media_uploads media ON media.id = selected.media_id
+         WHERE selected.note_id = ? AND media.owner_kind = 'report' AND media.status = 'ready'
+         ORDER BY selected.position, selected.media_id`
+      )
+      .bind(row.id)
+      .all<Row>();
+    return {
+      id: row.id,
+      noteKind: "operator_reviewed",
+      authorHandle: row.public_attribution,
+      attributionKind: row.attribution_kind,
+      waypointId: row.waypoint_id === null ? null : Number(row.waypoint_id),
+      waypointRouteOrder: numberOrNull(row.waypoint_route_order),
+      waypointName: nullable(row.waypoint_name),
+      latitude: numberOrNull(row.latitude),
+      longitude: numberOrNull(row.longitude),
+      body: row.body,
+      status: row.status,
+      createdAt: row.created_at,
+      publishedAt: row.published_at,
+      media: media.results.map((item) => ({
+        id: item.id,
+        url: `/api/v1/media/${item.id}`,
+        contentType: item.content_type,
+        ...(nullable(item.alt_text) ? { alt: item.alt_text } : {})
+      })),
+      replies: []
     };
   }
 

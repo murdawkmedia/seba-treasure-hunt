@@ -16,12 +16,15 @@ export interface CommunityReply {
 
 export interface CommunityNote {
   id: string;
+  noteKind: "community" | "operator_reviewed";
   waypointId: string;
   waypointRouteOrder: number | null;
   waypointName: string | null;
   body: string;
   authorHandle: string;
   createdAt: string;
+  latitude: number | null;
+  longitude: number | null;
   media: CommunityMedia[];
   replies: CommunityReply[];
 }
@@ -120,6 +123,12 @@ function waypointLabel(note: Pick<CommunityNote, "waypointId" | "waypointRouteOr
   return waypointNumber(note.waypointId) === null ? "Stop not specified" : "Stop details unavailable";
 }
 
+function coordinate(value: unknown, min: number, max: number): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max
+    ? value
+    : null;
+}
+
 function safeMediaUrl(value: unknown): string | null {
   const url = asString(value);
   if (/^\/api\/v1\/media\/[A-Za-z0-9_-]+(?:\?.*)?$/.test(url)) return url;
@@ -158,12 +167,15 @@ function normalizeNote(value: unknown): CommunityNote | null {
   const name = asString(value.waypointName).trim();
   return {
     id,
+    noteKind: value.noteKind === "operator_reviewed" ? "operator_reviewed" : "community",
     waypointId,
     waypointRouteOrder: order !== null && name ? order : null,
     waypointName: order !== null && name ? name : null,
     body,
     authorHandle,
     createdAt,
+    latitude: coordinate(value.latitude, -90, 90),
+    longitude: coordinate(value.longitude, -180, 180),
     media: asArray(value.media).map(normalizeMedia).filter((item): item is CommunityMedia => item !== null),
     replies: asArray(value.replies).map(normalizeReply).filter((item): item is CommunityReply => item !== null),
   };
@@ -249,16 +261,24 @@ function renderReplies(note: CommunityNote, canReply: boolean): string {
 }
 
 function renderNote(note: CommunityNote, canReply: boolean): string {
+  const operatorReviewed = note.noteKind === "operator_reviewed";
+  const location = operatorReviewed && note.latitude !== null && note.longitude !== null
+    ? `<p class="field-note__location"><strong>Approved GPS:</strong> ${escapeHtml(note.latitude)}, ${escapeHtml(note.longitude)}</p>`
+    : "";
+  const notice = operatorReviewed
+    ? "Operator-reviewed Case Note&mdash;not an official clue."
+    : communityDisclaimer;
   return `<article class="field-note" data-note-id="${escapeHtml(note.id)}">
     <header class="field-note__head">
       <div><p class="field-note__waypoint">${escapeHtml(waypointLabel(note))}</p><p class="field-note__author"><strong>${escapeHtml(note.authorHandle)}</strong></p></div>
       <time datetime="${escapeHtml(note.createdAt)}">${escapeHtml(formatBoardTime(note.createdAt))}</time>
     </header>
     <div class="field-note__body">${escapeHtml(note.body)}</div>
+    ${location}
     ${renderMedia(note.media, note.authorHandle)}
-    <p class="field-note__notice">${communityDisclaimer}</p>
+    <p class="field-note__notice">${notice}</p>
     <div class="field-note__actions"><button class="note-action" type="button" data-flag-kind="note" data-flag-id="${escapeHtml(note.id)}" aria-label="Report Case Note by ${escapeHtml(note.authorHandle)} for review">Report Case Note for review</button></div>
-    ${renderReplies(note, canReply)}
+    ${renderReplies(note, canReply && !operatorReviewed)}
   </article>`;
 }
 

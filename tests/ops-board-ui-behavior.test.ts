@@ -13,6 +13,7 @@ import {
   normalizeModeration,
   normalizeOpsDashboard,
   normalizeOpsReportDetail,
+  reportDestinationControls,
   reportReviewControls,
   reportPublicationConfirmationAfterInput,
   normalizeReports,
@@ -248,6 +249,7 @@ test("report review controls follow the actual linked public post, not private v
     publicationEligible: true,
     publicationEligibilityReason: "eligible",
     publication: { published: true, updateId: "approved-report-1" },
+    caseNote: { published: true, noteId: "reviewed-note-1", status: "published" },
     waypointId: 3,
     waypointRouteOrder: 3,
     waypointName: "Waypoint Three",
@@ -262,6 +264,12 @@ test("report review controls follow the actual linked public post, not private v
   };
   const published = normalizeOpsReportDetail({ data: payload });
   assert.ok(published);
+  assert.deepEqual(reportDestinationControls(published), {
+    caseNotePublished: true,
+    showPublishCaseNote: false,
+    showWithdrawCaseNote: true,
+    updatePublished: true,
+  });
   assert.deepEqual(reportReviewControls(published), {
     showUnpublish: true,
     terminalTransitionsBlocked: true,
@@ -269,9 +277,19 @@ test("report review controls follow the actual linked public post, not private v
   });
 
   const withdrawn = normalizeOpsReportDetail({
-    data: { ...payload, publication: { published: false, updateId: null } },
+    data: {
+      ...payload,
+      publication: { published: false, updateId: null },
+      caseNote: { published: false, noteId: null, status: null },
+    },
   });
   assert.ok(withdrawn);
+  assert.deepEqual(reportDestinationControls(withdrawn), {
+    caseNotePublished: false,
+    showPublishCaseNote: true,
+    showWithdrawCaseNote: false,
+    updatePublished: false,
+  });
   assert.deepEqual(reportReviewControls(withdrawn), {
     showUnpublish: false,
     terminalTransitionsBlocked: false,

@@ -354,6 +354,12 @@ export interface DataStore {
     actorSubject: string
   ): Promise<{ key: string; contentType: string } | null>;
   updateReport(id: string, input: Record<string, unknown>, actorSubject: string): Promise<Record<string, unknown> | null>;
+  publishReportToCaseNotes(
+    reportId: string,
+    input: { body: string; mediaIds: string[] },
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  withdrawReportCaseNote(reportId: string, actorSubject: string): Promise<Record<string, unknown> | null>;
   publishReport(
     reportId: string,
     input: { title: string; body: string; mediaIds: string[] },

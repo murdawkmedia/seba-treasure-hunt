@@ -126,6 +126,8 @@ export class FakeStore {
   invitedStaffEmails = new Set<string>();
   audits: Array<Record<string, unknown>> = [];
   private privateReportIds = new Map<string, string>();
+  private reportCaseNotes = new Map<string, Record<string, unknown>>();
+  private reportCaseNoteMedia = new Map<string, string[]>();
   private sponsorInquiries = new Map<string, SponsorInquiryRecord>();
   private sponsorInquiryIds = new Map<string, string>();
   private sponsorInquirySequence = 0;
@@ -738,6 +740,7 @@ export class FakeStore {
     const publicationEligible = !terminal && (!hunterSubject || Boolean(profile));
     const publicationId = this.reportPublicationIds.get(id) ?? null;
     const published = Boolean(publicationId && this.updates.some((update) => update.id === publicationId));
+    const caseNote = this.reportCaseNotes.get(id);
     return {
       ...safeReport,
       media,
@@ -751,6 +754,11 @@ export class FakeStore {
       publication: {
         published,
         updateId: published ? publicationId : null
+      },
+      caseNote: {
+        published: caseNote?.status === "published",
+        noteId: caseNote?.status === "published" ? caseNote.id : null,
+        status: caseNote?.status ?? null
       }
     };
   }
@@ -859,6 +867,65 @@ export class FakeStore {
     report.status = "verified";
     this.audits.push({ action: "report.published", actorSubject, targetId: reportId });
     return update;
+  }
+
+  async publishReportToCaseNotes(
+    reportId: string,
+    input: { body: string; mediaIds: string[] },
+    actorSubject: string
+  ) {
+    const existing = this.reportCaseNotes.get(reportId);
+    if (existing) return existing;
+    const report = this.reports.find((item) => item.id === reportId);
+    if (!report) return null;
+    if (!["reviewing", "contacted", "escalated", "verified"].includes(String(report.status))) {
+      throw new ApiError(409, "report_case_note_state_invalid", "Begin private review first.");
+    }
+    const reportMedia = Array.isArray(report.media) ? report.media as Array<Record<string, unknown>> : [];
+    const selected = input.mediaIds.map((mediaId) => {
+      const media = reportMedia.find((item) => item.id === mediaId);
+      const key = typeof media?.derivativeObjectKey === "string" ? media.derivativeObjectKey : "";
+      if (!media || media.status !== "ready" || !key.startsWith("derivatives/") || key === "derivatives/") {
+        throw new ApiError(422, "publication_media_invalid", "Selected report media is not ready.");
+      }
+      this.publicMedia.set(mediaId, {
+        key,
+        contentType: String(media.contentType ?? "application/octet-stream"),
+        cacheControl: "no-store"
+      });
+      return { id: mediaId, url: `/api/v1/media/${mediaId}`, contentType: media.contentType };
+    });
+    const note = {
+      id: `operator-reviewed-note-${this.reportCaseNotes.size + 1}`,
+      noteKind: "operator_reviewed",
+      authorHandle: String(report.publicAttribution ?? "Community Hunter"),
+      waypointId: typeof report.waypointId === "number" ? report.waypointId : null,
+      waypointRouteOrder: null,
+      waypointName: null,
+      latitude: typeof report.latitude === "number" ? report.latitude : null,
+      longitude: typeof report.longitude === "number" ? report.longitude : null,
+      body: input.body,
+      status: "published",
+      createdAt: "2026-07-17T18:00:00.000Z",
+      publishedAt: "2026-07-17T18:00:00.000Z",
+      media: selected,
+      replies: []
+    };
+    this.reportCaseNotes.set(reportId, note);
+    this.reportCaseNoteMedia.set(reportId, input.mediaIds);
+    this.board.unshift(note);
+    this.audits.push({ action: "report.case-note.published", actorSubject, targetId: reportId });
+    return note;
+  }
+
+  async withdrawReportCaseNote(reportId: string, actorSubject: string) {
+    const note = this.reportCaseNotes.get(reportId);
+    if (!note) return null;
+    note.status = "withdrawn";
+    this.board = this.board.filter((item) => item.id !== note.id);
+    for (const mediaId of this.reportCaseNoteMedia.get(reportId) ?? []) this.publicMedia.delete(mediaId);
+    this.audits.push({ action: "report.case-note.withdrawn", actorSubject, targetId: reportId });
+    return note;
   }
 
   async unpublishReport(reportId: string, actorSubject: string) {

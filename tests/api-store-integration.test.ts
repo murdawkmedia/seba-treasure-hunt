@@ -2462,6 +2462,61 @@ test("real D1 atomically changes private report state with its event and audit h
   );
 });
 
+test("real D1 publishes and withdraws a report-sourced Case Note independently from Updates", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  await applyOperatorAlertMigration(db);
+  const timestamp = "2026-07-17T18:00:00.000Z";
+  await db.batch([
+    db.prepare(
+      `INSERT INTO waypoints
+       (id, route_order, name, description, is_published, updated_at, updated_by)
+       VALUES (1, 1, 'Creek Property', 'Public stop.', 1, ?, 'staff-seed')`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO private_reports
+       (id, report_type, reporter_name, reporter_email, waypoint_id, location_description,
+        latitude, longitude, details, public_attribution, attribution_kind, status, created_at, updated_at)
+       VALUES ('report-case-note', 'tip', 'Private Reporter', 'private@example.test', 1,
+               'Private location', 53.5, -114.5, 'Private details', 'Community Hunter',
+               'community', 'reviewing', ?, ?)`
+    ).bind(timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO media_uploads
+       (id, owner_kind, owner_id, private_object_key, derivative_object_key,
+        content_type, byte_size, status, created_at)
+       VALUES ('media-case-note', 'report', 'report-case-note', 'private/report/original.jpg',
+               'derivatives/media-case-note.webp', 'image/webp', 2048, 'ready', ?)`
+    ).bind(timestamp)
+  ]);
+  const store = new D1DataStore(db);
+  const input = { body: "An operator-reviewed public observation.", mediaIds: ["media-case-note"] };
+  const note = await store.publishReportToCaseNotes("report-case-note", input, "staff-reviewer");
+  assert.equal(note?.noteKind, "operator_reviewed");
+  assert.equal(note?.authorHandle, "Community Hunter");
+  assert.equal(note?.latitude, 53.5);
+  assert.equal(note?.longitude, -114.5);
+  assert.equal(JSON.stringify(note).includes("report-case-note"), false);
+  const replay = await store.publishReportToCaseNotes("report-case-note", input, "staff-reviewer");
+  assert.equal(replay?.id, note?.id);
+
+  const board = await store.listBoard(null, { limit: 10 });
+  assert.equal(board.items.length, 1);
+  assert.equal(board.items[0]?.noteKind, "operator_reviewed");
+  assert.equal(JSON.stringify(board.items).includes("report-case-note"), false);
+  assert.equal((await store.listUpdates({ limit: 10 })).items.length, 0);
+  assert.deepEqual(await store.getPublicMedia("media-case-note"), {
+    key: "derivatives/media-case-note.webp",
+    contentType: "image/webp",
+    cacheControl: "no-store"
+  });
+
+  const withdrawn = await store.withdrawReportCaseNote("report-case-note", "staff-reviewer");
+  assert.equal(withdrawn?.status, "withdrawn");
+  assert.equal((await store.listBoard(null, { limit: 10 })).items.length, 0);
+  assert.equal((await store.listUpdates({ limit: 10 })).items.length, 0);
+  assert.equal(await store.getPublicMedia("media-case-note"), null);
+});
+
 test("real D1 publishes only report-linked safe updates and selected derivatives", async (t) => {
   const migrationFiles = [
     "0001_hunter_platform.sql",

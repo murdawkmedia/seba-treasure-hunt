@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS operator_reviewed_case_notes (
   attribution_kind TEXT NOT NULL
     CHECK (attribution_kind IN ('display_name', 'hunter_handle', 'community', 'young_hunter')),
   waypoint_id INTEGER REFERENCES waypoints(id),
+  latitude REAL CHECK (latitude IS NULL OR (latitude >= -90 AND latitude <= 90)),
+  longitude REAL CHECK (longitude IS NULL OR (longitude >= -180 AND longitude <= 180)),
   body TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'published'
     CHECK (status IN ('published', 'withdrawn', 'hidden')),
