@@ -13,6 +13,55 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-17 — Submission, Ops and publication validation
+
+- Completed the approved Submission, Ops and Publication Refinement through
+  source commit `5bbce98`. The implementation standardizes the Lucky 13 short
+  labels, repairs Case Note moderation media, clarifies public Case Notes versus
+  private reports, guards the Turnstile lifecycle, and adds additive publication
+  and public-attribution records.
+- Operators now have separate Keep private, Publish to Case Notes and Create
+  official Update outcomes. Official Updates are draft-first and may be saved,
+  scheduled, published now or withdrawn. Direct Update images remain private
+  until processed, selected and published; selection is off by default and
+  selected direct images require alt text.
+- Added one accessible, gallery-scoped approved-media viewer across official
+  Updates, public Case Notes, Ops previews and the Lucky 13 route. Real image
+  links retain open-in-new-tab behavior; normal activation uses an uncropped,
+  `object-fit: contain` dialog with keyboard, focus restoration and mobile swipe
+  support.
+- Replaced the remaining private Case Room pirate-era type and text seal with
+  the Documentary Case File typography and approved missing-ID mark. Ops
+  authorization, route IDs and mutation behavior were not changed by the style
+  pass. The publication confirmation now renders as one labelled native
+  checkbox.
+- Deployed the exact application candidate to the Cloudflare Pages
+  `codex-validation` branch at
+  `https://9e541ec2.seba-treasure-hunt.pages.dev`; the stable alias is
+  `https://codex-validation.seba-treasure-hunt.pages.dev`. Applied Preview-only
+  migrations `0014` and `0015` and deployed validation media processor version
+  `5ec4f8ea-d5ab-428b-a7bf-ee7992634e3f`. Both endpoints report
+  `deploymentEnvironment: validation`; production still reports `production`.
+- Final verification reports 421 tests passing, exact legal artifacts, all
+  TypeScript projects passing, a clean production build, no credential/private
+  fixture matches in public output, and unified browser QA across 72 page
+  navigations and 111 audited states with zero console, page, request or write
+  errors.
+- Manual validation confirmed the real validation Updates feed, one uncropped
+  approved-report image dialog, a waypoint-scoped `Image 1 of 3` route dialog,
+  13 public waypoints, public Case Notes, and the Case Room's Source Sans 3 /
+  Cormorant Garamond / missing-ID identity. The existing disposable validation
+  `test` Update remains isolated from production.
+- Count-only production checks before and after validation deployment were
+  identical: 11 players, 2 private reports, 2 Case Notes, 2 Updates, 1 staff
+  principal, 30 audit events, 4 media rows, 13 published waypoints and 22 legal
+  acceptances. Foreign keys remained clean, both reads reported zero rows
+  written, and all 8 D1-referenced private R2 objects were verified by GET only.
+- Production was not deployed, migrated or mutated. Authenticated live Ops
+  scheduling, withdrawal, direct Update upload and real-provider Turnstile
+  interaction remain owner acceptance checks in validation before any separate
+  production-promotion decision.
+
 ## Update 2026-07-16
 
 - Implemented both approved validation-first features. Report photos now accept

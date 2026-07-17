@@ -21,7 +21,16 @@ Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and a
 
 Sponsor inquiries submitted through `/sponsors` are stored in private D1 records with an append-only event ledger. Staff review them in the Ops Sponsors ledger; there is no automated email for sponsor inquiries.
 
-Release 2B completes the documentary public-page transition in source. It has not been deployed; production remains on the identifiers recorded in the operations handoff until owner approval.
+The Documentary Case File public-page transition is live in production on the
+identifiers recorded in the operations handoff. The newer Submission, Ops and
+Publication Refinement is deployed only to the disposable validation branch;
+production promotion still requires separate owner approval.
+
+The validation refinement distinguishes public Case Notes from private reports,
+adds report-time public attribution, gives operators independent private,
+Case Note and draft/scheduled Official Update outcomes, supports direct Update
+media, and uses one scoped approved-media viewer across Updates, Case Notes,
+Ops and the Lucky 13 route.
 
 ## Design source
 
