@@ -770,7 +770,8 @@ export class FakeStore {
         scheduledFor,
         title: typeof linkedUpdate?.title === "string" ? linkedUpdate.title : null,
         body: typeof linkedUpdate?.body === "string" ? linkedUpdate.body : null,
-        mediaIds: this.reportPublicationMedia.get(id) ?? []
+        mediaIds: this.reportPublicationMedia.get(id) ?? [],
+        uploads: Array.isArray(linkedUpdate?.uploads) ? linkedUpdate.uploads : []
       },
       caseNote: {
         published: caseNote?.status === "published",
@@ -825,6 +826,7 @@ export class FakeStore {
       title: string;
       body: string;
       mediaIds: string[];
+      mediaSelections?: Array<{ id: string; altText: string | null; caption: string | null }>;
       action?: "save_draft" | "schedule" | "publish_now";
       scheduledFor?: string | null;
     },
@@ -847,20 +849,29 @@ export class FakeStore {
         "Verify this private report before scheduling or publishing an Official Update."
       );
     }
-    const reportMedia = Array.isArray(report.media)
-      ? report.media as Array<Record<string, unknown>>
-      : [];
-    const selected = input.mediaIds.map((mediaId) => {
+    const existingUpdateId = this.reportPublicationIds.get(reportId);
+    const linkedUpdate = existingUpdateId ? this.updates.find((item) => item.id === existingUpdateId) : null;
+    const reportMedia = [
+      ...(Array.isArray(report.media) ? report.media as Array<Record<string, unknown>> : []),
+      ...(Array.isArray(linkedUpdate?.uploads) ? linkedUpdate.uploads as Array<Record<string, unknown>> : []),
+    ];
+    const selected = input.mediaIds.map((mediaId, position) => {
       const media = reportMedia.find((item) => item.id === mediaId);
       const key = typeof media?.derivativeObjectKey === "string" ? media.derivativeObjectKey : "";
       if (!media || media.status !== "ready" || !key.startsWith("derivatives/") || key === "derivatives/") {
         throw new ApiError(422, "publication_media_invalid", "Selected report media is not ready for publication.");
       }
+      const metadata = input.mediaSelections?.[position];
+      if (Array.isArray(linkedUpdate?.uploads) && linkedUpdate.uploads.includes(media) && !metadata?.altText) {
+        throw new ApiError(422, "publication_media_alt_required", "Direct Update image alt text is required.");
+      }
       return {
         id: mediaId,
         url: `/api/v1/media/${mediaId}`,
         contentType: String(media.contentType ?? "application/octet-stream"),
-        key
+        key,
+        alt: metadata?.altText ?? null,
+        caption: metadata?.caption ?? null,
       };
     });
     const profile = typeof report.hunterSubject === "string"
@@ -871,7 +882,7 @@ export class FakeStore {
       : profile.participationBasis === "minor_guardian_permission"
         ? "Young Hunter"
         : String(profile.publicHandle ?? "Community Hunter");
-    const updateId = this.reportPublicationIds.get(reportId) ??
+    const updateId = existingUpdateId ??
       `approved-report-${this.reportPublicationIds.size + 1}`;
     const previousMedia = this.reportPublicationMedia.get(reportId) ?? [];
     for (const mediaId of previousMedia) this.publicMedia.delete(mediaId);
@@ -897,7 +908,13 @@ export class FakeStore {
       waypointId: typeof report.waypointId === "number" ? report.waypointId : null,
       latitude: typeof report.latitude === "number" ? report.latitude : null,
       longitude: typeof report.longitude === "number" ? report.longitude : null,
-      media: selected.map(({ id, url, contentType }) => ({ id, url, contentType })),
+      media: selected.map(({ id, url, contentType, alt, caption }) => ({
+        id,
+        url,
+        contentType,
+        ...(alt ? { alt } : {}),
+        ...(caption ? { caption } : {})
+      })),
       publishedAt: status === "scheduled" ? scheduledFor : "2026-07-15T21:00:00.000Z",
       scheduledFor,
       status
@@ -990,6 +1007,37 @@ export class FakeStore {
     this.reportPublicationMedia.delete(reportId);
     this.audits.push({ action: "report.unpublished", actorSubject, targetId: reportId });
     return { id: updateId ?? null, sourceReportId: reportId, status: "withdrawn" };
+  }
+
+  async addReportUpdateUploads(reportId: string, media: StoredMedia[], actorSubject: string) {
+    const updateId = this.reportPublicationIds.get(reportId);
+    const update = updateId ? this.updates.find((item) => item.id === updateId) : null;
+    if (!update) return null;
+    const uploads = Array.isArray(update.uploads) ? update.uploads as Array<Record<string, unknown>> : [];
+    uploads.push(...media.map((item) => ({
+      id: item.id,
+      contentType: item.contentType,
+      size: item.size,
+      status: item.status,
+      altText: null,
+      caption: null,
+      position: null,
+      key: item.key
+    })));
+    update.uploads = uploads;
+    this.audits.push({ action: "report.update.media_uploaded", actorSubject, targetId: reportId });
+    return this.getReportDetail(reportId, actorSubject);
+  }
+
+  async getReportUpdateMedia(reportId: string, mediaId: string, actorSubject: string) {
+    const updateId = this.reportPublicationIds.get(reportId);
+    const update = updateId ? this.updates.find((item) => item.id === updateId) : null;
+    const uploads = Array.isArray(update?.uploads) ? update.uploads as Array<Record<string, unknown>> : [];
+    const media = uploads.find((item) => item.id === mediaId && item.status === "ready");
+    const key = typeof media?.key === "string" ? media.key : "";
+    if (!key.startsWith("derivatives/")) return null;
+    this.audits.push({ action: "report.update.media_viewed", actorSubject, targetId: reportId });
+    return { key, contentType: String(media?.contentType ?? "application/octet-stream") };
   }
 
   async listPendingNotes() {
@@ -1161,8 +1209,13 @@ export class FakeTurnstile {
 
 export class FakeUploads {
   saved: Array<{ name: string; type: string; size: number }> = [];
+  contexts: Array<{ kind: "field_note" | "report" | "official_update"; subject: string | null }> = [];
 
-  async save(files: File[]): Promise<StoredMedia[]> {
+  async save(
+    files: File[],
+    context: { kind: "field_note" | "report" | "official_update"; subject: string | null }
+  ): Promise<StoredMedia[]> {
+    this.contexts.push(context);
     const saved = files.map((file, index) => {
       this.saved.push({ name: file.name, type: file.type, size: file.size });
       return {

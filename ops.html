@@ -319,6 +319,14 @@
             <textarea id="report-public-body" name="body" rows="7" maxlength="10000" required disabled></textarea>
             <label for="report-scheduled-for">Schedule time <span class="ops-optional">(only for Schedule)</span></label>
             <input id="report-scheduled-for" name="scheduledFor" type="datetime-local" data-report-scheduled-for disabled />
+            <fieldset class="ops-update-upload" data-report-update-upload>
+              <legend>Direct Update images <span class="ops-optional">(optional, up to 3)</span></legend>
+              <p>Save the Update draft first. Images are prepared in this browser, processed privately, and remain unpublished until checked below.</p>
+              <input type="file" name="updateImages" accept="image/jpeg,image/png,image/webp" multiple data-report-update-files disabled />
+              <button class="ops-button ops-button--quiet" type="button" data-report-upload-update-images disabled>Prepare &amp; upload images</button>
+              <p class="ops-inline-result" data-report-update-upload-result role="status" aria-live="polite"></p>
+              <div class="ops-report-evidence" data-report-update-uploads></div>
+            </fieldset>
             <div data-report-public-preview></div>
             <label class="ops-confirm"><input name="confirmPublication" type="checkbox" required disabled /><span>I reviewed this exact public preview. Contact details and children&rsquo;s identities are excluded, while the shown waypoint, GPS and checked images will be public.</span></label>
             <div class="ops-action-row">

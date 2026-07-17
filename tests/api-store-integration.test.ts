@@ -3001,6 +3001,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     title: null,
     body: null,
     mediaIds: [],
+    uploads: [],
   });
   assert.doesNotMatch(JSON.stringify(minorPreview), /Minor Handle Must Stay Private|participationBasis/);
 
@@ -3100,13 +3101,32 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     (await store.listUpdates({ limit: 20 })).items.some((item) => item.id === savedDraft?.id),
     false
   );
+  await store.addReportUpdateUploads("report-schedule", [{
+    id: "update-upload-schedule",
+    key: "originals/2026-07-17/official_update/update-upload-schedule",
+    contentType: "image/webp",
+    size: 100794,
+    status: "processing",
+  }], "staff-publisher");
+  assert.equal(await store.getPublicMedia("update-upload-schedule"), null);
+  await db.prepare(
+    `UPDATE official_update_uploads
+     SET status = 'ready', derivative_object_key = 'derivatives/update-upload-schedule.webp'
+     WHERE id = 'update-upload-schedule'`
+  ).run();
+  assert.equal(await store.getPublicMedia("update-upload-schedule"), null);
   const scheduledFor = "2099-07-17T19:00:00.000Z";
   const scheduled = await store.publishReport(
     "report-schedule",
     {
       title: "Scheduled finding",
       body: "Scheduled body",
-      mediaIds: [],
+      mediaIds: ["update-upload-schedule"],
+      mediaSelections: [{
+        id: "update-upload-schedule",
+        altText: "A weathered five-dollar bill beside a yellow golf ball",
+        caption: "Submitted by a hunter near Stop 11.",
+      }],
       action: "schedule",
       scheduledFor,
     },
@@ -3119,7 +3139,12 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     {
       title: "Scheduled finding",
       body: "Scheduled body",
-      mediaIds: [],
+      mediaIds: ["update-upload-schedule"],
+      mediaSelections: [{
+        id: "update-upload-schedule",
+        altText: "A weathered five-dollar bill beside a yellow golf ball",
+        caption: "Submitted by a hunter near Stop 11.",
+      }],
       action: "schedule",
       scheduledFor,
     },
@@ -3143,6 +3168,24 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       .some((item) => item.id === scheduled?.id),
     true
   );
+  const dueUpdate = (await store.listUpdates({ limit: 20, cursor: scheduledFor })).items
+    .find((item) => item.id === scheduled?.id) as Record<string, unknown> | undefined;
+  assert.deepEqual(dueUpdate?.media, [{
+    id: "update-upload-schedule",
+    url: "/api/v1/media/update-upload-schedule",
+    contentType: "image/webp",
+    alt: "A weathered five-dollar bill beside a yellow golf ball",
+    caption: "Submitted by a hunter near Stop 11.",
+  }]);
+  assert.equal(await store.getPublicMedia("update-upload-schedule"), null);
+  await db.prepare(
+    "UPDATE official_updates SET scheduled_for = '2026-07-17T00:00:00.000Z' WHERE id = ?"
+  ).bind(scheduled?.id).run();
+  assert.deepEqual(await store.getPublicMedia("update-upload-schedule"), {
+    key: "derivatives/update-upload-schedule.webp",
+    contentType: "image/webp",
+    cacheControl: "no-store",
+  });
   await store.unpublishReport("report-schedule", "staff-publisher");
   const transitionedMinorUpdate = await store.publishReport(
     "report-adult-to-minor",
@@ -3198,6 +3241,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     title: "Possible clue near the creek",
     body: "Edited operator-approved story",
     mediaIds: ["media-selected"],
+    uploads: [],
   });
   await assert.rejects(
     store.updateReport("report-minor", { status: "resolved" }, "staff-terminal-blocked"),
@@ -3499,6 +3543,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     title: "Possible clue near the creek",
     body: "Re-approved public story",
     mediaIds: [],
+    uploads: [],
   });
   const resolvedAfterUnpublish = await store.updateReport(
     "report-minor",

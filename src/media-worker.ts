@@ -5,7 +5,7 @@ import type { DeploymentEnvironment } from "./server/types";
 export interface MediaMessage {
   mediaId: string;
   key: string;
-  ownerKind: "field_note" | "report";
+  ownerKind: "field_note" | "report" | "official_update";
 }
 
 export interface MediaEnv {
@@ -30,7 +30,7 @@ const safeRasterFormats = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function assertMessage(message: MediaMessage): void {
   if (!message || !idPattern.test(message.mediaId)) throw new InvalidMediaMessageError();
-  if (message.ownerKind !== "field_note" && message.ownerKind !== "report") {
+  if (message.ownerKind !== "field_note" && message.ownerKind !== "report" && message.ownerKind !== "official_update") {
     throw new InvalidMediaMessageError();
   }
 
@@ -43,13 +43,16 @@ function assertMessage(message: MediaMessage): void {
   }
 }
 
-async function rejectMedia(mediaId: string, env: MediaEnv): Promise<MediaResult> {
+const uploadTable = (ownerKind: MediaMessage["ownerKind"]) =>
+  ownerKind === "official_update" ? "official_update_uploads" : "media_uploads";
+
+async function rejectMedia(message: MediaMessage, env: MediaEnv): Promise<MediaResult> {
   const update = await env.DB.prepare(
-    `UPDATE media_uploads
+    `UPDATE ${uploadTable(message.ownerKind)}
      SET status = 'rejected', processed_at = datetime('now')
      WHERE id = ? AND status = 'processing'`,
   )
-    .bind(mediaId)
+    .bind(message.mediaId)
     .run();
   const changes = (update as { meta?: { changes?: number } }).meta?.changes;
   if (changes === 0) throw new Error("Media database record is not ready.");
@@ -82,7 +85,7 @@ export async function processMediaMessage(
 
   if (!isSafe) {
     await transformStream.cancel();
-    return rejectMedia(message.mediaId, env);
+    return rejectMedia(message, env);
   }
 
   // A new WebP derivative intentionally carries pixels only. It is the sole
@@ -105,7 +108,7 @@ export async function processMediaMessage(
   });
 
   const update = await env.DB.prepare(
-    `UPDATE media_uploads
+    `UPDATE ${uploadTable(message.ownerKind)}
      SET derivative_object_key = ?, content_type = ?, status = 'ready',
          processed_at = datetime('now')
      WHERE id = ? AND private_object_key = ? AND status = 'processing'`,

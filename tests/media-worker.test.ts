@@ -16,13 +16,14 @@ function makeEnv(
   databaseChanges: number | undefined = undefined,
   sentinel = "validation",
   fileSize = 4,
+  expectedKey = "originals/2026-07-11/field_note/media-1",
 ) {
   const puts: Array<{ key: string; options: Record<string, unknown> }> = [];
   const statements: Array<{ sql: string; values: unknown[] }> = [];
   const env = {
     UPLOADS: {
       async get(key: string) {
-        if (key !== "originals/2026-07-11/field_note/media-1") return null;
+        if (key !== expectedKey) return null;
         return { body: bytes(0xff, 0xd8, 0xff, 0xd9) };
       },
       async put(key: string, _value: unknown, options: Record<string, unknown>) {
@@ -110,6 +111,24 @@ test("rejects non-raster content without creating a derivative", async () => {
   assert.deepEqual(result, { status: "rejected" });
   assert.equal(puts.length, 0);
   assert.match(statements.at(-1)?.sql ?? "", /status = 'rejected'/);
+});
+
+test("updates only the dedicated Official Update upload row", async () => {
+  const updateMessage: MediaMessage = {
+    mediaId: "media-update-1",
+    key: "originals/2026-07-11/official_update/media-update-1",
+    ownerKind: "official_update",
+  };
+  const { env, statements } = makeEnv(
+    "image/jpeg",
+    undefined,
+    "validation",
+    4,
+    updateMessage.key,
+  );
+  assert.equal((await processMediaMessage(updateMessage, env as never)).status, "ready");
+  assert.match(statements.at(-1)?.sql ?? "", /UPDATE official_update_uploads/);
+  assert.doesNotMatch(statements.at(-1)?.sql ?? "", /UPDATE media_uploads/);
 });
 
 test("accepts exactly 20 MB and rejects one byte more", async () => {

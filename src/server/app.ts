@@ -261,7 +261,7 @@ const optionalString = (body: Record<string, unknown>, key: string, max: number)
 };
 
 const publicationInput = (body: Record<string, unknown>) => {
-  const allowed = new Set(["title", "body", "mediaIds", "action", "scheduledFor"]);
+  const allowed = new Set(["title", "body", "mediaIds", "mediaSelections", "action", "scheduledFor"]);
   const forbidden = Object.keys(body).find((key) => !allowed.has(key));
   if (forbidden) {
     throw new ApiError(
@@ -295,6 +295,41 @@ const publicationInput = (body: Record<string, unknown>) => {
       { field: "mediaIds" }
     );
   }
+  const rawMediaSelections = body.mediaSelections;
+  let mediaSelections: Array<{ id: string; altText: string | null; caption: string | null }> | undefined;
+  if (rawMediaSelections !== undefined) {
+    if (!Array.isArray(rawMediaSelections) || rawMediaSelections.length !== mediaIds.length) {
+      throw new ApiError(422, "validation_failed", "Publication image details must match the selected images.", { field: "mediaSelections" });
+    }
+    mediaSelections = rawMediaSelections.map((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new ApiError(422, "validation_failed", "Publication image details are invalid.", { field: "mediaSelections" });
+      }
+      const selection = candidate as Record<string, unknown>;
+      const selectionAllowed = new Set(["id", "altText", "caption"]);
+      if (Object.keys(selection).some((key) => !selectionAllowed.has(key))) {
+        throw new ApiError(422, "validation_failed", "Publication image details are invalid.", { field: "mediaSelections" });
+      }
+      const id = typeof selection.id === "string" ? selection.id.trim() : "";
+      const altText = selection.altText === null || selection.altText === undefined || selection.altText === ""
+        ? null
+        : typeof selection.altText === "string" && selection.altText.trim().length <= 200
+          ? selection.altText.trim()
+          : undefined;
+      const caption = selection.caption === null || selection.caption === undefined || selection.caption === ""
+        ? null
+        : typeof selection.caption === "string" && selection.caption.trim().length <= 500
+          ? selection.caption.trim()
+          : undefined;
+      if (!id || altText === undefined || caption === undefined) {
+        throw new ApiError(422, "validation_failed", "Publication image details are invalid.", { field: "mediaSelections" });
+      }
+      return { id, altText, caption };
+    });
+    if (mediaSelections.some((selection, index) => selection.id !== mediaIds[index])) {
+      throw new ApiError(422, "validation_failed", "Publication image details must follow the selected image order.", { field: "mediaSelections" });
+    }
+  }
   const rawAction = body.action;
   if (rawAction !== "save_draft" && rawAction !== "schedule" && rawAction !== "publish_now") {
     throw new ApiError(422, "validation_failed", "Choose Save draft, Schedule, or Publish now.", { field: "action" });
@@ -313,6 +348,7 @@ const publicationInput = (body: Record<string, unknown>) => {
     title: requiredString(body, "title", { max: 200, label: "Title" }),
     body: requiredString(body, "body", { max: 10_000, label: "Story" }),
     mediaIds,
+    ...(mediaSelections ? { mediaSelections } : {}),
     action,
     scheduledFor
   };
@@ -1648,6 +1684,52 @@ export const createApi = (deps: ApiDependencies) => {
     const report = await deps.store.getReportDetail(c.req.param("id"), staff.subject);
     if (!report) throw new ApiError(404, "report_not_found", "Report not found.");
     return success(c, report);
+  });
+  app.post("/api/v1/ops/reports/:id/update-media", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const reportId = c.req.param("id");
+    const detail = await deps.store.getReportDetail(reportId, staff.subject);
+    if (!detail) throw new ApiError(404, "report_not_found", "Report not found.");
+    const publication = detail.publication && typeof detail.publication === "object"
+      ? detail.publication as Record<string, unknown>
+      : null;
+    if (!publication || typeof publication.updateId !== "string" || !publication.updateId) {
+      throw new ApiError(409, "update_draft_required", "Save the Official Update draft before uploading images.");
+    }
+    const { files } = await requestBody(c.req.raw);
+    await validateImages(files);
+    if (files.length === 0) throw new ApiError(422, "validation_failed", "Choose at least one image.");
+    const existingUploads = Array.isArray(publication.uploads) ? publication.uploads.length : 0;
+    if (existingUploads + files.length > 3) {
+      throw new ApiError(422, "validation_failed", "An Official Update can have no more than three direct uploads.");
+    }
+    const media = await deps.uploads.save(files, { kind: "official_update", subject: staff.subject });
+    const updated = await deps.store.addReportUpdateUploads(reportId, media, staff.subject);
+    if (!updated) throw new ApiError(409, "update_draft_required", "Save the Official Update draft before uploading images.");
+    return success(c, updated, 201);
+  });
+  app.get("/api/v1/ops/reports/:id/update-media/:mediaId", async (c) => {
+    const staff = await requireStaff(deps, c.req.raw);
+    const authorized = await deps.store.getReportUpdateMedia(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!authorized) throw new ApiError(404, "update_media_not_found", "Update image not found.");
+    const object = await deps.uploads.read(authorized.key);
+    if (!object || !validImageTypes.has(authorized.contentType) || !validImageTypes.has(object.contentType)) {
+      throw new ApiError(404, "update_media_not_found", "Update image not found.");
+    }
+    return new Response(object.body, {
+      headers: {
+        "content-type": object.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "cross-origin-resource-policy": "same-origin"
+      }
+    });
   });
   app.patch("/api/v1/ops/reports/:id", async (c) => {
     sameOrigin(c.req.raw);

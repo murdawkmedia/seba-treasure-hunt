@@ -57,3 +57,21 @@ test("queues each private original for processing without returning a public URL
     ownerKind: "field_note"
   });
 });
+
+test("queues direct Official Update media in its own private owner namespace", async () => {
+  const bucket = new Bucket();
+  const jobs = new Jobs();
+  const storage = new R2UploadStorage(bucket as never, jobs as never);
+  const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "update.jpg", {
+    type: "image/jpeg"
+  });
+
+  const [media] = await storage.save([file], { kind: "official_update", subject: "staff-1" });
+  assert.ok(media);
+  assert.match(media.key, /^originals\/\d{4}-\d{2}-\d{2}\/official_update\//);
+  assert.deepEqual(jobs.messages[0], {
+    mediaId: media.id,
+    key: media.key,
+    ownerKind: "official_update"
+  });
+});

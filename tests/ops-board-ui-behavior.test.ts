@@ -22,6 +22,7 @@ import {
   normalizeOpsWaiverDetail,
   renderOpsWaiverDetail,
   renderReportEvidence,
+  renderReportUpdateUploads,
   renderModerationRows,
   renderReportPrivateDetail,
   renderReportPublicationPreview,
@@ -295,6 +296,55 @@ test("report review controls follow the actual linked public post, not private v
     terminalTransitionsBlocked: false,
     guidance: "",
   });
+});
+
+test("direct Update uploads start unselected and require publication metadata", () => {
+  const detail = normalizeOpsReportDetail({ data: {
+    id: "report-update-media",
+    type: "find",
+    hunterSubject: null,
+    name: "Private Reporter",
+    email: "private@example.test",
+    phone: null,
+    publicAttribution: "Community Hunter",
+    publicationEligible: true,
+    publicationEligibilityReason: "eligible",
+    publication: {
+      published: false,
+      updateId: "approved-report-update-media",
+      status: "draft",
+      scheduledFor: null,
+      title: "Draft",
+      body: "Draft body",
+      mediaIds: [],
+      uploads: [{
+        id: "update-upload-1",
+        contentType: "image/webp",
+        size: 100794,
+        status: "ready",
+        altText: null,
+        caption: null,
+        position: null,
+      }],
+    },
+    waypointId: null,
+    waypointRouteOrder: null,
+    waypointName: null,
+    locationDescription: "Different spot",
+    latitude: null,
+    longitude: null,
+    details: "Private details",
+    status: "verified",
+    createdAt: "2026-07-17T18:00:00.000Z",
+    updatedAt: "2026-07-17T18:00:00.000Z",
+    media: [],
+  } });
+  assert.ok(detail);
+  const html = renderReportUpdateUploads(detail);
+  assert.match(html, /name="publishMedia" value="update-upload-1"/);
+  assert.doesNotMatch(html, /name="publishMedia"[^>]*checked/);
+  assert.match(html, /name="mediaAltText-update-upload-1"[^>]*required/);
+  assert.match(html, /name="mediaCaption-update-upload-1"/);
 });
 
 test("Official Update draft state stays distinct from a live scheduled publication", () => {

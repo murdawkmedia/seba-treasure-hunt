@@ -21,12 +21,13 @@ const makeApp = (store = new FakeStore()) => {
   const rateLimits = new FakeRateLimits();
   const waiverReceipts = new FakeLegalReceiptSender();
   const operatorAlerts = new FakeOperatorAlertSender();
+  const uploads = new FakeUploads();
   return {
     app: createApi({
       store,
       identity: new FakeIdentity(),
       turnstile: new FakeTurnstile(),
-      uploads: new FakeUploads(),
+      uploads,
       staffAccounts,
       playerAccounts: staffAccounts,
       rateLimits,
@@ -38,7 +39,8 @@ const makeApp = (store = new FakeStore()) => {
     staffAccounts,
     rateLimits,
     waiverReceipts,
-    operatorAlerts
+    operatorAlerts,
+    uploads
   };
 };
 
@@ -590,7 +592,8 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
     scheduledFor: null,
     title: "Possible clue near the creek",
     body: "Edited operator-approved story",
-    mediaIds: ["media-publish-1"]
+    mediaIds: ["media-publish-1"],
+    uploads: []
   });
 
   const terminalWhilePublished = await app.request(
@@ -627,7 +630,8 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
     scheduledFor: null,
     title: "Possible clue near the creek",
     body: "Edited operator-approved story",
-    mediaIds: []
+    mediaIds: [],
+    uploads: []
   });
 
   const terminalAfterUnpublish = await app.request(
@@ -712,6 +716,44 @@ test("keeps report Update drafts and future schedules private until their due ti
   assert.equal(schedule.status, 200);
   assert.equal((await responseJson(schedule)).data.status, "scheduled");
   assert.equal(store.updates.filter((item) => item.id === store.updates[0]?.id).length, 1);
+});
+
+test("stores direct Official Update uploads privately only after a draft exists", async () => {
+  const { app, store, uploads } = makeApp();
+  store.reports.push({ id: "report-update-upload", status: "verified", media: [] });
+  const base = "https://www.timlostsomething.com/api/v1/ops/reports/report-update-upload";
+  const staffHeaders = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com"
+  };
+  const beforeDraft = new FormData();
+  beforeDraft.append("images", new File([new Uint8Array([0xff, 0xd8, 0xff])], "before.jpg", { type: "image/jpeg" }));
+  const blocked = await app.request(`${base}/update-media`, {
+    method: "POST",
+    headers: staffHeaders,
+    body: beforeDraft
+  });
+  assert.equal(blocked.status, 409);
+  assert.equal(uploads.saved.length, 0);
+
+  const draft = await app.request(`${base}/publish`, {
+    method: "POST",
+    ...json(
+      { title: "Draft update", body: "Private draft body", mediaIds: [], action: "save_draft" },
+      staffHeaders
+    )
+  });
+  assert.equal(draft.status, 200);
+  const form = new FormData();
+  form.append("images", new File([new Uint8Array([0xff, 0xd8, 0xff])], "update.jpg", { type: "image/jpeg" }));
+  const uploaded = await app.request(`${base}/update-media`, {
+    method: "POST",
+    headers: staffHeaders,
+    body: form
+  });
+  assert.equal(uploaded.status, 201);
+  assert.deepEqual(uploads.contexts.at(-1), { kind: "official_update", subject: "staff-1" });
+  assert.equal((await responseJson(uploaded)).data.publication.uploads[0].status, "processing");
 });
 
 test("rejects publication-controlled fields and more than three selected images", async () => {

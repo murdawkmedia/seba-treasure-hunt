@@ -4,6 +4,7 @@ import { createSerializedSubmission } from "./identity-submission";
 import { isAllowedStaffEmail } from "../server/staff-domains";
 import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
 import { nextReportStates, type ReportReviewState } from "../shared/publication";
+import { prepareReportImages, ReportImagePreparationError } from "./report-image-preparation";
 
 type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
@@ -59,6 +60,12 @@ export interface OpsReportMedia {
   status: string;
 }
 
+export interface OpsUpdateUpload extends OpsReportMedia {
+  altText: string | null;
+  caption: string | null;
+  position: number | null;
+}
+
 export interface OpsReportDetail extends OpsReportRecord {
   updatedAt: string;
   hunterSubject: string | null;
@@ -76,6 +83,7 @@ export interface OpsReportDetail extends OpsReportRecord {
     title: string | null;
     body: string | null;
     mediaIds: string[];
+    uploads: OpsUpdateUpload[];
   };
   caseNote: {
     published: boolean;
@@ -513,6 +521,23 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
   const publicationMediaIds = asArray(publicationValue?.mediaIds)
     .map((mediaId) => asString(mediaId).trim())
     .filter(Boolean);
+  const publicationUploads = asArray(publicationValue?.uploads).flatMap((candidate): OpsUpdateUpload[] => {
+    if (!isRecord(candidate)) return [];
+    const uploadId = asString(candidate.id).trim();
+    const contentType = asString(candidate.contentType).trim();
+    const uploadStatus = asString(candidate.status).trim();
+    const size = asNumber(candidate.size);
+    if (!uploadId || !contentType || !uploadStatus || size === null) return [];
+    return [{
+      id: uploadId,
+      contentType,
+      size,
+      status: uploadStatus,
+      altText: asString(candidate.altText).trim() || null,
+      caption: asString(candidate.caption).trim() || null,
+      position: asNumber(candidate.position),
+    }];
+  });
   const caseNoteValue = isRecord(value.caseNote) ? value.caseNote : null;
   const caseNotePublished = caseNoteValue ? asBoolean(caseNoteValue.published) : false;
   const caseNoteId = caseNoteValue?.noteId === null || !caseNoteValue
@@ -567,6 +592,7 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
       title: publicationTitle,
       body: publicationBody,
       mediaIds: publicationMediaIds,
+      uploads: publicationUploads,
     },
     caseNote: { published: caseNotePublished, noteId: caseNoteId, status: caseNoteStatus },
     locationDescription: asString(value.locationDescription).trim(),
@@ -1134,6 +1160,28 @@ export function renderModerationRows(records: readonly OpsModerationRecord[]): s
   }).join("");
 }
 
+export function renderReportUpdateUploads(detail: OpsReportDetail): string {
+  if (detail.publication.uploads.length === 0) {
+    return `<p class="ops-report-evidence__empty">No direct Update images uploaded.</p>`;
+  }
+  return detail.publication.uploads.map((upload, index) => {
+    const ready = upload.status === "ready" && ["image/jpeg", "image/png", "image/webp"].includes(upload.contentType);
+    const selected = detail.publication.mediaIds.includes(upload.id);
+    const fieldSuffix = escapeOpsHtml(upload.id);
+    return `<article class="ops-report-evidence__item">
+      ${ready ? `<img data-update-media-preview data-media-id="${escapeOpsHtml(upload.id)}" alt="Private Update image ${index + 1}" hidden /><div class="ops-report-evidence__placeholder" data-report-media-placeholder>Loading private preview&hellip;</div>` : `<div class="ops-report-evidence__placeholder" aria-hidden="true">Image processing</div>`}
+      <div><strong>Update image ${index + 1}</strong><span>${escapeOpsHtml(upload.contentType)} &middot; ${escapeOpsHtml(upload.size)} bytes &middot; ${escapeOpsHtml(upload.status)}</span></div>
+      ${ready
+        ? `<label><input type="checkbox" name="publishMedia" value="${fieldSuffix}" data-update-upload-select ${selected ? "checked" : ""} disabled /> Publish this image</label>
+          <label for="media-alt-${fieldSuffix}">Alt text <span class="ops-required">required when selected</span></label>
+          <input id="media-alt-${fieldSuffix}" name="mediaAltText-${fieldSuffix}" data-update-media-alt="${fieldSuffix}" type="text" maxlength="200" value="${escapeOpsHtml(upload.altText ?? "")}" required ${selected ? "" : "disabled"} />
+          <label for="media-caption-${fieldSuffix}">Caption <span class="ops-optional">optional</span></label>
+          <textarea id="media-caption-${fieldSuffix}" name="mediaCaption-${fieldSuffix}" data-update-media-caption="${fieldSuffix}" rows="2" maxlength="500" ${selected ? "" : "disabled"}>${escapeOpsHtml(upload.caption ?? "")}</textarea>`
+        : `<span class="ops-report-evidence__status">${escapeOpsHtml(upload.status === "processing" ? "Processing; refresh shortly" : `${upload.status}; unavailable for publication`)}</span>`}
+    </article>`;
+  }).join("");
+}
+
 export function reportDestinationControls(detail: OpsReportDetail): {
   caseNotePublished: boolean;
   showPublishCaseNote: boolean;
@@ -1624,6 +1672,30 @@ function reportSelectedMediaIds(): string[] {
     .map((input) => input.value);
 }
 
+function reportSelectedReportMediaIds(): string[] {
+  const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
+  if (!dialog) return [];
+  return [...dialog.querySelectorAll<HTMLInputElement>('[data-report-evidence] input[name="publishMedia"]:checked')]
+    .map((input) => input.value);
+}
+
+function reportSelectedMediaSelections(): Array<{
+  id: string;
+  altText: string | null;
+  caption: string | null;
+}> {
+  const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
+  if (!dialog) return [];
+  return [...dialog.querySelectorAll<HTMLInputElement>('input[name="publishMedia"]:checked')]
+    .map((input) => {
+      const id = input.value;
+      const item = input.closest<HTMLElement>(".ops-report-evidence__item");
+      const altText = item?.querySelector<HTMLInputElement>("[data-update-media-alt]")?.value.trim() || null;
+      const caption = item?.querySelector<HTMLTextAreaElement>("[data-update-media-caption]")?.value.trim() || null;
+      return { id, altText, caption };
+    });
+}
+
 function updateReportPublicationPreview(publisherName?: string | null): void {
   if (!activeReportDetail) return;
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
@@ -1642,11 +1714,14 @@ function updateReportPublicationPreview(publisherName?: string | null): void {
   gallery.className = "ops-report-public-card__media";
   gallery.setAttribute("aria-label", `${selected.length} selected public ${selected.length === 1 ? "image" : "images"}`);
   for (const mediaId of selected) {
-    const source = dialog.querySelector<HTMLImageElement>(`[data-report-media-preview][data-media-id="${CSS.escape(mediaId)}"]`);
+    const source = dialog.querySelector<HTMLImageElement>(
+      `[data-report-media-preview][data-media-id="${CSS.escape(mediaId)}"], [data-update-media-preview][data-media-id="${CSS.escape(mediaId)}"]`
+    );
     if (!source?.src || source.hidden) continue;
     const image = document.createElement("img");
     image.src = source.src;
-    image.alt = `Selected public evidence for ${title.trim() || "this report"}`;
+    image.alt = dialog.querySelector<HTMLInputElement>(`[data-update-media-alt="${CSS.escape(mediaId)}"]`)?.value.trim()
+      || `Selected public evidence for ${title.trim() || "this report"}`;
     gallery.append(image);
   }
   preview.querySelector("[data-public-preview]")?.append(gallery);
@@ -1659,7 +1734,7 @@ async function hydrateReportEvidence(
 ): Promise<void> {
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
   if (!dialog || !reportReviewIsLive(intent, dialog)) return;
-  const previews = [...dialog.querySelectorAll<HTMLImageElement>("[data-report-media-preview]")];
+  const previews = [...dialog.querySelectorAll<HTMLImageElement>("[data-report-media-preview], [data-update-media-preview]")];
   await Promise.all(previews.map(async (image) => {
     const mediaId = image.dataset.mediaId;
     const item = image.closest<HTMLElement>(".ops-report-evidence__item");
@@ -1669,8 +1744,11 @@ async function hydrateReportEvidence(
     try {
       const headers = await opsHeaders();
       if (!reportReviewIsLive(intent, dialog) || signal.aborted) return;
+      const isUpdateUpload = image.hasAttribute("data-update-media-preview");
       const response = await fetch(
-        `/api/v1/ops/reports/${encodeURIComponent(detail.id)}/media/${encodeURIComponent(mediaId)}`,
+        isUpdateUpload
+          ? `/api/v1/ops/reports/${encodeURIComponent(detail.id)}/update-media/${encodeURIComponent(mediaId)}`
+          : `/api/v1/ops/reports/${encodeURIComponent(detail.id)}/media/${encodeURIComponent(mediaId)}`,
         { headers, credentials: "same-origin", cache: "no-store", signal }
       );
       if (!reportReviewIsLive(intent, dialog) || signal.aborted) return;
@@ -1689,6 +1767,11 @@ async function hydrateReportEvidence(
       image.hidden = false;
       placeholder.hidden = true;
       checkbox.disabled = !detail.publicationEligible;
+      for (const field of item.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+        "[data-update-media-alt], [data-update-media-caption]"
+      )) {
+        field.disabled = !detail.publicationEligible || !checkbox.checked;
+      }
     } catch (error) {
       if (!reportReviewIsLive(intent, dialog) || signal.aborted || isAbortError(error)) return;
       image.removeAttribute("src");
@@ -1708,6 +1791,7 @@ function reportDraft(): {
   scheduledFor: string;
   confirmed: boolean;
   mediaIds: string[];
+  mediaSelections: ReturnType<typeof reportSelectedMediaSelections>;
 } {
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
   return {
@@ -1716,6 +1800,7 @@ function reportDraft(): {
     scheduledFor: dialog?.querySelector<HTMLInputElement>('[data-report-publication-form] [name="scheduledFor"]')?.value ?? "",
     confirmed: dialog?.querySelector<HTMLInputElement>('[data-report-publication-form] [name="confirmPublication"]')?.checked ?? false,
     mediaIds: reportSelectedMediaIds(),
+    mediaSelections: reportSelectedMediaSelections(),
   };
 }
 
@@ -1728,15 +1813,17 @@ function renderReportDialog(
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
   const privateOutput = dialog?.querySelector<HTMLElement>("[data-report-private-detail]");
   const evidenceOutput = dialog?.querySelector<HTMLElement>("[data-report-evidence]");
+  const updateUploadsOutput = dialog?.querySelector<HTMLElement>("[data-report-update-uploads]");
   const form = dialog?.querySelector<HTMLFormElement>("[data-report-publication-form]");
   if (
-    !dialog || !privateOutput || !evidenceOutput || !form || signal.aborted ||
+    !dialog || !privateOutput || !evidenceOutput || !updateUploadsOutput || !form || signal.aborted ||
     detail.id !== intent.reportId || !reportReviewIsLive(intent, dialog)
   ) return;
   revokeReportEvidenceUrls();
   activeReportDetail = detail;
   privateOutput.innerHTML = renderReportPrivateDetail(detail);
   evidenceOutput.innerHTML = renderReportEvidence(detail);
+  updateUploadsOutput.innerHTML = renderReportUpdateUploads(detail);
 
   const title = form.elements.namedItem("title");
   const body = form.elements.namedItem("body");
@@ -1754,8 +1841,20 @@ function renderReportDialog(
     confirmation.checked = draft?.confirmed ?? false;
     confirmation.disabled = !detail.publicationEligible;
   }
-  for (const checkbox of evidenceOutput.querySelectorAll<HTMLInputElement>('input[name="publishMedia"]')) {
+  for (const checkbox of dialog.querySelectorAll<HTMLInputElement>('input[name="publishMedia"]')) {
     checkbox.checked = draft?.mediaIds.includes(checkbox.value) ?? detail.publication.mediaIds.includes(checkbox.value);
+    const draftSelection = draft?.mediaSelections.find((selection) => selection.id === checkbox.value);
+    const item = checkbox.closest<HTMLElement>(".ops-report-evidence__item");
+    const altText = item?.querySelector<HTMLInputElement>("[data-update-media-alt]");
+    const caption = item?.querySelector<HTMLTextAreaElement>("[data-update-media-caption]");
+    if (altText) {
+      if (draftSelection) altText.value = draftSelection.altText ?? "";
+      altText.disabled = !checkbox.checked;
+    }
+    if (caption) {
+      if (draftSelection) caption.value = draftSelection.caption ?? "";
+      caption.disabled = !checkbox.checked;
+    }
   }
 
   const controls = reportReviewControls(detail);
@@ -1778,6 +1877,11 @@ function renderReportDialog(
     begin.hidden = detail.status !== "received";
     begin.disabled = !transitions.includes("reviewing");
   }
+  const updateFiles = form.querySelector<HTMLInputElement>("[data-report-update-files]");
+  const uploadUpdateImages = form.querySelector<HTMLButtonElement>("[data-report-upload-update-images]");
+  const canUploadUpdateMedia = detail.publicationEligible && Boolean(detail.publication.updateId);
+  if (updateFiles) updateFiles.disabled = !canUploadUpdateMedia;
+  if (uploadUpdateImages) uploadUpdateImages.disabled = !canUploadUpdateMedia;
   if (scheduledFor instanceof HTMLInputElement) {
     scheduledFor.value = draft?.scheduledFor ?? (
       detail.publication.scheduledFor
@@ -2506,8 +2610,15 @@ function setupWorkspace(): void {
       } else {
         setReportPublicationResult("");
       }
+      const item = target.closest<HTMLElement>(".ops-report-evidence__item");
+      for (const field of item?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+        "[data-update-media-alt], [data-update-media-caption]"
+      ) ?? []) {
+        field.disabled = !target.checked;
+      }
     }
-    if (["title", "body", "publishMedia", "scheduledFor"].includes(target.name)) {
+    if (["title", "body", "publishMedia", "scheduledFor"].includes(target.name) ||
+        target.hasAttribute("data-update-media-alt") || target.hasAttribute("data-update-media-caption")) {
       const confirmation = reportDialog.querySelector<HTMLInputElement>(
         '[data-report-publication-form] [name="confirmPublication"]'
       );
@@ -2518,6 +2629,51 @@ function setupWorkspace(): void {
         );
       }
       updateReportPublicationPreview();
+    }
+  });
+
+  reportDialog?.querySelector("[data-report-upload-update-images]")?.addEventListener("click", async (event) => {
+    const intent = reportReviewGuard.capture();
+    const signal = reportReviewAbortController?.signal;
+    if (!reportDialog || !intent || !signal || !activeReportDetail ||
+        activeReportDetail.id !== intent.reportId || !reportReviewIsLive(intent, reportDialog)) return;
+    const input = reportDialog.querySelector<HTMLInputElement>("[data-report-update-files]");
+    const result = reportDialog.querySelector<HTMLElement>("[data-report-update-upload-result]");
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement) || !input?.files?.length) {
+      if (result) result.textContent = "Choose one to three images first.";
+      return;
+    }
+    if (!activeReportDetail.publication.updateId) {
+      if (result) result.textContent = "Save the Official Update draft before uploading images.";
+      return;
+    }
+    button.disabled = true;
+    if (result) result.textContent = "Preparing images in this browser...";
+    try {
+      const prepared = await prepareReportImages([...input.files], { signal });
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
+      const formData = new FormData();
+      for (const item of prepared) formData.append("images", item.upload, item.upload.name);
+      if (result) result.textContent = "Uploading private prepared images...";
+      const { response, payload } = await opsRequest(
+        `/api/v1/ops/reports/${encodeURIComponent(intent.reportId)}/update-media`,
+        { method: "POST", body: formData, signal }
+      );
+      if (!response.ok) throw new Error(apiError(payload, "The Update images were not uploaded."));
+      await refreshActiveReportDetail(intent);
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
+      input.value = "";
+      if (result) result.textContent = "Images uploaded privately and queued for processing. Refresh this report shortly to select them.";
+    } catch (error) {
+      if (!reportReviewIsLive(intent, reportDialog) || signal.aborted || isAbortError(error)) return;
+      if (result) result.textContent = error instanceof ReportImagePreparationError || error instanceof Error
+        ? error.message
+        : "The Update images were not uploaded.";
+    } finally {
+      if (reportReviewIsLive(intent, reportDialog) && activeReportDetail?.id === intent.reportId) {
+        button.disabled = !activeReportDetail.publication.updateId;
+      }
     }
   });
 
@@ -2532,7 +2688,7 @@ function setupWorkspace(): void {
     const form = reportDialog.querySelector<HTMLFormElement>("[data-report-publication-form]");
     const body = form?.querySelector<HTMLTextAreaElement>('[name="body"]')?.value.trim() ?? "";
     const confirmed = form?.querySelector<HTMLInputElement>('[name="confirmPublication"]')?.checked ?? false;
-    const mediaIds = reportSelectedMediaIds();
+    const mediaIds = reportSelectedReportMediaIds();
     if (!activeReportDetail.publicationEligible) {
       setReportPublicationResult("Publication is blocked until the report has current legal and profile eligibility.", "error");
       return;
@@ -2638,7 +2794,14 @@ function setupWorkspace(): void {
     const title = asString(data.get("title")).trim();
     const body = asString(data.get("body")).trim();
     const confirmed = data.get("confirmPublication") === "on";
-    const mediaIds = reportSelectedMediaIds();
+    const mediaSelections = reportSelectedMediaSelections();
+    const mediaIds = mediaSelections.map((selection) => selection.id);
+    const missingAltText = mediaSelections.some((selection) => {
+      const checkbox = reportDialog.querySelector<HTMLInputElement>(
+        `input[name="publishMedia"][value="${CSS.escape(selection.id)}"]`
+      );
+      return checkbox?.hasAttribute("data-update-upload-select") && !selection.altText;
+    });
     const scheduledLocal = asString(data.get("scheduledFor")).trim();
     const scheduledFor = action === "schedule" && scheduledLocal
       ? new Date(scheduledLocal).toISOString()
@@ -2647,12 +2810,12 @@ function setupWorkspace(): void {
       setReportPublicationResult("Publication is blocked until the report has current legal and profile eligibility.", "error");
       return;
     }
-    if (!title || !body || mediaIds.length > 3 ||
+    if (!title || !body || mediaIds.length > 3 || missingAltText ||
         (action !== "save_draft" && (!confirmed || activeReportDetail.status !== "verified")) ||
         (action === "schedule" && (!scheduledFor || new Date(scheduledFor).getTime() <= Date.now()))) {
       setReportPublicationResult(
         action === "save_draft"
-          ? "Enter the public headline and edited story, then select up to three images."
+          ? "Enter the public headline and edited story, select up to three images, and add alt text for each direct upload."
           : action === "schedule"
             ? "Verify the report, enter a future schedule time, complete the preview, and confirm it."
             : "Verify the report, complete the public preview, select up to three images, and confirm it.",
@@ -2683,7 +2846,14 @@ function setupWorkspace(): void {
       const { response, payload } = await opsRequest(`/api/v1/ops/reports/${encodeURIComponent(reportId)}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, body, mediaIds, action, ...(scheduledFor ? { scheduledFor } : {}) }),
+        body: JSON.stringify({
+          title,
+          body,
+          mediaIds,
+          mediaSelections,
+          action,
+          ...(scheduledFor ? { scheduledFor } : {})
+        }),
         signal,
       });
       if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;

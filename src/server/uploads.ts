@@ -11,7 +11,7 @@ export class R2UploadStorage implements UploadStorage {
 
   async save(
     files: File[],
-    context: { kind: "field_note" | "report"; subject: string | null }
+    context: { kind: "field_note" | "report" | "official_update"; subject: string | null }
   ): Promise<StoredMedia[]> {
     if (files.length === 0) return [];
     if (!this.bucket || !this.queue) {

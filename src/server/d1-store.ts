@@ -298,15 +298,24 @@ export class D1DataStore implements DataStore {
       const placeholders = reportUpdateIds.map(() => "?").join(",");
       const media = await this.db
         .prepare(
-          `SELECT selected.update_id, media.id, media.content_type
+          `SELECT selected.update_id, media.id, media.content_type,
+                  selected.alt_text, selected.caption, selected.position
            FROM official_update_media AS selected
            JOIN media_uploads AS media ON media.id = selected.media_id
            WHERE selected.update_id IN (${placeholders})
              AND media.status = 'ready'
              AND media.derivative_object_key IS NOT NULL
-           ORDER BY selected.selected_at, media.id`
+           UNION ALL
+           SELECT selected.update_id, upload.id, upload.content_type,
+                  selected.alt_text, selected.caption, selected.position
+           FROM official_update_uploaded_media AS selected
+           JOIN official_update_uploads AS upload ON upload.id = selected.upload_id
+           WHERE selected.update_id IN (${placeholders})
+             AND upload.status = 'ready'
+             AND upload.derivative_object_key IS NOT NULL
+           ORDER BY position, id`
         )
-        .bind(...reportUpdateIds)
+        .bind(...reportUpdateIds, ...reportUpdateIds)
         .all<Row>();
       for (const row of media.results) {
         const updateId = value(row.update_id);
@@ -314,7 +323,9 @@ export class D1DataStore implements DataStore {
         entries.push({
           id: row.id,
           url: `/api/v1/media/${value(row.id)}`,
-          contentType: row.content_type
+          contentType: row.content_type,
+          ...(nullable(row.alt_text) ? { alt: row.alt_text } : {}),
+          ...(nullable(row.caption) ? { caption: row.caption } : {})
         });
         mediaByUpdate.set(updateId, entries);
       }
@@ -521,7 +532,7 @@ export class D1DataStore implements DataStore {
     contentType: string;
     cacheControl: "immutable" | "no-store";
   } | null> {
-    const row = await this.db
+    let row = await this.db
       .prepare(
         `SELECT m.derivative_object_key, m.content_type, m.owner_kind
          FROM media_uploads m
@@ -559,11 +570,30 @@ export class D1DataStore implements DataStore {
       )
       .bind(mediaId, now(), now(), now())
       .first<Row>();
+    if (!row) {
+      row = await this.db
+        .prepare(
+          `SELECT upload.derivative_object_key, upload.content_type,
+                  'official_update' AS owner_kind
+           FROM official_update_uploads upload
+           JOIN official_update_uploaded_media selected ON selected.upload_id = upload.id
+           JOIN official_updates published_update ON published_update.id = selected.update_id
+           WHERE upload.id = ? AND upload.status = 'ready'
+             AND upload.derivative_object_key IS NOT NULL
+             AND (
+               (published_update.status = 'published' AND published_update.published_at <= ?)
+               OR (published_update.status = 'scheduled' AND published_update.scheduled_for <= ?)
+             )
+           LIMIT 1`
+        )
+        .bind(mediaId, now(), now())
+        .first<Row>();
+    }
     if (!row || !value(row.derivative_object_key).startsWith("derivatives/")) return null;
     return {
       key: value(row.derivative_object_key),
       contentType: value(row.content_type),
-      cacheControl: row.owner_kind === "report" ? "no-store" : "immutable"
+      cacheControl: row.owner_kind === "field_note" ? "immutable" : "no-store"
     };
   }
 
@@ -3044,6 +3074,11 @@ export class D1DataStore implements DataStore {
       title: string;
       body: string;
       mediaIds: string[];
+      mediaSelections?: Array<{
+        id: string;
+        altText: string | null;
+        caption: string | null;
+      }>;
       action?: "save_draft" | "schedule" | "publish_now";
       scheduledFor?: string | null;
     },
@@ -3128,21 +3163,46 @@ export class D1DataStore implements DataStore {
         "Select no more than three distinct report images."
       );
     }
+    const mediaSelections = uniqueMediaIds.map((mediaId, position) => {
+      const supplied = input.mediaSelections?.[position];
+      if (input.mediaSelections && supplied?.id !== mediaId) {
+        throw new ApiError(
+          422,
+          "publication_media_invalid",
+          "Publication image details must follow the selected image order."
+        );
+      }
+      return {
+        id: mediaId,
+        position,
+        altText: supplied?.altText?.trim() || null,
+        caption: supplied?.caption?.trim() || null,
+      };
+    });
     const publicMediaById = new Map<
       string,
       { id: string; url: string; contentType: string }
     >();
+    const publicMediaKindById = new Map<string, "report" | "official_update">();
     if (uniqueMediaIds.length > 0) {
       const placeholders = uniqueMediaIds.map(() => "?").join(",");
       const selected = await this.db
         .prepare(
-          `SELECT id, derivative_object_key, content_type
+          `SELECT id, derivative_object_key, content_type, 'report' AS media_kind
            FROM media_uploads
            WHERE owner_kind = 'report' AND owner_id = ?
              AND status = 'ready' AND derivative_object_key IS NOT NULL
-             AND id IN (${placeholders})`
+             AND id IN (${placeholders})
+           UNION ALL
+           SELECT upload.id, upload.derivative_object_key, upload.content_type,
+                  'official_update' AS media_kind
+           FROM official_update_uploads upload
+           JOIN official_updates update_record ON update_record.id = upload.update_id
+           WHERE update_record.source_report_id = ?
+             AND upload.status = 'ready' AND upload.derivative_object_key IS NOT NULL
+             AND upload.id IN (${placeholders})`
         )
-        .bind(reportId, ...uniqueMediaIds)
+        .bind(reportId, ...uniqueMediaIds, reportId, ...uniqueMediaIds)
         .all<Row>();
       const validIds = new Set(
         selected.results
@@ -3159,6 +3219,7 @@ export class D1DataStore implements DataStore {
               url: `/api/v1/media/${mediaId}`,
               contentType: value(row.content_type)
             });
+            publicMediaKindById.set(mediaId, value(row.media_kind) === "official_update" ? "official_update" : "report");
             return mediaId;
           })
       );
@@ -3167,6 +3228,15 @@ export class D1DataStore implements DataStore {
           422,
           "publication_media_invalid",
           "Selected report media is not ready for publication."
+        );
+      }
+      if (mediaSelections.some((selection) =>
+        publicMediaKindById.get(selection.id) === "official_update" && !selection.altText
+      )) {
+        throw new ApiError(
+          422,
+          "publication_media_alt_required",
+          "Add concise alt text for every direct Official Update image selected for publication."
         );
       }
     }
@@ -3219,13 +3289,28 @@ export class D1DataStore implements DataStore {
       nullable(existing.scheduled_for) === desiredScheduledFor
     ) {
       const selected = await this.db
-        .prepare("SELECT media_id FROM official_update_media WHERE update_id = ? ORDER BY media_id")
-        .bind(updateId)
+        .prepare(
+          `SELECT media_id AS id, position, alt_text, caption, 'report' AS media_kind
+           FROM official_update_media WHERE update_id = ?
+           UNION ALL
+           SELECT upload_id AS id, position, alt_text, caption, 'official_update' AS media_kind
+           FROM official_update_uploaded_media WHERE update_id = ?
+           ORDER BY position, id`
+        )
+        .bind(updateId, updateId)
         .all<Row>();
-      const existingMediaIds = selected.results.map((row) => value(row.media_id)).sort();
-      const requestedMediaIds = [...uniqueMediaIds].sort();
-      if (existingMediaIds.length === requestedMediaIds.length &&
-          existingMediaIds.every((mediaId, index) => mediaId === requestedMediaIds[index])) {
+      const existingSelections = selected.results.map((row) => ({
+        id: value(row.id),
+        position: Number(row.position),
+        altText: nullable(row.alt_text),
+        caption: nullable(row.caption),
+        kind: value(row.media_kind),
+      }));
+      const requestedSelections = mediaSelections.map((selection) => ({
+        ...selection,
+        kind: publicMediaKindById.get(selection.id) ?? "report",
+      }));
+      if (canonicalJson(existingSelections) === canonicalJson(requestedSelections)) {
         return {
           id: updateId,
           kind: "approved_report",
@@ -3403,21 +3488,67 @@ export class D1DataStore implements DataStore {
              WHERE marker.id = ? AND marker.scheduled_for = ?
            )`
         )
+        .bind(updateId, updateId, operationToken),
+      this.db
+        .prepare(
+          `DELETE FROM official_update_uploaded_media
+           WHERE update_id = ? AND EXISTS (
+             SELECT 1 FROM official_updates marker
+             WHERE marker.id = ? AND marker.scheduled_for = ?
+           )`
+        )
         .bind(updateId, updateId, operationToken)
     ];
-    for (const mediaId of uniqueMediaIds) {
-      statements.push(
-        this.db
-          .prepare(
-            `INSERT INTO official_update_media (update_id, media_id, selected_by, selected_at)
-             SELECT ?, ?, ?, ?
-             WHERE EXISTS (
-               SELECT 1 FROM official_updates marker
-               WHERE marker.id = ? AND marker.scheduled_for = ?
-             )`
-          )
-          .bind(updateId, mediaId, actorSubject, timestamp, updateId, operationToken)
-      );
+    for (const selection of mediaSelections) {
+      if (publicMediaKindById.get(selection.id) === "official_update") {
+        statements.push(
+          this.db
+            .prepare(
+              `INSERT INTO official_update_uploaded_media
+               (update_id, upload_id, selected_by, selected_at, position, alt_text, caption)
+               SELECT ?, ?, ?, ?, ?, ?, ?
+               WHERE EXISTS (
+                 SELECT 1 FROM official_updates marker
+                 WHERE marker.id = ? AND marker.scheduled_for = ?
+               )`
+            )
+            .bind(
+              updateId,
+              selection.id,
+              actorSubject,
+              timestamp,
+              selection.position,
+              selection.altText,
+              selection.caption,
+              updateId,
+              operationToken
+            )
+        );
+      } else {
+        statements.push(
+          this.db
+            .prepare(
+              `INSERT INTO official_update_media
+               (update_id, media_id, selected_by, selected_at, position, alt_text, caption)
+               SELECT ?, ?, ?, ?, ?, ?, ?
+               WHERE EXISTS (
+                 SELECT 1 FROM official_updates marker
+                 WHERE marker.id = ? AND marker.scheduled_for = ?
+               )`
+            )
+            .bind(
+              updateId,
+              selection.id,
+              actorSubject,
+              timestamp,
+              selection.position,
+              selection.altText,
+              selection.caption,
+              updateId,
+              operationToken
+            )
+        );
+      }
     }
     statements.push(
       this.db
@@ -3535,6 +3666,9 @@ export class D1DataStore implements DataStore {
         .prepare("DELETE FROM official_update_media WHERE update_id = ?")
         .bind(update.id),
       this.db
+        .prepare("DELETE FROM official_update_uploaded_media WHERE update_id = ?")
+        .bind(update.id),
+      this.db
         .prepare(
           `INSERT INTO report_events (id, report_id, event_type, actor_subject, occurred_at)
            VALUES (?, ?, 'unpublished', ?, ?)`
@@ -3549,6 +3683,70 @@ export class D1DataStore implements DataStore {
         .bind(id(), actorSubject, reportId, timestamp)
     ]);
     return { id: update.id, status: "withdrawn" };
+  }
+
+  async addReportUpdateUploads(
+    reportId: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const update = await this.db
+      .prepare(
+        `SELECT update_record.id, COUNT(upload.id) AS upload_count
+         FROM official_updates update_record
+         LEFT JOIN official_update_uploads upload ON upload.update_id = update_record.id
+         WHERE update_record.source_report_id = ?
+         GROUP BY update_record.id LIMIT 1`
+      )
+      .bind(reportId)
+      .first<Row>();
+    if (!update) return null;
+    if (media.length === 0 || media.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three Update images.");
+    }
+    if (Number(update.upload_count ?? 0) + media.length > 3) {
+      throw new ApiError(422, "validation_failed", "An Official Update can have no more than three direct uploads.");
+    }
+    const timestamp = now();
+    await this.db.batch(media.map((item) => this.db.prepare(
+      `INSERT INTO official_update_uploads
+       (id, update_id, uploader_subject, private_object_key, content_type,
+        byte_size, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      item.id,
+      update.id,
+      actorSubject,
+      item.key,
+      item.contentType ?? "application/octet-stream",
+      item.size ?? 0,
+      item.status,
+      timestamp
+    )));
+    await this.audit(actorSubject, "report.update.media_uploaded", "report", reportId, {
+      updateId: update.id,
+      mediaCount: media.length
+    });
+    return this.reportPublicationPreview(reportId);
+  }
+
+  async getReportUpdateMedia(
+    reportId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null> {
+    const row = await this.db.prepare(
+      `SELECT upload.derivative_object_key, upload.content_type
+       FROM official_update_uploads upload
+       JOIN official_updates update_record ON update_record.id = upload.update_id
+       WHERE update_record.source_report_id = ? AND upload.id = ?
+         AND upload.status = 'ready' AND upload.derivative_object_key IS NOT NULL
+       LIMIT 1`
+    ).bind(reportId, mediaId).first<Row>();
+    const key = nullable(row?.derivative_object_key);
+    if (!row || !key?.startsWith("derivatives/") || key === "derivatives/") return null;
+    await this.audit(actorSubject, "report.update.media_viewed", "report", reportId, { mediaId });
+    return { key, contentType: value(row.content_type) };
   }
 
   async listPendingNotes(options: { limit?: number; cursor?: string | null } = {}): Promise<Page> {
@@ -4072,6 +4270,15 @@ export class D1DataStore implements DataStore {
       title: string | null;
       body: string | null;
       mediaIds: string[];
+      uploads: Array<{
+        id: string;
+        contentType: string;
+        size: number;
+        status: string;
+        altText: string | null;
+        caption: string | null;
+        position: number | null;
+      }>;
     };
   }> {
     const row = await this.db
@@ -4116,7 +4323,8 @@ export class D1DataStore implements DataStore {
           scheduledFor: null,
           title: null,
           body: null,
-          mediaIds: []
+          mediaIds: [],
+          uploads: []
         }
       };
     }
@@ -4130,6 +4338,16 @@ export class D1DataStore implements DataStore {
           .bind(publicationId)
           .all<Row>()
       : { results: [] as Row[] };
+    const updateUploads = publicationId
+      ? await this.db.prepare(
+          `SELECT upload.id, upload.content_type, upload.byte_size, upload.status,
+                  selected.alt_text, selected.caption, selected.position
+           FROM official_update_uploads upload
+           LEFT JOIN official_update_uploaded_media selected
+             ON selected.update_id = upload.update_id AND selected.upload_id = upload.id
+           WHERE upload.update_id = ? ORDER BY upload.created_at, upload.id`
+        ).bind(publicationId).all<Row>()
+      : { results: [] as Row[] };
     const publication = {
       published: publicationStatus === "published" ||
         (publicationStatus === "scheduled" && scheduledFor !== null && scheduledFor <= now()),
@@ -4139,6 +4357,16 @@ export class D1DataStore implements DataStore {
       title: publicationStatus ? nullable(row.publication_title) : null,
       body: publicationStatus ? nullable(row.publication_body) : null,
       mediaIds: selectedMedia.results.map((selected) => value(selected.media_id))
+        .concat(updateUploads.results.filter((upload) => upload.position !== null).map((upload) => value(upload.id))),
+      uploads: updateUploads.results.map((upload) => ({
+        id: value(upload.id),
+        contentType: value(upload.content_type),
+        size: Number(upload.byte_size ?? 0),
+        status: value(upload.status),
+        altText: nullable(upload.alt_text),
+        caption: nullable(upload.caption),
+        position: numberOrNull(upload.position)
+      }))
     };
     const preview = (fields: {
       publicAttribution: string | null;

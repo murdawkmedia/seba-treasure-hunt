@@ -366,12 +366,27 @@ export interface DataStore {
       title: string;
       body: string;
       mediaIds: string[];
+      mediaSelections?: Array<{
+        id: string;
+        altText: string | null;
+        caption: string | null;
+      }>;
       action?: "save_draft" | "schedule" | "publish_now";
       scheduledFor?: string | null;
     },
     actorSubject: string
   ): Promise<Record<string, unknown> | null>;
   unpublishReport(reportId: string, actorSubject: string): Promise<Record<string, unknown> | null>;
+  addReportUpdateUploads(
+    reportId: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  getReportUpdateMedia(
+    reportId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null>;
   listPendingNotes(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   getFieldNoteMedia(
     noteId: string,
@@ -410,7 +425,7 @@ export interface WebhookVerifier {
 }
 
 export interface UploadStorage {
-  save(files: File[], context: { kind: "field_note" | "report"; subject: string | null }): Promise<StoredMedia[]>;
+  save(files: File[], context: { kind: "field_note" | "report" | "official_update"; subject: string | null }): Promise<StoredMedia[]>;
   read(key: string): Promise<{
     body: ReadableStream;
     contentType: string;
@@ -421,7 +436,7 @@ export interface UploadStorage {
 export interface MediaJob {
   mediaId: string;
   key: string;
-  ownerKind: "field_note" | "report";
+  ownerKind: "field_note" | "report" | "official_update";
 }
 
 export interface PublicRuntimeConfig {
