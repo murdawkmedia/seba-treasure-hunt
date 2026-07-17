@@ -272,6 +272,8 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
 .ops-moderation-action { min-height: 44px; }
 .ops-moderation-action--hide { color: #fff4ef; background: #7a2e28; box-shadow: inset 0 0 0 1px var(--ops-danger); }
 .ops-moderation-action--hide:hover { background: #93342d; }
+.ops-moderation-pagination { display: flex; justify-content: flex-end; margin-top: 13px; }
+.ops-moderation-load-more { min-height: 44px; }
 .ops-ledger-state { margin: 0 0 13px; padding: 10px 12px; color: var(--ops-muted); background: rgba(7, 31, 28, .48); border-radius: 5px; box-shadow: inset 3px 0 rgba(241, 182, 43, .5); font-size: .84rem; }
 .ops-ledger-state[data-kind="error"] { color: #ffd5cb; box-shadow: inset 3px 0 var(--ops-danger); }
 .ops-ledger-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 13px; color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .6rem; font-variant-numeric: tabular-nums; }

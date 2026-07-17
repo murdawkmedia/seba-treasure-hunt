@@ -273,6 +273,12 @@ let productionSnapshotAvailable = false;
 let productionSnapshotAbortController: AbortController | null = null;
 let productionSnapshotTrigger: HTMLButtonElement | null = null;
 let productionSnapshotObjectUrls: string[] = [];
+let moderationReplies: OpsModerationReply[] = [];
+let moderationRepliesNextCursor: string | null = null;
+let moderationRepliesLoading = false;
+let moderationFlags: OpsContentFlag[] = [];
+let moderationFlagsNextCursor: string | null = null;
+let moderationFlagsLoading = false;
 
 export interface ReportReviewIntent {
   generation: number;
@@ -985,6 +991,10 @@ function validModerationTime(value: unknown): string | null {
   return text && !Number.isNaN(new Date(text).valueOf()) ? text : null;
 }
 
+function publicRouteOrder(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 export function normalizeModerationReplies(payload: unknown): OpsModerationReply[] {
   return moderationRecords(payload).flatMap((value): OpsModerationReply[] => {
     if (!isRecord(value)) return [];
@@ -995,8 +1005,10 @@ export function normalizeModerationReplies(payload: unknown): OpsModerationReply
     const authorHandle = asString(value.authorHandle).trim();
     const createdAt = validModerationTime(value.createdAt);
     const status = asString(value.status);
-    const flagCount = asNumber(value.flagCount);
-    const waypointRouteOrder = finiteNumber(value.waypointRouteOrder);
+    const flagCount = typeof value.flagCount === "number" && Number.isSafeInteger(value.flagCount) && value.flagCount >= 0
+      ? value.flagCount
+      : null;
+    const waypointRouteOrder = publicRouteOrder(value.waypointRouteOrder);
     const waypointName = value.waypointName === null ? null : asString(value.waypointName).trim();
     const moderatedAt = value.moderatedAt === null ? null : validModerationTime(value.moderatedAt);
     if (!id || !noteId || !noteExcerpt || !body || !authorHandle || !createdAt ||
@@ -1021,7 +1033,7 @@ export function normalizeContentFlags(payload: unknown): OpsContentFlag[] {
     const reason = asString(value.reason).trim();
     const status = asString(value.status);
     const createdAt = validModerationTime(value.createdAt);
-    const waypointRouteOrder = finiteNumber(value.waypointRouteOrder);
+    const waypointRouteOrder = publicRouteOrder(value.waypointRouteOrder);
     const waypointName = value.waypointName === null ? null : asString(value.waypointName).trim();
     if (!id || !targetId || !targetExcerpt || !authorHandle || !noteExcerpt || !reason || !createdAt ||
         value.targetKind !== "reply" || !["published", "hidden"].includes(targetStatus) ||
@@ -1033,6 +1045,18 @@ export function normalizeContentFlags(payload: unknown): OpsContentFlag[] {
       waypointRouteOrder, waypointName, reason,
       status: status as "received" | "reviewing", createdAt }];
   });
+}
+
+export function appendDistinctModerationRecords<T extends { id: string }>(
+  existing: readonly T[],
+  older: readonly T[],
+): T[] {
+  const seen = new Set(existing.map((record) => record.id));
+  return [...existing, ...older.filter((record) => {
+    if (seen.has(record.id)) return false;
+    seen.add(record.id);
+    return true;
+  })];
 }
 
 export function renderProductionSnapshotReportRows(records: readonly ProductionSnapshotReport[]): string {
@@ -2184,29 +2208,88 @@ function setModerationState(selector: "#moderation-replies-state" | "#moderation
   else delete state.dataset.kind;
 }
 
-async function loadModerationReplies(): Promise<void> {
+function moderationNextCursor(payload: unknown): string | null {
+  const page = isRecord(payload) && isRecord(payload.page) ? payload.page : {};
+  return asString(page.nextCursor).trim() || null;
+}
+
+function setModerationLoadMore(
+  selector: "#moderation-replies-load-more" | "#moderation-flags-load-more",
+  nextCursor: string | null,
+  loading: boolean,
+  failed = false,
+): void {
+  const button = document.querySelector<HTMLButtonElement>(selector);
+  if (!button) return;
+  button.hidden = !nextCursor || failed;
+  button.disabled = loading || failed;
+}
+
+async function loadModerationReplies(append = false): Promise<void> {
+  if (moderationRepliesLoading || (append && !moderationRepliesNextCursor)) return;
+  if (!append) {
+    moderationReplies = [];
+    moderationRepliesNextCursor = null;
+  }
+  const cursor = append ? `&cursor=${encodeURIComponent(moderationRepliesNextCursor!)}` : "";
+  moderationRepliesLoading = true;
+  setModerationLoadMore("#moderation-replies-load-more", moderationRepliesNextCursor, true);
+  setModerationState("#moderation-replies-state", append ? "Loading older public replies..." : "Loading public replies...");
   try {
-    const { response, payload } = await opsRequest("/api/v1/ops/moderation/replies?limit=50");
+    const { response, payload } = await opsRequest(`/api/v1/ops/moderation/replies?limit=50${cursor}`);
     if (!response.ok) throw new Error(apiError(payload, "The public replies queue is unavailable."));
     const records = normalizeModerationReplies(payload);
-    setTable("#moderation-replies-table", renderModerationReplyRows(records));
-    setModerationState("#moderation-replies-state", records.length === 0 ? "Public replies loaded. No reply action is currently needed." : `${records.length} public ${records.length === 1 ? "reply" : "replies"} loaded for review.`);
+    moderationReplies = append ? appendDistinctModerationRecords(moderationReplies, records) : records;
+    moderationRepliesNextCursor = moderationNextCursor(payload);
+    setTable("#moderation-replies-table", renderModerationReplyRows(moderationReplies));
+    const suffix = moderationRepliesNextCursor ? " More older replies are available." : " End of reply queue.";
+    setModerationState("#moderation-replies-state", moderationReplies.length === 0 ? "Public replies loaded. No reply action is currently needed." : `${moderationReplies.length} public ${moderationReplies.length === 1 ? "reply" : "replies"} loaded for review.${suffix}`);
   } catch (error) {
-    setTable("#moderation-replies-table", `<tr><td colspan="7"><span class="ops-table-empty">The public replies queue is unavailable from the source.</span></td></tr>`);
+    if (!append) {
+      moderationReplies = [];
+      moderationRepliesNextCursor = null;
+      setTable("#moderation-replies-table", `<tr><td colspan="7"><span class="ops-table-empty">The public replies queue is unavailable from the source.</span></td></tr>`);
+    }
     setModerationState("#moderation-replies-state", error instanceof Error ? error.message : "The public replies queue is unavailable.", "error");
+    setModerationLoadMore("#moderation-replies-load-more", moderationRepliesNextCursor, false, true);
+  } finally {
+    moderationRepliesLoading = false;
+    const failed = document.querySelector<HTMLElement>("#moderation-replies-state")?.dataset.kind === "error";
+    setModerationLoadMore("#moderation-replies-load-more", moderationRepliesNextCursor, false, failed);
   }
 }
 
-async function loadContentFlags(): Promise<void> {
+async function loadContentFlags(append = false): Promise<void> {
+  if (moderationFlagsLoading || (append && !moderationFlagsNextCursor)) return;
+  if (!append) {
+    moderationFlags = [];
+    moderationFlagsNextCursor = null;
+  }
+  const cursor = append ? `&cursor=${encodeURIComponent(moderationFlagsNextCursor!)}` : "";
+  moderationFlagsLoading = true;
+  setModerationLoadMore("#moderation-flags-load-more", moderationFlagsNextCursor, true);
+  setModerationState("#moderation-flags-state", append ? "Loading older received flags..." : "Loading received flags...");
   try {
-    const { response, payload } = await opsRequest("/api/v1/ops/moderation/flags?limit=50");
+    const { response, payload } = await opsRequest(`/api/v1/ops/moderation/flags?limit=50${cursor}`);
     if (!response.ok) throw new Error(apiError(payload, "The received flags queue is unavailable."));
     const records = normalizeContentFlags(payload);
-    setTable("#moderation-flags-table", renderContentFlagRows(records));
-    setModerationState("#moderation-flags-state", records.length === 0 ? "Received flags loaded. No flag action is currently needed." : `${records.length} received ${records.length === 1 ? "flag" : "flags"} loaded for review.`);
+    moderationFlags = append ? appendDistinctModerationRecords(moderationFlags, records) : records;
+    moderationFlagsNextCursor = moderationNextCursor(payload);
+    setTable("#moderation-flags-table", renderContentFlagRows(moderationFlags));
+    const suffix = moderationFlagsNextCursor ? " More older flags are available." : " End of flag queue.";
+    setModerationState("#moderation-flags-state", moderationFlags.length === 0 ? "Received flags loaded. No flag action is currently needed." : `${moderationFlags.length} received ${moderationFlags.length === 1 ? "flag" : "flags"} loaded for review.${suffix}`);
   } catch (error) {
-    setTable("#moderation-flags-table", `<tr><td colspan="7"><span class="ops-table-empty">The received flags queue is unavailable from the source.</span></td></tr>`);
+    if (!append) {
+      moderationFlags = [];
+      moderationFlagsNextCursor = null;
+      setTable("#moderation-flags-table", `<tr><td colspan="7"><span class="ops-table-empty">The received flags queue is unavailable from the source.</span></td></tr>`);
+    }
     setModerationState("#moderation-flags-state", error instanceof Error ? error.message : "The received flags queue is unavailable.", "error");
+    setModerationLoadMore("#moderation-flags-load-more", moderationFlagsNextCursor, false, true);
+  } finally {
+    moderationFlagsLoading = false;
+    const failed = document.querySelector<HTMLElement>("#moderation-flags-state")?.dataset.kind === "error";
+    setModerationLoadMore("#moderation-flags-load-more", moderationFlagsNextCursor, false, failed);
   }
 }
 
@@ -2743,6 +2826,8 @@ function setupWorkspace(): void {
   document.querySelector("#subscriber-refresh")?.addEventListener("click", () => void loadSubscribers());
   document.querySelector("#subscriber-load-more")?.addEventListener("click", () => void loadSubscribers(true));
   document.querySelector("#subscriber-export")?.addEventListener("click", exportLoadedSubscribers);
+  document.querySelector("#moderation-replies-load-more")?.addEventListener("click", () => void loadModerationReplies(true));
+  document.querySelector("#moderation-flags-load-more")?.addEventListener("click", () => void loadContentFlags(true));
   document.querySelector("#moderation-replies-table")?.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;

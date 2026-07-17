@@ -146,6 +146,9 @@ test("the moderation queue provides separate accessible reply and flag controls"
   for (const id of ["moderation-replies-state", "moderation-flags-state"]) {
     assert.match(html, new RegExp(`id="${id}"[^>]*role="status"[^>]*aria-live="polite"`));
   }
+  for (const id of ["moderation-replies-load-more", "moderation-flags-load-more"]) {
+    assert.match(html, new RegExp(`id="${id}"[^>]*hidden`));
+  }
   assert.match(html, /<h2[^>]*>Public replies<\/h2>/);
   assert.match(html, /<h2[^>]*>Received flags<\/h2>/);
   assert.match(client, /\/api\/v1\/ops\/moderation\/replies/);
@@ -155,6 +158,10 @@ test("the moderation queue provides separate accessible reply and flag controls"
   assert.match(client, /window\.prompt\([^)]*private reason/i);
   assert.match(client, /window\.confirm\([^)]*reversible[^)]*audited/i);
   assert.match(client, /Promise\.allSettled\(/);
+  assert.match(client, /moderationRepliesNextCursor/);
+  assert.match(client, /moderationFlagsNextCursor/);
+  assert.match(client, /appendDistinctModerationRecords/);
+  assert.match(client, /\?limit=50\$\{cursor/);
   assert.match(client, /loadModerationReplies\(\), loadContentFlags\(\), loadDashboard\(\), loadAudit\(\)/);
   assert.doesNotMatch(html, /moderation[^<]{0,80}<input[^>]+name="reason"/i);
   assert.match(css, /\.ops-moderation-action\s*\{[^}]*min-height:\s*44px/s);

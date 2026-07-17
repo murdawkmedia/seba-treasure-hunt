@@ -9,6 +9,7 @@ import {
 import {
   buildSubscriberCsv,
   applyWaiverReceiptRetryState,
+  appendDistinctModerationRecords,
   createReportReviewGuard,
   normalizeModeration,
   normalizeModerationReplies,
@@ -86,6 +87,10 @@ test("reply and flag moderation discard malformed rows and render distinct escap
       moderatedAt: null,
     },
     { id: "reply-malformed", body: "Missing required moderation fields" },
+    { id: "reply-fractional-flag-count", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: 4, waypointName: "Bridge", body: "Bad count", authorHandle: "Hunter", status: "published", flagCount: 1.5, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
+    { id: "reply-negative-flag-count", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: 4, waypointName: "Bridge", body: "Bad count", authorHandle: "Hunter", status: "published", flagCount: -1, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
+    { id: "reply-negative-route", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: -1, waypointName: "Bridge", body: "Bad route", authorHandle: "Hunter", status: "published", flagCount: 1, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
+    { id: "reply-fractional-route", noteId: "note-1", noteExcerpt: "Parent", waypointRouteOrder: 4.5, waypointName: "Bridge", body: "Bad route", authorHandle: "Hunter", status: "published", flagCount: 1, createdAt: "2026-07-17T18:00:00.000Z", moderatedAt: null },
   ] });
   const flags = normalizeContentFlags({ data: [
     {
@@ -103,6 +108,8 @@ test("reply and flag moderation discard malformed rows and render distinct escap
       createdAt: "2026-07-17T18:01:00.000Z",
     },
     { id: "flag-note", targetKind: "note", targetId: "note-1" },
+    { id: "flag-negative-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: -1, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
+    { id: "flag-fractional-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: 4.5, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
   ] });
 
   assert.equal(replies.length, 1);
@@ -128,6 +135,15 @@ test("reply and flag moderation discard malformed rows and render distinct escap
   assert.match(flagHtml, /data-flag-moderation-action="dismiss"/);
   assert.match(flagHtml, />Hide reply<\/button>/);
   assert.match(flagHtml, />Dismiss<\/button>/);
+});
+
+test("older moderation pages append only distinct records", () => {
+  const firstPage = Array.from({ length: 50 }, (_, index) => ({ id: `reply-${50 - index}` }));
+  const secondPage = [{ id: "reply-1" }, { id: "reply-older" }, { id: "reply-older" }];
+  const combined = appendDistinctModerationRecords(firstPage, secondPage);
+  assert.equal(combined.length, 51);
+  assert.equal(combined.at(-1)?.id, "reply-older");
+  assert.equal(combined.filter((record) => record.id === "reply-1").length, 1);
 });
 
 test("production snapshot normalization and rows preserve private review data without mutation controls", () => {
