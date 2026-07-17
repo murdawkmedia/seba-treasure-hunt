@@ -31,8 +31,10 @@ validation accounts, submissions, or credentials into production.
   hash-verified in the dedicated private snapshot bucket.
 - Verified the final source with 396 passing tests, exact legal artifacts, all
   TypeScript projects, the production build and `git diff --check`. Production
-  has not been deployed or mutated; validation deployment and owner browser QA
-  are the remaining release steps.
+  has not been deployed or mutated. Commit `621ebc9` is deployed only to the
+  `codex-validation` branch at immutable deployment
+  `https://7f6f435c.seba-treasure-hunt.pages.dev`; owner-authenticated browser
+  QA of the Staff-only snapshot is the remaining validation step.
 - Approved and documented two validation-first designs without starting
   implementation or changing Cloudflare resources. The first adds a manual,
   full-fidelity production snapshot that is visible only through the existing
@@ -129,9 +131,9 @@ validation accounts, submissions, or credentials into production.
 
 ## Current follow-ups
 
-- Deploy the completed candidate to the `codex-validation` Pages branch and
-  complete owner browser QA of large-photo preparation and the Staff-only
-  Production Snapshot area before seeking any production approval.
+- Complete owner browser QA of large-photo preparation and the Staff-only
+  Production Snapshot area on the deployed `codex-validation` candidate before
+  seeking any production approval.
 - Unpublish the disposable validation-only `test` update through the audited
   Ops workflow after an authorized validation staff session is available. Do
   not delete its private report or audit history, and do not mutate production.

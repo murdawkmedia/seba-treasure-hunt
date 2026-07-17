@@ -31,6 +31,11 @@
 
 - Production remains on the immutable deployment identified above. This
   candidate is authorized only for the `codex-validation` Pages branch.
+- Validation source commit: `621ebc9`.
+- Immutable validation deployment:
+  `https://7f6f435c.seba-treasure-hunt.pages.dev`.
+- Stable validation alias:
+  `https://codex-validation.seba-treasure-hunt.pages.dev`.
 - Report photos use decimal MB: direct through 20 MB; browser optimization for
   supported JPEG/PNG/WebP sources above 20 MB through 50 MB; maximum three
   prepared files and 30 MB combined after preparation.
