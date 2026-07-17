@@ -19,11 +19,10 @@ test("sitemap exposes every indexable answer surface and no private tool", () =>
     "/waiver",
     "/community-guidelines",
     "/clue-board",
-    "/sponsors",
   ]) {
     assert.match(sitemap, new RegExp(`<loc>https://www\\.timlostsomething\\.com${route.replaceAll("/", "\\/")}</loc>`));
   }
-  for (const route of ["/dashboard", "/report", "/ops", "/api/"]) {
+  for (const route of ["/dashboard", "/report", "/ops", "/api/", "/sponsors"]) {
     assert.doesNotMatch(sitemap, new RegExp(`<loc>[^<]+${route.replaceAll("/", "\\/")}`));
   }
   assert.doesNotMatch(sitemap, /\.html<\/loc>/);

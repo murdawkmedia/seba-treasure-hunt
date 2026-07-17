@@ -115,13 +115,15 @@ test("the homepage presents the case in the approved documentary order", () => {
     ["rules.html", "Rules and safety"],
   ]) assert.match(html, new RegExp(`href="${href}"[^>]*>${label}<`));
 
-  const ids = ["what-is-tim-lost-something", "evidence", "account", "route-overview", "latest-update", "participate", "report", "sponsor", "hunt-faq"];
+  const ids = ["what-is-tim-lost-something", "evidence", "account", "route-overview", "latest-update", "participate", "report", "hunt-faq"];
   let previous = -1;
   for (const id of ids) {
     const current = html.indexOf(`id="${id}"`);
     assert.ok(current > previous, `#${id} follows the approved homepage order`);
     previous = current;
   }
+  assert.doesNotMatch(html, /<section\b(?=[^>]*\bid=["']sponsor["'])/i);
+  assert.doesNotMatch(html, /Support the Search|href=["']\/?sponsors(?:\.html)?["']/i);
   assert.doesNotMatch(html, /This Is Just Year One/i);
 });
 
@@ -174,7 +176,7 @@ test("the latest update card keeps its timestamp readable on the cream surface",
   assert.ok(contrast >= 4.5, `update timestamp contrast ${contrast.toFixed(2)}:1 meets WCAG AA`);
 });
 
-test("public naming is Case Notes and Support the Search while routes and hooks stay stable", () => {
+test("public naming is Case Notes while sponsorship remains withdrawn", () => {
   const namedPages = ["clue-board.html", "community-guidelines.html", "updates.html", "start.html", "dashboard.html", "report.html"];
   for (const filename of namedPages) {
     assert.doesNotMatch(visibleText(read(filename)), /\bClue Board\b/i, filename);
@@ -182,11 +184,13 @@ test("public naming is Case Notes and Support the Search while routes and hooks 
   assert.match(read("clue-board.html"), /Case Notes/);
   assert.match(readRenderedCampaignPage("index.html"), /href="\/clue-board"[^>]*>Case Notes<\/a>/);
   assert.doesNotMatch(publicPages.map((name) => read(name)).join("\n"), /\/case-notes/i);
-  assert.match(readRenderedCampaignPage("index.html"), /href="\/sponsors"[^>]*>Support the Search<\/a>/);
-  assert.match(read("sponsors.html"), /<h1[^>]*>Support the Search<\/h1>/);
+  const renderedHome = readRenderedCampaignPage("index.html");
+  assert.doesNotMatch(renderedHome, /Support the Search|href="\/sponsors"/i);
+  assert.equal(Object.hasOwn(CAMPAIGN_PAGES, "sponsors.html"), false);
+  assert.ok(fs.existsSync(path.join(root, "sponsors.html")), "the dormant source remains retained");
 });
 
-test("Support the Search uses the real aerial photograph and no retired pirate artwork", () => {
+test("the dormant sponsor source uses the real aerial photograph and no retired pirate artwork", () => {
   const html = read("sponsors.html");
   assert.match(html, /<title>Support the Search \| Tim Lost Something\?<\/title>/);
   assert.match(html, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/hero-aerial\.jpg"/);
@@ -199,11 +203,12 @@ test("Support the Search uses the real aerial photograph and no retired pirate a
 
 test("the sitemap dates every materially rebranded public page to this release", () => {
   const sitemap = read("sitemap.xml");
-  const rebrandedPaths = ["/", "/route", "/updates", "/rules", "/clue-board", "/interview", "/community-guidelines", "/sponsors"];
+  const rebrandedPaths = ["/", "/route", "/updates", "/rules", "/clue-board", "/interview", "/community-guidelines"];
   for (const route of rebrandedPaths) {
     const escapedUrl = `https://www.timlostsomething.com${route}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     assert.match(sitemap, new RegExp(`<loc>${escapedUrl}</loc>\\s*<lastmod>2026-07-16</lastmod>`), route);
   }
+  assert.doesNotMatch(sitemap, /<loc>https:\/\/www\.timlostsomething\.com\/sponsors<\/loc>/);
 });
 
 test("Tim's 19 answer bodies remain byte-identical", () => {

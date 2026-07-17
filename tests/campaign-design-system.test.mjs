@@ -101,7 +101,6 @@ const PAGE_FAMILIES = Object.freeze({
   "privacy.html": "document",
   "waiver.html": "document",
   "community-guidelines.html": "document",
-  "sponsors.html": "sponsors",
 });
 
 const FUNCTIONAL_PAGE_CLASSES = Object.freeze({
@@ -114,7 +113,6 @@ const FUNCTIONAL_PAGE_CLASSES = Object.freeze({
   "privacy.html": ["hunter-page"],
   "waiver.html": ["hunter-page", "waiver-page"],
   "community-guidelines.html": ["hunter-page"],
-  "sponsors.html": ["hunter-page", "sponsor-page"],
 });
 
 const LEGACY_SHELL_CLASSES = Object.freeze([
@@ -646,6 +644,8 @@ test("light surfaces select dark focus while dark campaign chrome stays gold", (
 
 test("every campaign body has exactly one mapped page-family class and keeps functional classes", () => {
   assert.deepEqual(Object.keys(PAGE_FAMILIES).sort(), Object.keys(CAMPAIGN_PAGES).sort());
+  assert.equal(Object.hasOwn(CAMPAIGN_PAGES, "sponsors.html"), false);
+  assert.equal(fs.existsSync(path.join(root, "sponsors.html")), true, "the dormant sponsor source remains retained");
   for (const [filename, family] of Object.entries(PAGE_FAMILIES)) {
     const body = read(filename).match(/<body\b[^>]*\bclass=["']([^"']*)["'][^>]*>/i);
     assert.ok(body, `${filename} has a body class`);

@@ -18,7 +18,6 @@ const representativeDesktopFiles = Object.freeze([
   "interview.html",
   "clue-board.html",
   "dashboard.html",
-  "sponsors.html",
   "privacy.html",
 ]);
 const mime = {
