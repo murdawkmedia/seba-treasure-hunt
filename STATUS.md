@@ -31,10 +31,19 @@ validation accounts, submissions, or credentials into production.
   hash-verified in the dedicated private snapshot bucket.
 - Verified the final source with 396 passing tests, exact legal artifacts, all
   TypeScript projects, the production build and `git diff --check`. Production
-  has not been deployed or mutated. Commit `621ebc9` is deployed only to the
-  `codex-validation` branch at immutable deployment
-  `https://7f6f435c.seba-treasure-hunt.pages.dev`; owner-authenticated browser
-  QA of the Staff-only snapshot is the remaining validation step.
+  data was not mutated. After owner validation, commit `2fdefe6` was
+  fast-forwarded to GitHub `main` and deployed to production as immutable
+  deployment `https://f917fb4f.seba-treasure-hunt.pages.dev`.
+- Completed post-release checks on the immutable deployment and
+  `https://www.timlostsomething.com`: every public/legal/account/Ops route
+  returns successfully, runtime config identifies production, validation-only
+  UI is absent, report copy exposes the 50 MB source limit, the apex redirect
+  preserves paths and queries, and anonymous waypoint data contains 13 records
+  with no exact map links.
+- Production D1 matched its pre-release baseline after deployment: 10 players,
+  1 report, 1 staff principal, 10 audit events, 20 legal acceptances, 1 update
+  and 13 waypoints. Foreign keys are clean and the comparison reads wrote zero
+  rows.
 - Approved and documented two validation-first designs without starting
   implementation or changing Cloudflare resources. The first adds a manual,
   full-fidelity production snapshot that is visible only through the existing
@@ -131,9 +140,9 @@ validation accounts, submissions, or credentials into production.
 
 ## Current follow-ups
 
-- Complete owner browser QA of large-photo preparation and the Staff-only
-  Production Snapshot area on the deployed `codex-validation` candidate before
-  seeking any production approval.
+- Monitor the production report-photo flow and operator alerts during ordinary
+  use; retain the previous immutable production deployment for immediate code
+  rollback if an issue appears.
 - Unpublish the disposable validation-only `test` update through the audited
   Ops workflow after an authorized validation staff session is available. Do
   not delete its private report or audit history, and do not mutate production.

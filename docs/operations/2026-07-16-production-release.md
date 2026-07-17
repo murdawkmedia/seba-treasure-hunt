@@ -5,8 +5,8 @@
 - Canonical site: `https://www.timlostsomething.com`
 - Apex redirect: `https://timlostsomething.com` permanently preserves the path and query string when redirecting to `www`.
 - Cloudflare Pages project: `seba-treasure-hunt`
-- Production application commit: `20e6da5248e3461d8f0eac95e2e534a49d1d62bd`
-- Production Pages deployment: `34826743-fccc-43cc-a2e8-61df267a5759`
+- Production application commit: `2fdefe6`
+- Production Pages deployment: `f917fb4f-8e81-4cae-b429-9c15356215da`
 - Latest production data revision: `b44edb8f9b4374459505454a488ac04363600f48`
 - Media worker version: `d0476c29-0bfc-450c-b30e-4fcba9aa99d5`
 - Production database environment sentinel: `production`
@@ -14,8 +14,7 @@
 
 ## Release verification
 
-- Static tests: 211 passing.
-- Worker/client tests: 370 passing.
+- Full automated suite: 396 passing.
 - TypeScript checks: passing.
 - Production build: passing.
 - D1 migrations: 1–14 applied; no pending migrations.
@@ -53,8 +52,12 @@
   production rows.
 - Final candidate verification: 396 tests passing, legal artifacts exact,
   TypeScript checks passing, production build passing and clean diff check.
+- Owner validation was approved and the same artifact was promoted on
+  2026-07-17. The production runtime uses only the standard production D1/R2,
+  identity and mail bindings; the snapshot controls and bindings remain
+  validation-only.
 
-## Source-ready follow-on: Release 2 Documentary Case File
+## Production follow-on: Release 2 Documentary Case File
 
 - Release 2A establishes the tracked documentary design source, type system,
   shared shell treatment and non-themed favicon family.
@@ -67,9 +70,8 @@
   remain unchanged.
 - Retired public artwork is removed from source and build output; recursive
   regressions reject pirate vocabulary, references and old font tokens.
-- This follow-on is not a production Pages deployment. The production commit
-  and deployment identifiers above remain authoritative until explicit owner
-  approval.
+- This follow-on is included in the production commit and deployment recorded
+  above after explicit owner validation approval.
 - After an approved deployment, smoke-test `/`, `/route`, `/interview`,
   `/updates`, `/clue-board`, `/sponsors`, `/start` and `/report`, then update the
   production identifiers and verification counts in this document.
@@ -78,7 +80,8 @@
 
 - Git tag: `production-pre-hunter-platform-2026-07-16`
 - Tagged source: `5552a57668417aef2fbd97d63e819807e2ee92dc`
-- Previous immutable Pages deployment: `https://ad89ff2a.seba-treasure-hunt.pages.dev`
+- Previous immutable Pages deployment: `https://34826743.seba-treasure-hunt.pages.dev`
+- Previous production source: `20e6da5`
 - Pre-promotion D1 backup: retained in the local ignored backup store.
 - D1 Time Travel bookmark: recorded in the private release operations log.
 
