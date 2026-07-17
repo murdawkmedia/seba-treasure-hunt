@@ -74,6 +74,13 @@ const pageLimit = (limit: number | undefined) => Math.min(Math.max(limit ?? 25, 
 
 type ModerationCursor = { createdAt: string; id: string };
 
+const isModerationTimestamp = (input: string) =>
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(input) &&
+  !Number.isNaN(Date.parse(input)) && new Date(input).toISOString() === input;
+
+const invalidModerationCursor = () =>
+  new ApiError(400, "invalid_cursor", "The moderation cursor is invalid.");
+
 const moderationCursor = (createdAt: unknown, id: unknown) => {
   const encoded = btoa(JSON.stringify([value(createdAt), value(id)]))
     .replace(/\+/g, "-")
@@ -83,17 +90,21 @@ const moderationCursor = (createdAt: unknown, id: unknown) => {
 };
 
 const parseModerationCursor = (cursor: string | null | undefined): ModerationCursor | null => {
-  if (!cursor?.startsWith("m1.")) return null;
+  if (cursor === null || cursor === undefined) return null;
+  if (!cursor.startsWith("m1.")) throw invalidModerationCursor();
   try {
     const encoded = cursor.slice(3).replace(/-/g, "+").replace(/_/g, "/");
     const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
     const parsed: unknown = JSON.parse(atob(padded));
-    if (!Array.isArray(parsed) || typeof parsed[0] !== "string" || typeof parsed[1] !== "string") {
-      return null;
+    if (
+      !Array.isArray(parsed) || typeof parsed[0] !== "string" || !isModerationTimestamp(parsed[0]) ||
+      typeof parsed[1] !== "string" || parsed[1].length === 0
+    ) {
+      throw new Error();
     }
     return { createdAt: parsed[0], id: parsed[1] };
   } catch {
-    return null;
+    throw invalidModerationCursor();
   }
 };
 

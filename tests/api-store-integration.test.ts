@@ -4552,6 +4552,33 @@ test("real D1 projects recent published replies with public parent context and r
   ]);
 
   const store = new D1DataStore(db);
+  await db.batch([
+    db.prepare(
+      `INSERT INTO field_notes
+       (id, author_subject, waypoint_id, body, status, created_at, updated_at)
+       VALUES ('unapproved-parent-note', 'reply-author', 1, 'Unapproved parent.', 'pending', ?, ?)`
+    ).bind(timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('unapproved-parent-reply', 'unapproved-parent-note', 'reply-author', 'Hidden parent reply.', 'published', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, status, created_at)
+       VALUES ('unapproved-parent-flag', 'flag-reporter', 'reply', 'unapproved-parent-reply', 'spam', 'received', ?)`
+    ).bind(timestamp)
+  ]);
+  const invalidCursor = `m1.${btoa(JSON.stringify(["not-a-timestamp", ""]))}`;
+  for (const list of [
+    () => store.listModerationReplies({ cursor: invalidCursor }),
+    () => store.listContentFlags({ cursor: invalidCursor })
+  ]) {
+    await assert.rejects(
+      list,
+      (error: unknown) => error instanceof ApiError && error.status === 400 && error.code === "invalid_cursor"
+    );
+  }
   const boardReplyCount = async () => {
     const note = (await store.listBoard(null)).items[0] as { replies?: unknown[] } | undefined;
     return note?.replies?.length ?? 0;
@@ -4793,14 +4820,20 @@ test("real D1 projects recent published replies with public parent context and r
 
 test("FakeStore mirrors public reply moderation state and audited conditional transitions", async () => {
   const store = new FakeStore();
+  store.profiles.set("reply-author", {
+    participationBasis: "adult",
+    publicDisplayName: "Nancy & Ron",
+    publicHandle: "Hunter 43BA"
+  });
   store.board.push({
     id: "fake-note",
+    authorSubject: "reply-author",
     waypointId: 1,
     waypointRouteOrder: 4,
     waypointName: "Seniors Centre",
     body: "Public parent note.",
     authorHandle: "Nancy & Ron",
-    status: "published",
+    status: "approved",
     createdAt: "2026-07-15T18:00:00.000Z",
     replies: [{
       id: "fake-reply",
@@ -4808,29 +4841,84 @@ test("FakeStore mirrors public reply moderation state and audited conditional tr
       authorHandle: "Nancy & Ron",
       createdAt: "2026-07-15T18:00:00.000Z"
     }]
-  });
-  store.replies.push({
-    id: "fake-reply",
-    noteId: "fake-note",
+  }, {
+    id: "fake-unapproved-note",
     authorSubject: "reply-author",
-    body: "A public reply.",
-    authorHandle: "Nancy & Ron",
-    status: "published",
+    body: "Unapproved parent.",
+    status: "pending",
     createdAt: "2026-07-15T18:00:00.000Z"
   });
-  store.flags.push({
-    id: "fake-flag",
-    targetKind: "reply",
-    targetId: "fake-reply",
-    reason: "spam",
-    details: "Private reporter detail.",
-    reporterSubject: "private-reporter",
-    status: "received",
-    createdAt: "2026-07-15T18:00:00.000Z"
-  });
+  store.replies.push(
+    {
+      id: "fake-reply",
+      noteId: "fake-note",
+      authorSubject: "reply-author",
+      body: "A public reply.",
+      authorHandle: "Nancy & Ron",
+      status: "published",
+      createdAt: "2026-07-15T18:00:00.000Z"
+    },
+    {
+      id: "fake-unapproved-parent-reply",
+      noteId: "fake-unapproved-note",
+      authorSubject: "reply-author",
+      body: "Hidden parent reply.",
+      status: "published",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    },
+    {
+      id: "fake-missing-profile-reply",
+      noteId: "fake-note",
+      authorSubject: "missing-author",
+      body: "Unknown author reply.",
+      status: "published",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    }
+  );
+  store.flags.push(
+    {
+      id: "fake-flag",
+      targetKind: "reply",
+      targetId: "fake-reply",
+      reason: "spam",
+      details: "Private reporter detail.",
+      reporterSubject: "private-reporter",
+      status: "received",
+      createdAt: "2026-07-15T18:00:00.000Z"
+    },
+    {
+      id: "fake-unapproved-parent-flag",
+      targetKind: "reply",
+      targetId: "fake-unapproved-parent-reply",
+      reason: "spam",
+      status: "received",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    },
+    {
+      id: "fake-missing-profile-flag",
+      targetKind: "reply",
+      targetId: "fake-missing-profile-reply",
+      reason: "spam",
+      status: "received",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    }
+  );
 
-  assert.equal((await store.listModerationReplies()).items[0]?.flagCount, 1);
-  assert.doesNotMatch(JSON.stringify(await store.listContentFlags()), /private-reporter|Private reporter detail/);
+  const invalidCursor = `m1.${btoa(JSON.stringify(["not-a-timestamp", ""]))}`;
+  for (const list of [
+    () => store.listModerationReplies({ cursor: invalidCursor }),
+    () => store.listContentFlags({ cursor: invalidCursor })
+  ]) {
+    await assert.rejects(
+      list,
+      (error: unknown) => error instanceof ApiError && error.status === 400 && error.code === "invalid_cursor"
+    );
+  }
+  const initialFakeReplies = await store.listModerationReplies();
+  assert.deepEqual(initialFakeReplies.items.map((reply) => reply.id), ["fake-reply"]);
+  const initialFakeFlags = await store.listContentFlags();
+  assert.deepEqual(initialFakeFlags.items.map((flag) => flag.id), ["fake-flag"]);
+  assert.doesNotMatch(JSON.stringify(initialFakeFlags), /private-reporter|Private reporter detail/);
   assert.equal((await store.moderateReply("fake-reply", "hide", "Spam burst", "staff-1"))?.status, "hidden");
   assert.equal((await store.listBoard(null)).items[0]?.replies.length, 0);
   assert.equal(store.flags[0]?.status, "resolved");

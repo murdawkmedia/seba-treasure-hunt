@@ -247,6 +247,19 @@ without repeating completed Tasks 1–3.”
   regressions. Focused D1/FakeStore tests and all TypeScript projects pass;
   no migration, deployment, or data mutation was required.
 
+## Task 4 quality follow-up — 2026-07-17 12:07 MDT
+
+- Moderation listing cursors now fail closed: any supplied cursor without a
+  valid `m1` payload, canonical ISO timestamp and nonempty ID raises the
+  standard `400 invalid_cursor` error instead of restarting at page one.
+- FakeStore moderation projections now match D1 eligibility joins: replies and
+  flags require an approved parent Case Note and a matching author profile
+  before any public identity or target data is projected. Regression coverage
+  includes malformed cursors plus unapproved-parent and missing-profile
+  exclusions.
+- Focused D1/FakeStore tests and all TypeScript projects pass. No migration,
+  deployment, or data mutation occurred.
+
 - Any production snapshot used by validation must be a manual, one-way,
   read-only copy in dedicated D1/R2 resources. Full-fidelity personal and
   private report data is permitted only behind existing server-side Ops

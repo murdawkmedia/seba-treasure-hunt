@@ -62,6 +62,13 @@ const parseSponsorCursor = (cursor: string | null | undefined) => {
 
 type ModerationCursor = { createdAt: string; id: string };
 
+const isModerationTimestamp = (input: string) =>
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(input) &&
+  !Number.isNaN(Date.parse(input)) && new Date(input).toISOString() === input;
+
+const invalidModerationCursor = () =>
+  new ApiError(400, "invalid_cursor", "The moderation cursor is invalid.");
+
 const moderationCursor = (createdAt: unknown, id: unknown) => {
   const encoded = btoa(JSON.stringify([String(createdAt ?? ""), String(id ?? "")]))
     .replace(/\+/g, "-")
@@ -71,17 +78,21 @@ const moderationCursor = (createdAt: unknown, id: unknown) => {
 };
 
 const parseModerationCursor = (cursor: string | null | undefined): ModerationCursor | null => {
-  if (!cursor?.startsWith("m1.")) return null;
+  if (cursor === null || cursor === undefined) return null;
+  if (!cursor.startsWith("m1.")) throw invalidModerationCursor();
   try {
     const encoded = cursor.slice(3).replace(/-/g, "+").replace(/_/g, "/");
     const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
     const parsed: unknown = JSON.parse(atob(padded));
-    if (!Array.isArray(parsed) || typeof parsed[0] !== "string" || typeof parsed[1] !== "string") {
-      return null;
+    if (
+      !Array.isArray(parsed) || typeof parsed[0] !== "string" || !isModerationTimestamp(parsed[0]) ||
+      typeof parsed[1] !== "string" || parsed[1].length === 0
+    ) {
+      throw new Error();
     }
     return { createdAt: parsed[0], id: parsed[1] };
   } catch {
-    return null;
+    throw invalidModerationCursor();
   }
 };
 
@@ -716,13 +727,15 @@ export class FakeStore {
     const cursor = parseModerationCursor(options.cursor);
     const replies = this.replies
       .filter((reply) => reply.status === "published" || reply.status === "hidden")
+      .filter((reply) => this.approvedModerationNote(reply.noteId ?? reply.fieldNoteId) !== null)
+      .filter((reply) => this.publicAuthorProfile(reply) !== null)
       .filter((reply) => beforeModerationCursor(reply, cursor))
       .sort(compareModerationRecords);
     const selected = replies.slice(0, limit);
     return {
       items: selected
         .map((reply) => {
-          const note = this.board.find((candidate) => candidate.id === (reply.noteId ?? reply.fieldNoteId));
+          const note = this.approvedModerationNote(reply.noteId ?? reply.fieldNoteId)!;
           return {
             id: reply.id,
             noteId: reply.noteId ?? reply.fieldNoteId,
@@ -755,9 +768,9 @@ export class FakeStore {
         const reply = flag.targetKind === "reply"
           ? this.replies.find((candidate) => candidate.id === flag.targetId)
           : null;
-        const note = this.board.find((candidate) => candidate.id === (reply?.noteId ?? flag.targetId));
+        const note = this.approvedModerationNote(reply?.noteId ?? reply?.fieldNoteId ?? flag.targetId);
         const target = reply ?? note;
-        if (!target) return [];
+        if (!target || !note || !this.publicAuthorProfile(target)) return [];
         return [{
           id: flag.id,
           targetKind: flag.targetKind,
@@ -1366,12 +1379,7 @@ export class FakeStore {
   }
 
   private publicAuthorHandle(record: Record<string, unknown>) {
-    const subject = typeof record.authorSubject === "string"
-      ? record.authorSubject
-      : typeof record.subject === "string"
-        ? record.subject
-        : null;
-    const profile = subject ? this.profiles.get(subject) : null;
+    const profile = this.publicAuthorProfile(record);
     if (profile) {
       return publicHunterIdentity({
         participationBasis: typeof profile.participationBasis === "string"
@@ -1392,6 +1400,21 @@ export class FakeStore {
       });
     }
     return typeof record.authorHandle === "string" ? record.authorHandle : "Community Hunter";
+  }
+
+  private approvedModerationNote(id: unknown) {
+    return this.board.find((candidate) => candidate.id === id && candidate.status === "approved") ?? null;
+  }
+
+  private publicAuthorProfile(record: Record<string, unknown>) {
+    const subject = typeof record.authorSubject === "string"
+      ? record.authorSubject
+      : typeof record.author_subject === "string"
+        ? record.author_subject
+        : typeof record.subject === "string"
+          ? record.subject
+          : null;
+    return subject ? this.profiles.get(subject) ?? null : null;
   }
 }
 
