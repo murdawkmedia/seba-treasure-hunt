@@ -33,3 +33,19 @@ test("sponsor QA verifies public build withdrawal without weakening private-outp
   assert.match(script, /const correctedPattern = \/sponsor_inquiries\|sponsor_inquiry_events\|private note\|CFCW\/i/);
   assert.match(script, /dist\/assets\/app\/ops\.js/);
 });
+
+test("sponsor QA contains no stale public sponsor-page exercise after withdrawal", async () => {
+  const script = await readRunner();
+
+  for (const stalePattern of [
+    /(?:assertSponsorCurrent|assertStickyRowsAfterSurfaceScroll|sponsorDesktop|sponsorMobile|sponsorZoomEquivalent|clueBoardMobile|mockedInvalidForm|exerciseMobileMenu)/,
+    /goto\(page, "\/sponsors"\)/,
+    /nav-sponsors/,
+    /data-sponsor-(?:form|submit|turnstile|result)/,
+    /#sponsor-hero/,
+    /sponsors-(?:desktop|mobile|zoom)/,
+    /mockConfig|fakeTurnstile/,
+  ]) {
+    assert.doesNotMatch(script, stalePattern, `withdrawn public sponsor-page QA must not retain ${stalePattern}`);
+  }
+});

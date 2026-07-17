@@ -60,14 +60,14 @@ async function launchBrowser() {
   }
 }
 
-async function createQaPage(browser, viewport, options = {}) {
+async function createQaPage(browser, viewport) {
   const context = await browser.newContext({
     viewport,
     bypassCSP: true,
     serviceWorkers: "block",
     reducedMotion: "reduce",
   });
-  const tracker = { sponsorPosts: 0, consoleProblems: [] };
+  const tracker = { sponsorPosts: 0 };
 
   await context.route("**/*", async (route) => {
     const request = route.request();
@@ -77,14 +77,6 @@ async function createQaPage(browser, viewport, options = {}) {
       await route.abort("blockedbyclient");
       return;
     }
-    if (options.mockConfig && url.origin === baseOrigin && url.pathname === "/api/v1/config") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { turnstileSiteKey: "test-only-site-key" } }),
-      });
-      return;
-    }
     if (["http:", "https:"].includes(url.protocol) && !["GET", "HEAD"].includes(request.method())) {
       await route.abort("blockedbyclient");
       return;
@@ -92,26 +84,7 @@ async function createQaPage(browser, viewport, options = {}) {
     await route.continue();
   });
 
-  if (options.fakeTurnstile) {
-    await context.addInitScript(() => {
-      window.turnstile = {
-        render(container, callbacks) {
-          container.textContent = "Test-only mocked human check";
-          queueMicrotask(() => callbacks.callback("test-only-token"));
-          return "test-only-widget";
-        },
-        reset() {},
-      };
-    });
-  }
-
   const page = await context.newPage();
-  page.on("console", (message) => {
-    if (["error", "warning"].includes(message.type())) {
-      tracker.consoleProblems.push(`${message.type()}: ${message.text()}`);
-    }
-  });
-  page.on("pageerror", (error) => tracker.consoleProblems.push(`pageerror: ${error.message}`));
   return { context, page, tracker };
 }
 
@@ -120,19 +93,6 @@ async function goto(page, pathname) {
   assert.ok(response, `${pathname} did not produce a navigation response.`);
   assert.equal(response.status(), 200, `${pathname} must return HTTP 200.`);
   await page.waitForFunction(() => document.readyState === "complete");
-}
-
-async function noOverflow(page, label) {
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    documentScrollWidth: document.documentElement.scrollWidth,
-    bodyScrollWidth: document.body.scrollWidth,
-  }));
-  assert.ok(
-    dimensions.documentScrollWidth <= dimensions.clientWidth && dimensions.bodyScrollWidth <= dimensions.clientWidth,
-    `${label} has horizontal overflow: ${JSON.stringify(dimensions)}`,
-  );
-  return dimensions;
 }
 
 async function initialStickyGeometry(page, stripSelector, headerSelector, expected, label) {
@@ -234,17 +194,6 @@ async function saveScreenshot(page, name) {
   return artifact;
 }
 
-async function assertSponsorCurrent(page) {
-  const state = await page.locator('.nav-sponsors[aria-current="page"]').evaluate((element) => ({
-    ariaCurrent: element.getAttribute("aria-current"),
-    backgroundColor: getComputedStyle(element).backgroundColor,
-    color: getComputedStyle(element).color,
-  }));
-  assert.equal(state.ariaCurrent, "page");
-  assert.notEqual(state.backgroundColor, "rgba(0, 0, 0, 0)", "Sponsors must retain its gold current-page treatment.");
-  return state;
-}
-
 async function assertStickyRowsAfterScroll(page, stripSelector, headerSelector, label) {
   await page.waitForFunction(({ stripSelector: strip, headerSelector: header }) => {
     const first = document.querySelector(strip)?.getBoundingClientRect();
@@ -283,14 +232,6 @@ async function scrollPastNoticeAndAssertStickyRows(page, stripSelector, headerSe
     await page.evaluate(() => window.scrollY > 0),
     `${label} navigation must scroll past the validation notice.`,
   );
-  return assertStickyRowsAfterScroll(page, stripSelector, headerSelector, label);
-}
-
-async function assertStickyRowsAfterSurfaceScroll(page, stripSelector, headerSelector, label) {
-  const atInitialFlow = await page.evaluate(() => window.scrollY === 0);
-  if (atInitialFlow) {
-    return scrollPastNoticeAndAssertStickyRows(page, stripSelector, headerSelector, label);
-  }
   return assertStickyRowsAfterScroll(page, stripSelector, headerSelector, label);
 }
 
@@ -344,240 +285,6 @@ async function validationNoticeGeometry(browser) {
   }
 }
 
-async function sponsorDesktop(browser) {
-  const { context, page, tracker } = await createQaPage(browser, { width: 1440, height: 1000 });
-  try {
-    await goto(page, "/sponsors");
-    const overflow = await noOverflow(page, "Sponsor desktop");
-    const initialGeometry = await initialStickyGeometry(
-      page,
-      ".case-strip",
-      ".campaign-header",
-      { stripHeight: 54, headerHeight: 113, stack: 167 },
-      "Sponsor desktop",
-    );
-    const current = await assertSponsorCurrent(page);
-    const mainTop = await page.locator("#main").evaluate((element) => element.getBoundingClientRect().top);
-    assert.ok(mainTop >= initialGeometry.stack - 2, "The skip-link target must begin below both sticky rows.");
-
-    await page.mouse.wheel(0, 400);
-    await page.waitForFunction(() => window.scrollY > 0);
-    assert.ok(
-      await page.evaluate(() => window.scrollY > 0),
-      "Sponsor inquiry scroll action must move past the validation notice.",
-    );
-    const postScrollGeometry = await assertStickyRowsAfterScroll(page, ".case-strip", ".campaign-header", "Sponsor inquiry");
-    await page.locator("#inquiry").evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
-    await assertStickyRowsAfterScroll(page, ".case-strip", ".campaign-header", "Sponsor inquiry clearance");
-    const inquiryTop = await page.locator("#inquiry").evaluate((element) => element.getBoundingClientRect().top);
-    assert.ok(inquiryTop >= postScrollGeometry.stack - 2, "Inquiry anchor must clear both sticky rows.");
-
-    for (const selector of [
-      "#sponsor-hero",
-      ".opportunity-card:last-child",
-      "[data-sponsor-form]",
-      "#sponsor-faq",
-      ".campaign-footer",
-    ]) {
-      await page.locator(selector).scrollIntoViewIfNeeded();
-      await page.waitForTimeout(50);
-      await assertStickyRowsAfterSurfaceScroll(page, ".case-strip", ".campaign-header", `Sponsor ${selector}`);
-    }
-
-    const submit = page.locator("[data-sponsor-submit]");
-    await page.waitForFunction(() => {
-      const shell = document.querySelector("[data-sponsor-turnstile]");
-      return shell?.textContent?.toLowerCase().includes("unavailable") === true;
-    }, null, { timeout: 6_000 });
-    assert.equal(await submit.isDisabled(), true, "Local sponsor submission must fail closed without Turnstile configuration.");
-    assert.equal(tracker.consoleProblems.length, 0, `Sponsor desktop console problems: ${tracker.consoleProblems.join(" | ")}`);
-    evidence.sponsorPosts += tracker.sponsorPosts;
-
-    const accessibility = await axe(page, "Sponsor desktop");
-    const screenshot = await saveScreenshot(page, "sponsors-desktop-1440x1000");
-    return {
-      viewport: { width: 1440, height: 1000 },
-      overflow,
-      geometry: initialGeometry,
-      postScrollGeometry,
-      mainTop: round(mainTop),
-      inquiryTop: round(inquiryTop),
-      current,
-      failClosed: true,
-      consoleProblems: 0,
-      accessibility,
-      screenshot,
-    };
-  } finally {
-    await context.close();
-  }
-}
-
-async function exerciseMobileMenu(page, toggleSelector, navSelector, sponsorSelector, testLinkActivation) {
-  const toggle = page.locator(toggleSelector);
-  const nav = page.locator(navSelector);
-  await toggle.click();
-  assert.equal(await toggle.getAttribute("aria-expanded"), "true", "Mobile menu must open.");
-  assert.equal(await page.locator(sponsorSelector).isVisible(), true, "Sponsors must be visible in the mobile menu.");
-
-  if (testLinkActivation) {
-    await page.locator(sponsorSelector).click();
-    await page.waitForLoadState("domcontentloaded");
-    assert.equal(await page.locator(toggleSelector).getAttribute("aria-expanded"), "false", "Link activation must close the menu.");
-  }
-
-  await page.locator(toggleSelector).click();
-  await page.keyboard.press("Escape");
-  assert.equal(await page.locator(toggleSelector).getAttribute("aria-expanded"), "false", "Escape must close the menu.");
-  assert.equal(await page.locator(toggleSelector).evaluate((element) => document.activeElement === element), true, "Escape must return focus to the menu toggle.");
-  assert.equal(await nav.evaluate((element) => element.classList.contains("open")), false, "The mobile nav must not remain open.");
-}
-
-async function sponsorMobile(browser) {
-  const { context, page, tracker } = await createQaPage(browser, { width: 390, height: 844 });
-  try {
-    await goto(page, "/sponsors");
-    const overflow = await noOverflow(page, "Sponsor mobile");
-    const geometry = await initialStickyGeometry(
-      page,
-      ".case-strip",
-      ".campaign-header",
-      { stripHeight: 72, headerHeight: 60, stack: 132 },
-      "Sponsor mobile",
-    );
-    const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
-      page,
-      ".case-strip",
-      ".campaign-header",
-      "Sponsor mobile",
-    );
-    await exerciseMobileMenu(page, ".campaign-menu-toggle", "#campaign-nav", "#campaign-nav .nav-sponsors", true);
-
-    const layout = await page.evaluate(() => {
-      const cards = [...document.querySelectorAll(".opportunity-card")];
-      const cardRects = cards.map((card) => card.getBoundingClientRect());
-      const form = document.querySelector("[data-sponsor-form]");
-      const formRect = form?.getBoundingClientRect();
-      return {
-        cardWidths: cardRects.map((rect) => rect.width),
-        cardTops: cardRects.map((rect) => rect.top),
-        inlineMinHeights: cards.map((card) => card.style.minHeight),
-        computedMinHeights: cards.map((card) => getComputedStyle(card).minHeight),
-        formWidth: formRect?.width ?? 0,
-      };
-    });
-    assert.ok(layout.cardWidths.every((width) => width >= 340 && width <= 365), `Mobile cards must use the available single-column width: ${layout.cardWidths}`);
-    assert.ok(layout.cardTops.every((top, index) => index === 0 || top > layout.cardTops[index - 1]), "Mobile cards must stack vertically.");
-    assert.ok(layout.inlineMinHeights.every((value) => value === ""), "Mobile cards must not have artificial inline heights.");
-    assert.ok(layout.computedMinHeights.every((value) => value === "auto" || value === "0px"), `Mobile card min-height must remain automatic: ${layout.computedMinHeights}`);
-    assert.ok(layout.formWidth >= 340 && layout.formWidth <= 365, `Mobile form must remain readable: ${layout.formWidth}`);
-
-    for (const selector of [
-      "[data-sponsor-form]",
-      ".acknowledgement-field",
-      "[data-sponsor-turnstile]",
-      "[data-sponsor-submit]",
-    ]) {
-      assert.equal(await page.locator(selector).isVisible(), true, `${selector} must be visible on mobile.`);
-    }
-    assert.equal(await page.locator("[data-sponsor-result]").count(), 1, "The mobile result region must remain present.");
-    await page.waitForFunction(() => document.querySelector("[data-sponsor-turnstile]")?.textContent?.toLowerCase().includes("unavailable") === true, null, { timeout: 6_000 });
-    assert.equal(await page.locator("[data-sponsor-submit]").isDisabled(), true, "Mobile submission must fail closed locally.");
-    evidence.sponsorPosts += tracker.sponsorPosts;
-
-    const accessibility = await axe(page, "Sponsor mobile");
-    const screenshot = await saveScreenshot(page, "sponsors-mobile-390x844");
-    return {
-      viewport: { width: 390, height: 844 },
-      overflow,
-      geometry,
-      postScrollGeometry,
-      layout: {
-        cardWidths: layout.cardWidths.map(round),
-        formWidth: round(layout.formWidth),
-        minHeights: layout.computedMinHeights,
-      },
-      menu: { sponsorsVisible: true, linkCloses: true, escapeClosesAndReturnsFocus: true },
-      failClosed: true,
-      accessibility,
-      screenshot,
-    };
-  } finally {
-    await context.close();
-  }
-}
-
-async function sponsorZoomEquivalent(browser) {
-  const { context, page, tracker } = await createQaPage(browser, { width: 720, height: 500 });
-  try {
-    await goto(page, "/sponsors");
-    const overflow = await noOverflow(page, "Sponsor zoom-equivalent");
-    const geometry = await initialStickyGeometry(
-      page,
-      ".case-strip",
-      ".campaign-header",
-      { stripHeight: 72, headerHeight: 60, stack: 132 },
-      "Sponsor zoom-equivalent",
-    );
-    const heroTop = await page.locator("#sponsor-hero").evaluate((element) => element.getBoundingClientRect().top);
-    assert.ok(heroTop >= geometry.stack - 2, `Zoom-equivalent hero must begin below the sticky stack: ${heroTop}`);
-    const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
-      page,
-      ".case-strip",
-      ".campaign-header",
-      "Sponsor zoom-equivalent",
-    );
-    evidence.sponsorPosts += tracker.sponsorPosts;
-    await page.evaluate(() => window.scrollTo(0, 0));
-    const screenshot = await saveScreenshot(page, "sponsors-zoom-equivalent-720x500");
-    return {
-      viewport: { width: 720, height: 500 },
-      overflow,
-      geometry,
-      postScrollGeometry,
-      heroTop: round(heroTop),
-      screenshot,
-    };
-  } finally {
-    await context.close();
-  }
-}
-
-async function clueBoardMobile(browser) {
-  const { context, page, tracker } = await createQaPage(browser, { width: 390, height: 844 });
-  try {
-    await goto(page, "/clue-board");
-    const overflow = await noOverflow(page, "Clue Board mobile");
-    const geometry = await initialStickyGeometry(
-      page,
-      ".case-strip",
-      ".campaign-header",
-      { stripHeight: 72, headerHeight: 60, stack: 132 },
-      "Clue Board mobile",
-    );
-    const postScrollGeometry = await scrollPastNoticeAndAssertStickyRows(
-      page,
-      ".case-strip",
-      ".campaign-header",
-      "Clue Board mobile",
-    );
-    await exerciseMobileMenu(page, ".campaign-menu-toggle", "#campaign-nav", "#campaign-nav .nav-sponsors", false);
-    evidence.sponsorPosts += tracker.sponsorPosts;
-    await page.evaluate(() => window.scrollTo(0, 0));
-    const screenshot = await saveScreenshot(page, "clue-board-mobile-390x844");
-    return {
-      viewport: { width: 390, height: 844 },
-      overflow,
-      geometry,
-      postScrollGeometry,
-      menu: { sponsorsVisible: true, escapeClosesAndReturnsFocus: true },
-      screenshot,
-    };
-  } finally {
-    await context.close();
-  }
-}
-
 async function opsGate(browser) {
   const { context, page, tracker } = await createQaPage(browser, { width: 1440, height: 1000 });
   try {
@@ -597,35 +304,6 @@ async function opsGate(browser) {
       sponsorPanelPresentAndHidden: true,
       accessibility,
       screenshot,
-    };
-  } finally {
-    await context.close();
-  }
-}
-
-async function mockedInvalidForm(browser) {
-  const { context, page, tracker } = await createQaPage(
-    browser,
-    { width: 1440, height: 1000 },
-    { mockConfig: true, fakeTurnstile: true },
-  );
-  try {
-    await goto(page, "/sponsors");
-    const submit = page.locator("[data-sponsor-submit]");
-    await page.waitForFunction(() => document.querySelector("[data-sponsor-submit]")?.disabled === false);
-    assert.equal(await submit.isEnabled(), true, "Test-only mocked Turnstile must enable validation testing.");
-    await submit.click();
-    const contact = page.locator("#sponsor-contact");
-    assert.equal(await contact.getAttribute("aria-invalid"), "true", "Empty submission must mark contactName invalid.");
-    assert.equal(await contact.evaluate((element) => document.activeElement === element), true, "Empty submission must focus contactName.");
-    assert.equal(tracker.sponsorPosts, 0, "Test-only mocked validation must observe zero sponsor POSTs.");
-    evidence.sponsorPosts += tracker.sponsorPosts;
-    return {
-      boundary: "test-only mocked /api/v1/config and fake Turnstile",
-      submitEnabledForInvalidFormOnly: true,
-      focusedSelector: "#sponsor-contact",
-      ariaInvalid: "true",
-      sponsorPosts: tracker.sponsorPosts,
     };
   } finally {
     await context.close();
