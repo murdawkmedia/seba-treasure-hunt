@@ -455,19 +455,31 @@ export class FakeStore {
   }
 
   async getPlayerAccess(subject: string): Promise<PlayerAccessState> {
-    const privacyAccepted = this.legalEvents.some(
+    const account = this.accounts.get(subject);
+    const accountState = account?.accountState === "deleted"
+      ? "deleted"
+      : account
+        ? "active"
+        : "missing";
+    const profileComplete = this.profiles.has(subject);
+    const currentPrivacyEvent = [...this.legalEvents].reverse().find(
       (event) => event.subject === subject && event.documentType === "privacy_media"
     );
+    const privacyAccepted = Boolean(currentPrivacyEvent) &&
+      (currentPrivacyEvent?.action === undefined || currentPrivacyEvent.action === "accepted");
     const acceptedWaiver = await this.getParticipationWaiver(subject);
     const legacyAcceptedOverride = subject === "hunter-1" && this.waiverStatus === "accepted";
+    const waiverAccepted = Boolean(acceptedWaiver) ||
+      (legacyAcceptedOverride && this.participationUnlocked);
     return {
-      accountState: this.accounts.has(subject) ? "active" : "missing",
-      profileComplete: this.profiles.has(subject),
+      accountState,
+      profileComplete,
       privacyMediaRequired: !privacyAccepted,
       privacyMediaVersion: privacyAccepted ? "2026.2" : null,
       waiverStatus: acceptedWaiver || legacyAcceptedOverride ? "accepted" : "pending",
       waiverVersion: acceptedWaiver?.documentVersion ?? (legacyAcceptedOverride ? "test-waiver" : null),
-      participationUnlocked: Boolean(acceptedWaiver) || (legacyAcceptedOverride && this.participationUnlocked)
+      participationUnlocked: accountState === "active" && profileComplete && privacyAccepted &&
+        waiverAccepted
     };
   }
 

@@ -4014,6 +4014,75 @@ test("FakeStore rejects a valid snapshot without current legal access", async ()
   );
 });
 
+test("FakeStore rejects valid snapshots when current privacy acceptance is missing or withdrawn", async () => {
+  const store = new FakeStore();
+  const cases = [
+    ["hunter-privacy-missing", "fake-report-privacy-missing", "Missing privacy acceptance"],
+    ["hunter-privacy-withdrawn", "fake-report-privacy-withdrawn", "Withdrawn privacy acceptance"]
+  ] as const;
+
+  for (const [subject, reportId] of cases) {
+    store.profiles.set(subject, {
+      subject,
+      participationBasis: "adult",
+      publicHandle: "Current Private Handle Must Not Leak"
+    });
+    await grantFakeCurrentPlayerAccess(store, subject);
+    store.reports.push({
+      id: reportId,
+      hunterSubject: subject,
+      status: "verified",
+      publicAttribution: "Trail Friends",
+      attributionKind: "display_name",
+      media: []
+    });
+  }
+  store.legalEvents = store.legalEvents.filter(
+    (event) => event.subject !== "hunter-privacy-missing"
+  );
+  store.legalEvents.push({
+    subject: "hunter-privacy-withdrawn",
+    documentType: "privacy_media",
+    action: "withdrawn"
+  });
+
+  for (const [subject, reportId, title] of cases) {
+    const access = await store.getPlayerAccess(subject);
+    assert.equal(access.accountState, "active", reportId);
+    assert.equal(access.profileComplete, true, reportId);
+    assert.equal(access.privacyMediaRequired, true, reportId);
+    assert.equal(access.waiverStatus, "accepted", reportId);
+    assert.equal(access.participationUnlocked, false, reportId);
+
+    const preview = await store.getReportDetail(reportId, "staff-preview");
+    assert.equal(preview?.publicAttribution, null, reportId);
+    assert.equal(preview?.publicationEligible, false, reportId);
+    assert.equal(
+      preview?.publicationEligibilityReason,
+      "current_legal_acceptance_required",
+      reportId
+    );
+    await assert.rejects(
+      store.publishReport(
+        reportId,
+        { title, body: "Must remain private", mediaIds: [] },
+        "staff-publisher"
+      ),
+      (error: unknown) =>
+        error instanceof ApiError && error.code === "report_publication_ineligible",
+      reportId
+    );
+    assert.equal(store.updates.some((update) => update.title === title), false, reportId);
+    assert.equal(
+      store.audits.some((audit) =>
+        audit.targetId === reportId && audit.action === "report.published"
+      ),
+      false,
+      reportId
+    );
+  }
+});
+
 test("the Lucky 13 D1 upgrade preserves stable references and projects public route order", async (t) => {
   const migrationFiles = [
     "0001_hunter_platform.sql",
