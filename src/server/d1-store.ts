@@ -2857,7 +2857,12 @@ export class D1DataStore implements DataStore {
           `SELECT
              (SELECT COUNT(*) FROM field_notes WHERE status = 'pending') AS pending_notes,
              (SELECT COUNT(*) FROM private_reports WHERE status = 'received') AS received_reports,
-             (SELECT COUNT(*) FROM content_flags WHERE status = 'received') AS received_flags`
+             (SELECT COUNT(*)
+              FROM content_flags flag
+              JOIN field_note_replies reply ON reply.id = flag.target_id
+              JOIN field_notes note ON note.id = reply.field_note_id AND note.status = 'approved'
+              JOIN hunter_profiles author ON author.subject = reply.author_subject
+              WHERE flag.target_kind = 'reply' AND flag.status IN ('received', 'reviewing')) AS received_flags`
         )
         .first<Row>(),
       this.db.prepare("SELECT key, enabled FROM feature_flags").all<Row>()

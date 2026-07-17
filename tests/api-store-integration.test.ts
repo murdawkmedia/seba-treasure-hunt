@@ -4478,7 +4478,30 @@ test("real D1 resolves public Case Note and reply identities without exposing mi
     ).bind(replyId, noteId, subject, timestamp)
   ]));
 
-  const board = await new D1DataStore(db).listBoard(null);
+  await db.batch([
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, adult_attested_at,
+        participation_basis, guardian_permission_attested_at, created_at, updated_at)
+       VALUES ('flag-reporter-subject-private-001', 'flag-reporter-private@example.test', 'Private flag reporter',
+               'Private Reporter Handle', ?, 'adult', NULL, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO media_uploads
+       (id, owner_kind, owner_id, private_object_key, derivative_object_key,
+        content_type, byte_size, status, created_at)
+       VALUES ('board-private-media', 'field_note', 'note-custom', 'private/board-asset/original.jpg',
+               'derivatives/board-private-media.webp', 'image/webp', 1024, 'ready', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, status, created_at)
+       VALUES ('board-private-reporter-flag', 'flag-reporter-subject-private-001', 'reply', 'reply-custom', 'spam', 'received', ?)`
+    ).bind(timestamp)
+  ]);
+
+  const store = new D1DataStore(db);
+  const board = await store.listBoard(null);
   const labels = new Map(board.items.map((note) => [String(note.id), {
     author: note.authorHandle,
     reply: (note.replies as Record<string, unknown>[])[0]?.authorHandle
@@ -4486,7 +4509,28 @@ test("real D1 resolves public Case Note and reply identities without exposing mi
   assert.deepEqual(labels.get("note-custom"), { author: "Nancy & Ron", reply: "Nancy & Ron" });
   assert.deepEqual(labels.get("note-fallback"), { author: "Hunter Fallback", reply: "Hunter Fallback" });
   assert.deepEqual(labels.get("note-minor"), { author: "Young Hunter", reply: "Young Hunter" });
-  assert.doesNotMatch(JSON.stringify(board), /Minor Custom Name|Minor Generated Handle/);
+  await store.moderateReply("reply-custom", "hide", "Private moderation reason", "staff-identity");
+  const boardWithModerationHistory = await store.listBoard(null);
+  const serializedBoard = JSON.stringify(boardWithModerationHistory);
+  for (const privateValue of [
+    "adult-custom",
+    "adult-custom@example.test",
+    "Private Adult",
+    "minor-profile",
+    "minor-profile@example.test",
+    "Private Minor",
+    "Minor Custom Name",
+    "Minor Generated Handle",
+    "Private moderation reason",
+    "flag-reporter-subject-private-001",
+    "privateObjectKey",
+    "private/board-asset/original.jpg",
+    "derivatives/board-private-media.webp"
+  ]) {
+    assert.equal(serializedBoard.includes(privateValue), false, `${privateValue} must not enter public board output`);
+  }
+  assert.match(serializedBoard, /Young Hunter/);
+  assert.match(serializedBoard, /Nancy & Ron/);
 });
 
 test("real D1 projects recent published replies with public parent context and received flag counts", async (t) => {
@@ -4548,11 +4592,22 @@ test("real D1 projects recent published replies with public parent context and r
       `INSERT INTO content_flags
        (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
        VALUES ('moderation-flag', 'flag-reporter', 'reply', 'moderation-reply', 'spam', 'Private reporter detail.', 'received', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
+       VALUES ('moderation-reviewing-flag', 'flag-reporter', 'reply', 'moderation-reply', 'harassment', 'Private review detail.', 'reviewing', ?)`
     ).bind(timestamp)
   ]);
 
   const store = new D1DataStore(db);
   await db.batch([
+    db.prepare(
+      `INSERT INTO private_reports
+       (id, report_type, reporter_name, reporter_email, location_description, details, status, created_at, updated_at)
+       VALUES ('received-private-report', 'tip', 'Private reporter name', 'private-report@example.test',
+               'Private location', 'Private report detail', 'received', ?, ?)`
+    ).bind(timestamp, timestamp),
     db.prepare(
       `INSERT INTO field_notes
        (id, author_subject, waypoint_id, body, status, created_at, updated_at)
@@ -4569,6 +4624,11 @@ test("real D1 projects recent published replies with public parent context and r
        VALUES ('unapproved-parent-flag', 'flag-reporter', 'reply', 'unapproved-parent-reply', 'spam', 'received', ?)`
     ).bind(timestamp)
   ]);
+  assert.deepEqual((await store.getOpsDashboard()).counts, {
+    pendingNotes: 1,
+    receivedReports: 1,
+    receivedFlags: 2
+  });
   const cursorPayload = (input: unknown) => btoa(typeof input === "string" ? input : JSON.stringify(input))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const canonicalCursor = `m1.${cursorPayload([timestamp, "moderation-reply"])}`;
@@ -4604,7 +4664,7 @@ test("real D1 projects recent published replies with public parent context and r
     body: "A public reply.",
     authorHandle: "Nancy & Ron",
     status: "published",
-    flagCount: 1,
+    flagCount: 2,
     createdAt: timestamp,
     moderatedAt: null
   }]);
@@ -4613,6 +4673,11 @@ test("real D1 projects recent published replies with public parent context and r
   assert.equal(hidden?.status, "hidden");
   assert.equal(await boardReplyCount(), 0);
   assert.equal((await store.listModerationReplies()).items[0]?.status, "hidden");
+  assert.deepEqual((await store.getOpsDashboard()).counts, {
+    pendingNotes: 1,
+    receivedReports: 1,
+    receivedFlags: 0
+  });
   assert.deepEqual(
     await db.prepare("SELECT status, resolved_by FROM content_flags WHERE id = 'moderation-flag'").first(),
     { status: "resolved", resolved_by: "staff-1" }
@@ -4676,6 +4741,11 @@ test("real D1 projects recent published replies with public parent context and r
   assert.equal(dismissed?.status, "dismissed");
   assert.equal(await boardReplyCount(), 1);
   assert.equal((await store.listContentFlags()).items.length, 0);
+  assert.deepEqual((await store.getOpsDashboard()).counts, {
+    pendingNotes: 1,
+    receivedReports: 1,
+    receivedFlags: 0
+  });
   assert.deepEqual(
     await db.prepare(
       `SELECT actor_subject, action, target_kind, target_id, metadata_json

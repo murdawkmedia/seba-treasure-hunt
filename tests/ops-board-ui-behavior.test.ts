@@ -16,6 +16,7 @@ import {
   normalizeModerationReplies,
   normalizeContentFlags,
   normalizeOpsDashboard,
+  moderationAttentionCount,
   normalizeOpsReportDetail,
   reportDestinationControls,
   reportReviewControls,
@@ -962,6 +963,27 @@ test("ops dashboard fails closed when status or controls are incomplete", () => 
   assert.equal(dashboard.status, null);
   assert.equal(dashboard.killSwitches, null);
   assert.equal(dashboard.counts.pendingNotes, null);
+});
+
+test("moderation attention counts only pending Case Notes and action-required flags", () => {
+  assert.equal(moderationAttentionCount({
+    pendingNotes: 2,
+    receivedReports: 9,
+    receivedFlags: 3,
+    activeHunters: 14,
+  }), 5);
+  assert.equal(moderationAttentionCount({
+    pendingNotes: 0,
+    receivedReports: 1,
+    receivedFlags: 0,
+    activeHunters: 14,
+  }), 0);
+  assert.equal(moderationAttentionCount({
+    pendingNotes: null,
+    receivedReports: 1,
+    receivedFlags: 0,
+    activeHunters: 14,
+  }), null);
 });
 
 test("staff actions are capability-driven and never expose peer password controls", () => {

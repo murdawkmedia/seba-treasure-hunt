@@ -32,6 +32,13 @@ export interface OpsDashboard {
   } | null;
 }
 
+export function moderationAttentionCount(
+  counts: Pick<OpsDashboard["counts"], "pendingNotes" | "receivedFlags">
+): number | null {
+  if (counts.pendingNotes === null || counts.receivedFlags === null) return null;
+  return counts.pendingNotes + counts.receivedFlags;
+}
+
 interface OpsStaffRecord {
   subject: string;
   email: string;
@@ -1646,20 +1653,20 @@ function renderDashboard(dashboard: OpsDashboard): void {
     setText("#command-updated", "Awaiting a verified source timestamp");
   }
   setMetric("#metric-reports", dashboard.counts.receivedReports);
-  setMetric("#metric-moderation", dashboard.counts.pendingNotes);
+  const moderationCount = moderationAttentionCount(dashboard.counts);
+  setMetric("#metric-moderation", moderationCount);
   setMetric("#metric-hunters", dashboard.counts.activeHunters);
   setMetric("#nav-report-count", dashboard.counts.receivedReports);
-  setMetric("#nav-moderation-count", dashboard.counts.pendingNotes);
+  setMetric("#nav-moderation-count", moderationCount);
 
   const attention = document.querySelector<HTMLElement>("#command-attention");
   if (attention) {
-    const pending = (dashboard.counts.receivedReports ?? 0) + (dashboard.counts.pendingNotes ?? 0) + (dashboard.counts.receivedFlags ?? 0);
-    if (dashboard.counts.receivedReports === null && dashboard.counts.pendingNotes === null) {
+    if (moderationCount === null) {
       attention.innerHTML = `<strong>Queue totals unavailable</strong><span>No assumption has been made about pending work.</span>`;
-    } else if (pending === 0) {
-      attention.innerHTML = `<strong>No queued decisions</strong><span>The verified source reports no pending notes, reports or flags.</span>`;
+    } else if (moderationCount === 0) {
+      attention.innerHTML = `<strong>No moderation decisions</strong><span>The verified source reports no pending Case Notes or action-required flags.</span>`;
     } else {
-      attention.innerHTML = `<strong>${escapeOpsHtml(pending)} items need attention</strong><span>${escapeOpsHtml(dashboard.counts.receivedReports ?? 0)} private reports, ${escapeOpsHtml(dashboard.counts.pendingNotes ?? 0)} Field Notes and ${escapeOpsHtml(dashboard.counts.receivedFlags ?? 0)} flags.</span>`;
+      attention.innerHTML = `<strong>${escapeOpsHtml(moderationCount)} moderation items need attention</strong><span>${escapeOpsHtml(dashboard.counts.pendingNotes ?? 0)} Field Notes and ${escapeOpsHtml(dashboard.counts.receivedFlags ?? 0)} action-required flags.</span>`;
     }
   }
 
