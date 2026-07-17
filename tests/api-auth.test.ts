@@ -278,7 +278,10 @@ test("lists reply and flag moderation queues only for active staff", async () =>
     status: "approved",
     waypointId: 1,
     body: "A public Case Note.",
-    replies: [{ id: "reply-moderation-1", body: "A public reply." }]
+    replies: [
+      { id: "reply-moderation-1", body: "A public reply." },
+      { id: "reply-moderation-2", body: "An older public reply." }
+    ]
   });
   store.profiles.set("hunter-moderation-1", {
     subject: "hunter-moderation-1",
@@ -292,6 +295,14 @@ test("lists reply and flag moderation queues only for active staff", async () =>
     status: "published",
     createdAt: "2026-07-17T18:00:00.000Z"
   });
+  store.replies.push({
+    id: "reply-moderation-2",
+    noteId: "note-moderation-1",
+    authorSubject: "hunter-moderation-1",
+    body: "An older public reply.",
+    status: "published",
+    createdAt: "2026-07-17T17:59:00.000Z"
+  });
   store.flags.push({
     id: "flag-moderation-1",
     targetKind: "reply",
@@ -299,6 +310,14 @@ test("lists reply and flag moderation queues only for active staff", async () =>
     reason: "unsafe",
     status: "received",
     createdAt: "2026-07-17T18:01:00.000Z"
+  });
+  store.flags.push({
+    id: "flag-moderation-2",
+    targetKind: "reply",
+    targetId: "reply-moderation-2",
+    reason: "unsafe",
+    status: "received",
+    createdAt: "2026-07-17T18:00:00.000Z"
   });
 
   for (const path of ["replies", "flags"]) {
@@ -318,6 +337,26 @@ test("lists reply and flag moderation queues only for active staff", async () =>
     assert.equal(staff.headers.get("cache-control"), "no-store");
     assert.equal(body.data[0].id, `${path === "replies" ? "reply" : "flag"}-moderation-1`);
     assert.deepEqual(body.page, { nextCursor: null });
+
+    const firstPage = await app.request(
+      `https://www.timlostsomething.com/api/v1/ops/moderation/${path}?limit=1`,
+      { headers: { authorization: "Bearer staff-token" } }
+    );
+    const firstPageBody = await responseJson(firstPage);
+    assert.equal(firstPage.status, 200);
+    assert.equal(firstPageBody.data.length, 1);
+    assert.equal(firstPageBody.data[0].id, `${path === "replies" ? "reply" : "flag"}-moderation-1`);
+    assert.equal(typeof firstPageBody.page.nextCursor, "string");
+
+    const secondPage = await app.request(
+      `https://www.timlostsomething.com/api/v1/ops/moderation/${path}?limit=1&cursor=${encodeURIComponent(firstPageBody.page.nextCursor)}`,
+      { headers: { authorization: "Bearer staff-token" } }
+    );
+    const secondPageBody = await responseJson(secondPage);
+    assert.equal(secondPage.status, 200);
+    assert.equal(secondPageBody.data.length, 1);
+    assert.equal(secondPageBody.data[0].id, `${path === "replies" ? "reply" : "flag"}-moderation-2`);
+    assert.equal(secondPageBody.page.nextCursor, null);
   }
 });
 
