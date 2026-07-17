@@ -4402,3 +4402,88 @@ test("real D1 leases operator recipients exclusively and reconciles partial and 
     { status: "cancelled", last_error_code: "recipient_ineligible" }
   );
 });
+
+test("real D1 resolves public Case Note and reply identities without exposing minor profile fields", async (t) => {
+  const migrationFiles = [
+    "0001_hunter_platform.sql",
+    "0002_consent_ledger_index.sql",
+    "0003_player_accounts_and_legal_acceptance.sql",
+    "0004_environment_metadata.sql",
+    "0005_sponsor_inquiries.sql",
+    "0006_participation_waiver_and_receipts.sql",
+    "0007_waiver_receipt_leases.sql",
+    "0008_immutable_waiver_ledgers.sql",
+    "0009_atomic_rate_limits.sql",
+    "0010_graph_transactional_email.sql",
+    "0011_report_publication_and_participation.sql",
+    "0012_lucky_13_waypoints.sql",
+    "0015_submission_ops_publication_refinement.sql"
+  ];
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: `public-identity-board-${crypto.randomUUID()}` }
+  });
+  t.after(() => miniflare.dispose());
+  const db = (await miniflare.getD1Database("DB")) as unknown as D1Database;
+  for (const file of migrationFiles) await applySql(db, await readFile(path.join(root, "migrations", file), "utf8"));
+
+  const timestamp = "2026-07-15T18:00:00.000Z";
+  await db.batch([
+    db.prepare(
+      `INSERT INTO waypoints
+       (id, route_order, name, description, is_published, updated_at, updated_by)
+       VALUES (1, 1, 'Identity waypoint', 'Public description.', 1, ?, 'staff-seed')`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, public_display_name, adult_attested_at,
+        participation_basis, guardian_permission_attested_at, created_at, updated_at)
+       VALUES ('adult-custom', 'adult-custom@example.test', 'Private Adult', 'Hunter 43BA', 'Nancy & Ron', ?,
+               'adult', NULL, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, public_display_name, adult_attested_at,
+        participation_basis, guardian_permission_attested_at, created_at, updated_at)
+       VALUES ('adult-fallback', 'adult-fallback@example.test', 'Private Fallback', 'Hunter Fallback', NULL, ?,
+               'adult', NULL, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, public_display_name, adult_attested_at,
+        participation_basis, guardian_permission_attested_at, created_at, updated_at)
+       VALUES ('minor-profile', 'minor-profile@example.test', 'Private Minor', 'Minor Generated Handle', 'Minor Custom Name', ?,
+               'minor_guardian_permission', ?, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp, timestamp)
+  ]);
+
+  const identities = [
+    ["adult-custom", "note-custom", "reply-custom", "Adult custom note."],
+    ["adult-fallback", "note-fallback", "reply-fallback", "Adult fallback note."],
+    ["minor-profile", "note-minor", "reply-minor", "Minor note."]
+  ] as const;
+  await db.batch(identities.flatMap(([subject, noteId, replyId, body]) => [
+    db.prepare(
+      `INSERT INTO field_notes
+       (id, author_subject, waypoint_id, body, status, created_at, updated_at, published_at)
+       VALUES (?, ?, 1, ?, 'approved', ?, ?, ?)`
+    ).bind(noteId, subject, body, timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES (?, ?, ?, 'Reply.', 'published', ?)`
+    ).bind(replyId, noteId, subject, timestamp)
+  ]));
+
+  const board = await new D1DataStore(db).listBoard(null);
+  const labels = new Map(board.items.map((note) => [String(note.id), {
+    author: note.authorHandle,
+    reply: (note.replies as Record<string, unknown>[])[0]?.authorHandle
+  }]));
+  assert.deepEqual(labels.get("note-custom"), { author: "Nancy & Ron", reply: "Nancy & Ron" });
+  assert.deepEqual(labels.get("note-fallback"), { author: "Hunter Fallback", reply: "Hunter Fallback" });
+  assert.deepEqual(labels.get("note-minor"), { author: "Young Hunter", reply: "Young Hunter" });
+  assert.doesNotMatch(JSON.stringify(board), /Minor Custom Name|Minor Generated Handle/);
+});

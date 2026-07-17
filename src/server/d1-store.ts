@@ -2,6 +2,7 @@ import { ApiError, ConflictError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument } from "./legal-documents";
 import { isAllowedStaffEmail, staffDisplayName } from "./staff-domains";
 import { isReportReviewState, nextReportStates } from "../shared/publication";
+import { publicHunterIdentity } from "../shared/public-identity";
 import type {
   CaseStatus,
   DataStore,
@@ -425,11 +426,14 @@ export class D1DataStore implements DataStore {
     const condition = waypointId ? "AND notes.waypoint_id = ?" : "";
     let notesStatement = this.db.prepare(
         `SELECT notes.id, notes.waypoint_id, notes.body, notes.created_at, notes.published_at,
-                notes.author_handle, notes.note_kind, notes.latitude, notes.longitude,
+                notes.author_handle, notes.author_participation_basis, notes.author_public_display_name,
+                notes.author_public_handle, notes.note_kind, notes.latitude, notes.longitude,
                 w.route_order AS waypoint_route_order, w.name AS waypoint_name
          FROM (
            SELECT n.id, n.waypoint_id, n.body, n.created_at, n.published_at,
-                  p.public_handle AS author_handle, 'community' AS note_kind,
+                  p.public_handle AS author_handle, p.participation_basis AS author_participation_basis,
+                  p.public_display_name AS author_public_display_name, p.public_handle AS author_public_handle,
+                  'community' AS note_kind,
                   NULL AS latitude, NULL AS longitude
            FROM field_notes n
            JOIN hunter_profiles p ON p.subject = n.author_subject
@@ -437,7 +441,9 @@ export class D1DataStore implements DataStore {
            UNION ALL
            SELECT reviewed.id, reviewed.waypoint_id, reviewed.body, reviewed.created_at,
                   reviewed.published_at, reviewed.public_attribution AS author_handle,
-                  'operator_reviewed' AS note_kind, reviewed.latitude, reviewed.longitude
+                  NULL AS author_participation_basis, NULL AS author_public_display_name,
+                  NULL AS author_public_handle, 'operator_reviewed' AS note_kind,
+                  reviewed.latitude, reviewed.longitude
            FROM operator_reviewed_case_notes reviewed
            WHERE reviewed.status = 'published'
          ) notes
@@ -461,7 +467,8 @@ export class D1DataStore implements DataStore {
       const [repliesResult, mediaResult] = await Promise.all([
         this.db
           .prepare(
-            `SELECT r.id, r.field_note_id, r.body, r.created_at, p.public_handle
+            `SELECT r.id, r.field_note_id, r.body, r.created_at, p.participation_basis,
+                    p.public_display_name, p.public_handle
              FROM field_note_replies r JOIN hunter_profiles p ON p.subject = r.author_subject
              WHERE r.status = 'published' AND r.field_note_id IN (${placeholders})
              ORDER BY r.created_at`
@@ -492,7 +499,11 @@ export class D1DataStore implements DataStore {
         replies.push({
           id: row.id,
           body: row.body,
-          authorHandle: row.public_handle,
+          authorHandle: publicHunterIdentity({
+            participationBasis: nullable(row.participation_basis),
+            publicDisplayName: nullable(row.public_display_name),
+            publicHandle: nullable(row.public_handle)
+          }),
           createdAt: row.created_at
         });
         repliesByNote.set(owner, replies);
@@ -512,7 +523,13 @@ export class D1DataStore implements DataStore {
       waypointRouteOrder: numberOrNull(row.waypoint_route_order),
       waypointName: nullable(row.waypoint_name),
       body: row.body,
-      authorHandle: row.author_handle,
+      authorHandle: row.note_kind === "community"
+        ? publicHunterIdentity({
+            participationBasis: nullable(row.author_participation_basis),
+            publicDisplayName: nullable(row.author_public_display_name),
+            publicHandle: nullable(row.author_public_handle)
+          })
+        : value(row.author_handle),
       noteKind: row.note_kind,
       latitude: numberOrNull(row.latitude),
       longitude: numberOrNull(row.longitude),

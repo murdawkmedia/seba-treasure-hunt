@@ -23,3 +23,18 @@ test("campaign account presentation uses the privacy-safe handle and never deriv
     },
   );
 });
+
+test("campaign account presentation uses the custom public display name", () => {
+  assert.deepEqual(
+    campaignAccountModel(
+      { imageUrl: "https://img.clerk.test/avatar.png" },
+      { publicDisplayName: "Nancy & Ron", publicHandle: "Hunter 43BA" },
+    ),
+    {
+      signedIn: true,
+      handle: "Nancy & Ron",
+      avatarUrl: "https://img.clerk.test/avatar.png",
+      initial: "N",
+    },
+  );
+});

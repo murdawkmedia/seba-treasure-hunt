@@ -1,4 +1,5 @@
 import type { Clerk } from "@clerk/clerk-js";
+import { privateAccountIdentity } from "../shared/public-identity";
 
 type AccountUser = { imageUrl?: string | null };
 
@@ -30,9 +31,7 @@ function safeAvatarUrl(value: unknown): string | null {
 
 export function campaignAccountModel(user: AccountUser | null, profile: unknown): CampaignAccountModel {
   if (!user) return { signedIn: false, handle: "Sign in", avatarUrl: null, initial: "?" };
-  const handle = isRecord(profile) && typeof profile.publicHandle === "string" && profile.publicHandle.trim()
-    ? profile.publicHandle.trim()
-    : "Hunter";
+  const handle = privateAccountIdentity(isRecord(profile) ? profile : {});
   return {
     signedIn: true,
     handle,
