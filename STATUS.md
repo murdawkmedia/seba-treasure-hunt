@@ -28,6 +28,11 @@ validation accounts, submissions, or credentials into production.
 - Kept the disposable validation update isolated in the validation database.
   A Pages validation deployment does not copy that record, validation accounts
   or validation submissions into production.
+- Deployed commit `4fb7a80` to the Cloudflare Pages `codex-validation` branch
+  at `https://37b1a236.seba-treasure-hunt.pages.dev` and the stable validation
+  alias. Post-deploy smoke checks confirmed the readable homepage actions and
+  the route viewer on both URLs. Production remained on its prior public build,
+  with the same six account rows and one published update before and after.
 - Completed Release 2B in source without deploying it. Production remains unchanged pending explicit owner approval.
 - Rebuilt the homepage as a documentary case record: hero status context, case-at-a-glance facts, primary real evidence, exact fictional-reference disclosure, Tim's chronology, Lucky 13 overview, one approved update, safe actions, private reporting, Support the Search and verified FAQ.
 - Removed public pirate language, ornament and retired artwork; deleted both `sunny-pirate-treasure-seba-beach` files. Tim's 19 answer bodies, all 13 route waypoint IDs/order, 61 route photos, access controls and legal bodies remain unchanged.
@@ -88,6 +93,9 @@ validation accounts, submissions, or credentials into production.
 
 ## Current follow-ups
 
+- Unpublish the disposable validation-only `test` update through the audited
+  Ops workflow after an authorized validation staff session is available. Do
+  not delete its private report or audit history, and do not mutate production.
 - Add a scheduled retry consumer for transient operator-alert mail failures.
 - Run a real participant waiver acceptance after owner testing to verify the
   production receipt presentation and email copy.
