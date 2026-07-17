@@ -150,7 +150,7 @@ const mediaUploadInsert = (
   id: string,
   ownerKind: "field_note" | "report",
   ownerId: string,
-  status: "processing" | "ready",
+  status: "processing" | "ready" | "rejected",
   derivativeObjectKey: string | null
 ) =>
   db
@@ -169,6 +169,43 @@ const mediaUploadInsert = (
       status,
       "2026-07-15T20:02:00.000Z"
     );
+
+test("pending Case Notes project media and scope ready derivatives to the owning note", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  await applyOperatorAlertMigration(db);
+  await seedOperatorAlertFixtures(db);
+  const store = new D1DataStore(db);
+  const capture = await store.createFieldNote({
+    authorSubject: "hunter-alert",
+    waypointId: 1,
+    body: "A photographed observation awaiting moderation.",
+    media: []
+  });
+  const noteId = String(capture.value.id);
+  await db.batch([
+    mediaUploadInsert(db, "note-media-ready", "field_note", noteId, "ready", "derivatives/note-media-ready.webp"),
+    mediaUploadInsert(db, "note-media-processing", "field_note", noteId, "processing", null),
+    mediaUploadInsert(db, "note-media-rejected", "field_note", noteId, "rejected", null),
+    mediaUploadInsert(db, "other-note-media", "field_note", "another-note", "ready", "derivatives/other-note-media.webp")
+  ]);
+
+  const pending = await store.listPendingNotes();
+  const note = pending.items.find((item) => item.id === noteId);
+  assert.ok(note);
+  assert.equal(note.mediaCount, 3);
+  assert.deepEqual(note.media, [
+    { id: "note-media-ready", status: "ready", contentType: "image/jpeg", size: 1024 },
+    { id: "note-media-processing", status: "processing", contentType: "image/jpeg", size: 1024 },
+    { id: "note-media-rejected", status: "rejected", contentType: "image/jpeg", size: 1024 }
+  ]);
+
+  assert.deepEqual(
+    await store.getFieldNoteMedia(noteId, "note-media-ready", "staff-media-review"),
+    { key: "derivatives/note-media-ready.webp", contentType: "image/jpeg" }
+  );
+  assert.equal(await store.getFieldNoteMedia(noteId, "note-media-processing", "staff-media-review"), null);
+  assert.equal(await store.getFieldNoteMedia(noteId, "other-note-media", "staff-media-review"), null);
+});
 
 const officialUpdateMediaInsert = (db: D1Database, updateId: string, mediaId: string) =>
   db

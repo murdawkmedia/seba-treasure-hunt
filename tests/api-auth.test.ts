@@ -301,7 +301,33 @@ test("requires deliberate FOUND confirmation and records an auditable reason", a
 test("gives active staff a private dashboard, report queue, and moderation actions", async () => {
   const { app, store } = makeApp();
   store.reports.push({ id: "report-1", status: "received", type: "tip" });
-  store.notes.push({ id: "note-1", status: "pending", body: "A pending observation." });
+  store.notes.push({
+    id: "note-1",
+    status: "pending",
+    body: "A pending observation.",
+    media: [
+      {
+        id: "note-media-ready",
+        contentType: "image/webp",
+        size: 4,
+        status: "ready",
+        derivativeObjectKey: "derivatives/media-ready.webp"
+      },
+      { id: "note-media-processing", contentType: "image/jpeg", size: 2048, status: "processing" }
+    ]
+  });
+  store.notes.push({
+    id: "note-2",
+    status: "pending",
+    body: "Another observation.",
+    media: [{
+      id: "note-media-other",
+      contentType: "image/webp",
+      size: 4,
+      status: "ready",
+      derivativeObjectKey: "derivatives/media-ready.webp"
+    }]
+  });
   const headers = {
     authorization: "Bearer staff-token",
     origin: "https://www.timlostsomething.com"
@@ -309,7 +335,7 @@ test("gives active staff a private dashboard, report queue, and moderation actio
 
   const dashboard = await app.request("https://www.timlostsomething.com/api/v1/ops/dashboard", { headers });
   assert.equal(dashboard.status, 200);
-  assert.equal((await responseJson(dashboard)).data.counts.pendingNotes, 1);
+  assert.equal((await responseJson(dashboard)).data.counts.pendingNotes, 2);
 
   const reports = await app.request("https://www.timlostsomething.com/api/v1/ops/reports", { headers });
   assert.equal((await responseJson(reports)).data[0].id, "report-1");
@@ -321,7 +347,27 @@ test("gives active staff a private dashboard, report queue, and moderation actio
   assert.equal((await responseJson(reportUpdate)).data.status, "reviewing");
 
   const pending = await app.request("https://www.timlostsomething.com/api/v1/ops/moderation/notes", { headers });
-  assert.equal((await responseJson(pending)).data[0].id, "note-1");
+  const pendingData = (await responseJson(pending)).data;
+  assert.equal(pendingData[0].id, "note-1");
+  assert.equal(pendingData[0].mediaCount, 2);
+  assert.deepEqual(pendingData[0].media.map((item: Record<string, unknown>) => item.status), ["ready", "processing"]);
+
+  const anonymousMedia = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/moderation/notes/note-1/media/note-media-ready"
+  );
+  assert.equal(anonymousMedia.status, 401);
+  const crossNoteMedia = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/moderation/notes/note-1/media/note-media-other",
+    { headers }
+  );
+  assert.equal(crossNoteMedia.status, 404);
+  const noteMedia = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/moderation/notes/note-1/media/note-media-ready",
+    { headers }
+  );
+  assert.equal(noteMedia.status, 200);
+  assert.equal(noteMedia.headers.get("content-type"), "image/webp");
+  assert.equal(noteMedia.headers.get("cache-control"), "private, no-store");
 
   const moderation = await app.request(
     "https://www.timlostsomething.com/api/v1/ops/moderation/notes/note-1",

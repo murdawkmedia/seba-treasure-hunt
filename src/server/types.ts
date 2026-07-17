@@ -235,6 +235,13 @@ export interface StoredMedia {
   status: "processing" | "ready" | "quarantined";
 }
 
+export interface PendingNoteMedia {
+  id: string;
+  status: "processing" | "ready" | "quarantined" | "rejected" | "deleted";
+  contentType: string;
+  size: number;
+}
+
 export interface DataStore {
   getStatus(): Promise<CaseStatus>;
   listUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
@@ -342,6 +349,11 @@ export interface DataStore {
   ): Promise<Record<string, unknown> | null>;
   unpublishReport(reportId: string, actorSubject: string): Promise<Record<string, unknown> | null>;
   listPendingNotes(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  getFieldNoteMedia(
+    noteId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null>;
   moderateNote(id: string, decision: string, reason: string | null, actorSubject: string): Promise<Record<string, unknown> | null>;
   listStaff(): Promise<Record<string, unknown>[]>;
   listSubscribers(options?: { limit?: number; cursor?: string | null }): Promise<{

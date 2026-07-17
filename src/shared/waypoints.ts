@@ -36,7 +36,7 @@ export function routeOrder(value: unknown): number | null {
 
 export function stopName(order: unknown, fallback: string): string {
   const canonical = routeOrder(order);
-  return canonical === null ? fallback.trim() : STOP_NAMES[canonical - 1];
+  return canonical === null ? fallback.trim() : (STOP_NAMES[canonical - 1] ?? fallback.trim());
 }
 
 export function stopLabel(order: unknown, fallback: string): string {

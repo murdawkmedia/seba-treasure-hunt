@@ -1658,6 +1658,31 @@ export const createApi = (deps: ApiDependencies) => {
     });
     return success(c, result.items, 200, { nextCursor: result.nextCursor });
   });
+  app.get("/api/v1/ops/moderation/notes/:id/media/:mediaId", async (c) => {
+    const staff = await requireStaff(deps, c.req.raw);
+    const authorized = await deps.store.getFieldNoteMedia(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!authorized) {
+      throw new ApiError(404, "note_media_not_found", "Case Note image not found.");
+    }
+    const object = await deps.uploads.read(authorized.key);
+    if (!object || !validImageTypes.has(authorized.contentType) || !validImageTypes.has(object.contentType)) {
+      throw new ApiError(404, "note_media_not_found", "Case Note image not found.");
+    }
+    return new Response(object.body, {
+      status: 200,
+      headers: {
+        "content-type": object.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "cross-origin-resource-policy": "same-origin"
+      }
+    });
+  });
   app.post("/api/v1/ops/moderation/notes/:id", async (c) => {
     sameOrigin(c.req.raw);
     const staff = await requireStaff(deps, c.req.raw);

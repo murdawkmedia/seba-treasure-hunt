@@ -2,7 +2,7 @@ import type { Clerk } from "@clerk/clerk-js";
 import type { SignInResource, SignUpResource } from "@clerk/shared/types";
 import { createSerializedSubmission } from "./identity-submission";
 import { isAllowedStaffEmail } from "../server/staff-domains";
-import { routeOrder, waypointId } from "../shared/waypoints";
+import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
 
 type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
@@ -109,7 +109,15 @@ interface OpsModerationRecord {
   waypointRouteOrder: number | null;
   waypointName: string | null;
   mediaCount: number;
+  media: OpsModerationMedia[];
   body: string;
+}
+
+interface OpsModerationMedia {
+  id: string;
+  contentType: string;
+  size: number;
+  status: string;
 }
 
 interface OpsAuditRecord {
@@ -573,20 +581,32 @@ export function sponsorMetricValues(ledger: OpsSponsorLedger): Array<number | nu
   return visibleSponsorMetricStates.map((state) => ledger.counts[state]);
 }
 
-function normalizeModeration(payload: unknown): OpsModerationRecord[] {
+export function normalizeModeration(payload: unknown): OpsModerationRecord[] {
   const data = envelopeData(payload);
   const records = Array.isArray(data) ? data : isRecord(data) ? asArray(data.items ?? data.notes) : [];
   return records.flatMap((value) => {
     if (!isRecord(value)) return [];
     const id = asString(value.id);
     if (!id) return [];
+    const media = asArray(value.media).flatMap((item) => {
+      if (!isRecord(item)) return [];
+      const mediaId = asString(item.id).trim();
+      if (!mediaId) return [];
+      return [{
+        id: mediaId,
+        contentType: asString(item.contentType) || "application/octet-stream",
+        size: asNumber(item.size) ?? 0,
+        status: asString(item.status) || "processing"
+      }];
+    });
     return [{
       id,
       createdAt: asString(value.createdAt),
       authorHandle: asString(value.authorHandle) || "Private hunter",
       waypointId: normalizeWaypointId(value.waypointId),
       ...normalizeWaypointMetadata(value),
-      mediaCount: asNumber(value.mediaCount) ?? asArray(value.media).length,
+      mediaCount: asNumber(value.mediaCount) ?? media.length,
+      media,
       body: asString(value.body),
     }];
   });
@@ -916,9 +936,9 @@ function renderProductionSnapshotAuditRows(records: readonly Record<string, unkn
 
 function reportWaypointLabel(detail: Pick<OpsReportRecord, "waypointId" | "waypointRouteOrder" | "waypointName">): string {
   if (detail.waypointRouteOrder !== null && detail.waypointName) {
-    return `Waypoint ${detail.waypointRouteOrder} — ${detail.waypointName}`;
+    return stopLabel(detail.waypointRouteOrder, detail.waypointName);
   }
-  return detail.waypointId === "Not specified" ? "Waypoint not specified" : "Waypoint details unavailable";
+  return detail.waypointId === "Not specified" ? "Stop not specified" : "Stop details unavailable";
 }
 
 function reportCoordinateLabel(detail: OpsReportDetail): string {
@@ -1036,14 +1056,27 @@ export function renderSponsorRows(records: readonly OpsSponsorRecord[]): string 
 
 export function renderModerationRows(records: readonly OpsModerationRecord[]): string {
   if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No Field Notes are awaiting moderation.</span></td></tr>`;
-  return records.map((record) => `<tr>
+  return records.map((record) => {
+    const media = record.media.length === 0
+      ? `${escapeOpsHtml(record.mediaCount)} ${record.mediaCount === 1 ? "image" : "images"}`
+      : `<details class="ops-note-media"><summary>${escapeOpsHtml(record.mediaCount)} ${record.mediaCount === 1 ? "image" : "images"}</summary>${record.media.map((item) => {
+          const selectable = item.status === "ready";
+          const size = `${(item.size / 1_000_000).toFixed(item.size >= 1_000_000 ? 1 : 2)} MB`;
+          return `<div class="ops-note-media__item" data-note-media-state="${escapeOpsHtml(item.status)}">
+            <span>${escapeOpsHtml(item.status === "ready" ? "Ready" : item.status)} &middot; ${escapeOpsHtml(size)}</span>
+            ${selectable ? `<button class="ops-button ops-button--quiet" type="button" data-note-media-preview="${escapeOpsHtml(item.id)}" data-note-id="${escapeOpsHtml(record.id)}">Preview</button>` : ""}
+            <label><input type="checkbox" name="publicMedia" value="${escapeOpsHtml(item.id)}"${selectable ? "" : " disabled"}> Select for a later public post</label>
+          </div>`;
+        }).join("")}</details>`;
+    return `<tr>
     <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
     <td>${escapeOpsHtml(record.authorHandle)}</td>
     <td>${escapeOpsHtml(reportWaypointLabel(record))}</td>
-    <td>${escapeOpsHtml(record.mediaCount)} ${record.mediaCount === 1 ? "image" : "images"}</td>
+    <td>${media}</td>
     <td>${escapeOpsHtml(record.body.slice(0, 150))}${record.body.length > 150 ? "&hellip;" : ""}</td>
     <td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="approved">Approve</button><button class="ops-button ops-button--danger" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="rejected">Reject</button></div></td>
-  </tr>`).join("");
+  </tr>`;
+  }).join("");
 }
 
 export function renderAuditRows(records: readonly OpsAuditRecord[]): string {
@@ -2478,8 +2511,36 @@ function setupWorkspace(): void {
   });
 
   document.querySelector("#moderation-table")?.addEventListener("click", async (event) => {
-    const button = event.target;
-    if (!(button instanceof HTMLButtonElement) || !button.dataset.moderationId || !button.dataset.moderationDecision) return;
+    const target = event.target as Element;
+    const previewButton = target.closest<HTMLButtonElement>("[data-note-media-preview]");
+    if (previewButton) {
+      const noteId = previewButton.dataset.noteId;
+      const mediaId = previewButton.dataset.noteMediaPreview;
+      if (!noteId || !mediaId) return;
+      previewButton.disabled = true;
+      try {
+        const headers = await opsHeaders();
+        const response = await fetch(
+          `/api/v1/ops/moderation/notes/${encodeURIComponent(noteId)}/media/${encodeURIComponent(mediaId)}`,
+          { headers, credentials: "same-origin", cache: "no-store" }
+        );
+        const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim() ?? "";
+        if (!response.ok || !["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
+          throw new Error("The Case Note image preview is unavailable.");
+        }
+        const objectUrl = URL.createObjectURL(await response.blob());
+        const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");
+        if (!opened) throw new Error("Allow pop-ups to preview this Case Note image.");
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } catch (error) {
+        showPageError(error instanceof Error ? error.message : "The Case Note image preview is unavailable.");
+      } finally {
+        previewButton.disabled = false;
+      }
+      return;
+    }
+    const button = target.closest<HTMLButtonElement>("[data-moderation-id]");
+    if (!button || !button.dataset.moderationId || !button.dataset.moderationDecision) return;
     const decision = button.dataset.moderationDecision;
     const reason = decision === "rejected" ? window.prompt("Record a private moderation reason:") : "Approved after operator review";
     if (reason === null || !window.confirm(`${decision === "approved" ? "Approve" : "Reject"} this Field Note?`)) return;

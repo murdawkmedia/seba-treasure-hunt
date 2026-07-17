@@ -10,6 +10,7 @@ import {
   buildSubscriberCsv,
   applyWaiverReceiptRetryState,
   createReportReviewGuard,
+  normalizeModeration,
   normalizeOpsDashboard,
   normalizeOpsReportDetail,
   reportReviewControls,
@@ -20,6 +21,7 @@ import {
   normalizeOpsWaiverDetail,
   renderOpsWaiverDetail,
   renderReportEvidence,
+  renderModerationRows,
   renderReportPrivateDetail,
   renderReportPublicationPreview,
   renderReportRows,
@@ -32,6 +34,33 @@ import {
   resolveOpsView,
   waiverReceiptRetryIntent,
 } from "../src/client/ops";
+
+test("Case Note moderation renders truthful media states with publication selection off", () => {
+  const records = normalizeModeration({ data: [{
+    id: "note-1",
+    createdAt: "2026-07-17T18:00:00.000Z",
+    authorHandle: "Hunter A7F3",
+    waypointId: 11,
+    waypointRouteOrder: 11,
+    waypointName: "The Driving Range & the Digger Café",
+    body: "A photographed observation.",
+    mediaCount: 3,
+    media: [
+      { id: "ready", status: "ready", contentType: "image/webp", size: 100794 },
+      { id: "processing", status: "processing", contentType: "image/jpeg", size: 11000000 },
+      { id: "rejected", status: "rejected", contentType: "image/jpeg", size: 2048 }
+    ]
+  }] });
+
+  assert.equal(records[0]?.mediaCount, 3);
+  const html = renderModerationRows(records);
+  assert.match(html, /3 images/);
+  assert.match(html, /data-note-media-preview="ready"/);
+  assert.match(html, /name="publicMedia" value="ready"/);
+  assert.doesNotMatch(html, /name="publicMedia" value="ready"[^>]*checked/);
+  assert.match(html, /name="publicMedia" value="processing"[^>]*disabled/);
+  assert.match(html, /name="publicMedia" value="rejected"[^>]*disabled/);
+});
 
 test("production snapshot normalization and rows preserve private review data without mutation controls", () => {
   const summary = normalizeProductionSnapshotSummary({ data: {
@@ -78,7 +107,7 @@ test("report summaries preserve numeric waypoint identifiers and offer deliberat
 
   assert.equal(records[0]?.waypointId, "4");
   const html = renderReportRows(records);
-  assert.match(html, /Waypoint 4 — Seba Beach Seniors Centre/);
+  assert.match(html, /Stop 04 · Seniors Centre/);
   assert.match(html, /Review report/);
   assert.doesNotMatch(html, />Begin review</);
 });
@@ -121,7 +150,7 @@ test("minor report publication preview exposes game facts but no private identit
     body: "Edited public story",
   });
   assert.match(preview, /Young Hunter/);
-  assert.match(preview, /Waypoint 4/);
+  assert.match(preview, /Stop 04 · Seniors Centre/);
   assert.match(preview, /53\.123/);
   assert.match(preview, /-114\.456/);
   assert.doesNotMatch(preview, /Alex Young|alex@example\.ca|780-555-0123|hunter-minor-private/);
@@ -520,7 +549,7 @@ test("board and Ops use public route metadata without guessing from stable IDs",
     exactUrl: "https://maps.google.com/?q=private-waypoint",
   }] });
   const board = renderBoardFeed({ kind: "ready", canReply: false, notes });
-  assert.match(board, /Waypoint 5 — Derby&#039;s Lakeview General Store/);
+  assert.match(board, /Stop 05 · Derby&#039;s General Store/);
   assert.doesNotMatch(board, /must-not-become-a-name|private-waypoint/);
 
   const detail = normalizeOpsReportDetail({ data: {
@@ -548,7 +577,7 @@ test("board and Ops use public route metadata without guessing from stable IDs",
   } });
   assert.ok(detail);
   const preview = renderReportPublicationPreview(detail, { title: "Derby's report", body: "Edited public story" });
-  assert.match(preview, /Waypoint 5 — Derby&#039;s Lakeview General Store/);
+  assert.match(preview, /Stop 05 · Derby&#039;s General Store/);
   assert.doesNotMatch(preview, /Private Reporter|private@example\.test/);
 });
 

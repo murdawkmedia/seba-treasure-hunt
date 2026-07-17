@@ -865,7 +865,38 @@ export class FakeStore {
   }
 
   async listPendingNotes() {
-    return { items: this.notes.filter((note) => note.status === "pending"), nextCursor: null };
+    return {
+      items: this.notes.filter((note) => note.status === "pending").map((note) => {
+        const media = Array.isArray(note.media)
+          ? note.media.map((item) => {
+              const record = item as Record<string, unknown>;
+              return {
+                id: record.id,
+                contentType: record.contentType,
+                size: record.size,
+                status: record.status
+              };
+            })
+          : [];
+        const { media: _privateMedia, ...safeNote } = note;
+        return { ...safeNote, mediaCount: media.length, media };
+      }),
+      nextCursor: null
+    };
+  }
+
+  async getFieldNoteMedia(noteId: string, mediaId: string, actorSubject: string) {
+    const note = this.notes.find((item) => item.id === noteId);
+    const media = Array.isArray(note?.media)
+      ? note.media.find((item) => (item as Record<string, unknown>).id === mediaId)
+      : null;
+    const record = media as Record<string, unknown> | null;
+    const key = typeof record?.derivativeObjectKey === "string" ? record.derivativeObjectKey : "";
+    if (!record || record.status !== "ready" || !key.startsWith("derivatives/") || key === "derivatives/") {
+      return null;
+    }
+    this.audits.push({ action: "note.media.viewed", actorSubject, targetId: noteId, mediaId });
+    return { key, contentType: String(record.contentType ?? "application/octet-stream") };
   }
 
   async moderateNote(id: string, decision: string, reason: string | null, actorSubject: string) {

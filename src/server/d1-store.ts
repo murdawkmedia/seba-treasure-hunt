@@ -3140,18 +3140,71 @@ export class D1DataStore implements DataStore {
       .bind(cursor, limit + 1)
       .all<Row>();
     const rows = result.results;
+    const selected = rows.slice(0, limit);
+    const noteIds = selected.map((row) => value(row.id));
+    const mediaByNote = new Map<string, Record<string, unknown>[]>();
+    if (noteIds.length > 0) {
+      const placeholders = noteIds.map(() => "?").join(",");
+      const mediaResult = await this.db
+        .prepare(
+          `SELECT id, owner_id, content_type, byte_size, status
+           FROM media_uploads
+           WHERE owner_kind = 'field_note' AND owner_id IN (${placeholders})
+           ORDER BY CASE status WHEN 'ready' THEN 0 WHEN 'processing' THEN 1 ELSE 2 END,
+                    created_at, id`
+        )
+        .bind(...noteIds)
+        .all<Row>();
+      for (const row of mediaResult.results) {
+        const owner = value(row.owner_id);
+        const media = mediaByNote.get(owner) ?? [];
+        media.push({
+          id: row.id,
+          status: row.status,
+          contentType: row.content_type,
+          size: Number(row.byte_size)
+        });
+        mediaByNote.set(owner, media);
+      }
+    }
     return {
-      items: rows.slice(0, limit).map((row) => ({
-        id: row.id,
-        waypointId: Number(row.waypoint_id),
-        waypointRouteOrder: Number(row.waypoint_route_order),
-        waypointName: row.waypoint_name,
-        body: row.body,
-        authorHandle: row.public_handle,
-        createdAt: row.created_at
-      })),
+      items: selected.map((row) => {
+        const media = mediaByNote.get(value(row.id)) ?? [];
+        return {
+          id: row.id,
+          waypointId: Number(row.waypoint_id),
+          waypointRouteOrder: Number(row.waypoint_route_order),
+          waypointName: row.waypoint_name,
+          body: row.body,
+          authorHandle: row.public_handle,
+          createdAt: row.created_at,
+          mediaCount: media.length,
+          media
+        };
+      }),
       nextCursor: rows.length > limit ? value(rows[limit - 1]?.created_at) : null
     };
+  }
+
+  async getFieldNoteMedia(
+    noteId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT derivative_object_key, content_type
+         FROM media_uploads
+         WHERE id = ? AND owner_kind = 'field_note' AND owner_id = ? AND status = 'ready'
+           AND derivative_object_key IS NOT NULL
+         LIMIT 1`
+      )
+      .bind(mediaId, noteId)
+      .first<Row>();
+    const key = value(row?.derivative_object_key);
+    if (!row || !key.startsWith("derivatives/") || key === "derivatives/") return null;
+    await this.audit(actorSubject, "note.media.viewed", "field_note", noteId, { mediaId });
+    return { key, contentType: value(row.content_type) };
   }
 
   async moderateNote(
