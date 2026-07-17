@@ -609,6 +609,83 @@ test("requires an image for find reports and stores accepted uploads privately",
   assert.equal(uploads.saved.length, 1, "an idempotent retry must not create an orphan upload");
 });
 
+test("snapshots safe report attribution from the stored profile instead of client-supplied labels", async () => {
+  const store = new FakeStore();
+  store.profiles.set("hunter-1", {
+    subject: "hunter-1",
+    participationBasis: "adult",
+    publicDisplayName: "Nancy & Ron",
+    publicHandle: "Hunter 43BA",
+    fullName: "Private Legal Name",
+    email: "private@example.ca"
+  });
+  const { app } = makeApp(store);
+  const base = {
+    type: "tip",
+    name: "Private Legal Name",
+    email: "private@example.ca",
+    locationDescription: "Near the public trail",
+    details: "A possible clue was visible.",
+    publicAttributionKind: "display_name",
+    publicAttribution: "Attacker supplied label"
+  };
+  const missingChoice = await app.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    ...json(
+      { ...base, publicAttributionKind: undefined },
+      {
+        authorization: "Bearer hunter-token",
+        "idempotency-key": "missing-attribution",
+        "cf-turnstile-response": "human-token"
+      }
+    )
+  });
+  assert.equal(missingChoice.status, 422);
+  assert.equal((await responseJson(missingChoice)).error.code, "public_attribution_required");
+
+  const adult = await app.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    ...json(base, {
+      authorization: "Bearer hunter-token",
+      "idempotency-key": "adult-attribution",
+      "cf-turnstile-response": "human-token"
+    })
+  });
+  assert.equal(adult.status, 201);
+  assert.equal(store.reports[0]?.publicAttribution, "Nancy & Ron");
+  assert.equal(store.reports[0]?.attributionKind, "display_name");
+
+  store.profiles.set("hunter-1", {
+    subject: "hunter-1",
+    participationBasis: "minor_guardian_permission",
+    publicDisplayName: "Child Name",
+    publicHandle: "Hunter CHILD"
+  });
+  const minor = await app.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    ...json(base, {
+      authorization: "Bearer hunter-token",
+      "idempotency-key": "minor-attribution",
+      "cf-turnstile-response": "human-token"
+    })
+  });
+  assert.equal(minor.status, 201);
+  assert.equal(store.reports[1]?.publicAttribution, "Young Hunter");
+  assert.equal(store.reports[1]?.attributionKind, "young_hunter");
+
+  const anonymous = await app.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    ...json(base, {
+      "idempotency-key": "anonymous-attribution",
+      "cf-turnstile-response": "human-token"
+    })
+  });
+  assert.equal(anonymous.status, 201);
+  assert.equal(store.reports[2]?.publicAttribution, "Community Hunter");
+  assert.equal(store.reports[2]?.attributionKind, "community");
+  assert.equal(JSON.stringify(store.reports.map(({ publicAttribution }) => publicAttribution)).includes("Private"), false);
+});
+
 test("enforces decimal 20 MB per-image and 30 MB combined report limits", async () => {
   const jpeg = (size: number, name: string) => {
     const bytes = new Uint8Array(size);

@@ -12,3 +12,10 @@ export function createSerializedSubmission<T>(
     }
   };
 }
+
+export { resolvePublicAttribution } from "../shared/publication";
+export type {
+  AttributionProfile,
+  RequestedPublicAttributionKind,
+  ResolvedPublicAttribution,
+} from "../shared/publication";

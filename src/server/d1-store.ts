@@ -562,8 +562,9 @@ export class D1DataStore implements DataStore {
         .prepare(
           `INSERT INTO private_reports
            (id, report_type, hunter_subject, reporter_name, reporter_email, reporter_phone,
-            waypoint_id, location_description, latitude, longitude, details, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?)`
+            waypoint_id, location_description, latitude, longitude, details, public_attribution,
+            attribution_kind, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?)`
         )
         .bind(
           reportId,
@@ -577,6 +578,8 @@ export class D1DataStore implements DataStore {
           input.latitude ?? null,
           input.longitude ?? null,
           input.details,
+          input.publicAttribution ?? null,
+          input.attributionKind ?? null,
           createdAt,
           createdAt
         ),
@@ -1827,12 +1830,13 @@ export class D1DataStore implements DataStore {
     const statements = [
       this.db.prepare(
         `INSERT INTO hunter_profiles
-         (subject, verified_email, full_name, public_handle, phone, town_area, age_band,
+         (subject, verified_email, full_name, public_handle, public_display_name, phone, town_area, age_band,
           interests_json, discovery_source, adult_attested_at, participation_basis,
           guardian_permission_attested_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(subject) DO UPDATE SET
            verified_email = excluded.verified_email, full_name = excluded.full_name,
+           public_display_name = excluded.public_display_name,
            phone = excluded.phone, town_area = excluded.town_area, age_band = excluded.age_band,
            interests_json = excluded.interests_json, discovery_source = excluded.discovery_source,
            adult_attested_at = excluded.adult_attested_at,
@@ -1845,6 +1849,7 @@ export class D1DataStore implements DataStore {
         input.verifiedEmail,
         input.fullName,
         publicHandle,
+        input.publicDisplayName ?? null,
         null,
         input.townArea ?? null,
         null,
@@ -3658,7 +3663,8 @@ export class D1DataStore implements DataStore {
   }> {
     const row = await this.db
       .prepare(
-        `SELECT r.hunter_subject, r.status, profile.public_handle,
+        `SELECT r.hunter_subject, r.status, r.public_attribution, r.attribution_kind,
+                profile.public_handle,
                 profile.participation_basis,
                 report_time.action AS report_time_action,
                 report_account.participation_basis AS report_time_basis,
@@ -3707,6 +3713,12 @@ export class D1DataStore implements DataStore {
     const protectsMinor = currentBasis === "minor_guardian_permission" ||
       reportTimeBasis === "minor_guardian_permission";
     const safeMinorAttribution = protectsMinor ? "Young Hunter" : null;
+    const snapshottedAttribution = nullable(row.public_attribution)?.trim() ?? "";
+    const snapshottedKind = nullable(row.attribution_kind);
+    const safeSnapshot = snapshottedAttribution &&
+      (snapshottedKind === "display_name" || snapshottedKind === "hunter_handle" || snapshottedKind === "community")
+      ? snapshottedAttribution
+      : null;
     if (row.status === "rejected" || row.status === "resolved") {
       return preview({
         publicAttribution: safeMinorAttribution ?? (hunterSubject ? null : "Community Hunter"),
@@ -3753,6 +3765,13 @@ export class D1DataStore implements DataStore {
         publicationEligibilityReason: "eligible"
       });
     }
+    if (safeSnapshot) {
+      return preview({
+        publicAttribution: safeSnapshot,
+        publicationEligible: true,
+        publicationEligibilityReason: "eligible"
+      });
+    }
     const publicHandle = nullable(row.public_handle)?.trim() ?? "";
     if (!publicHandle) {
       return preview({
@@ -3776,6 +3795,8 @@ export class D1DataStore implements DataStore {
       name: row.reporter_name,
       email: row.reporter_email,
       phone: row.reporter_phone,
+      publicAttribution: nullable(row.public_attribution),
+      attributionKind: nullable(row.attribution_kind),
       waypointId: row.waypoint_id === null ? null : Number(row.waypoint_id),
       waypointRouteOrder: numberOrNull(row.waypoint_route_order),
       waypointName: nullable(row.waypoint_name),
@@ -3796,6 +3817,7 @@ export class D1DataStore implements DataStore {
       email: row.verified_email,
       fullName: row.full_name,
       publicHandle: row.public_handle,
+      publicDisplayName: nullable(row.public_display_name),
       townArea: row.town_area,
       interests: parseJson(row.interests_json, []),
       discoverySource: row.discovery_source,

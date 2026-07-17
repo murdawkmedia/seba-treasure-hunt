@@ -13,6 +13,10 @@ import {
 } from "../shared/report-image-limits";
 import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
 import { createTurnstileLifecycle, type TurnstileResetReason } from "./turnstile-lifecycle";
+import {
+  isRequestedPublicAttributionKind,
+  type RequestedPublicAttributionKind,
+} from "../shared/publication";
 
 export type ReportType = "find" | "tip" | "safety";
 
@@ -29,6 +33,7 @@ export interface ReportDraft {
   turnstileToken: string;
   coordinates: null | { latitude: number; longitude: number };
   accuracy: boolean;
+  publicAttributionKind: RequestedPublicAttributionKind | "";
 }
 
 export type ReportErrors = Partial<
@@ -41,7 +46,8 @@ export type ReportErrors = Partial<
     | "details"
     | "photo"
     | "turnstileToken"
-    | "accuracy",
+    | "accuracy"
+    | "publicAttributionKind",
     string
   >
 >;
@@ -66,6 +72,9 @@ export function validateReportDraft(draft: ReportDraft): ReportErrors {
   }
   if (!draft.accuracy) {
     errors.accuracy = "Confirm that you believe the report is accurate.";
+  }
+  if (!isRequestedPublicAttributionKind(draft.publicAttributionKind)) {
+    errors.publicAttributionKind = "Choose how this report may be credited if an operator publishes it.";
   }
   return errors;
 }
@@ -101,6 +110,7 @@ export function buildReportPayload(draft: ReportDraft): Record<string, string | 
     locationDescription: draft.locationDescription.trim(),
     details: draft.details.trim(),
     cfTurnstileResponse: draft.turnstileToken,
+    publicAttributionKind: draft.publicAttributionKind,
   };
   if (draft.phone.trim()) payload.phone = draft.phone.trim();
   const stableWaypointId = waypointId(draft.waypointId);
@@ -436,6 +446,7 @@ function readDraft(
     turnstileToken,
     coordinates: hasCoordinates ? { latitude, longitude } : null,
     accuracy: data.get("accuracy") === "on",
+    publicAttributionKind: String(data.get("publicAttributionKind") ?? "") as ReportDraft["publicAttributionKind"],
   };
 }
 

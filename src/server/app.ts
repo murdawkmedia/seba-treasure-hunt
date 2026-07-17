@@ -2,6 +2,11 @@ import { Hono, type Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { waypointId } from "../shared/waypoints";
 import {
+  isRequestedPublicAttributionKind,
+  publicDisplayNameError,
+  resolvePublicAttribution,
+} from "../shared/publication";
+import {
   REPORT_IMAGE_DIRECT_BYTES,
   REPORT_IMAGE_TOTAL_BYTES,
   REPORT_IMAGE_TYPES,
@@ -903,6 +908,21 @@ export const createApi = (deps: ApiDependencies) => {
         // Private reporting remains available when public status is unavailable.
       }
     }
+    if (hunter && !isRequestedPublicAttributionKind(body.publicAttributionKind)) {
+      throw new ApiError(
+        422,
+        "public_attribution_required",
+        "Choose how this report may be credited if an operator publishes it.",
+        { field: "publicAttributionKind" }
+      );
+    }
+    const requestedAttribution = isRequestedPublicAttributionKind(body.publicAttributionKind)
+      ? body.publicAttributionKind
+      : "community";
+    const attribution = resolvePublicAttribution(
+      hunter ? await deps.store.getProfile(hunter.subject) : null,
+      requestedAttribution
+    );
     const media = await deps.uploads.save(files, { kind: "report", subject: hunter?.subject ?? null });
     const capture = await deps.store.createReport(
       {
@@ -919,6 +939,8 @@ export const createApi = (deps: ApiDependencies) => {
         latitude: numericCoordinate(body, "latitude", -90, 90),
         longitude: numericCoordinate(body, "longitude", -180, 180),
         details: requiredString(body, "details", { max: 4_000, label: "Details" }),
+        publicAttribution: attribution.label,
+        attributionKind: attribution.kind,
         media
       },
       key
@@ -1067,12 +1089,20 @@ export const createApi = (deps: ApiDependencies) => {
     const interests = Array.isArray(body.interests)
       ? body.interests.filter((item): item is string => typeof item === "string").slice(0, 10)
       : [];
+    const publicDisplayName = optionalString(body, "publicDisplayName", 40) ?? "";
+    const displayNameError = publicDisplayNameError(publicDisplayName);
+    if (displayNameError) {
+      throw new ApiError(422, "public_display_name_invalid", displayNameError, {
+        field: "publicDisplayName"
+      });
+    }
     const submittedConsents = body.consents && typeof body.consents === "object"
       ? (body.consents as Record<string, unknown>)
       : {};
     const profile = await deps.store.upsertProfile(hunter.subject, {
         verifiedEmail,
         fullName: requiredString(body, "fullName", { max: 100, label: "Full name" }),
+        publicDisplayName: publicDisplayName || null,
         townArea: optionalString(body, "townArea", 100),
         interests,
         discoverySource: optionalString(body, "discoverySource", 100),

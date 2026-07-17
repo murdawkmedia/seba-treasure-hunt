@@ -120,6 +120,7 @@ const baseReport: ReportDraft = {
   turnstileToken: "verified-token",
   coordinates: null,
   accuracy: true,
+  publicAttributionKind: "hunter_handle",
 };
 
 test("report waypoints preserve stable IDs while sorting and labeling by public route order", () => {
@@ -320,6 +321,17 @@ test("find reports require an image while tips and safety reports do not", () =>
   assert.deepEqual(validateReportDraft({ ...baseReport, type: "safety" }), {});
 });
 
+test("report payload carries the required attribution choice but never a public label", () => {
+  const payload = buildReportPayload({ ...baseReport, publicAttributionKind: "display_name" });
+  assert.equal(payload.publicAttributionKind, "display_name");
+  assert.equal("publicAttribution" in payload, false);
+  assert.equal(
+    validateReportDraft({ ...baseReport, publicAttributionKind: "" as ReportDraft["publicAttributionKind"] })
+      .publicAttributionKind,
+    "Choose how this report may be credited if an operator publishes it.",
+  );
+});
+
 test("report form data uses browser-prepared upload files", () => {
   const original = new File(["original"], "large.jpg", { type: "image/jpeg" });
   const prepared = new File(["prepared"], "large.webp", { type: "image/webp" });
@@ -368,6 +380,7 @@ test("report validation catches missing contact, context, and human proof", () =
 
 const baseProfile: HunterProfileDraft = {
   fullName: "A Hunter",
+  publicDisplayName: "Trail Friends",
   townArea: "Seba Beach",
   interests: ["community", "outdoors"],
   discoverySource: "friend",
@@ -413,6 +426,7 @@ test("minor profile requires guardian permission while an adult profile does not
 test("profile payload keeps hunt and marketing permissions separate", () => {
   assert.deepEqual(buildProfilePayload(baseProfile), {
     fullName: "A Hunter",
+    publicDisplayName: "Trail Friends",
     townArea: "Seba Beach",
     interests: ["community", "outdoors"],
     discoverySource: "friend",
@@ -422,6 +436,18 @@ test("profile payload keeps hunt and marketing permissions separate", () => {
     privacyMediaVersion: "2026.3",
     consents: { huntEmail: true, marketing: false },
   });
+});
+
+test("optional public display names use a short, non-contact public label", () => {
+  assert.deepEqual(validateProfileDraft({ ...baseProfile, publicDisplayName: "Nancy & Ron" }), {});
+  assert.equal(
+    validateProfileDraft({ ...baseProfile, publicDisplayName: "nobody@example.ca" }).publicDisplayName,
+    "Use a public name without an email address or phone number.",
+  );
+  assert.equal(
+    validateProfileDraft({ ...baseProfile, publicDisplayName: "A" }).publicDisplayName,
+    "Public display names must be 2 to 40 characters, or left blank.",
+  );
 });
 
 test("changing a participant name or participation basis invalidates the displayed waiver", () => {

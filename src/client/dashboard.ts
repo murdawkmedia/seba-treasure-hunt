@@ -1,4 +1,5 @@
 import { routeOrder, waypointId } from "../shared/waypoints";
+import { publicDisplayNameError } from "../shared/publication";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -143,6 +144,7 @@ export async function completeHunterRegistration(workflow: HunterRegistrationWor
 
 export interface HunterProfileDraft {
   fullName: string;
+  publicDisplayName: string;
   townArea: string;
   interests: string[];
   discoverySource: string;
@@ -169,11 +171,13 @@ export interface WaiverDraft {
 
 type WaiverErrors = Partial<Record<"review" | "waiverAccepted" | "guardianAttested" | "minors", string>>;
 
-type ProfileErrors = Partial<Record<"fullName" | "participationBasis" | "guardianPermissionAttested" | "privacyMediaAccepted", string>>;
+type ProfileErrors = Partial<Record<"fullName" | "publicDisplayName" | "participationBasis" | "guardianPermissionAttested" | "privacyMediaAccepted", string>>;
 
 export function validateProfileDraft(draft: HunterProfileDraft): ProfileErrors {
   const errors: ProfileErrors = {};
   if (!draft.fullName.trim()) errors.fullName = "Enter your name.";
+  const displayNameError = publicDisplayNameError(draft.publicDisplayName);
+  if (displayNameError) errors.publicDisplayName = displayNameError;
   if (draft.participationBasis !== "adult" && draft.participationBasis !== "minor_guardian_permission") {
     errors.participationBasis = "Choose whether you are 18 or older or participating with guardian permission.";
   } else if (draft.participationBasis === "minor_guardian_permission" && !draft.guardianPermissionAttested) {
@@ -188,6 +192,7 @@ export function validateProfileDraft(draft: HunterProfileDraft): ProfileErrors {
 export function buildProfilePayload(draft: HunterProfileDraft): Record<string, unknown> {
   return {
     fullName: draft.fullName.trim(),
+    publicDisplayName: draft.publicDisplayName.trim() || null,
     townArea: draft.townArea.trim() || null,
     interests: draft.interests.slice(0, 10),
     discoverySource: draft.discoverySource.trim() || null,
@@ -739,6 +744,7 @@ function fillProfileForm(
     if (input) input.value = typeof value === "string" ? value : "";
   };
   setValue("fullName", profile.fullName);
+  setValue("publicDisplayName", profile.publicDisplayName);
   setValue("townArea", profile.townArea);
   setValue("discoverySource", profile.discoverySource);
 
@@ -776,6 +782,7 @@ function readProfileDraft(form: HTMLFormElement): HunterProfileDraft {
     profileInput<HTMLInputElement>(form, `input[name="${name}"]`)?.checked ?? false;
   return {
     fullName: value("fullName"),
+    publicDisplayName: value("publicDisplayName"),
     townArea: value("townArea"),
     interests: [...form.querySelectorAll<HTMLInputElement>('input[name="interests"]:checked')].map(
       (input) => input.value,
@@ -1799,6 +1806,7 @@ async function saveSignupProfileAndPrivacy(auth: HunterAuthHook, draft: HunterSi
     body: JSON.stringify({
       ...buildProfilePayload({
       fullName: draft.fullName,
+      publicDisplayName: "",
       townArea: "",
       interests: [],
       discoverySource: "",

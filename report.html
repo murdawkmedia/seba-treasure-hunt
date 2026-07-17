@@ -129,6 +129,15 @@
                 <span class="field-error" id="report-details-error" data-error-for="details"></span>
               </div>
 
+              <fieldset class="form-field form-field--full check-group">
+                <legend>How may we credit this if an operator publishes it? <span class="required-mark" aria-hidden="true">*</span></legend>
+                <label class="check-row"><input name="publicAttributionKind" type="radio" value="display_name" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Use my public display name.</label>
+                <label class="check-row"><input name="publicAttributionKind" type="radio" value="hunter_handle" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Use my anonymous Hunter handle.</label>
+                <label class="check-row"><input name="publicAttributionKind" type="radio" value="community" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Publish as Community Hunter.</label>
+                <span class="field-hint" id="report-public-attribution-hint">Signed-out reports use Community Hunter. Accounts registered as under 18 always use Young Hunter. Operators never publish your private name or contact details.</span>
+                <span class="field-error" id="report-public-attribution-error" data-error-for="publicAttributionKind"></span>
+              </fieldset>
+
               <div class="form-field form-field--full">
                 <label for="report-photo">Photographs <span data-photo-required-copy>(required for a find)</span></label>
                 <input id="report-photo" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="report-photo-hint report-photo-status report-photo-error" />

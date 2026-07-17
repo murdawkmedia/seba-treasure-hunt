@@ -250,7 +250,8 @@ const operatorAlertMigrationFiles = [
   "0009_atomic_rate_limits.sql",
   "0010_graph_transactional_email.sql",
   "0011_report_publication_and_participation.sql",
-  "0012_lucky_13_waypoints.sql"
+  "0012_lucky_13_waypoints.sql",
+  "0015_submission_ops_publication_refinement.sql"
 ] as const;
 
 const createOperatorAlertDatabase = async (t: { after(callback: () => unknown): void }) => {
@@ -548,7 +549,8 @@ test("real D1 persists current waiver acceptance, safe projections, and receipt 
     "0009_atomic_rate_limits.sql",
     "0010_graph_transactional_email.sql",
     "0011_report_publication_and_participation.sql",
-    "0012_lucky_13_waypoints.sql"
+    "0012_lucky_13_waypoints.sql",
+    "0015_submission_ops_publication_refinement.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -1784,7 +1786,8 @@ test("the real D1 report publication migration stores participation and enforces
     "0009_atomic_rate_limits.sql",
     "0010_graph_transactional_email.sql",
     "0011_report_publication_and_participation.sql",
-    "0012_lucky_13_waypoints.sql"
+    "0012_lucky_13_waypoints.sql",
+    "0015_submission_ops_publication_refinement.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -2341,7 +2344,8 @@ test("real D1 atomically changes private report state with its event and audit h
     "0009_atomic_rate_limits.sql",
     "0010_graph_transactional_email.sql",
     "0011_report_publication_and_participation.sql",
-    "0012_lucky_13_waypoints.sql"
+    "0012_lucky_13_waypoints.sql",
+    "0015_submission_ops_publication_refinement.sql"
   ];
   const miniflare = new Miniflare({
     compatibilityDate: "2026-07-11",
@@ -2448,7 +2452,8 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     "0009_atomic_rate_limits.sql",
     "0010_graph_transactional_email.sql",
     "0011_report_publication_and_participation.sql",
-    "0012_lucky_13_waypoints.sql"
+    "0012_lucky_13_waypoints.sql",
+    "0015_submission_ops_publication_refinement.sql"
   ];
   const miniflare = new Miniflare({
     compatibilityDate: "2026-07-11",
@@ -3451,6 +3456,13 @@ test("the Lucky 13 D1 upgrade preserves stable references and projects public ro
     "utf8"
   );
   await applySql(db, lucky13Migration);
+  await applySql(
+    db,
+    await readFile(
+      path.join(root, "migrations", "0015_submission_ops_publication_refinement.sql"),
+      "utf8"
+    )
+  );
 
   const expectedOrder = [
     [1, 1], [2, 2], [3, 3], [4, 4], [13, 5],
@@ -3896,6 +3908,8 @@ test("real D1 atomically creates one alert outbox and only active activated reci
       latitude: 53.5,
       longitude: -114.5,
       details: "Private report details",
+      publicAttribution: "Trail Friends",
+      attributionKind: "display_name",
       media: [
         {
           id: "report-alert-media",
@@ -3910,6 +3924,8 @@ test("real D1 atomically creates one alert outbox and only active activated reci
   );
   assert.equal(report.replayed, false);
   assert.equal(typeof report.operatorAlertJobId, "string");
+  assert.equal(report.value.publicAttribution, "Trail Friends");
+  assert.equal(report.value.attributionKind, "display_name");
 
   const reportJob = await db
     .prepare(

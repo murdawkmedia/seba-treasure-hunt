@@ -7,6 +7,19 @@ export const PUBLIC_ATTRIBUTION_KINDS = [
 
 export type PublicAttributionKind = typeof PUBLIC_ATTRIBUTION_KINDS[number];
 
+export type RequestedPublicAttributionKind = Exclude<PublicAttributionKind, "young_hunter">;
+
+export interface AttributionProfile {
+  participationBasis?: string | null;
+  publicDisplayName?: string | null;
+  publicHandle?: string | null;
+}
+
+export interface ResolvedPublicAttribution {
+  kind: PublicAttributionKind;
+  label: string;
+}
+
 export const PUBLICATION_DESTINATIONS = ["private", "case_note", "official_update"] as const;
 export type PublicationDestination = typeof PUBLICATION_DESTINATIONS[number];
 
@@ -15,6 +28,44 @@ export type OfficialUpdateState = typeof OFFICIAL_UPDATE_STATES[number];
 
 export function isPublicAttributionKind(value: unknown): value is PublicAttributionKind {
   return typeof value === "string" && PUBLIC_ATTRIBUTION_KINDS.includes(value as PublicAttributionKind);
+}
+
+export function isRequestedPublicAttributionKind(value: unknown): value is RequestedPublicAttributionKind {
+  return value === "display_name" || value === "hunter_handle" || value === "community";
+}
+
+export function publicDisplayNameError(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length < 2 || trimmed.length > 40) {
+    return "Public display names must be 2 to 40 characters, or left blank.";
+  }
+  if (trimmed.includes("@") || /(?:\+?\d[\s().-]*){7,}/.test(trimmed)) {
+    return "Use a public name without an email address or phone number.";
+  }
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} .&'’_-]*[\p{L}\p{N}.]$/u.test(trimmed)) {
+    return "Use letters, numbers, spaces, periods, apostrophes, ampersands, hyphens, or underscores.";
+  }
+  return null;
+}
+
+export function resolvePublicAttribution(
+  profile: AttributionProfile | null,
+  requested: RequestedPublicAttributionKind,
+): ResolvedPublicAttribution {
+  if (profile?.participationBasis === "minor_guardian_permission") {
+    return { kind: "young_hunter", label: "Young Hunter" };
+  }
+  if (!profile) return { kind: "community", label: "Community Hunter" };
+  const displayName = profile.publicDisplayName?.trim() ?? "";
+  if (requested === "display_name" && displayName && !publicDisplayNameError(displayName)) {
+    return { kind: "display_name", label: displayName };
+  }
+  const handle = profile.publicHandle?.trim() ?? "";
+  if (requested === "hunter_handle" && handle) {
+    return { kind: "hunter_handle", label: handle };
+  }
+  return { kind: "community", label: "Community Hunter" };
 }
 
 export function isPublicationDestination(value: unknown): value is PublicationDestination {

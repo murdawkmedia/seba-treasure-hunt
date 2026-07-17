@@ -167,6 +167,13 @@
                 </div>
 
                 <div class="form-field">
+                  <label for="profile-public-display-name">Public display name (optional)</label>
+                  <input id="profile-public-display-name" name="publicDisplayName" type="text" maxlength="40" aria-describedby="profile-public-display-name-hint profile-public-display-name-error" placeholder="For example, Nancy &amp; Ron" />
+                  <span class="field-hint" id="profile-public-display-name-hint">Only used when you explicitly choose it on a report. Your private name and email are never substituted.</span>
+                  <span class="field-error" id="profile-public-display-name-error" data-profile-error-for="publicDisplayName"></span>
+                </div>
+
+                <div class="form-field">
                   <label for="profile-town-area">Town or area (optional)</label>
                   <input id="profile-town-area" name="townArea" type="text" autocomplete="address-level2" maxlength="100" />
                 </div>
