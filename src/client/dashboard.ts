@@ -633,7 +633,7 @@ function renderLatestUpdate(value: unknown): void {
   title.textContent = text(value.title, "Official update");
   body.textContent = text(value.body, "No update details were supplied.");
   provenance.className = "provenance";
-  provenance.textContent = `${text(value.publisherName, "Campaign operator")} · ${text(value.publishedAt, "Time unavailable")}`;
+  provenance.textContent = `${text(value.publisherName, "A representative from SebaHub")} · ${text(value.publishedAt, "Time unavailable")}`;
   root.replaceChildren();
   root.appendChild(title);
   root.appendChild(provenance);

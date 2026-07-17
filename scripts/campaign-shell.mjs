@@ -116,8 +116,8 @@ function renderCampaignShell({ route, skipLabel, skipTarget }) {
 <header class="campaign-header">
   <div class="campaign-header__inner">
     <a class="campaign-brand" href="/">Tim Lost Something?<span>Tim lost his ID</span></a>
-    <button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle campaign menu</span><span aria-hidden="true">&#9776;</span></button>
-    <nav class="campaign-nav" id="campaign-nav" aria-label="Campaign">
+    <button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle case menu</span><span aria-hidden="true">&#9776;</span></button>
+    <nav class="campaign-nav" id="campaign-nav" aria-label="Case">
         ${navigation}
         <div class="campaign-account" data-campaign-account>
           <button class="campaign-account__signin" type="button" data-campaign-account-sign-in>Sign in</button>
@@ -144,7 +144,7 @@ function renderCampaignFooter(route) {
         <span>Hosted by SebaHub · Sunny Guarantee</span>
       </a>
     </div>
-    <nav aria-label="Campaign information">
+    <nav aria-label="Case information">
         ${links}
     </nav>
   </div>

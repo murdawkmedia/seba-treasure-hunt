@@ -2646,7 +2646,15 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
          VALUES ('ordinary-update', 'Ordinary update', 'Campaign-authored story.',
                  'staff-seed', 'Campaign Ops', ?, 'published')`
       )
-      .bind("2026-07-11T18:00:00.000Z")
+      .bind("2026-07-11T18:00:00.000Z"),
+    db
+      .prepare(
+        `INSERT INTO official_updates
+         (id, title, body, publisher_subject, publisher_name, published_at, status)
+         VALUES ('legacy-operator-update', 'Legacy operator update', 'Another stored story.',
+                 'staff-seed', '  cAmPaIgN oPeRaToR  ', ?, 'published')`
+      )
+      .bind("2026-07-11T17:00:00.000Z")
   ]);
 
   const legalAcceptance = (
@@ -3321,9 +3329,26 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   );
 
   const feed = await store.listUpdates({ limit: 10 });
-  assert.equal(feed.items.length, 5);
+  assert.equal(feed.items.length, 6);
   assert.equal(feed.items.some((item) => item.kind === "approved_report"), true);
-  assert.equal(feed.items.some((item) => item.title === "Ordinary update"), true);
+  assert.equal(
+    feed.items.find((item) => item.title === "Ordinary update")?.publisherName,
+    "A representative from SebaHub"
+  );
+  assert.equal(
+    feed.items.find((item) => item.title === "Legacy operator update")?.publisherName,
+    "A representative from SebaHub"
+  );
+  const storedLegacyPublishers = await db
+    .prepare(
+      `SELECT id, publisher_name FROM official_updates
+       WHERE id IN ('ordinary-update', 'legacy-operator-update') ORDER BY id`
+    )
+    .all<{ id: string; publisher_name: string }>();
+  assert.deepEqual(storedLegacyPublishers.results, [
+    { id: "legacy-operator-update", publisher_name: "  cAmPaIgN oPeRaToR  " },
+    { id: "ordinary-update", publisher_name: "Campaign Ops" }
+  ]);
 
   const concurrentFirstPublish = await Promise.allSettled([
     store.publishReport(

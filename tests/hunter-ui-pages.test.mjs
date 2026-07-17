@@ -188,7 +188,7 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   assert.match(client, /AbortSignal\.timeout\(120_000\)/);
   assert.match(html, /data-report-errors[^>]*role="alert"/);
   assert.match(html, /<option value="not_sure">Not sure which stop<\/option>/);
-  assert.match(html, /<option value="different_location">Different location \/ outside the Lucky 13<\/option>/);
+  assert.match(html, /<option value="different_location">Different location \/ outside the 13-stop route<\/option>/);
   const waypointSelect = html.match(/<select id="report-waypoint"[\s\S]*?<\/select>/);
   assert.ok(waypointSelect);
   const waypointValues = [...waypointSelect[0].matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]);
@@ -210,7 +210,7 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   assert.match(client, /buildReportRequestHeaders\(attemptIdempotencyKey, hunterToken\)/);
   assert.match(client, /failReportAttempt\(attemptIdempotencyKey, resetReportTurnstile\)/);
   assert.match(client, /reportLocationResetModel\(\)/);
-  assert.match(client, /stays private unless an operator later approves this report for a public update/i);
+  assert.match(client, /stays private unless a representative from SebaHub later approves this report for a public update/i);
   assert.doesNotMatch(client, /It will remain private/i);
   assert.match(html, /data-report-receipt[^>]*hidden/);
   assert.match(html, /id="report-receipt-title">Report received privately<\/h2>/);
@@ -263,8 +263,8 @@ test("hunter page menus expose one labelled toggle and retain campaign destinati
     assert.equal((html.match(/\bid="campaign-nav"/g) ?? []).length, 1, `${file} has one nav id`);
     assert.equal((html.match(/class="campaign-menu-toggle"/g) ?? []).length, 1, `${file} has one menu toggle`);
     assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/, `${file} toggle semantics`);
-    assert.match(html, /<span class="sr-only">Toggle campaign menu<\/span>/, `${file} toggle label`);
-    assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Campaign")[^>]*>/, `${file} campaign nav`);
+    assert.match(html, /<span class="sr-only">Toggle case menu<\/span>/, `${file} toggle label`);
+    assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Case")[^>]*>/, `${file} case nav`);
     for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard"]) {
       assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `${file} retains ${href}`);
     }
@@ -281,7 +281,7 @@ test("the clue board uses the canonical shell without becoming a navigation exce
   assert.equal((html.match(/\bid="campaign-nav"/g) ?? []).length, 1, "clue-board.html has one nav id");
   assert.equal((html.match(/\bclass="campaign-menu-toggle"/g) ?? []).length, 1, "clue-board.html has one menu toggle");
   assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/);
-  assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Campaign")[^>]*>/);
+  assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Case")[^>]*>/);
   for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard"]) {
     assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `clue-board.html retains ${href}`);
   }
@@ -366,7 +366,7 @@ test("route stories and photos are public while exact waypoint controls stay ses
     .find((item) => item["@type"] === "ItemList");
   assert.equal(routeItemList?.numberOfItems, 13);
   assert.deepEqual(routeItemList?.itemListElement.map((item) => item.position), Array.from({ length: 13 }, (_, index) => index + 1));
-  assert.match(route, /Lucky 13 · a documentary route record/);
+  assert.match(route, /13 Stops · a documentary route record/);
   assert.match(read("index.html"), /13 waypoints · 61 public-safe photos/i);
   assert.match(route, /stories and photos are public/i);
   assert.match(route, /exact Google Maps links require a Hunter account/i);
@@ -405,7 +405,7 @@ test("Case Notes and private reports explain their different routes before submi
   assert.match(board, /public community observation/i);
   assert.match(board, /possible find[\s\S]*private report/i);
   assert.match(board, /data-note-reference/);
-  assert.match(board, /nothing is public until an operator approves it/i);
+  assert.match(board, /nothing is public until a representative from SebaHub approves it/i);
   assert.match(report, /private report/i);
   assert.match(report, /does not appear in Case Notes automatically/i);
 });
@@ -443,7 +443,7 @@ test("public updates explain and render approved report evidence without authent
   const viewer = read("src/client/approved-media-viewer.ts");
   const css = read("css/hunter.css");
 
-  assert.match(html, /operator-approved reports may include public GPS and individually approved images/i);
+  assert.match(html, /reports approved by a representative from SebaHub may include public GPS and individually approved images/i);
   assert.match(html, /data-updates-list/);
   assert.doesNotMatch(html, /data-clerk|sign in to view|authorization/i);
   assert.match(client, /Approved hunter report/);

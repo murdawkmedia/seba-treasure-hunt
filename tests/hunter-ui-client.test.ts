@@ -294,12 +294,12 @@ test("successful private reports retain an explicit receipt reference", () => {
   assert.deepEqual(reportSuccessModel({ id: "report-123" }), {
     reference: "report-123",
     heading: "Report received privately",
-    message: "This report stays private unless an operator deliberately approves a public version.",
+    message: "This report stays private unless a representative from SebaHub deliberately approves a public version.",
   });
   assert.deepEqual(reportSuccessModel({}), {
     reference: "recorded",
     heading: "Report received privately",
-    message: "This report stays private unless an operator deliberately approves a public version.",
+    message: "This report stays private unless a representative from SebaHub deliberately approves a public version.",
   });
 });
 
@@ -328,7 +328,7 @@ test("report payload carries the required attribution choice but never a public 
   assert.equal(
     validateReportDraft({ ...baseReport, publicAttributionKind: "" as ReportDraft["publicAttributionKind"] })
       .publicAttributionKind,
-    "Choose how this report may be credited if an operator publishes it.",
+    "Choose how this report may be credited if a representative from SebaHub publishes it.",
   );
 });
 

@@ -112,7 +112,7 @@ test("the clue board routes possible finds to a private report", () => {
 test("the report receipt keeps contact private and makes publication review explicit", () => {
   const html = read("report.html");
   assert.match(html, /Report received privately/i);
-  assert.match(html, /operator will review the report before anything is published/i);
+  assert.match(html, /representative from SebaHub will review the report before anything is published/i);
   assert.match(html, /Submitting creates a private review record/i);
   assert.doesNotMatch(html, /publish(?:es|ed|ing)? your (?:email|phone)|public email|public phone/i);
 });

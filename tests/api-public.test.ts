@@ -52,6 +52,24 @@ test("serves public case data without leaking exact waypoint navigation", async 
   assert.equal("exactUrl" in waypointBody.data[0], false);
 });
 
+test("serves the public Update publisher projection without changing the stored legacy value", async () => {
+  const store = new FakeStore();
+  const storedUpdate = store.updates[0]!;
+  store.listUpdates = async () => ({
+    items: [{ ...storedUpdate, publisherName: "A representative from SebaHub" }],
+    nextCursor: null
+  });
+  const { app } = makeApp(store);
+
+  const response = await app.request("https://www.timlostsomething.com/api/v1/updates");
+  assert.equal(response.status, 200);
+  assert.equal(
+    (await responseJson(response)).data[0].publisherName,
+    "A representative from SebaHub"
+  );
+  assert.equal(store.updates[0]?.publisherName, "Campaign Ops");
+});
+
 test("public API projections exclude private waiver, minor, report, and location evidence", async () => {
   const store = new FakeStore();
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");

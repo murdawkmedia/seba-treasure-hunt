@@ -80,7 +80,7 @@ const boardTurnstileLifecycle = createTurnstileLifecycle();
 let pendingNoteIdempotencyKey: string | undefined;
 
 export function caseNoteReceipt(reference: string): string {
-  return `Received for moderation. Reference ${reference}. Nothing is public until an operator approves it.`;
+  return `Received for moderation. Reference ${reference}. Nothing is public until a representative from SebaHub approves it.`;
 }
 
 export function buildCaseNoteRequestHeaders(idempotencyKey: string, humanToken: string): Headers {
@@ -283,7 +283,7 @@ function renderNote(note: CommunityNote, canReply: boolean): string {
     ? `<p class="field-note__location"><strong>Approved GPS:</strong> ${escapeHtml(note.latitude)}, ${escapeHtml(note.longitude)}</p>`
     : "";
   const notice = operatorReviewed
-    ? "Operator-reviewed Case Note&mdash;not an official clue."
+    ? "Case Note reviewed by a representative from SebaHub&mdash;not an official clue."
     : communityDisclaimer;
   return `<article class="field-note" data-note-id="${escapeHtml(note.id)}">
     <header class="field-note__head">

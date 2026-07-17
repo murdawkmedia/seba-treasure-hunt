@@ -74,7 +74,7 @@ export function validateReportDraft(draft: ReportDraft): ReportErrors {
     errors.accuracy = "Confirm that you believe the report is accurate.";
   }
   if (!isRequestedPublicAttributionKind(draft.publicAttributionKind)) {
-    errors.publicAttributionKind = "Choose how this report may be credited if an operator publishes it.";
+    errors.publicAttributionKind = "Choose how this report may be credited if a representative from SebaHub publishes it.";
   }
   return errors;
 }
@@ -178,7 +178,7 @@ export interface ReportProfilePrefill {
 export interface ReportSuccessModel {
   reference: string;
   heading: "Report received privately";
-  message: "This report stays private unless an operator deliberately approves a public version.";
+  message: "This report stays private unless a representative from SebaHub deliberately approves a public version.";
 }
 
 export interface ReportAttemptFailureState {
@@ -249,7 +249,7 @@ export function reportSuccessModel(payload: unknown): ReportSuccessModel {
   return {
     reference: isRecord(data) && typeof data.id === "string" && data.id.trim() ? data.id.trim() : "recorded",
     heading: "Report received privately",
-    message: "This report stays private unless an operator deliberately approves a public version.",
+    message: "This report stays private unless a representative from SebaHub deliberately approves a public version.",
   };
 }
 
@@ -545,7 +545,7 @@ function initializeLocationCapture(): void {
       (position) => {
         latitude.value = String(position.coords.latitude);
         longitude.value = String(position.coords.longitude);
-        state.textContent = `Location captured with approximately ${Math.round(position.coords.accuracy)} metre accuracy. It stays private unless an operator later approves this report for a public update.`;
+        state.textContent = `Location captured with approximately ${Math.round(position.coords.accuracy)} metre accuracy. It stays private unless a representative from SebaHub later approves this report for a public update.`;
         button.textContent = "Update my current location";
         button.disabled = false;
         pendingIdempotencyKey = undefined;

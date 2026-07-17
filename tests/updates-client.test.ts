@@ -12,7 +12,7 @@ test("normalizes ordinary official updates without report-only fields", () => {
       title: "Clue window changed",
       body: "The next clue arrives at noon.",
       publishedAt,
-      publisherName: "Campaign Ops",
+      publisherName: "A representative from SebaHub",
     }],
     page: { nextCursor: "cursor-2" },
   });
@@ -24,7 +24,7 @@ test("normalizes ordinary official updates without report-only fields", () => {
       title: "Clue window changed",
       body: "The next clue arrives at noon.",
       publishedAt,
-      publisherName: "Campaign Ops",
+      publisherName: "A representative from SebaHub",
     }],
     nextCursor: "cursor-2",
   });

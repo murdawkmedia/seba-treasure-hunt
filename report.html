@@ -9,7 +9,7 @@
   <link rel="icon" href="/assets/favicon-32x32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <meta name="description" content="Privately report a possible find, a case tip, or a safety concern to the Tim Lost Something? campaign team." />
+  <meta name="description" content="Privately report a possible find, a case tip, or a safety concern to the Tim Lost Something? case team." />
   <meta name="robots" content="noindex,follow" />
   <link rel="canonical" href="https://www.timlostsomething.com/report" />
   <meta property="og:site_name" content="Tim Lost Something?" />
@@ -33,7 +33,7 @@
   <main id="main" tabindex="-1">
     <section class="hunter-hero" aria-labelledby="report-title">
       <div class="hunter-hero__inner">
-        <p class="hunter-kicker">Private intake · Reviewed by campaign operators</p>
+        <p class="hunter-kicker">Private intake · Reviewed by a representative from SebaHub</p>
         <h1 id="report-title">Report Something</h1>
         <p class="hunter-hero__lead">Send a find claim, useful tip, or safety concern as a private report. It does not appear in Case Notes automatically.</p>
       </div>
@@ -43,12 +43,12 @@
       <section class="answer-first" aria-labelledby="report-answer">
         <p class="field-label">The short answer</p>
         <h2 id="report-answer">What should I do if I find Tim's ID bundle?</h2>
-        <p>Leave the scene undisturbed when safe, take a clear photograph, note the nearest waypoint, and submit a find report below. A campaign operator will review the evidence and contact you privately.</p>
+        <p>Leave the scene undisturbed when safe, take a clear photograph, note the nearest waypoint, and submit a find report below. A representative from SebaHub will review the evidence and contact you privately.</p>
       </section>
 
       <div class="report-grid">
         <section class="field-panel form-shell" data-report-form-panel aria-labelledby="report-form-title">
-          <p class="field-label">Private campaign intake</p>
+          <p class="field-label">Private case intake</p>
           <h2 id="report-form-title">Find, tip, or safety report</h2>
           <div class="system-message" data-report-result role="status" aria-live="polite" tabindex="-1" hidden></div>
           <div class="system-message" data-report-errors role="alert" tabindex="-1" hidden></div>
@@ -102,7 +102,7 @@
                   <option value="10" data-report-waypoint data-route-order="11">Stop 11 · Driving Range / Digger Café</option>
                   <option value="11" data-report-waypoint data-route-order="12">Stop 12 · Kokanee Springs Front Gate</option>
                   <option value="12" data-report-waypoint data-route-order="13">Stop 13 · Old Seba Beach School / SebaHub</option>
-                  <option value="different_location">Different location / outside the Lucky 13</option>
+                  <option value="different_location">Different location / outside the 13-stop route</option>
                 </select>
                 <span class="field-hint" id="report-waypoint-hint" data-waypoint-load-state>Loading the public waypoint list…</span>
               </div>
@@ -130,18 +130,18 @@
               </div>
 
               <fieldset class="form-field form-field--full check-group">
-                <legend>How may we credit this if an operator publishes it? <span class="required-mark" aria-hidden="true">*</span></legend>
+                <legend>How may we credit this if a representative from SebaHub publishes it? <span class="required-mark" aria-hidden="true">*</span></legend>
                 <label class="check-row"><input name="publicAttributionKind" type="radio" value="display_name" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Use my public display name.</label>
                 <label class="check-row"><input name="publicAttributionKind" type="radio" value="hunter_handle" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Use my anonymous Hunter handle.</label>
                 <label class="check-row"><input name="publicAttributionKind" type="radio" value="community" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Publish as Community Hunter.</label>
-                <span class="field-hint" id="report-public-attribution-hint">Signed-out reports use Community Hunter. Accounts registered as under 18 always use Young Hunter. Operators never publish your private name or contact details.</span>
+                <span class="field-hint" id="report-public-attribution-hint">Signed-out reports use Community Hunter. Accounts registered as under 18 always use Young Hunter. A representative from SebaHub never publishes your private name or contact details.</span>
                 <span class="field-error" id="report-public-attribution-error" data-error-for="publicAttributionKind"></span>
               </fieldset>
 
               <div class="form-field form-field--full">
                 <label for="report-photo">Photographs <span data-photo-required-copy>(required for a find)</span></label>
                 <input id="report-photo" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="report-photo-hint report-photo-status report-photo-error" />
-                <span class="field-hint" id="report-photo-hint">Add up to three JPEG, PNG, or WebP photos. Photos up to 20 MB upload directly; larger photos up to 50 MB will be optimized on this device. Prepared uploads may total up to 30 MB. Images are private unless an operator separately approves a metadata-free public derivative.</span>
+                <span class="field-hint" id="report-photo-hint">Add up to three JPEG, PNG, or WebP photos. Photos up to 20 MB upload directly; larger photos up to 50 MB will be optimized on this device. Prepared uploads may total up to 30 MB. Images are private unless a representative from SebaHub separately approves a metadata-free public derivative.</span>
                 <ul class="report-photo-status" id="report-photo-status" data-report-photo-status aria-live="polite" aria-relevant="additions text"></ul>
                 <button class="hunter-button hunter-button--quiet report-photo-clear" type="button" data-report-photo-clear hidden>Clear selected photos</button>
                 <span class="field-error" id="report-photo-error" data-error-for="photo"></span>
@@ -175,7 +175,7 @@
           <p class="field-label">Private report receipt</p>
           <h2 id="report-receipt-title">Report received privately</h2>
           <p>Your reference is <strong data-report-reference></strong>.</p>
-          <p data-report-receipt-message>An operator will review the report before anything is published.</p>
+          <p data-report-receipt-message>A representative from SebaHub will review the report before anything is published.</p>
           <div class="action-row">
             <button type="button" class="hunter-button" data-report-another>Submit another report</button>
             <a class="hunter-button hunter-button--quiet" href="/dashboard">Open my Dashboard</a>
@@ -187,11 +187,11 @@
           <h2 id="report-next-title">A human reviews it</h2>
           <ol class="plain-list">
             <li><strong>Received:</strong> the system stores your report privately.</li>
-            <li><strong>Reviewing:</strong> an operator checks the details and evidence.</li>
+            <li><strong>Reviewing:</strong> a representative from SebaHub checks the details and evidence.</li>
             <li><strong>Contacted or escalated:</strong> the team follows up when needed.</li>
             <li><strong>Verified, rejected, or resolved:</strong> the review outcome is recorded.</li>
           </ol>
-          <p>A sanitized official update can be drafted later, but only through a separate operator decision.</p>
+          <p>A sanitized official update can be drafted later, but only through a separate decision by a representative from SebaHub.</p>
           <p class="field-panel__action"><a href="/privacy">How report data is handled →</a></p>
         </aside>
       </div>

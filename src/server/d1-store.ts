@@ -39,6 +39,12 @@ const id = () => crypto.randomUUID();
 const value = (input: unknown): string => (typeof input === "string" ? input : "");
 const nullable = (input: unknown): string | null =>
   typeof input === "string" && input.length > 0 ? input : null;
+const publicUpdatePublisherName = (input: unknown): string => {
+  const storedName = value(input);
+  return /^(?:campaign ops|campaign operator)$/i.test(storedName.trim())
+    ? "A representative from SebaHub"
+    : storedName;
+};
 const numberOrNull = (input: unknown): number | null =>
   typeof input === "number" && Number.isFinite(input) ? input : null;
 const json = (input: unknown) => JSON.stringify(input ?? null);
@@ -376,7 +382,7 @@ export class D1DataStore implements DataStore {
           title: row.title,
           body: row.body,
           publishedAt: row.published_at,
-          publisherName: row.publisher_name
+          publisherName: publicUpdatePublisherName(row.publisher_name)
         };
       }
       return {
@@ -385,7 +391,7 @@ export class D1DataStore implements DataStore {
         title: row.title,
         body: row.body,
         publishedAt: row.published_at,
-        publisherName: row.public_attribution,
+        publisherName: publicUpdatePublisherName(row.public_attribution),
         waypointId: numberOrNull(row.waypoint_id),
         waypointRouteOrder: numberOrNull(row.waypoint_route_order),
         waypointName: nullable(row.waypoint_name),

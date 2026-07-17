@@ -85,14 +85,15 @@ test("SEO and answer-engine surfaces are present and parseable", () => {
   assert.match(read("index.html"), /id="hunt-faq"/);
 });
 
-test("the campaign prop is disclosed and never replaces evidence", () => {
+test("the illustrative ID is disclosed and never replaces evidence", () => {
   const html = read("index.html");
   assert.match(
     html,
     /assets\/photos\/tim-lost-id-campaign-prop\.webp/,
   );
-  assert.match(html, /Campaign reference — not the missing card/);
-  assert.match(html, /fictional, not Tim’s real ID, and not an exact picture of the missing card/);
+  assert.match(html, /<figcaption>A visual representation of what Tim’s I\.D\. could look like\.<\/figcaption>/);
+  assert.match(html, /alt="Visual representation of a possible version of Tim's ID card on a dark counter"/);
+  assert.doesNotMatch(html, /Campaign reference|fictional reference image|fictional, not Tim’s real ID/i);
   assert.match(html, /assets\/photos\/evidence-cash\.jpg/);
   assert.ok(
     existsSync(

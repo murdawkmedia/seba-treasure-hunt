@@ -108,7 +108,7 @@ test("the public Updates client allowlists report media and constructs map links
   const html = read("updates.html");
   const client = read("src/client/updates.ts");
 
-  assert.match(html, /operator-approved reports may include public GPS and individually approved images/i);
+  assert.match(html, /reports approved by a representative from SebaHub may include public GPS and individually approved images/i);
   assert.match(client, /\/api\/v1\/media\//);
   assert.match(client, /https:\/\/www\.google\.com\/maps\/search\//);
   assert.doesNotMatch(client, /item\.(?:email|phone|hunterSubject|sourceReportId|privateObjectKey|derivativeObjectKey)/);

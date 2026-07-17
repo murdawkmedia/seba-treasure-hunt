@@ -93,7 +93,7 @@ async function auditRoutes(browser, viewport, files) {
 
     for (const file of files) {
       await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
-      assert.equal(await page.locator('nav[aria-label="Campaign"]').count(), 1, `${file} Campaign landmark at ${viewport.width}px`);
+      assert.equal(await page.locator('nav[aria-label="Case"]').count(), 1, `${file} Case landmark at ${viewport.width}px`);
       assert.equal(await page.locator("#campaign-nav").count(), 1, `${file} campaign nav id at ${viewport.width}px`);
       assert.equal(await page.locator(".campaign-menu-toggle").count(), 1, `${file} menu toggle at ${viewport.width}px`);
       assert.equal(await page.locator(".skip-link").count(), 1, `${file} skip link at ${viewport.width}px`);

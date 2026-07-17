@@ -33,7 +33,7 @@ const legacyShellClasses = Object.freeze([
 ]);
 
 const descriptors = {
-  "index.html": { route: "home", skipLabel: "Skip to the campaign", skipTarget: "main" },
+  "index.html": { route: "home", skipLabel: "Skip to the case", skipTarget: "main" },
   "start.html": { route: "start", skipLabel: "Skip to the hunt guide", skipTarget: "main" },
   "route.html": { route: "route", skipLabel: "Skip to the route", skipTarget: "main" },
   "interview.html": { route: "interview", skipLabel: "Skip to Tim's Account", skipTarget: "main" },
@@ -145,9 +145,9 @@ test("renders one complete canonical shell and footer without changing page cont
   );
   assert.match(
     html,
-    /<button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle campaign menu<\/span><span aria-hidden="true">&#9776;<\/span><\/button>/,
+    /<button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle case menu<\/span><span aria-hidden="true">&#9776;<\/span><\/button>/,
   );
-  assert.match(primaryNav(html), /id="campaign-nav" aria-label="Campaign"/);
+  assert.match(primaryNav(html), /id="campaign-nav" aria-label="Case"/);
   assert.match(primaryNav(html), /class="campaign-account" data-campaign-account/);
   assert.match(primaryNav(html), /class="campaign-account__signin" type="button" data-campaign-account-sign-in>Sign in<\/button>/);
   assert.match(primaryNav(html), /data-campaign-account-toggle/);

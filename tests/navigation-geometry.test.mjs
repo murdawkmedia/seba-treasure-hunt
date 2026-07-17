@@ -699,7 +699,7 @@ test("canonical shell geometry and navigation state hold across every route and 
         const route = CAMPAIGN_PAGES[file];
         const state = await page.evaluate(() => {
           const skip = document.querySelector(".skip-link");
-          const nav = document.querySelector('nav[aria-label="Campaign"]#campaign-nav');
+          const nav = document.querySelector('nav[aria-label="Case"]#campaign-nav');
           const toggle = document.querySelector(".campaign-menu-toggle");
           if (!(skip instanceof HTMLAnchorElement) || !(nav instanceof HTMLElement) || !(toggle instanceof HTMLElement)) return null;
           const target = document.querySelector(skip.hash);

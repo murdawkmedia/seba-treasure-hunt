@@ -26,7 +26,7 @@ test("public Case Notes are an accessible, moderated community surface", () => {
   assert.match(html, /<meta name="robots" content="index,follow/);
   assert.match(html, /Community observation(?:&mdash;|-)not an official clue/i);
   assert.match(html, /id="waypoint-filter"/);
-  assert.match(html, /All Lucky 13 stops/);
+  assert.match(html, /All 13 stops/);
   assert.match(html, /id="board-feed"/);
   assert.match(html, /id="field-note-form"/);
   assert.match(html, /challenges\.cloudflare\.com\/turnstile\/v0\/api\.js\?render=explicit/);

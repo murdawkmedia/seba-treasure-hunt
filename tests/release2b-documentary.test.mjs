@@ -133,8 +133,9 @@ test("real evidence is primary and the fictional ID appears once sitewide after 
   assert.equal(source.split(image).length - 1, 1);
   const home = read("index.html");
   assert.ok(home.indexOf("assets/photos/evidence-cash.jpg") < home.indexOf(image));
-  assert.match(home, /Campaign reference — not the missing card/);
-  assert.match(home, /fictional[^.]*not Tim(?:'|’|&rsquo;)s real ID[^.]*not an exact picture of the missing card/i);
+  assert.match(home, /<figcaption>A visual representation of what Tim’s I\.D\. could look like\.<\/figcaption>/);
+  assert.match(home, /alt="Visual representation of a possible version of Tim's ID card on a dark counter"/);
+  assert.doesNotMatch(home, /Campaign reference|fictional reference image|fictional[^.]*not Tim(?:'|’|&rsquo;)s real ID/i);
   assert.match(home, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/evidence-cash\.jpg"/);
   assert.match(home, /<meta name="twitter:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/evidence-cash\.jpg"/);
   for (const block of [...home.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]) {
