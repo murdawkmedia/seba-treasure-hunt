@@ -138,3 +138,17 @@ test("reports a filename-specific failure when no bounded attempt reaches 20 MB"
       error.code === "optimization_failed" && error.fileName === "too-detailed.png",
   );
 });
+
+test("accepts a JPEG encoder fallback when WebP output is unavailable", async () => {
+  const optimized = await optimizeReportImage(imageFile(24_000_000, "fallback.png", "image/png"), {
+    decode: async () => ({
+      width: 3000,
+      height: 2000,
+      source: {} as CanvasImageSource,
+      close: () => undefined,
+    }),
+    encode: async () => new Blob([new Uint8Array(2_000_000)], { type: "image/jpeg" }),
+  });
+  assert.equal(optimized.name, "fallback.jpg");
+  assert.equal(optimized.type, "image/jpeg");
+});

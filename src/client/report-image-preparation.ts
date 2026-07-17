@@ -84,12 +84,13 @@ const canvasDimensions = (
 
 const htmlCanvasBlob = (
   canvas: HTMLCanvasElement,
+  type: "image/webp" | "image/jpeg",
   quality: number,
 ): Promise<Blob> =>
   new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => blob ? resolve(blob) : reject(new Error("The browser could not encode this image.")),
-      "image/webp",
+      type,
       quality,
     );
   });
@@ -109,7 +110,13 @@ const defaultEncode = async (
       if (!context) throw new Error("The browser could not create an image workspace.");
       context.drawImage(decoded.source, 0, 0, dimensions.width, dimensions.height);
       assertNotAborted(signal);
-      return await canvas.convertToBlob({ type: "image/webp", quality: attempt.quality });
+      try {
+        const webp = await canvas.convertToBlob({ type: "image/webp", quality: attempt.quality });
+        if (webp.type === "image/webp") return webp;
+      } catch {
+        assertNotAborted(signal);
+      }
+      return await canvas.convertToBlob({ type: "image/jpeg", quality: attempt.quality });
     } finally {
       canvas.width = 1;
       canvas.height = 1;
@@ -127,16 +134,18 @@ const defaultEncode = async (
     if (!context) throw new Error("The browser could not create an image workspace.");
     context.drawImage(decoded.source, 0, 0, dimensions.width, dimensions.height);
     assertNotAborted(signal);
-    return await htmlCanvasBlob(canvas, attempt.quality);
+    const webp = await htmlCanvasBlob(canvas, "image/webp", attempt.quality);
+    if (webp.type === "image/webp") return webp;
+    return await htmlCanvasBlob(canvas, "image/jpeg", attempt.quality);
   } finally {
     canvas.width = 1;
     canvas.height = 1;
   }
 };
 
-const optimizedFileName = (name: string): string => {
+const optimizedFileName = (name: string, type: "image/webp" | "image/jpeg"): string => {
   const stem = name.replace(/\.[^.]+$/, "").trim() || "photo";
-  return `${stem}.webp`;
+  return `${stem}${type === "image/webp" ? ".webp" : ".jpg"}`;
 };
 
 export async function optimizeReportImage(
@@ -165,9 +174,14 @@ export async function optimizeReportImage(
         if (error instanceof Error && error.name === "AbortError") throw error;
         continue;
       }
-      if (blob.type === "image/webp" && blob.size > 0 && blob.size <= REPORT_IMAGE_DIRECT_BYTES) {
-        return new File([blob], optimizedFileName(file.name), {
-          type: "image/webp",
+      if (
+        (blob.type === "image/webp" || blob.type === "image/jpeg") &&
+        blob.size > 0 &&
+        blob.size <= REPORT_IMAGE_DIRECT_BYTES
+      ) {
+        const outputType = blob.type as "image/webp" | "image/jpeg";
+        return new File([blob], optimizedFileName(file.name, outputType), {
+          type: outputType,
           lastModified: file.lastModified,
         });
       }
