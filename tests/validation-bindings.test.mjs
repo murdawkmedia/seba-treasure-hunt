@@ -41,6 +41,19 @@ test("production is explicitly identified and keeps its current resource binding
   assert.match(pagesConfig, /queue\s*=\s*"tim-lost-media-processing"\s*$/m);
 });
 
+test("the full-fidelity production snapshot is bound only to Preview and uses dedicated resources", () => {
+  const previewStart = pagesConfig.indexOf("[env.preview.vars]");
+  const production = pagesConfig.slice(0, previewStart);
+  const preview = pagesConfig.slice(previewStart);
+  assert.match(preview, /binding\s*=\s*"PRODUCTION_SNAPSHOT_DB"/);
+  assert.match(preview, /database_name\s*=\s*"tim-lost-hunter-platform-production-snapshot"/);
+  assert.match(preview, /binding\s*=\s*"PRODUCTION_SNAPSHOT_MEDIA"/);
+  assert.match(preview, /bucket_name\s*=\s*"tim-lost-private-media-production-snapshot"/);
+  assert.doesNotMatch(production, /PRODUCTION_SNAPSHOT_DB|PRODUCTION_SNAPSHOT_MEDIA|production-snapshot/);
+  assert.match(preview, /binding\s*=\s*"DB"[\s\S]*database_name\s*=\s*"tim-lost-hunter-platform-validation"/);
+  assert.match(preview, /binding\s*=\s*"UPLOADS"[\s\S]*bucket_name\s*=\s*"tim-lost-private-media-validation"/);
+});
+
 test("the media worker has a validation environment with no production data binding", () => {
   const validation = mediaConfig.slice(mediaConfig.indexOf("[env.validation.vars]"));
   assert.match(validation, /DEPLOYMENT_ENV\s*=\s*"validation"/);

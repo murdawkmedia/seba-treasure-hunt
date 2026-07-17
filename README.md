@@ -81,3 +81,36 @@ Use `scripts/graph-device-login.mjs` only for controlled delegated setup. Refres
 Cloudflare Pages serves `www.timlostsomething.com`; the bare hostname redirects to the canonical `www` host while preserving paths and query strings. `wrangler.toml` separates production from disposable Preview bindings, and `wrangler.media.toml` defines the private media processor.
 
 Deployment requires a clean build, a production D1 checkpoint, applied migrations, a verified `production` environment sentinel, production-only provider secrets, and post-deploy checks on both hostnames.
+
+## Validation production snapshot
+
+Validation Ops includes an explicitly read-only, full-fidelity production snapshot for internal testing. The public validation site remains link-accessible, but snapshot routes repeat the existing server-side Staff authorization check and return `private, no-store`. They never fall back to the disposable validation database.
+
+The dedicated Preview-only resources are:
+
+- D1 binding `PRODUCTION_SNAPSHOT_DB`: `tim-lost-hunter-platform-production-snapshot` (`1281cd83-6eb1-4fd9-8061-8f6ba81b11c1`)
+- R2 binding `PRODUCTION_SNAPSHOT_MEDIA`: `tim-lost-private-media-production-snapshot`
+
+Neither binding exists in the production configuration. The ordinary Preview `DB`, `UPLOADS`, and `MEDIA_QUEUE` bindings remain disposable validation resources. The snapshot bucket has no public development URL.
+
+### Manual refresh
+
+The snapshot refresh is a guarded one-way operation:
+
+```powershell
+npm run snapshot:refresh
+```
+
+Optional exact resource-name overrides live only in gitignored `.env.local` under the `SNAPSHOT_*` names documented by `.env.example`. The command:
+
+1. resolves and compares immutable D1 identifiers;
+2. requires the source `environment_metadata` sentinel to identify `production`;
+3. requires the destination `snapshot_refresh_metadata` sentinel to identify `production-snapshot`;
+4. exports only the reviewed application-table allowlist, excluding provider tokens, delivery leases, alerts, rate limits, idempotency keys and webhook events;
+5. copies private media under a new `snapshots/<snapshot-id>/` prefix and verifies each copy by SHA-256;
+6. imports the replacement SQL only after every object verifies; and
+7. writes a redacted count-only report under gitignored `.wrangler/snapshot-reports/`.
+
+Cloudflare D1 file imports are the atomic boundary: a failed import leaves the prior database state available. If an import result is ambiguous, the command keeps the newly copied objects so it cannot break a snapshot that may have committed. The prior verified, version-prefixed R2 objects are retained for rollback.
+
+The destination schema is the current application schema plus `scripts/production-snapshot-schema.sql`. New application migrations must be applied to this dedicated D1 resource before the next refresh. Snapshot refreshes are manual; a stale or unverified sentinel fails closed in the API and Ops UI.
