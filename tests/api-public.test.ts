@@ -10,6 +10,7 @@ import {
   FakeStore,
   FakeTurnstile,
   FakeUploads,
+  grantFakeCurrentPlayerAccess,
   json,
   openStatus,
   responseJson
@@ -243,6 +244,7 @@ test("publishes only the approved minor-safe report projection and selected deri
     publicHandle: "Minor Handle Must Stay Private",
     participationBasis: "minor_guardian_permission"
   });
+  await grantFakeCurrentPlayerAccess(store, "minor-subject");
   store.reports.push({
     id: "report-minor-publication",
     hunterSubject: "minor-subject",
@@ -360,6 +362,7 @@ test("publishes only snapshotted adult and forced anonymous report attribution",
     publicHandle: "Hunter A7F3",
     participationBasis: "adult"
   });
+  await grantFakeCurrentPlayerAccess(store, "adult-subject");
   store.reports.push(
     {
       id: "report-adult-publication",

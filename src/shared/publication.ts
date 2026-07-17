@@ -115,7 +115,10 @@ export function publicAttributionFromReportSnapshot(
     ? snapshot.publicAttribution.trim()
     : "";
   if (!label) return null;
-  if (snapshot.attributionKind === "display_name" || snapshot.attributionKind === "hunter_handle") {
+  if (
+    (snapshot.attributionKind === "display_name" || snapshot.attributionKind === "hunter_handle") &&
+    !publicDisplayNameError(label)
+  ) {
     return label;
   }
   if (snapshot.attributionKind === "community" && label === "Community Hunter") {

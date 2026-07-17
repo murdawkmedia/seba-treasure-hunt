@@ -12,6 +12,7 @@ import {
   FakeStore,
   FakeTurnstile,
   FakeUploads,
+  grantFakeCurrentPlayerAccess,
   json,
   responseJson
 } from "./api-test-kit";
@@ -737,6 +738,7 @@ test("lets active staff inspect a private report and only its scoped derivative 
     publicHandle: "Minor Handle Must Never Leave The Server",
     participationBasis: "minor_guardian_permission"
   });
+  await grantFakeCurrentPlayerAccess(store, "hunter-minor-detail");
   store.reports.push(
     {
       id: "report-1",
@@ -853,6 +855,7 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
     publicHandle: "Hunter A7F3",
     participationBasis: "adult"
   });
+  await grantFakeCurrentPlayerAccess(store, "hunter-1");
   store.reports.push({
     id: "report-publish-1",
     hunterSubject: "hunter-1",

@@ -110,19 +110,21 @@ const reportPublicAttribution = (
 
 const reportPublicationPreview = (
   report: Record<string, unknown>,
-  profile: Record<string, unknown> | null
+  profile: Record<string, unknown> | null,
+  participationUnlocked: boolean
 ) => {
   const hunterSubject = typeof report.hunterSubject === "string" ? report.hunterSubject : null;
   const terminal = report.status === "rejected" || report.status === "resolved";
   const resolvedAttribution = reportPublicAttribution(report, profile);
   const protectsMinor = profile?.participationBasis === "minor_guardian_permission";
+  const hasCurrentAccess = !hunterSubject || Boolean(profile) && participationUnlocked;
   const publicAttribution = protectsMinor || !hunterSubject
     ? resolvedAttribution
-    : !terminal && profile
+    : !terminal && hasCurrentAccess
       ? resolvedAttribution
       : null;
   const publicationEligible = !terminal && Boolean(resolvedAttribution) &&
-    (!hunterSubject || Boolean(profile));
+    hasCurrentAccess;
   return {
     publicAttribution,
     publicationEligible,
@@ -130,9 +132,9 @@ const reportPublicationPreview = (
       ? "eligible"
       : terminal
         ? "report_state_invalid"
-        : hunterSubject && profile && !resolvedAttribution
-          ? "public_attribution_required"
-          : "current_legal_acceptance_required"
+        : hunterSubject && !hasCurrentAccess
+          ? "current_legal_acceptance_required"
+          : "public_attribution_required"
   };
 };
 
@@ -973,7 +975,12 @@ export class FakeStore {
     } = report;
     const hunterSubject = typeof report.hunterSubject === "string" ? report.hunterSubject : null;
     const profile = hunterSubject ? this.profiles.get(hunterSubject) : null;
-    const attributionPreview = reportPublicationPreview(report, profile ?? null);
+    const access = hunterSubject ? await this.getPlayerAccess(hunterSubject) : null;
+    const attributionPreview = reportPublicationPreview(
+      report,
+      profile ?? null,
+      access?.participationUnlocked ?? false
+    );
     const publicationId = this.reportPublicationIds.get(id) ?? null;
     const linkedUpdate = publicationId ? this.updates.find((update) => update.id === publicationId) : null;
     const updateStatus = typeof linkedUpdate?.status === "string" ? linkedUpdate.status : null;
@@ -1099,7 +1106,14 @@ export class FakeStore {
     const profile = typeof report.hunterSubject === "string"
       ? this.profiles.get(report.hunterSubject)
       : null;
-    const attributionPreview = reportPublicationPreview(report, profile ?? null);
+    const access = typeof report.hunterSubject === "string"
+      ? await this.getPlayerAccess(report.hunterSubject)
+      : null;
+    const attributionPreview = reportPublicationPreview(
+      report,
+      profile ?? null,
+      access?.participationUnlocked ?? false
+    );
     if (!attributionPreview.publicationEligible || !attributionPreview.publicAttribution) {
       throw new ApiError(
         409,
@@ -1450,6 +1464,24 @@ export class FakeStore {
           : null;
     return subject ? this.profiles.get(subject) ?? null : null;
   }
+}
+
+export async function grantFakeCurrentPlayerAccess(store: FakeStore, subject: string) {
+  await store.upsertPlayerAccount(subject, `${subject}@example.test`);
+  store.legalEvents.push({ subject, documentType: "privacy_media" });
+  const document = { version: "test-waiver", hash: "a".repeat(64) };
+  const review = await store.recordWaiverReview(subject, document);
+  await store.acceptParticipationWaiver(subject, {
+    reviewEventId: review.id,
+    idempotencyKey: `publication-access:${subject}`,
+    adultName: typeof store.profiles.get(subject)?.fullName === "string"
+      ? String(store.profiles.get(subject)?.fullName)
+      : "Test Hunter",
+    minors: [],
+    guardianAttested: false,
+    documentVersion: document.version,
+    documentHash: document.hash
+  });
 }
 
 export class FakeIdentity {

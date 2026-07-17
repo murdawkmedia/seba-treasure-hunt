@@ -25,6 +25,7 @@ import {
   FakeStore,
   FakeTurnstile,
   FakeUploads,
+  grantFakeCurrentPlayerAccess,
   json,
   responseJson
 } from "./api-test-kit";
@@ -2880,6 +2881,8 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     reportInsert("report-missing-snapshot", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
     reportInsert("report-blank-snapshot", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
     reportInsert("report-invalid-snapshot", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
+    reportInsert("report-invalid-display-syntax", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
+    reportInsert("report-invalid-handle-syntax", "hunter-adult-public", "Private Adult Name", 1, 53.124, -114.457),
     reportInsert("report-community", null, "Private Community Name", null, null, null),
     reportInsert("report-stale", "hunter-stale-public", "Private Stale Name", 1, 53.125, -114.458),
     reportInsert("report-mismatch", "hunter-mismatch-public", "Original Account Name", 1, 53.127, -114.460),
@@ -2936,6 +2939,16 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       `UPDATE private_reports
        SET public_attribution = 'Invalid stored label', attribution_kind = NULL
        WHERE id = 'report-invalid-snapshot'`
+    ),
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = 'private@example.test', attribution_kind = 'display_name'
+       WHERE id = 'report-invalid-display-syntax'`
+    ),
+    db.prepare(
+      `UPDATE private_reports
+       SET public_attribution = '780-555-0199', attribution_kind = 'hunter_handle'
+       WHERE id = 'report-invalid-handle-syntax'`
     ),
     db.prepare(
       `UPDATE hunter_profiles
@@ -3078,7 +3091,9 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   for (const reportId of [
     "report-missing-snapshot",
     "report-blank-snapshot",
-    "report-invalid-snapshot"
+    "report-invalid-snapshot",
+    "report-invalid-display-syntax",
+    "report-invalid-handle-syntax"
   ]) {
     const ineligible = await store.getReportDetail(reportId, `staff-preview-${reportId}`);
     assert.equal(ineligible?.publicAttribution, null, reportId);
@@ -3172,7 +3187,8 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
        WHERE id IN ('report-adult-to-minor', 'report-minor', 'report-adult',
                      'report-adult-community', 'report-young-snapshot',
                      'report-missing-snapshot', 'report-blank-snapshot',
-                     'report-invalid-snapshot', 'report-community', 'report-concurrent',
+                     'report-invalid-snapshot', 'report-invalid-display-syntax',
+                     'report-invalid-handle-syntax', 'report-community', 'report-concurrent',
                      'report-schedule')`
     )
     .run();
@@ -3390,7 +3406,9 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   for (const reportId of [
     "report-missing-snapshot",
     "report-blank-snapshot",
-    "report-invalid-snapshot"
+    "report-invalid-snapshot",
+    "report-invalid-display-syntax",
+    "report-invalid-handle-syntax"
   ]) {
     await assert.rejects(
       store.publishReport(
@@ -3480,7 +3498,18 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     (await db.prepare(
       `SELECT COUNT(*) AS count FROM official_updates
        WHERE source_report_id IN ('report-missing-snapshot', 'report-blank-snapshot',
-                                  'report-invalid-snapshot')`
+                                  'report-invalid-snapshot', 'report-invalid-display-syntax',
+                                  'report-invalid-handle-syntax')`
+    ).first<{ count: number }>())?.count,
+    0
+  );
+  assert.equal(
+    (await db.prepare(
+      `SELECT COUNT(*) AS count FROM audit_events
+       WHERE target_id IN ('report-missing-snapshot', 'report-blank-snapshot',
+                           'report-invalid-snapshot', 'report-invalid-display-syntax',
+                           'report-invalid-handle-syntax')
+         AND action IN ('report.published', 'report.update.draft_saved', 'report.update.scheduled')`
     ).first<{ count: number }>())?.count,
     0
   );
@@ -3773,6 +3802,11 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
     participationBasis: "adult",
     publicHandle: "Former Minor Current Handle Must Not Leak"
   });
+  await Promise.all([
+    grantFakeCurrentPlayerAccess(store, "hunter-display-snapshot"),
+    grantFakeCurrentPlayerAccess(store, "hunter-community-snapshot"),
+    grantFakeCurrentPlayerAccess(store, "hunter-minor-snapshot")
+  ]);
   store.reports.push(
     {
       id: "fake-report-display-snapshot",
@@ -3820,6 +3854,22 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
       media: []
     },
     {
+      id: "fake-report-invalid-display-syntax",
+      hunterSubject: "hunter-display-snapshot",
+      status: "verified",
+      publicAttribution: "private@example.test",
+      attributionKind: "display_name",
+      media: []
+    },
+    {
+      id: "fake-report-invalid-handle-syntax",
+      hunterSubject: "hunter-display-snapshot",
+      status: "verified",
+      publicAttribution: "780-555-0199",
+      attributionKind: "hunter_handle",
+      media: []
+    },
+    {
       id: "fake-report-anonymous",
       hunterSubject: null,
       status: "verified",
@@ -3856,7 +3906,9 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
   for (const reportId of [
     "fake-report-missing-snapshot",
     "fake-report-blank-snapshot",
-    "fake-report-invalid-snapshot"
+    "fake-report-invalid-snapshot",
+    "fake-report-invalid-display-syntax",
+    "fake-report-invalid-handle-syntax"
   ]) {
     const preview = await store.getReportDetail(reportId, "staff-preview");
     assert.equal(preview?.publicAttribution, null, reportId);
@@ -3870,6 +3922,18 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
       ),
       (error: unknown) =>
         error instanceof ApiError && error.code === "report_publication_ineligible",
+      reportId
+    );
+    assert.equal(
+      store.updates.some((update) => update.title === "Unsafe attribution"),
+      false,
+      reportId
+    );
+    assert.equal(
+      store.audits.some((audit) =>
+        audit.targetId === reportId && audit.action === "report.published"
+      ),
+      false,
       reportId
     );
   }
@@ -3909,6 +3973,44 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
   assert.doesNotMatch(
     JSON.stringify(store.updates),
     /Current Handle Must Not Leak|Current Display Must Not Leak|Current Community Handle Must Not Leak|Former Minor Current Handle Must Not Leak/
+  );
+});
+
+test("FakeStore rejects a valid snapshot without current legal access", async () => {
+  const store = new FakeStore();
+  store.profiles.set("hunter-legal-missing", {
+    subject: "hunter-legal-missing",
+    participationBasis: "adult",
+    publicHandle: "Current Legal-Missing Handle Must Not Leak"
+  });
+  store.reports.push({
+    id: "fake-report-legal-missing",
+    hunterSubject: "hunter-legal-missing",
+    status: "verified",
+    publicAttribution: "Trail Friends",
+    attributionKind: "display_name",
+    media: []
+  });
+
+  const preview = await store.getReportDetail("fake-report-legal-missing", "staff-preview");
+  assert.equal(preview?.publicAttribution, null);
+  assert.equal(preview?.publicationEligible, false);
+  assert.equal(preview?.publicationEligibilityReason, "current_legal_acceptance_required");
+  await assert.rejects(
+    store.publishReport(
+      "fake-report-legal-missing",
+      { title: "Missing legal access", body: "Must remain private", mediaIds: [] },
+      "staff-publisher"
+    ),
+    (error: unknown) =>
+      error instanceof ApiError && error.code === "report_publication_ineligible"
+  );
+  assert.equal(store.updates.some((update) => update.title === "Missing legal access"), false);
+  assert.equal(
+    store.audits.some((audit) =>
+      audit.targetId === "fake-report-legal-missing" && audit.action === "report.published"
+    ),
+    false
   );
 });
 
