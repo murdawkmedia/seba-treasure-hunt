@@ -66,7 +66,8 @@ const cleanRoutes = new Map([
 ]);
 const staticHtmlPaths = new Set(cleanRoutes.values());
 const legalFrameablePaths = new Set(["/privacy", "/privacy.html", "/waiver", "/waiver.html"]);
-const privateReportMediaPath = /^\/api\/v1\/ops\/reports\/[^/]+\/media\/[^/]+$/;
+const privateReportMediaPath =
+  /^\/api\/v1\/ops\/(?:production-snapshot\/)?reports\/[^/]+\/media\/[^/]+$/;
 const appPaths = new Set([...cleanRoutes.keys()].filter((path) => !["/", "/route", "/interview"].includes(path)));
 const validReportStates = new Set([
   "received",
@@ -1367,6 +1368,104 @@ export const createApi = (deps: ApiDependencies) => {
   app.get("/api/v1/ops/dashboard", async (c) => {
     await requireStaff(deps, c.req.raw);
     return success(c, await deps.store.getOpsDashboard());
+  });
+  const productionSnapshot = async (request: Request) => {
+    await requireStaff(deps, request);
+    if (!deps.productionSnapshot) {
+      throw new ApiError(
+        503,
+        "production_snapshot_unavailable",
+        "The read-only production snapshot is unavailable."
+      );
+    }
+    const summary = await deps.productionSnapshot.summary();
+    if (!summary) {
+      throw new ApiError(
+        503,
+        "production_snapshot_unavailable",
+        "The read-only production snapshot is unavailable."
+      );
+    }
+    return { store: deps.productionSnapshot, summary };
+  };
+  app.get("/api/v1/ops/production-snapshot", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    return success(c, snapshot.summary);
+  });
+  app.get("/api/v1/ops/production-snapshot/reports", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    const result = await snapshot.store.listReports({
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.get("/api/v1/ops/production-snapshot/reports/:id/media/:mediaId", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    if (!deps.productionSnapshotMedia) {
+      throw new ApiError(
+        503,
+        "production_snapshot_unavailable",
+        "The read-only production snapshot is unavailable."
+      );
+    }
+    const authorized = await snapshot.store.getReportMedia(
+      c.req.param("id"),
+      c.req.param("mediaId")
+    );
+    if (!authorized) {
+      throw new ApiError(404, "production_snapshot_media_not_found", "Snapshot evidence not found.");
+    }
+    const object = await deps.productionSnapshotMedia.read(authorized.key);
+    if (
+      !object ||
+      !validImageTypes.has(authorized.contentType) ||
+      !validImageTypes.has(object.contentType)
+    ) {
+      throw new ApiError(404, "production_snapshot_media_not_found", "Snapshot evidence not found.");
+    }
+    return new Response(object.body, {
+      status: 200,
+      headers: {
+        "content-type": object.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "cross-origin-resource-policy": "same-origin"
+      }
+    });
+  });
+  app.get("/api/v1/ops/production-snapshot/reports/:id", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    const report = await snapshot.store.getReport(c.req.param("id"));
+    if (!report) throw new ApiError(404, "production_snapshot_report_not_found", "Snapshot report not found.");
+    return success(c, report);
+  });
+  app.get("/api/v1/ops/production-snapshot/players", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    const result = await snapshot.store.listPlayers({
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.get("/api/v1/ops/production-snapshot/players/:subject/waiver", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    const waiver = await snapshot.store.getWaiver(c.req.param("subject"));
+    if (!waiver) throw new ApiError(404, "production_snapshot_waiver_not_found", "Snapshot waiver not found.");
+    return success(c, waiver);
+  });
+  app.get("/api/v1/ops/production-snapshot/staff", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    return success(c, await snapshot.store.listStaff());
+  });
+  app.get("/api/v1/ops/production-snapshot/audit", async (c) => {
+    const snapshot = await productionSnapshot(c.req.raw);
+    const result = await snapshot.store.listAudit({
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, result.items, 200, { nextCursor: result.nextCursor });
   });
   app.put("/api/v1/ops/status", async (c) => {
     sameOrigin(c.req.raw);

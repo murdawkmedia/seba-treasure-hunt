@@ -1,4 +1,4 @@
-import type { Page, ProductionSnapshotStore } from "./types";
+import type { Page, PrivateMediaReader, ProductionSnapshotStore } from "./types";
 
 type Row = Record<string, unknown>;
 
@@ -324,6 +324,21 @@ export class D1ProductionSnapshotStore implements ProductionSnapshotStore {
         guardianAttested: participant.guardian_attested === 1,
         createdAt: value(participant.created_at)
       }))
+    };
+  }
+}
+
+export class R2ProductionSnapshotMedia implements PrivateMediaReader {
+  constructor(private readonly bucket: R2Bucket | null) {}
+
+  async read(key: string) {
+    if (!this.bucket || !/^snapshots\/[^/]+\/.+/.test(key)) return null;
+    const object = await this.bucket.get(key);
+    if (!object?.body) return null;
+    return {
+      body: object.body,
+      contentType: object.httpMetadata?.contentType ?? "application/octet-stream",
+      etag: object.httpEtag ?? null
     };
   }
 }

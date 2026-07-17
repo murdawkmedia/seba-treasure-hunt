@@ -430,6 +430,14 @@ export interface ProductionSnapshotStore {
   getWaiver(subject: string): Promise<Record<string, unknown> | null>;
 }
 
+export interface PrivateMediaReader {
+  read(key: string): Promise<{
+    body: ReadableStream;
+    contentType: string;
+    etag: string | null;
+  } | null>;
+}
+
 export interface ApiDependencies {
   store: DataStore;
   identity: IdentityVerifier;
@@ -443,7 +451,7 @@ export interface ApiDependencies {
   waiverReceipts?: LegalReceiptSender;
   operatorAlerts?: OperatorAlertSender;
   productionSnapshot?: ProductionSnapshotStore;
-  productionSnapshotMedia?: UploadStorage;
+  productionSnapshotMedia?: PrivateMediaReader;
   environment: EnvironmentGuard;
 }
 

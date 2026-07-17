@@ -187,6 +187,25 @@ test("the Worker constructs one selected mailer and shares it with every transac
   assert.equal((applicationWiring.match(/mailer:\s*transactionalMailer/g) ?? []).length, 4);
 });
 
+test("production snapshot dependencies are composed only for validation", async () => {
+  const [workerSource, typeSource] = await Promise.all([
+    readFile(path.resolve("src", "worker.ts"), "utf8"),
+    readFile(path.resolve("src", "server", "types.ts"), "utf8")
+  ]);
+
+  assert.match(typeSource, /PRODUCTION_SNAPSHOT_DB\?: D1Database/);
+  assert.match(typeSource, /PRODUCTION_SNAPSHOT_MEDIA\?: R2Bucket/);
+  assert.match(
+    workerSource,
+    /env\.DEPLOYMENT_ENV === "validation" && env\.PRODUCTION_SNAPSHOT_DB/
+  );
+  assert.match(
+    workerSource,
+    /env\.DEPLOYMENT_ENV === "validation" && env\.PRODUCTION_SNAPSHOT_MEDIA/
+  );
+  assert.doesNotMatch(workerSource, /DEPLOYMENT_ENV === "production"[^;]+PRODUCTION_SNAPSHOT/s);
+});
+
 test("missing Graph configuration fails before any provider network access", async () => {
   let networkCalls = 0;
   const runtime = transactionalMailRuntimeForEnvironment(

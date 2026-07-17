@@ -1,6 +1,7 @@
 import { createApi } from "./server/app";
 import { ManagedIdentityVerifier } from "./server/auth";
 import { D1DataStore } from "./server/d1-store";
+import { D1ProductionSnapshotStore, R2ProductionSnapshotMedia } from "./server/production-snapshot";
 import { ApiError } from "./server/errors";
 import { TurnstileVerifier } from "./server/turnstile";
 import { ManagedStaffAccounts } from "./server/staff-accounts";
@@ -37,6 +38,8 @@ let cache:
   | {
       db: D1Database | undefined;
       bucket: R2Bucket | undefined;
+      snapshotDb: D1Database | undefined;
+      snapshotBucket: R2Bucket | undefined;
       queue: PagesEnv["MEDIA_QUEUE"];
       signature: string;
       app: ReturnType<typeof createApi>;
@@ -124,6 +127,8 @@ const application = (env: PagesEnv) => {
     cache &&
     cache.db === env.DB &&
     cache.bucket === env.UPLOADS &&
+    cache.snapshotDb === env.PRODUCTION_SNAPSHOT_DB &&
+    cache.snapshotBucket === env.PRODUCTION_SNAPSHOT_MEDIA &&
     cache.queue === env.MEDIA_QUEUE &&
     cache.signature === signature
   ) {
@@ -164,6 +169,14 @@ const application = (env: PagesEnv) => {
     env.DEPLOYMENT_ENV
   );
   const store = env.DB ? new D1DataStore(env.DB) : unavailableStore;
+  const productionSnapshot =
+    env.DEPLOYMENT_ENV === "validation" && env.PRODUCTION_SNAPSHOT_DB
+      ? new D1ProductionSnapshotStore(env.PRODUCTION_SNAPSHOT_DB)
+      : undefined;
+  const productionSnapshotMedia =
+    env.DEPLOYMENT_ENV === "validation" && env.PRODUCTION_SNAPSHOT_MEDIA
+      ? new R2ProductionSnapshotMedia(env.PRODUCTION_SNAPSHOT_MEDIA)
+      : undefined;
   const {
     mailer: transactionalMailer,
     sender: transactionalSender,
@@ -212,6 +225,8 @@ const application = (env: PagesEnv) => {
       replyTo: transactionalReplyTo,
       canonicalOrigin: campaignBaseUrl
     }),
+    ...(productionSnapshot ? { productionSnapshot } : {}),
+    ...(productionSnapshotMedia ? { productionSnapshotMedia } : {}),
     config: {
       deploymentEnvironment: env.DEPLOYMENT_ENV ?? null,
       turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
@@ -224,6 +239,8 @@ const application = (env: PagesEnv) => {
   cache = {
     db: env.DB,
     bucket: env.UPLOADS,
+    snapshotDb: env.PRODUCTION_SNAPSHOT_DB,
+    snapshotBucket: env.PRODUCTION_SNAPSHOT_MEDIA,
     queue: env.MEDIA_QUEUE,
     signature,
     app
