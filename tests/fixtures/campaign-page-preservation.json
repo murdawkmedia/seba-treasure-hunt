@@ -31,12 +31,12 @@
     "clue-board.html": {
       "headSha256": "69546b31d3f93506ec56b30091bb0e6a5b555dbe2ab0417eb0d4c80e8ab4ac02",
       "scriptsSha256": "33cfcfe06b304f951a5c68269a423adf42ed4d20e845dbb045298d45b3b565a7",
-      "bodySha256": "953675275d871318e6a1aba1ec037ed8d975b0bed3893de1ec5cdb8be3426cfc"
+      "bodySha256": "43c2098c245121e8ae0a198420d1986d3e9be59d766d042409dbe43e09b6afad"
     },
     "report.html": {
       "headSha256": "747a06a84ec30b90ee5ba1eab418c3a8b74b6f87d64ae39e5433ad1ee6316056",
       "scriptsSha256": "575859454cb1e1cd0c049bc2683e44d54e849d460c707e105c92fc8144b7387c",
-      "bodySha256": "0b2a556eae6311d9265dfa9e948234c93939726a410c2d65b371228d2aa0d6e4"
+      "bodySha256": "1f62f651168e1edce8006a96ee64f1532333ad6282ffa584ded89723d936fa59"
     },
     "rules.html": {
       "headSha256": "ba98cb29e535e1e8e646f067e892dd0bc301badd79fe7b3c66cd5193c5da553d",
