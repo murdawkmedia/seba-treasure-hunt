@@ -33,6 +33,10 @@ function publicMetadataText(html) {
   return [...metaContent, ...structuredData].join(" ");
 }
 
+function publicSiteBlurbs(source) {
+  return [...source.matchAll(/\bblurb:\s*"([^"]*)"/g)].map((match) => match[1]);
+}
+
 test("the public case shell uses 13 Stops and has no sponsorship destination", () => {
   assert.equal(Object.hasOwn(CAMPAIGN_PAGES, "sponsors.html"), false);
   assert.deepEqual(CAMPAIGN_MENU.find((item) => item.route === "route"), {
@@ -78,6 +82,9 @@ test("all non-legal public pages use current local-case vocabulary in rendered a
     assert.doesNotMatch(visibleText(rendered), stalePublicVocabulary, `${filename} rendered visible text`);
     assert.doesNotMatch(publicMetadataText(rendered), /\bcampaign\b/i, `${filename} rendered metadata`);
   }
+  const sourceBlurbs = publicSiteBlurbs(readFileSync(path.join(root, "js/site.js"), "utf8"));
+  assert.equal(sourceBlurbs.length, 4, "all public property-card blurbs are scanned");
+  assert.doesNotMatch(sourceBlurbs.join(" "), /\bcampaign\b/i, "source property-card blurbs");
 
   const output = await buildSite({ temporary: true });
   try {
@@ -86,6 +93,11 @@ test("all non-legal public pages use current local-case vocabulary in rendered a
       assert.doesNotMatch(visibleText(built), stalePublicVocabulary, `${filename} built visible text`);
       assert.doesNotMatch(publicMetadataText(built), /\bcampaign\b/i, `${filename} built metadata`);
     }
+    const builtBlurbs = publicSiteBlurbs(
+      readFileSync(path.join(output.dist, "js", "site.js"), "utf8"),
+    );
+    assert.deepEqual(builtBlurbs, sourceBlurbs, "the built property-card copy matches reviewed source");
+    assert.doesNotMatch(builtBlurbs.join(" "), /\bcampaign\b/i, "built property-card blurbs");
   } finally {
     await output.cleanup();
   }

@@ -209,7 +209,12 @@ export class FakeStore {
         !update.status || update.status === "published" ||
         (update.status === "scheduled" && typeof update.scheduledFor === "string" &&
           new Date(update.scheduledFor).getTime() <= currentTime)
-      ).map(({ status: _status, scheduledFor: _scheduledFor, uploads: _uploads, ...publicUpdate }) => publicUpdate),
+      ).map(({ status: _status, scheduledFor: _scheduledFor, uploads: _uploads, ...publicUpdate }) =>
+        typeof publicUpdate.publisherName === "string" &&
+        /^(?:campaign ops|campaign operator)$/i.test(publicUpdate.publisherName.trim())
+          ? { ...publicUpdate, publisherName: "A representative from SebaHub" }
+          : publicUpdate
+      ),
       nextCursor: null
     };
   }

@@ -11,7 +11,7 @@ var SPOTS = [
     img: "assets/photos/card-sebahub.jpg",
     alt: "An evening community gathering at SebaHub in Seba Beach",
     riddle: "The route returns here at the old Seba Beach School.",
-    blurb: "SebaHub hosts the campaign, moderates community reports and serves as the return point for Tim's ID at 162 Second Avenue."
+    blurb: "SebaHub hosts the search, moderates community reports and serves as the return point for Tim's ID at 162 Second Avenue."
   },
   {
     key: "sebastays",
@@ -50,7 +50,7 @@ var SPOTS = [
     img: "assets/photos/card-kokanee.jpg",
     alt: "A camper trailer parked among tall spruce trees at Kokanee Springs RV Park",
     riddle: "The route passes the campground entrance, office and driving range.",
-    blurb: "Kokanee Springs is an 18-lot RV park and an active guest area. Search only where current campaign access labels permit."
+    blurb: "Kokanee Springs is an 18-lot RV park and an active guest area. Search only where current access labels permit."
   }
 ];
 

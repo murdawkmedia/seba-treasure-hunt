@@ -54,20 +54,25 @@ test("serves public case data without leaking exact waypoint navigation", async 
 
 test("serves the public Update publisher projection without changing the stored legacy value", async () => {
   const store = new FakeStore();
-  const storedUpdate = store.updates[0]!;
-  store.listUpdates = async () => ({
-    items: [{ ...storedUpdate, publisherName: "A representative from SebaHub" }],
-    nextCursor: null
+  store.updates.push({
+    id: "update-legacy-operator",
+    title: "Legacy operator label",
+    body: "A second public update.",
+    publishedAt: "2026-07-11T15:00:00.000Z",
+    publisherName: "  cAmPaIgN oPeRaToR  "
   });
   const { app } = makeApp(store);
 
   const response = await app.request("https://www.timlostsomething.com/api/v1/updates");
   assert.equal(response.status, 200);
-  assert.equal(
-    (await responseJson(response)).data[0].publisherName,
-    "A representative from SebaHub"
+  assert.deepEqual(
+    (await responseJson(response)).data.map((item: Record<string, unknown>) => item.publisherName),
+    ["A representative from SebaHub", "A representative from SebaHub"]
   );
-  assert.equal(store.updates[0]?.publisherName, "Campaign Ops");
+  assert.deepEqual(
+    store.updates.map((item) => item.publisherName),
+    ["Campaign Ops", "  cAmPaIgN oPeRaToR  "]
+  );
 });
 
 test("public API projections exclude private waiver, minor, report, and location evidence", async () => {
