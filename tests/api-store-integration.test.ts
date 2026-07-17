@@ -22,6 +22,7 @@ import type {
 import {
   FakeEnvironment,
   FakeRateLimits,
+  FakeStore,
   FakeTurnstile,
   FakeUploads,
   json,
@@ -2465,7 +2466,7 @@ test("real D1 atomically changes private report state with its event and audit h
 test("real D1 publishes and withdraws a report-sourced Case Note independently from Updates", async (t) => {
   const db = await createOperatorAlertDatabase(t);
   await applyOperatorAlertMigration(db);
-  const timestamp = "2026-07-17T18:00:00.000Z";
+  const timestamp = "2026-07-15T18:00:00.000Z";
   await db.batch([
     db.prepare(
       `INSERT INTO waypoints
@@ -4486,4 +4487,280 @@ test("real D1 resolves public Case Note and reply identities without exposing mi
   assert.deepEqual(labels.get("note-fallback"), { author: "Hunter Fallback", reply: "Hunter Fallback" });
   assert.deepEqual(labels.get("note-minor"), { author: "Young Hunter", reply: "Young Hunter" });
   assert.doesNotMatch(JSON.stringify(board), /Minor Custom Name|Minor Generated Handle/);
+});
+
+test("real D1 projects recent published replies with public parent context and received flag counts", async (t) => {
+  const migrationFiles = [
+    "0001_hunter_platform.sql",
+    "0002_consent_ledger_index.sql",
+    "0003_player_accounts_and_legal_acceptance.sql",
+    "0004_environment_metadata.sql",
+    "0005_sponsor_inquiries.sql",
+    "0006_participation_waiver_and_receipts.sql",
+    "0007_waiver_receipt_leases.sql",
+    "0008_immutable_waiver_ledgers.sql",
+    "0009_atomic_rate_limits.sql",
+    "0010_graph_transactional_email.sql",
+    "0011_report_publication_and_participation.sql",
+    "0012_lucky_13_waypoints.sql",
+    "0015_submission_ops_publication_refinement.sql"
+  ];
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: `reply-moderation-${crypto.randomUUID()}` }
+  });
+  t.after(() => miniflare.dispose());
+  const db = (await miniflare.getD1Database("DB")) as unknown as D1Database;
+  for (const file of migrationFiles) await applySql(db, await readFile(path.join(root, "migrations", file), "utf8"));
+
+  const timestamp = "2026-07-15T18:00:00.000Z";
+  await db.batch([
+    db.prepare(
+      `INSERT INTO waypoints
+       (id, route_order, name, description, is_published, updated_at, updated_by)
+       VALUES (1, 4, 'Seniors Centre', 'Public waypoint context.', 1, ?, 'staff-seed')`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, public_display_name, adult_attested_at,
+        participation_basis, guardian_permission_attested_at, created_at, updated_at)
+       VALUES ('reply-author', 'reply-author@example.test', 'Private Author', 'Hunter 43BA', 'Nancy & Ron', ?,
+               'adult', NULL, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, adult_attested_at, participation_basis, created_at, updated_at)
+       VALUES ('flag-reporter', 'flag-reporter@example.test', 'Private Reporter', 'Hunter Reporter', ?, 'adult', ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO field_notes
+       (id, author_subject, waypoint_id, body, status, created_at, updated_at, published_at)
+       VALUES ('moderation-note', 'reply-author', 1, 'Public parent note.', 'approved', ?, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('moderation-reply', 'moderation-note', 'reply-author', 'A public reply.', 'published', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
+       VALUES ('moderation-flag', 'flag-reporter', 'reply', 'moderation-reply', 'spam', 'Private reporter detail.', 'received', ?)`
+    ).bind(timestamp)
+  ]);
+
+  const store = new D1DataStore(db);
+  const boardReplyCount = async () => {
+    const note = (await store.listBoard(null)).items[0] as { replies?: unknown[] } | undefined;
+    return note?.replies?.length ?? 0;
+  };
+  const replies = await store.listModerationReplies();
+  assert.deepEqual(replies.items, [{
+    id: "moderation-reply",
+    noteId: "moderation-note",
+    noteExcerpt: "Public parent note.",
+    waypointRouteOrder: 4,
+    waypointName: "Seniors Centre",
+    body: "A public reply.",
+    authorHandle: "Nancy & Ron",
+    status: "published",
+    flagCount: 1,
+    createdAt: timestamp,
+    moderatedAt: null
+  }]);
+
+  const hidden = await store.moderateReply("moderation-reply", "hide", "Spam burst", "staff-1");
+  assert.equal(hidden?.status, "hidden");
+  assert.equal(await boardReplyCount(), 0);
+  assert.equal((await store.listModerationReplies()).items[0]?.status, "hidden");
+  assert.deepEqual(
+    await db.prepare("SELECT status, resolved_by FROM content_flags WHERE id = 'moderation-flag'").first(),
+    { status: "resolved", resolved_by: "staff-1" }
+  );
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT actor_subject, action, target_kind, target_id, metadata_json
+       FROM audit_events WHERE target_id = 'moderation-reply'`
+    ).first(),
+    {
+      actor_subject: "staff-1",
+      action: "reply.hidden",
+      target_kind: "field_note_reply",
+      target_id: "moderation-reply",
+      metadata_json: JSON.stringify({ reason: "Spam burst" })
+    }
+  );
+  assert.equal(await store.moderateReply("moderation-reply", "hide", "Repeat", "staff-1"), null);
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = 'moderation-reply'")
+      .first<{ count: number }>())?.count,
+    1
+  );
+
+  const restored = await store.moderateReply("moderation-reply", "restore", "False positive", "staff-2");
+  assert.equal(restored?.status, "published");
+  assert.equal(await boardReplyCount(), 1);
+  assert.deepEqual(
+    await db.prepare("SELECT status, resolved_by FROM content_flags WHERE id = 'moderation-flag'").first(),
+    { status: "resolved", resolved_by: "staff-1" }
+  );
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = 'moderation-reply'")
+      .first<{ count: number }>())?.count,
+    2
+  );
+
+  await db.prepare(
+    `INSERT INTO content_flags
+     (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
+     VALUES ('pending-flag', 'flag-reporter', 'reply', 'moderation-reply', 'harassment', 'Private flag detail.', 'received', ?)`
+  ).bind(timestamp).run();
+  const flags = await store.listContentFlags();
+  assert.deepEqual(flags.items, [{
+    id: "pending-flag",
+    targetKind: "reply",
+    targetId: "moderation-reply",
+    targetExcerpt: "A public reply.",
+    authorHandle: "Nancy & Ron",
+    targetStatus: "published",
+    noteExcerpt: "Public parent note.",
+    waypointRouteOrder: 4,
+    waypointName: "Seniors Centre",
+    reason: "harassment",
+    status: "received",
+    createdAt: timestamp
+  }]);
+  assert.doesNotMatch(JSON.stringify(flags), /flag-reporter|Private flag detail/);
+
+  const dismissed = await store.moderateContentFlag("pending-flag", "dismiss", "Not actionable", "staff-3");
+  assert.equal(dismissed?.status, "dismissed");
+  assert.equal(await boardReplyCount(), 1);
+  assert.equal((await store.listContentFlags()).items.length, 0);
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT actor_subject, action, target_kind, target_id, metadata_json
+       FROM audit_events WHERE target_id = 'pending-flag'`
+    ).first(),
+    {
+      actor_subject: "staff-3",
+      action: "content_flag.dismissed",
+      target_kind: "content_flag",
+      target_id: "pending-flag",
+      metadata_json: JSON.stringify({ reason: "Not actionable" })
+    }
+  );
+  assert.equal(await store.moderateContentFlag("pending-flag", "dismiss", "Repeat", "staff-3"), null);
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = 'pending-flag'")
+      .first<{ count: number }>())?.count,
+    1
+  );
+
+  await db.prepare(
+    `INSERT INTO content_flags
+     (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
+     VALUES ('hide-target-flag', 'flag-reporter', 'reply', 'moderation-reply', 'spam', NULL, 'reviewing', ?)`
+  ).bind(timestamp).run();
+  const hiddenByFlag = await store.moderateContentFlag(
+    "hide-target-flag", "hide_target", "Confirmed abuse", "staff-4"
+  );
+  assert.equal(hiddenByFlag?.status, "resolved");
+  assert.equal(await boardReplyCount(), 0);
+  assert.deepEqual(
+    await db.prepare("SELECT status, resolved_by FROM content_flags WHERE id = 'hide-target-flag'").first(),
+    { status: "resolved", resolved_by: "staff-4" }
+  );
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT actor_subject, action, target_kind, target_id, metadata_json
+       FROM audit_events WHERE target_id = 'hide-target-flag'`
+    ).first(),
+    {
+      actor_subject: "staff-4",
+      action: "content_flag.target_hidden",
+      target_kind: "content_flag",
+      target_id: "hide-target-flag",
+      metadata_json: JSON.stringify({ reason: "Confirmed abuse" })
+    }
+  );
+  await db.prepare(
+    `INSERT INTO content_flags
+     (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
+     VALUES ('repeat-hide-target-flag', 'flag-reporter', 'reply', 'moderation-reply', 'spam', NULL, 'received', ?)`
+  ).bind(timestamp).run();
+  assert.equal(
+    await store.moderateContentFlag("repeat-hide-target-flag", "hide_target", "Repeat", "staff-4"),
+    null
+  );
+  assert.deepEqual(
+    await db.prepare("SELECT status FROM content_flags WHERE id = 'repeat-hide-target-flag'").first(),
+    { status: "received" }
+  );
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = 'repeat-hide-target-flag'")
+      .first<{ count: number }>())?.count,
+    0
+  );
+  await db.prepare(
+    `INSERT INTO content_flags
+     (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
+     VALUES ('note-hide-target-flag', 'flag-reporter', 'note', 'moderation-note', 'spam', NULL, 'received', ?)`
+  ).bind(timestamp).run();
+  assert.equal(
+    await store.moderateContentFlag("note-hide-target-flag", "hide_target", "Wrong target", "staff-4"),
+    null
+  );
+  assert.deepEqual(
+    await db.prepare("SELECT status FROM content_flags WHERE id = 'note-hide-target-flag'").first(),
+    { status: "received" }
+  );
+});
+
+test("FakeStore mirrors public reply moderation state and audited conditional transitions", async () => {
+  const store = new FakeStore();
+  store.board.push({
+    id: "fake-note",
+    waypointId: 1,
+    waypointRouteOrder: 4,
+    waypointName: "Seniors Centre",
+    body: "Public parent note.",
+    authorHandle: "Nancy & Ron",
+    status: "published",
+    createdAt: "2026-07-15T18:00:00.000Z",
+    replies: [{
+      id: "fake-reply",
+      body: "A public reply.",
+      authorHandle: "Nancy & Ron",
+      createdAt: "2026-07-15T18:00:00.000Z"
+    }]
+  });
+  store.replies.push({
+    id: "fake-reply",
+    noteId: "fake-note",
+    authorSubject: "reply-author",
+    body: "A public reply.",
+    authorHandle: "Nancy & Ron",
+    status: "published",
+    createdAt: "2026-07-15T18:00:00.000Z"
+  });
+  store.flags.push({
+    id: "fake-flag",
+    targetKind: "reply",
+    targetId: "fake-reply",
+    reason: "spam",
+    details: "Private reporter detail.",
+    reporterSubject: "private-reporter",
+    status: "received",
+    createdAt: "2026-07-15T18:00:00.000Z"
+  });
+
+  assert.equal((await store.listModerationReplies()).items[0]?.flagCount, 1);
+  assert.doesNotMatch(JSON.stringify(await store.listContentFlags()), /private-reporter|Private reporter detail/);
+  assert.equal((await store.moderateReply("fake-reply", "hide", "Spam burst", "staff-1"))?.status, "hidden");
+  assert.equal((await store.listBoard(null)).items[0]?.replies.length, 0);
+  assert.equal(store.flags[0]?.status, "resolved");
+  assert.equal(await store.moderateReply("fake-reply", "hide", "Repeat", "staff-1"), null);
+  assert.equal(store.audits.filter((audit) => audit.targetId === "fake-reply").length, 1);
 });

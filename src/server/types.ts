@@ -340,6 +340,20 @@ export interface DataStore {
   reconcileOperatorAlertJob(jobId: string): Promise<void>;
   createReply(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   createFlag(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  listModerationReplies(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  listContentFlags(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  moderateReply(
+    id: string,
+    action: "hide" | "restore",
+    reason: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  moderateContentFlag(
+    id: string,
+    action: "dismiss" | "hide_target",
+    reason: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
   isActiveStaff(subject: string, normalizedEmail: string | null): Promise<boolean>;
   getOpsDashboard(): Promise<Record<string, unknown>>;
   updateStatus(input: Record<string, unknown>, actorSubject: string): Promise<CaseStatus>;

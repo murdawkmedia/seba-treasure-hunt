@@ -19,6 +19,7 @@ import type {
   WaiverReviewRecord
 } from "../src/server/types";
 import { ApiError } from "../src/server/errors";
+import { publicHunterIdentity } from "../src/shared/public-identity";
 
 export type Principal = {
   kind: "hunter" | "staff";
@@ -184,7 +185,18 @@ export class FakeStore {
     const items = waypointId
       ? this.board.filter((item) => item.waypointId === waypointId)
       : this.board;
-    return { items, nextCursor: null };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        replies: Array.isArray(item.replies)
+          ? item.replies.filter((reply) => {
+              const stored = this.replies.find((candidate) => candidate.id === reply.id);
+              return (stored?.status ?? reply.status ?? "published") === "published";
+            })
+          : []
+      })),
+      nextCursor: null
+    };
   }
 
   async getPublicMedia(id: string) {
@@ -664,6 +676,128 @@ export class FakeStore {
     const value = { ...input, id: `flag-${this.flags.length + 1}`, status: "received" };
     this.flags.push(value);
     return value;
+  }
+
+  async listModerationReplies(options: { limit?: number; cursor?: string | null } = {}) {
+    const limit = Math.min(Math.max(options.limit ?? 25, 1), 50);
+    return {
+      items: this.replies
+        .filter((reply) => reply.status === "published" || reply.status === "hidden")
+        .slice(0, limit)
+        .map((reply) => {
+          const note = this.board.find((candidate) => candidate.id === (reply.noteId ?? reply.fieldNoteId));
+          return {
+            id: reply.id,
+            noteId: reply.noteId ?? reply.fieldNoteId,
+            noteExcerpt: note?.body ?? null,
+            waypointRouteOrder: note?.waypointRouteOrder ?? null,
+            waypointName: note?.waypointName ?? null,
+            body: reply.body,
+            authorHandle: this.publicAuthorHandle(reply),
+            status: reply.status,
+            flagCount: this.flags.filter((flag) =>
+              flag.targetKind === "reply" && flag.targetId === reply.id &&
+              (flag.status === "received" || flag.status === "reviewing")
+            ).length,
+            createdAt: reply.createdAt,
+            moderatedAt: reply.moderatedAt ?? null
+          };
+        }),
+      nextCursor: null
+    };
+  }
+
+  async listContentFlags(options: { limit?: number; cursor?: string | null } = {}) {
+    const limit = Math.min(Math.max(options.limit ?? 25, 1), 50);
+    return {
+      items: this.flags
+        .filter((flag) => flag.status === "received" || flag.status === "reviewing")
+        .slice(0, limit)
+        .flatMap((flag) => {
+          const reply = flag.targetKind === "reply"
+            ? this.replies.find((candidate) => candidate.id === flag.targetId)
+            : null;
+          const note = this.board.find((candidate) => candidate.id === (reply?.noteId ?? flag.targetId));
+          const target = reply ?? note;
+          if (!target) return [];
+          return [{
+            id: flag.id,
+            targetKind: flag.targetKind,
+            targetId: flag.targetId,
+            targetExcerpt: target.body,
+            authorHandle: this.publicAuthorHandle(target),
+            targetStatus: target.status ?? "published",
+            noteExcerpt: note?.body ?? null,
+            waypointRouteOrder: note?.waypointRouteOrder ?? null,
+            waypointName: note?.waypointName ?? null,
+            reason: flag.reason,
+            status: flag.status,
+            createdAt: flag.createdAt
+          }];
+        }),
+      nextCursor: null
+    };
+  }
+
+  async moderateReply(id: string, action: "hide" | "restore", reason: string, actorSubject: string) {
+    const reply = this.replies.find((candidate) => candidate.id === id);
+    const expected = action === "hide" ? "published" : "hidden";
+    if (!reply || reply.status !== expected) return null;
+    const timestamp = "2026-07-17T18:00:00.000Z";
+    reply.status = action === "hide" ? "hidden" : "published";
+    reply.moderatedAt = timestamp;
+    reply.moderatedBy = actorSubject;
+    if (action === "hide") {
+      for (const flag of this.flags) {
+        if (flag.targetKind === "reply" && flag.targetId === id &&
+          (flag.status === "received" || flag.status === "reviewing")) {
+          flag.status = "resolved";
+          flag.resolvedAt = timestamp;
+          flag.resolvedBy = actorSubject;
+        }
+      }
+    }
+    this.audits.push({
+      action: action === "hide" ? "reply.hidden" : "reply.restored",
+      actorSubject,
+      targetId: id,
+      reason
+    });
+    return { id, status: reply.status, moderatedAt: timestamp };
+  }
+
+  async moderateContentFlag(
+    id: string,
+    action: "dismiss" | "hide_target",
+    reason: string,
+    actorSubject: string
+  ) {
+    const flag = this.flags.find((candidate) => candidate.id === id);
+    if (!flag || (flag.status !== "received" && flag.status !== "reviewing")) return null;
+    const timestamp = "2026-07-17T18:00:00.000Z";
+    if (action === "dismiss") {
+      flag.status = "dismissed";
+      flag.resolvedAt = timestamp;
+      flag.resolvedBy = actorSubject;
+      this.audits.push({ action: "content_flag.dismissed", actorSubject, targetId: id, reason });
+      return { id, status: "dismissed", resolvedAt: timestamp };
+    }
+    if (flag.targetKind !== "reply") return null;
+    const reply = this.replies.find((candidate) => candidate.id === flag.targetId);
+    if (!reply || reply.status !== "published") return null;
+    reply.status = "hidden";
+    reply.moderatedAt = timestamp;
+    reply.moderatedBy = actorSubject;
+    for (const candidate of this.flags) {
+      if (candidate.targetKind === "reply" && candidate.targetId === reply.id &&
+        (candidate.status === "received" || candidate.status === "reviewing")) {
+        candidate.status = "resolved";
+        candidate.resolvedAt = timestamp;
+        candidate.resolvedBy = actorSubject;
+      }
+    }
+    this.audits.push({ action: "content_flag.target_hidden", actorSubject, targetId: id, reason });
+    return { id, status: "resolved", resolvedAt: timestamp };
   }
 
   async isActiveStaff(subject: string, email: string | null) {
@@ -1184,6 +1318,35 @@ export class FakeStore {
     const result = { action, target, status: "queued" };
     this.audits.push({ ...result, action: `player.${action}.requested`, actorSubject });
     return result;
+  }
+
+  private publicAuthorHandle(record: Record<string, unknown>) {
+    const subject = typeof record.authorSubject === "string"
+      ? record.authorSubject
+      : typeof record.subject === "string"
+        ? record.subject
+        : null;
+    const profile = subject ? this.profiles.get(subject) : null;
+    if (profile) {
+      return publicHunterIdentity({
+        participationBasis: typeof profile.participationBasis === "string"
+          ? profile.participationBasis
+          : typeof profile.participation_basis === "string"
+            ? profile.participation_basis
+            : null,
+        publicDisplayName: typeof profile.publicDisplayName === "string"
+          ? profile.publicDisplayName
+          : typeof profile.public_display_name === "string"
+            ? profile.public_display_name
+            : null,
+        publicHandle: typeof profile.publicHandle === "string"
+          ? profile.publicHandle
+          : typeof profile.public_handle === "string"
+            ? profile.public_handle
+            : null
+      });
+    }
+    return typeof record.authorHandle === "string" ? record.authorHandle : "Community Hunter";
   }
 }
 

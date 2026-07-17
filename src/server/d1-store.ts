@@ -2512,6 +2512,237 @@ export class D1DataStore implements DataStore {
     return { id: flagId, status: "received", createdAt };
   }
 
+  async listModerationReplies(
+    options: { limit?: number; cursor?: string | null } = {}
+  ): Promise<Page> {
+    const limit = pageLimit(options.limit);
+    const cursor = options.cursor ?? now();
+    const result = await this.db
+      .prepare(
+        `SELECT r.id, r.field_note_id, r.body, r.status, r.created_at, r.moderated_at,
+                p.participation_basis, p.public_display_name, p.public_handle,
+                n.body AS note_body, w.route_order AS waypoint_route_order, w.name AS waypoint_name,
+                (SELECT COUNT(*) FROM content_flags f
+                 WHERE f.target_kind = 'reply' AND f.target_id = r.id
+                   AND f.status IN ('received', 'reviewing')) AS flag_count
+         FROM field_note_replies r
+         JOIN field_notes n ON n.id = r.field_note_id AND n.status = 'approved'
+         JOIN hunter_profiles p ON p.subject = r.author_subject
+         LEFT JOIN waypoints w ON w.id = n.waypoint_id AND w.is_published = 1
+         WHERE r.status IN ('published', 'hidden') AND r.created_at <= ?
+         ORDER BY r.created_at DESC, r.id DESC LIMIT ?`
+      )
+      .bind(cursor, limit + 1)
+      .all<Row>();
+    const rows = result.results;
+    return {
+      items: rows.slice(0, limit).map((row) => ({
+        id: row.id,
+        noteId: row.field_note_id,
+        noteExcerpt: row.note_body,
+        waypointRouteOrder: numberOrNull(row.waypoint_route_order),
+        waypointName: nullable(row.waypoint_name),
+        body: row.body,
+        authorHandle: publicHunterIdentity({
+          participationBasis: nullable(row.participation_basis),
+          publicDisplayName: nullable(row.public_display_name),
+          publicHandle: nullable(row.public_handle)
+        }),
+        status: row.status,
+        flagCount: Number(row.flag_count),
+        createdAt: row.created_at,
+        moderatedAt: nullable(row.moderated_at)
+      })),
+      nextCursor: rows.length > limit ? value(rows[limit - 1]?.created_at) : null
+    };
+  }
+
+  async listContentFlags(
+    options: { limit?: number; cursor?: string | null } = {}
+  ): Promise<Page> {
+    const limit = pageLimit(options.limit);
+    const cursor = options.cursor ?? now();
+    const result = await this.db
+      .prepare(
+        `SELECT f.id, f.target_kind, f.target_id, f.reason, f.status, f.created_at,
+                CASE WHEN f.target_kind = 'reply' THEN r.body ELSE n.body END AS target_excerpt,
+                CASE WHEN f.target_kind = 'reply' THEN r.status ELSE n.status END AS target_status,
+                p.participation_basis, p.public_display_name, p.public_handle,
+                n.body AS note_body, w.route_order AS waypoint_route_order, w.name AS waypoint_name
+         FROM content_flags f
+         LEFT JOIN field_note_replies r ON f.target_kind = 'reply' AND r.id = f.target_id
+         JOIN field_notes n ON n.id = CASE WHEN f.target_kind = 'reply' THEN r.field_note_id ELSE f.target_id END
+           AND n.status = 'approved'
+         JOIN hunter_profiles p ON p.subject = CASE WHEN f.target_kind = 'reply' THEN r.author_subject ELSE n.author_subject END
+         LEFT JOIN waypoints w ON w.id = n.waypoint_id AND w.is_published = 1
+         WHERE f.status IN ('received', 'reviewing') AND f.created_at <= ?
+         ORDER BY f.created_at DESC, f.id DESC LIMIT ?`
+      )
+      .bind(cursor, limit + 1)
+      .all<Row>();
+    const rows = result.results;
+    return {
+      items: rows.slice(0, limit).map((row) => ({
+        id: row.id,
+        targetKind: row.target_kind,
+        targetId: row.target_id,
+        targetExcerpt: row.target_excerpt,
+        authorHandle: publicHunterIdentity({
+          participationBasis: nullable(row.participation_basis),
+          publicDisplayName: nullable(row.public_display_name),
+          publicHandle: nullable(row.public_handle)
+        }),
+        targetStatus: row.target_status,
+        noteExcerpt: row.note_body,
+        waypointRouteOrder: numberOrNull(row.waypoint_route_order),
+        waypointName: nullable(row.waypoint_name),
+        reason: row.reason,
+        status: row.status,
+        createdAt: row.created_at
+      })),
+      nextCursor: rows.length > limit ? value(rows[limit - 1]?.created_at) : null
+    };
+  }
+
+  async moderateContentFlag(
+    flagId: string,
+    action: "dismiss" | "hide_target",
+    reason: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const timestamp = now();
+    if (action === "dismiss") {
+      const [flagResult] = await this.db.batch([
+        this.db
+          .prepare(
+            `UPDATE content_flags
+             SET status = 'dismissed', resolved_at = ?, resolved_by = ?
+             WHERE id = ? AND status IN ('received', 'reviewing')`
+          )
+          .bind(timestamp, actorSubject, flagId),
+        this.auditStatement(
+          actorSubject,
+          "content_flag.dismissed",
+          "content_flag",
+          flagId,
+          { reason },
+          timestamp,
+          `EXISTS (
+            SELECT 1 FROM content_flags
+            WHERE id = ? AND status = 'dismissed' AND resolved_at = ? AND resolved_by = ?
+          )`,
+          [flagId, timestamp, actorSubject]
+        )
+      ]);
+      if (Number(flagResult?.meta.changes) !== 1) return null;
+      return { id: flagId, status: "dismissed", resolvedAt: timestamp };
+    }
+
+    const [replyResult] = await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE field_note_replies
+           SET status = 'hidden', moderated_at = ?, moderated_by = ?
+           WHERE id = (
+             SELECT target_id FROM content_flags
+             WHERE id = ? AND target_kind = 'reply' AND status IN ('received', 'reviewing')
+           ) AND status = 'published'`
+        )
+        .bind(timestamp, actorSubject, flagId),
+      this.db
+        .prepare(
+          `UPDATE content_flags
+           SET status = 'resolved', resolved_at = ?, resolved_by = ?
+           WHERE id = ? AND target_kind = 'reply' AND status IN ('received', 'reviewing')
+             AND EXISTS (
+               SELECT 1 FROM field_note_replies r
+               WHERE r.id = content_flags.target_id AND r.status = 'hidden'
+                 AND r.moderated_at = ? AND r.moderated_by = ?
+             )`
+        )
+        .bind(timestamp, actorSubject, flagId, timestamp, actorSubject),
+      this.db
+        .prepare(
+          `UPDATE content_flags
+           SET status = 'resolved', resolved_at = ?, resolved_by = ?
+           WHERE target_kind = 'reply'
+             AND target_id = (
+               SELECT target_id FROM content_flags
+               WHERE id = ? AND target_kind = 'reply' AND status IN ('received', 'reviewing')
+             )
+             AND status IN ('received', 'reviewing')
+             AND EXISTS (
+               SELECT 1 FROM field_note_replies r
+               WHERE r.id = content_flags.target_id AND r.status = 'hidden'
+                 AND r.moderated_at = ? AND r.moderated_by = ?
+             )`
+        )
+        .bind(timestamp, actorSubject, flagId, timestamp, actorSubject),
+      this.auditStatement(
+        actorSubject,
+        "content_flag.target_hidden",
+        "content_flag",
+        flagId,
+        { reason },
+        timestamp,
+        `EXISTS (
+          SELECT 1 FROM content_flags
+          WHERE id = ? AND status = 'resolved' AND resolved_at = ? AND resolved_by = ?
+        )`,
+        [flagId, timestamp, actorSubject]
+      )
+    ]);
+    if (Number(replyResult?.meta.changes) !== 1) return null;
+    return { id: flagId, status: "resolved", resolvedAt: timestamp };
+  }
+
+  async moderateReply(
+    replyId: string,
+    action: "hide" | "restore",
+    reason: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const timestamp = now();
+    const nextStatus = action === "hide" ? "hidden" : "published";
+    const expectedStatus = action === "hide" ? "published" : "hidden";
+    const [replyResult] = await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE field_note_replies
+           SET status = ?, moderated_at = ?, moderated_by = ?
+           WHERE id = ? AND status = ?`
+        )
+        .bind(nextStatus, timestamp, actorSubject, replyId, expectedStatus),
+      ...(action === "hide"
+        ? [
+            this.db
+              .prepare(
+                `UPDATE content_flags
+                 SET status = 'resolved', resolved_at = ?, resolved_by = ?
+                 WHERE target_kind = 'reply' AND target_id = ?
+                   AND status IN ('received', 'reviewing')`
+              )
+              .bind(timestamp, actorSubject, replyId)
+          ]
+        : []),
+      this.auditStatement(
+        actorSubject,
+        action === "hide" ? "reply.hidden" : "reply.restored",
+        "field_note_reply",
+        replyId,
+        { reason },
+        timestamp,
+        `EXISTS (
+          SELECT 1 FROM field_note_replies
+          WHERE id = ? AND status = ? AND moderated_at = ? AND moderated_by = ?
+        )`,
+        [replyId, nextStatus, timestamp, actorSubject]
+      )
+    ]);
+    if (Number(replyResult?.meta.changes) !== 1) return null;
+    return { id: replyId, status: nextStatus, moderatedAt: timestamp };
+  }
+
   async isActiveStaff(subject: string, normalizedEmail: string | null): Promise<boolean> {
     if (!normalizedEmail) return false;
     const normalized = normalizedEmail.trim().toLowerCase();
@@ -4573,5 +4804,24 @@ export class D1DataStore implements DataStore {
       )
       .bind(id(), actorSubject, action, targetKind, targetId, json(metadata), now())
       .run();
+  }
+
+  private auditStatement(
+    actorSubject: string,
+    action: string,
+    targetKind: string,
+    targetId: string | null,
+    metadata: Record<string, unknown>,
+    occurredAt: string,
+    guard: string,
+    guardBindings: unknown[]
+  ) {
+    return this.db
+      .prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard}`
+      )
+      .bind(id(), actorSubject, action, targetKind, targetId, json(metadata), occurredAt, ...guardBindings);
   }
 }
