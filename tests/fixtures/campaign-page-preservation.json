@@ -6,7 +6,7 @@
     "index.html": {
       "headSha256": "2dbe9e2b1e327d93c379b255fa0d2ea84e3c09caa39009e9339908f7b2cedf88",
       "scriptsSha256": "430fb802aca349b8f3fcfe77a347de782d8a46d7ff90c86714b7e0d1a35fdc75",
-      "bodySha256": "2ad6c14031d1a87d0725fbf203af386c3098584e6ceb75637f696cf051ab73fa"
+      "bodySha256": "fd8fd03373245b03813c089eddc813d344d5d4726161a018552dbb240240b8df"
     },
     "start.html": {
       "headSha256": "bae80f0e35b31a49d97d640c04c9edbaf9e3fe52866683412755e62d83999bea",
@@ -14,9 +14,9 @@
       "bodySha256": "09e234ea3eb9e2f3fe6b9404a27b9f7d45ca5fbd0f67b74f0fa345ad3fba01e9"
     },
     "route.html": {
-      "headSha256": "8f8c23b23f7257dcd3c7147d0590d023b3321c32f3c6e718211611d6664d4c40",
-      "scriptsSha256": "b89ba8f0b6240673595f590082120020ae9ca5f8dafc71d7d93628e607eab959",
-      "bodySha256": "1214c87b97b184a1171d9bbc2da191c55a7145d30985940fd7cdade233f2e204"
+      "headSha256": "f7fab961b9b53c2121e6d9fe6a2ea5deeba33c4f43c6d4c58124369838461152",
+      "scriptsSha256": "e8f8a920883ffa3d79d6ed6ae279fddff65bc98b4ed5223533f55367a4e7f511",
+      "bodySha256": "f5487eb5ad4b0e8f37a9fb73e7935da38275276084af49f95acd231b3a315f0a"
     },
     "interview.html": {
       "headSha256": "d56dac9491bcb977890116887364b1f33db72a8ea52b493d89272dbda6f2a298",
