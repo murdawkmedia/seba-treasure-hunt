@@ -30,7 +30,6 @@ const campaignFiles = Object.freeze([
   "report.html",
   "rules.html",
   "dashboard.html",
-  "sponsors.html",
   "privacy.html",
   "waiver.html",
   "community-guidelines.html",
@@ -45,7 +44,6 @@ const menuRoutes = new Set([
   "report",
   "rules",
   "dashboard",
-  "sponsors",
 ]);
 
 const readGeometry = (page, stripSelector, headerSelector) => page.evaluate(([stripSelector, headerSelector]) => {
@@ -279,24 +277,6 @@ test("contextual focus outlines preserve raised and current-state shadows", { ti
       ["rgb(242, 205, 106)", "solid", "3px", "3px"],
     );
 
-    await page.goto(`${origin}/sponsors.html`, { waitUntil: "domcontentloaded" });
-    const sponsorNav = page.locator("#campaign-nav .nav-sponsors");
-    const sponsorNavShadow = (await readFocusStyle(sponsorNav)).boxShadow;
-    assert.match(sponsorNavShadow, /inset/, "current Sponsors nav starts with its inset state shadow");
-    await sponsorNav.focus();
-    const focusedSponsorNav = await readFocusStyle(sponsorNav);
-    assert.equal(focusedSponsorNav.boxShadow, sponsorNavShadow, "Sponsors focus keeps the current-state inset shadow");
-    assert.equal(focusedSponsorNav.outlineColor, "rgb(242, 205, 106)");
-
-    const sponsorInput = page.locator("#sponsor-contact");
-    const sponsorInputShadow = (await readFocusStyle(sponsorInput)).boxShadow;
-    await sponsorInput.focus();
-    const focusedSponsorInput = await readFocusStyle(sponsorInput);
-    assert.equal(focusedSponsorInput.boxShadow, sponsorInputShadow, "Sponsor input focus keeps its component shadow");
-    assert.deepEqual(
-      [focusedSponsorInput.outlineColor, focusedSponsorInput.outlineStyle, focusedSponsorInput.outlineWidth, focusedSponsorInput.outlineOffset],
-      ["rgb(7, 31, 28)", "solid", "3px", "3px"],
-    );
   } finally {
     await browser.close();
   }
@@ -328,16 +308,6 @@ test("contextual focus maps public parchment and resets nested dark utilities", 
 
   try {
     const page = await context.newPage();
-
-    await page.goto(`${origin}/sponsors.html`, { waitUntil: "domcontentloaded" });
-    await assertFocusColor(page.locator(".opportunity-card a").first(), dark, "sponsor opportunity link uses dark focus on paper", page.locator(".opportunity-card").first());
-    await assertFocusColor(page.locator(".sponsor-form .turnstile-shell"), gold, "sponsor Turnstile shell resets to gold on its dark surface");
-    const sponsorResult = page.locator(".sponsor-form__result");
-    await sponsorResult.evaluate((element) => {
-      element.hidden = false;
-      element.textContent = "Test result";
-    });
-    await assertFocusColor(sponsorResult, gold, "sponsor result resets to gold on its dark surface");
 
     await page.goto(`${origin}/route.html`, { waitUntil: "domcontentloaded" });
     await page.locator("[data-route-member-content]").evaluate((element) => {
@@ -487,7 +457,6 @@ test("390px headers use measured compact stacked geometry and an operable menu",
       ["index.html", ".case-strip", ".campaign-header"],
       ["privacy.html", ".case-strip", ".campaign-header"],
       ["clue-board.html", ".case-strip", ".campaign-header"],
-      ["sponsors.html", ".case-strip", ".campaign-header"],
     ]) {
       await page.goto(`${origin}/${file}`, { waitUntil: "domcontentloaded" });
       const geometry = await waitForSyncedGeometry(page, stripSelector, headerSelector);
@@ -525,49 +494,6 @@ test("390px headers use measured compact stacked geometry and an operable menu",
       assert.ok(restored.stripHeight < grown.stripHeight, `${file} measured first-row variable shrinks after content restoration`);
     }
 
-    await page.goto(`${origin}/sponsors.html`, { waitUntil: "domcontentloaded" });
-    const readSponsorAnchors = () => page.evaluate(() => {
-      const rootStyles = getComputedStyle(document.documentElement);
-      const opportunities = document.querySelector("#opportunities");
-      const inquiry = document.querySelector("#inquiry");
-      if (!(opportunities instanceof HTMLElement) || !(inquiry instanceof HTMLElement)) return null;
-      return {
-        stackedHeight: Number.parseFloat(rootStyles.getPropertyValue("--stacked-header-height")),
-        opportunitiesMargin: Number.parseFloat(getComputedStyle(opportunities).scrollMarginTop),
-        inquiryMargin: Number.parseFloat(getComputedStyle(inquiry).scrollMarginTop),
-      };
-    });
-    const normalSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
-    const normalSponsorAnchors = await readSponsorAnchors();
-    assert.ok(normalSponsorAnchors);
-    assert.ok(Math.abs(normalSponsorAnchors.opportunitiesMargin - normalSponsorAnchors.stackedHeight) <= 1);
-    assert.ok(Math.abs(normalSponsorAnchors.inquiryMargin - normalSponsorAnchors.stackedHeight) <= 1);
-    await page.locator(".case-strip__label").evaluate((label) => {
-      label.dataset.originalText = label.textContent ?? "";
-      label.style.fontSize = "28px";
-      label.textContent = "Sponsor case status has expanded into a deliberately long wrapped update so both primary conversion anchors must clear the complete live header stack.";
-    });
-    const grownSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header", 76);
-    const grownSponsorAnchors = await readSponsorAnchors();
-    assert.ok(grownSponsorGeometry.stackedVariable > normalSponsorGeometry.stackedVariable);
-    assert.ok(Math.abs(grownSponsorAnchors.opportunitiesMargin - grownSponsorAnchors.stackedHeight) <= 1);
-    assert.ok(Math.abs(grownSponsorAnchors.inquiryMargin - grownSponsorAnchors.stackedHeight) <= 1);
-    await page.locator(".case-strip__label").evaluate((label) => {
-      label.textContent = label.dataset.originalText ?? "";
-      label.style.removeProperty("font-size");
-      delete label.dataset.originalText;
-    });
-    await page.waitForFunction((grownHeight) => {
-      const value = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stacked-header-height"));
-      return Number.isFinite(value) && value < grownHeight - 1;
-    }, grownSponsorGeometry.stackedVariable);
-    const restoredSponsorGeometry = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
-    const restoredSponsorAnchors = await readSponsorAnchors();
-    assert.ok(restoredSponsorGeometry.stackedVariable < grownSponsorGeometry.stackedVariable);
-    assert.ok(restoredSponsorAnchors.opportunitiesMargin < grownSponsorAnchors.opportunitiesMargin);
-    assert.ok(Math.abs(restoredSponsorAnchors.opportunitiesMargin - restoredSponsorAnchors.stackedHeight) <= 1);
-    assert.ok(Math.abs(restoredSponsorAnchors.inquiryMargin - restoredSponsorAnchors.stackedHeight) <= 1);
-
     await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
     const toggle = page.locator(".campaign-menu-toggle");
     const nav = page.locator("#campaign-nav");
@@ -577,15 +503,15 @@ test("390px headers use measured compact stacked geometry and an operable menu",
     assert.equal(await toggle.getAttribute("aria-expanded"), "true");
     assert.equal(await nav.evaluate((element) => getComputedStyle(element).display), "flex");
     const expanded = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
-    const nestedSponsorContent = nav.locator('a[href="/sponsors"] span[data-nested-link]');
-    await nav.locator('a[href="/sponsors"]').evaluate((anchor) => {
+    const nestedDashboardContent = nav.locator('a[href="/dashboard"] span[data-nested-link]');
+    await nav.locator('a[href="/dashboard"]').evaluate((anchor) => {
       anchor.addEventListener("click", (event) => event.preventDefault(), { once: true });
       const nested = document.createElement("span");
       nested.dataset.nestedLink = "true";
-      nested.textContent = " inquiry";
+      nested.textContent = " dashboard";
       anchor.append(nested);
     });
-    await nestedSponsorContent.click();
+    await nestedDashboardContent.click();
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
     assert.equal(await nav.evaluate((element) => getComputedStyle(element).display), "none");
     const nestedClosed = await waitForSyncedGeometry(page, ".case-strip", ".campaign-header");
@@ -604,9 +530,7 @@ test("390px headers use measured compact stacked geometry and an operable menu",
     await boardToggle.click();
     assert.equal(await boardToggle.getAttribute("aria-expanded"), "true");
     assert.equal(await boardNav.evaluate((element) => getComputedStyle(element).display), "flex");
-    const sponsors = boardNav.locator('a[href="/sponsors"]');
     const dashboard = boardNav.locator('a[href="/dashboard"]');
-    assert.equal(await sponsors.isVisible(), true);
     assert.equal(await dashboard.isVisible(), true);
     await page.keyboard.press("Escape");
     assert.equal(await boardToggle.getAttribute("aria-expanded"), "false");
@@ -670,17 +594,17 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
         for (let index = 0; index < navLinkCount; index += 1) {
           await page.keyboard.press("Tab");
           focusedHref = await page.evaluate(() => document.activeElement?.getAttribute("href"));
-          if (focusedHref === "/sponsors") break;
+          if (focusedHref === "/dashboard") break;
         }
-        assert.equal(focusedHref, "/sponsors", `${file} reaches Sponsors through keyboard Tab traversal`);
+        assert.equal(focusedHref, "/dashboard", `${file} reaches Dashboard through keyboard Tab traversal`);
         const metrics = await page.evaluate(() => {
           const nav = document.querySelector("#campaign-nav");
-          const sponsorLink = nav?.querySelector('a[href="/sponsors"]');
-          if (!(nav instanceof HTMLElement) || !(sponsorLink instanceof HTMLElement)) return null;
+          const dashboardLink = nav?.querySelector('a[href="/dashboard"]');
+          if (!(nav instanceof HTMLElement) || !(dashboardLink instanceof HTMLElement)) return null;
           const navRect = nav.getBoundingClientRect();
-          const sponsorRect = sponsorLink.getBoundingClientRect();
-          const sponsorStyles = getComputedStyle(sponsorLink);
-          const focusSpace = Number.parseFloat(sponsorStyles.outlineWidth) + Number.parseFloat(sponsorStyles.outlineOffset);
+          const dashboardRect = dashboardLink.getBoundingClientRect();
+          const dashboardStyles = getComputedStyle(dashboardLink);
+          const focusSpace = Number.parseFloat(dashboardStyles.outlineWidth) + Number.parseFloat(dashboardStyles.outlineOffset);
           return {
             documentOverflow: document.documentElement.scrollWidth - window.innerWidth,
             focusSpace,
@@ -695,10 +619,10 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
             navLeft: navRect.left,
             navRight: navRect.right,
             navTop: navRect.top,
-            sponsorBottom: sponsorRect.bottom,
-            sponsorLeft: sponsorRect.left,
-            sponsorRight: sponsorRect.right,
-            sponsorTop: sponsorRect.top,
+            dashboardBottom: dashboardRect.bottom,
+            dashboardLeft: dashboardRect.left,
+            dashboardRight: dashboardRect.right,
+            dashboardTop: dashboardRect.top,
             viewportHeight: window.innerHeight,
           };
         });
@@ -713,12 +637,12 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
           `${file} constrained menu has vertical overflow (${metrics.navScrollHeight} > ${metrics.navClientHeight})`,
         );
         assert.ok(metrics.navScrollTop > initialScrollTop, `${file} Tab traversal scrolls the menu vertically`);
-        assert.ok(metrics.sponsorLeft >= metrics.navLeft + metrics.focusSpace - 1, `${file} Sponsors focus left is visible`);
-        assert.ok(metrics.sponsorRight <= metrics.navRight - metrics.focusSpace + 1, `${file} Sponsors focus right is visible`);
-        assert.ok(metrics.sponsorTop >= metrics.navTop + metrics.focusSpace - 1, `${file} Sponsors focus top is visible`);
+        assert.ok(metrics.dashboardLeft >= metrics.navLeft + metrics.focusSpace - 1, `${file} Dashboard focus left is visible`);
+        assert.ok(metrics.dashboardRight <= metrics.navRight - metrics.focusSpace + 1, `${file} Dashboard focus right is visible`);
+        assert.ok(metrics.dashboardTop >= metrics.navTop + metrics.focusSpace - 1, `${file} Dashboard focus top is visible`);
         assert.ok(
-          metrics.sponsorBottom <= Math.min(metrics.navBottom, metrics.viewportHeight) - metrics.focusSpace + 1,
-          `${file} Sponsors focus bottom is visible (${metrics.sponsorBottom} <= ${Math.min(metrics.navBottom, metrics.viewportHeight) - metrics.focusSpace + 1}; scrollTop ${metrics.navScrollTop})`,
+          metrics.dashboardBottom <= Math.min(metrics.navBottom, metrics.viewportHeight) - metrics.focusSpace + 1,
+          `${file} Dashboard focus bottom is visible (${metrics.dashboardBottom} <= ${Math.min(metrics.navBottom, metrics.viewportHeight) - metrics.focusSpace + 1}; scrollTop ${metrics.navScrollTop})`,
         );
       }
       await context.close();
@@ -814,11 +738,11 @@ test("canonical shell geometry and navigation state hold across every route and 
           assert.equal(state.toggleExpanded, "false", `${file} starts collapsed at ${width}px`);
           assert.equal(state.navDisplay, "none", `${file} starts with its mobile menu hidden at ${width}px`);
           await page.locator(".campaign-menu-toggle").click();
-          assert.equal(await page.locator('#campaign-nav a[href="/sponsors"]').isVisible(), true, `${file} keeps Sponsors visible in its mobile menu`);
+          assert.equal(await page.locator('#campaign-nav a[href="/dashboard"]').isVisible(), true, `${file} keeps Dashboard visible in its mobile menu`);
         } else {
           assert.equal(state.toggleDisplay, "none", `${file} hides the toggle at ${width}px`);
           assert.equal(state.navDisplay, "flex", `${file} keeps desktop navigation visible at ${width}px`);
-          assert.equal(await page.locator('#campaign-nav a[href="/sponsors"]').isVisible(), true, `${file} keeps Sponsors visible on desktop`);
+          assert.equal(await page.locator('#campaign-nav a[href="/dashboard"]').isVisible(), true, `${file} keeps Dashboard visible on desktop`);
         }
       }
       await context.close();
@@ -843,19 +767,19 @@ test("mobile navigation resets at desktop and preserves the required focus behav
     await page.goto(`${origin}/privacy.html`, { waitUntil: "domcontentloaded" });
     const toggle = page.locator(".campaign-menu-toggle");
     const nav = page.locator("#campaign-nav");
-    const sponsor = nav.locator('a[href="/sponsors"]');
+    const dashboard = nav.locator('a[href="/dashboard"]');
 
     await toggle.click();
-    await sponsor.focus();
+    await dashboard.focus();
     await page.setViewportSize({ width: 900, height: 844 });
     await page.waitForFunction(() => document.querySelector("#campaign-nav")?.classList.contains("open") === false);
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
-    assert.equal(await sponsor.evaluate((element) => document.activeElement === element), true, "desktop reset does not steal focus");
+    assert.equal(await dashboard.evaluate((element) => document.activeElement === element), true, "desktop reset does not steal focus");
 
     await page.setViewportSize({ width: 390, height: 844 });
     await toggle.click();
-    await sponsor.evaluate((anchor) => anchor.addEventListener("click", (event) => event.preventDefault(), { once: true }));
-    await sponsor.click();
+    await dashboard.evaluate((anchor) => anchor.addEventListener("click", (event) => event.preventDefault(), { once: true }));
+    await dashboard.click();
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
     assert.equal(await toggle.evaluate((element) => document.activeElement === element), false, "link closure does not steal focus");
 

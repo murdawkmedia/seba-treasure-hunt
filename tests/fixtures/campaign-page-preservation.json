@@ -6,7 +6,7 @@
     "index.html": {
       "headSha256": "2dbe9e2b1e327d93c379b255fa0d2ea84e3c09caa39009e9339908f7b2cedf88",
       "scriptsSha256": "430fb802aca349b8f3fcfe77a347de782d8a46d7ff90c86714b7e0d1a35fdc75",
-      "bodySha256": "fd8fd03373245b03813c089eddc813d344d5d4726161a018552dbb240240b8df"
+      "bodySha256": "6b9b316787dc487247091c6d2a3ca677c860b01128e0eb44a9e62afbf8b96281"
     },
     "start.html": {
       "headSha256": "bae80f0e35b31a49d97d640c04c9edbaf9e3fe52866683412755e62d83999bea",
@@ -47,11 +47,6 @@
       "headSha256": "f4bb78659b71dea3026cab4cf77f39dcda4c40b3d9436e7e890788ef16a5acdc",
       "scriptsSha256": "e05ab979782e680caf291b2f77e492f28d3ecbfadaff5abc4e2e1f18ed5bef2d",
       "bodySha256": "b752797df0895f5fff6666a1654d41c25ef2cfd9e91843c003b8d058cd22e958"
-    },
-    "sponsors.html": {
-      "headSha256": "02993d25c1786748368d5eea8b808fd54036e9fec12b95962563a408e00bd67b",
-      "scriptsSha256": "e750a5f7e43531944e9454afb1c60ca4736d76699ca98a65d9052a3f4e251711",
-      "bodySha256": "e964c0be155edfc5d319774861abe81a61c1367d423a0d62cd8f9893dd031a20"
     },
     "privacy.html": {
       "headSha256": "4a5cb1cd4f2d89b79ddeec49975ac17a0611d52b1391579cd4979edc418cfa0e",

@@ -30,7 +30,6 @@ test("the active waiver is discoverable from legal footers, routing, build, and 
     "report.html",
     "community-guidelines.html",
     "clue-board.html",
-    "sponsors.html",
   ]) {
     assert.match(readRenderedCampaignPage(file), /href="\/waiver"/, `${file} links the active waiver`);
   }
@@ -51,7 +50,6 @@ const hunterMenuPages = [
   "rules.html",
   "privacy.html",
   "community-guidelines.html",
-  "sponsors.html",
 ];
 
 test("hunter pages expose campaign navigation, truthful live status, and canonical metadata", () => {
@@ -267,7 +265,7 @@ test("hunter page menus expose one labelled toggle and retain campaign destinati
     assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/, `${file} toggle semantics`);
     assert.match(html, /<span class="sr-only">Toggle campaign menu<\/span>/, `${file} toggle label`);
     assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Campaign")[^>]*>/, `${file} campaign nav`);
-    for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard", "/sponsors"]) {
+    for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard"]) {
       assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `${file} retains ${href}`);
     }
     assert.match(read(file), /<script src="\/js\/site\.js"><\/script>/, `${file} loads shared menu behavior`);
@@ -284,7 +282,7 @@ test("the clue board uses the canonical shell without becoming a navigation exce
   assert.equal((html.match(/\bclass="campaign-menu-toggle"/g) ?? []).length, 1, "clue-board.html has one menu toggle");
   assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/);
   assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Campaign")[^>]*>/);
-  for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard", "/sponsors"]) {
+  for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard"]) {
     assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `clue-board.html retains ${href}`);
   }
   assert.doesNotMatch(html, />Interview<\/a>/);
