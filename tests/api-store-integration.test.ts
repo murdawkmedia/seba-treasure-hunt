@@ -2541,6 +2541,14 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
        VALUES ('report-flagged-case-note', 'tip', 'Private Reporter', 'private@example.test', 1,
                'Private location', 'Private report details', 'Community Hunter',
                'community', 'reviewing', ?, ?)`
+    ).bind(timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO private_reports
+       (id, report_type, reporter_name, reporter_email, location_description, details,
+        public_attribution, attribution_kind, status, created_at, updated_at)
+       VALUES ('report-withdrawn-flag-target', 'tip', 'Private Reporter', 'private@example.test',
+               'Private location', 'Private withdrawn details', 'Community Hunter', 'community',
+               'reviewing', ?, ?)`
     ).bind(timestamp, timestamp)
   ]);
   const store = new D1DataStore(db);
@@ -2550,6 +2558,37 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
     "staff-publisher"
   );
   assert.equal(note?.noteKind, "operator_reviewed");
+
+  const contentNotFound = (error: unknown) =>
+    error instanceof ApiError && error.status === 404 && error.code === "content_not_found";
+  await assert.rejects(
+    store.createFlag({
+      reporterSubject: "private-flag-reporter",
+      targetKind: "note",
+      targetId: "not-a-public-note",
+      reason: "privacy"
+    }),
+    contentNotFound
+  );
+  const withdrawnNote = await store.publishReportToCaseNotes(
+    "report-withdrawn-flag-target",
+    { body: "A reviewed note that is no longer public.", mediaIds: [] },
+    "staff-publisher"
+  );
+  await store.withdrawReportCaseNote("report-withdrawn-flag-target", "staff-publisher");
+  await assert.rejects(
+    store.createFlag({
+      reporterSubject: "private-flag-reporter",
+      targetKind: "note",
+      targetId: withdrawnNote?.id,
+      reason: "privacy"
+    }),
+    contentNotFound
+  );
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM content_flags").first<{ count: number }>())?.count,
+    0
+  );
 
   const flag = await store.createFlag({
     reporterSubject: "private-flag-reporter",
@@ -2685,6 +2724,78 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
       target_id: hideFlag.id,
       metadata_json: JSON.stringify({ reason: "The reviewed note discloses private information." })
     }
+  );
+  await assert.rejects(
+    store.createFlag({
+      reporterSubject: "private-flag-reporter",
+      targetKind: "note",
+      targetId: note?.id,
+      reason: "privacy"
+    }),
+    contentNotFound
+  );
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM content_flags").first<{ count: number }>())?.count,
+    3
+  );
+
+  await db.batch([
+    db.prepare(
+      `INSERT INTO field_notes
+       (id, author_subject, waypoint_id, body, status, created_at, updated_at, published_at)
+       VALUES ('public-legacy-flag-target', 'private-flag-reporter', 1, 'Public legacy note.',
+               'approved', ?, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO field_notes
+       (id, author_subject, waypoint_id, body, status, created_at, updated_at)
+       VALUES ('pending-legacy-flag-target', 'private-flag-reporter', 1, 'Pending legacy note.',
+               'pending', ?, ?)`
+    ).bind(timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('public-reply-flag-target', 'public-legacy-flag-target', 'private-flag-reporter',
+               'Public reply.', 'published', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('hidden-reply-flag-target', 'public-legacy-flag-target', 'private-flag-reporter',
+               'Hidden reply.', 'hidden', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('pending-parent-reply-target', 'pending-legacy-flag-target', 'private-flag-reporter',
+               'Reply under a pending note.', 'published', ?)`
+    ).bind(timestamp)
+  ]);
+  assert.equal((await store.createFlag({
+    reporterSubject: "private-flag-reporter",
+    targetKind: "note",
+    targetId: "public-legacy-flag-target",
+    reason: "unsafe"
+  })).status, "received");
+  assert.equal((await store.createFlag({
+    reporterSubject: "private-flag-reporter",
+    targetKind: "reply",
+    targetId: "public-reply-flag-target",
+    reason: "unsafe"
+  })).status, "received");
+  for (const [targetKind, targetId] of [
+    ["note", "pending-legacy-flag-target"],
+    ["reply", "hidden-reply-flag-target"],
+    ["reply", "pending-parent-reply-target"]
+  ] as const) {
+    await assert.rejects(
+      store.createFlag({ reporterSubject: "private-flag-reporter", targetKind, targetId, reason: "unsafe" }),
+      contentNotFound
+    );
+  }
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM content_flags").first<{ count: number }>())?.count,
+    5
   );
 });
 

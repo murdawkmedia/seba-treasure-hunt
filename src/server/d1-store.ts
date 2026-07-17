@@ -2540,11 +2540,37 @@ export class D1DataStore implements DataStore {
   async createFlag(input: Record<string, unknown>): Promise<Record<string, unknown>> {
     const flagId = id();
     const createdAt = now();
-    await this.db
+    const result = await this.db
       .prepare(
         `INSERT INTO content_flags
          (id, reporter_subject, target_kind, target_id, reason, details, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'received', ?)`
+         SELECT ?, ?, ?, ?, ?, ?, 'received', ?
+         WHERE (
+           ? = 'note' AND (
+             EXISTS (
+               SELECT 1
+               FROM field_notes note
+               JOIN hunter_profiles author ON author.subject = note.author_subject
+               WHERE note.id = ? AND note.status = 'approved'
+                 AND note.published_at IS NOT NULL AND note.published_at <= ?
+             )
+             OR EXISTS (
+               SELECT 1 FROM operator_reviewed_case_notes reviewed
+               WHERE reviewed.id = ? AND reviewed.status = 'published'
+                 AND reviewed.published_at <= ?
+             )
+           )
+         ) OR (
+           ? = 'reply' AND EXISTS (
+             SELECT 1
+             FROM field_note_replies reply
+             JOIN hunter_profiles reply_author ON reply_author.subject = reply.author_subject
+             JOIN field_notes note ON note.id = reply.field_note_id AND note.status = 'approved'
+             JOIN hunter_profiles note_author ON note_author.subject = note.author_subject
+             WHERE reply.id = ? AND reply.status = 'published'
+               AND note.published_at IS NOT NULL AND note.published_at <= ?
+           )
+         )`
       )
       .bind(
         flagId,
@@ -2553,9 +2579,20 @@ export class D1DataStore implements DataStore {
         input.targetId,
         input.reason,
         input.details ?? null,
+        createdAt,
+        input.targetKind,
+        input.targetId,
+        createdAt,
+        input.targetId,
+        createdAt,
+        input.targetKind,
+        input.targetId,
         createdAt
       )
       .run();
+    if (Number(result.meta.changes) !== 1) {
+      throw new ApiError(404, "content_not_found", "Community content not found.");
+    }
     return { id: flagId, status: "received", createdAt };
   }
 

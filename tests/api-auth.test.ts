@@ -219,6 +219,14 @@ test("pre-moderates field notes, constrains replies, and accepts private abuse f
   assert.equal((await responseJson(replay)).data.id, noteData.id);
   assert.equal(store.notes.length, 1);
   assert.deepEqual(operatorAlerts.calls, ["operator-note-job-1"]);
+  store.notes[0]!.status = "approved";
+  store.board.push({
+    ...store.notes[0],
+    authorSubject: "hunter-1",
+    status: "approved",
+    publishedAt: "2026-07-17T18:00:00.000Z",
+    replies: []
+  });
 
   const unsafeReply = await app.request(
     `https://www.timlostsomething.com/api/v1/board/notes/${noteData.id}/replies`,
@@ -241,11 +249,20 @@ test("pre-moderates field notes, constrains replies, and accepts private abuse f
   assert.equal(flag.status, 201);
   assert.equal((await responseJson(flag)).data.status, "received");
   assert.equal(store.flags.length, 1);
+  store.replies[0]!.status = "hidden";
+  const hiddenReplyFlag = await app.request(
+    `https://www.timlostsomething.com/api/v1/board/reply/${store.replies[0]!.id}/flags`,
+    { method: "POST", ...json({ reason: "unsafe" }, hunterHeaders) }
+  );
+  assert.equal(hiddenReplyFlag.status, 404);
+  assert.equal((await responseJson(hiddenReplyFlag)).error.code, "content_not_found");
+  assert.equal(store.flags.length, 1);
   assert.deepEqual(rateLimits.seen.map((entry) => entry.scope), [
     "field_note",
     "field_note",
     "reply",
     "reply",
+    "flag",
     "flag"
   ]);
 });
@@ -466,13 +483,39 @@ test("moderates publicly accepted flags for operator-reviewed Case Notes end to 
   );
   const noteId = String(note?.id);
 
-  const createFlag = (reason: string, details?: string) => app.request(
-    `https://www.timlostsomething.com/api/v1/board/note/${encodeURIComponent(noteId)}/flags`,
+  const createFlag = (reason: string, details?: string, targetId = noteId) => app.request(
+    `https://www.timlostsomething.com/api/v1/board/note/${encodeURIComponent(targetId)}/flags`,
     {
       method: "POST",
       ...json({ reason, details, turnstileToken: "human-token" }, hunterHeaders)
     }
   );
+  const missingFlag = await createFlag("privacy", undefined, "not-a-public-note");
+  assert.equal(missingFlag.status, 404);
+  const missingFlagError = (await responseJson(missingFlag)).error;
+  assert.equal(missingFlagError.code, "content_not_found");
+  assert.equal(missingFlagError.message, "Community content not found.");
+  assert.equal(store.flags.length, 0);
+
+  store.reports.push({
+    id: "report-withdrawn-operator-note",
+    status: "reviewing",
+    publicAttribution: "Community Hunter",
+    media: []
+  });
+  const withdrawnNote = await store.publishReportToCaseNotes(
+    "report-withdrawn-operator-note",
+    { body: "A withdrawn reviewed observation.", mediaIds: [] },
+    "staff-publisher"
+  );
+  await store.withdrawReportCaseNote("report-withdrawn-operator-note", "staff-publisher");
+  const withdrawnFlag = await createFlag("privacy", undefined, String(withdrawnNote?.id));
+  assert.equal(withdrawnFlag.status, 404);
+  const withdrawnFlagError = (await responseJson(withdrawnFlag)).error;
+  assert.equal(withdrawnFlagError.code, "content_not_found");
+  assert.equal(withdrawnFlagError.message, "Community content not found.");
+  assert.equal(store.flags.length, 0);
+
   const firstFlag = await createFlag("privacy", "Private reporter context.");
   assert.equal(firstFlag.status, 201);
   const firstFlagBody = await responseJson(firstFlag);
@@ -548,6 +591,13 @@ test("moderates publicly accepted flags for operator-reviewed Case Notes end to 
     store.audits.filter((audit) => audit.action === "content_flag.target_hidden" && audit.targetId === hideFlag.data.id).length,
     1
   );
+  const hiddenFlagCount = store.flags.length;
+  const hiddenTargetFlag = await createFlag("privacy");
+  assert.equal(hiddenTargetFlag.status, 404);
+  const hiddenTargetFlagError = (await responseJson(hiddenTargetFlag)).error;
+  assert.equal(hiddenTargetFlagError.code, "content_not_found");
+  assert.equal(hiddenTargetFlagError.message, "Community content not found.");
+  assert.equal(store.flags.length, hiddenFlagCount);
   const unsupportedRestore = await app.request(
     `https://www.timlostsomething.com/api/v1/ops/moderation/flags/${encodeURIComponent(hideFlag.data.id)}`,
     {
@@ -1489,7 +1539,8 @@ test("a current waiver unlocks hunter tools without weakening reports, moderatio
     subject: "hunter-1",
     fullName: "Alex Hunter",
     participationBasis: "adult",
-    guardianPermissionAttestedAt: null
+    guardianPermissionAttestedAt: null,
+    publicHandle: "Hunter A7F3"
   });
   store.legalEvents.push({
     subject: "hunter-1",
@@ -1514,11 +1565,27 @@ test("a current waiver unlocks hunter tools without weakening reports, moderatio
     assert.equal((await responseJson(response)).error.code, "participation_waiver_required", path);
   }
 
+  store.board.push({
+    id: "public-waiver-flag-note",
+    authorSubject: "hunter-1",
+    status: "approved",
+    body: "A public note eligible for replies.",
+    replies: []
+  });
+  store.replies.push({
+    id: "reply-1",
+    noteId: "public-waiver-flag-note",
+    authorSubject: "hunter-1",
+    status: "published",
+    body: "A public reply eligible for reporting."
+  });
+
   const flag = await app.request("https://www.timlostsomething.com/api/v1/board/reply/reply-1/flags", {
     method: "POST",
     ...json({ reason: "unsafe", details: "Review this community reply." }, hunterHeaders)
   });
   assert.equal(flag.status, 201);
+  const boardCountBeforePrivateReport = store.board.length;
 
   const privateReport = await app.request("https://www.timlostsomething.com/api/v1/reports", {
     method: "POST",
@@ -1533,7 +1600,7 @@ test("a current waiver unlocks hunter tools without weakening reports, moderatio
   });
   assert.equal(privateReport.status, 201);
   assert.equal(store.reports[0]?.hunterSubject, null);
-  assert.equal(store.board.length, 0);
+  assert.equal(store.board.length, boardCountBeforePrivateReport);
 
   const review = await app.request("https://www.timlostsomething.com/api/v1/me/waiver/review", {
     method: "POST",
@@ -1593,5 +1660,5 @@ test("a current waiver unlocks hunter tools without weakening reports, moderatio
     { method: "POST", ...json({ body: "I noticed that too." }, hunterHeaders) }
   );
   assert.equal(reply.status, 201);
-  assert.equal(store.board.length, 0);
+  assert.equal(store.board.length, boardCountBeforePrivateReport);
 });

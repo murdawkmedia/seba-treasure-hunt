@@ -779,6 +779,9 @@ export class FakeStore {
   }
 
   async createFlag(input: Record<string, unknown>) {
+    if (!this.reportableFlagTarget(input.targetKind, input.targetId)) {
+      throw new ApiError(404, "content_not_found", "Community content not found.");
+    }
     const value = {
       ...input,
       id: `flag-${this.flags.length + 1}`,
@@ -1498,6 +1501,22 @@ export class FakeStore {
 
   private approvedModerationNote(id: unknown) {
     return this.board.find((candidate) => candidate.id === id && candidate.status === "approved") ?? null;
+  }
+
+  private reportableFlagTarget(kind: unknown, targetId: unknown) {
+    if (kind === "note") {
+      const note = this.board.find((candidate) => candidate.id === targetId);
+      if (!note) return false;
+      if (note.noteKind === "operator_reviewed") return note.status === "published";
+      return note.status === "approved" && this.publicAuthorProfile(note) !== null;
+    }
+    if (kind !== "reply") return false;
+    const reply = this.replies.find(
+      (candidate) => candidate.id === targetId && candidate.status === "published"
+    );
+    if (!reply || !this.publicAuthorProfile(reply)) return false;
+    const parent = this.approvedModerationNote(reply.noteId ?? reply.fieldNoteId);
+    return parent !== null && this.publicAuthorProfile(parent) !== null;
   }
 
   private moderationFlagContext(flag: Record<string, unknown>) {
