@@ -416,6 +416,20 @@ export interface EnvironmentGuard {
   assertWritable(): Promise<void>;
 }
 
+export interface ProductionSnapshotStore {
+  summary(): Promise<Record<string, unknown> | null>;
+  listReports(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  getReport(id: string): Promise<Record<string, unknown> | null>;
+  getReportMedia(
+    reportId: string,
+    mediaId: string
+  ): Promise<{ key: string; contentType: string } | null>;
+  listPlayers(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  listStaff(): Promise<Record<string, unknown>[]>;
+  listAudit(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  getWaiver(subject: string): Promise<Record<string, unknown> | null>;
+}
+
 export interface ApiDependencies {
   store: DataStore;
   identity: IdentityVerifier;
@@ -428,6 +442,8 @@ export interface ApiDependencies {
   webhooks?: WebhookVerifier;
   waiverReceipts?: LegalReceiptSender;
   operatorAlerts?: OperatorAlertSender;
+  productionSnapshot?: ProductionSnapshotStore;
+  productionSnapshotMedia?: UploadStorage;
   environment: EnvironmentGuard;
 }
 
@@ -435,6 +451,8 @@ export interface PagesEnv {
   ASSETS: Fetcher;
   DB?: D1Database;
   UPLOADS?: R2Bucket;
+  PRODUCTION_SNAPSHOT_DB?: D1Database;
+  PRODUCTION_SNAPSHOT_MEDIA?: R2Bucket;
   MEDIA_QUEUE?: Queue<MediaJob>;
   RATE_LIMIT_SALT?: string;
   TURNSTILE_SECRET_KEY?: string;
