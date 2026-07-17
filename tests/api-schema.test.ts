@@ -3,6 +3,37 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
+test("the publication refinement migration is additive and supports anonymous reviewed reports", async () => {
+  const names = (await readdir(path.resolve("migrations"))).sort();
+  assert.ok(
+    names.indexOf("0015_submission_ops_publication_refinement.sql") >
+      names.indexOf("0014_park_office_check_in_guidance.sql")
+  );
+  const sql = await readFile(
+    path.resolve("migrations", "0015_submission_ops_publication_refinement.sql"),
+    "utf8"
+  );
+  assert.match(sql, /ALTER TABLE private_reports ADD COLUMN public_attribution TEXT/i);
+  assert.match(sql, /ALTER TABLE hunter_profiles ADD COLUMN public_display_name TEXT/i);
+  assert.match(sql, /CREATE TABLE(?: IF NOT EXISTS)? operator_reviewed_case_notes/i);
+  assert.match(sql, /source_report_id TEXT NOT NULL UNIQUE REFERENCES private_reports/i);
+  assert.match(sql, /CREATE TABLE(?: IF NOT EXISTS)? operator_reviewed_case_note_media/i);
+  assert.match(sql, /CREATE TABLE(?: IF NOT EXISTS)? official_update_uploads/i);
+  assert.match(sql, /CREATE TABLE(?: IF NOT EXISTS)? official_update_uploaded_media/i);
+  assert.doesNotMatch(sql, /DROP TABLE|DELETE FROM|UPDATE\s+(?:private_reports|field_notes|official_updates)/i);
+});
+
+test("shared publication contracts reject invented destinations and states", async () => {
+  const publication = await import("../src/shared/publication");
+  assert.equal(publication.isPublicationDestination("private"), true);
+  assert.equal(publication.isPublicationDestination("case_note"), true);
+  assert.equal(publication.isPublicationDestination("official_update"), true);
+  assert.equal(publication.isPublicationDestination("social_media"), false);
+  assert.equal(publication.isPublicAttributionKind("young_hunter"), true);
+  assert.equal(publication.isOfficialUpdateState("scheduled"), true);
+  assert.equal(publication.isOfficialUpdateState("queued"), false);
+});
+
 test("the shared waypoint contract separates stable IDs from public route order", async () => {
   const { routeOrder, waypointId } = await import("../src/shared/waypoints");
 

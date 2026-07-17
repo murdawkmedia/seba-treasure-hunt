@@ -228,6 +228,12 @@ export interface SponsorInquiryRecord extends SponsorInquiryInput {
   updatedAt: string;
 }
 
+export type {
+  OfficialUpdateState,
+  PublicationDestination,
+  PublicAttributionKind
+} from "../shared/publication";
+
 export interface StoredMedia {
   id: string;
   key: string;
