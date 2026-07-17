@@ -260,6 +260,15 @@ without repeating completed Tasks 1–3.”
 - Focused D1/FakeStore tests and all TypeScript projects pass. No migration,
   deployment, or data mutation occurred.
 
+## Task 4 cursor canonicality follow-up — 2026-07-17 12:07 MDT
+
+- A supplied moderation cursor must now decode to exactly two fields and match
+  the canonical versioned `m1` encoding byte-for-byte. Padded base64,
+  whitespace-formatted JSON and surplus fields now fail with `400
+  invalid_cursor` in D1 and FakeStore.
+- Focused D1/FakeStore tests and all TypeScript projects pass. No migration,
+  deployment, or data mutation occurred.
+
 - Any production snapshot used by validation must be a manual, one-way,
   read-only copy in dedicated D1/R2 resources. Full-fidelity personal and
   private report data is permitted only behind existing server-side Ops

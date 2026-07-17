@@ -85,8 +85,9 @@ const parseModerationCursor = (cursor: string | null | undefined): ModerationCur
     const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
     const parsed: unknown = JSON.parse(atob(padded));
     if (
-      !Array.isArray(parsed) || typeof parsed[0] !== "string" || !isModerationTimestamp(parsed[0]) ||
-      typeof parsed[1] !== "string" || parsed[1].length === 0
+      !Array.isArray(parsed) || parsed.length !== 2 || typeof parsed[0] !== "string" ||
+      !isModerationTimestamp(parsed[0]) || typeof parsed[1] !== "string" || parsed[1].length === 0 ||
+      cursor !== moderationCursor(parsed[0], parsed[1])
     ) {
       throw new Error();
     }

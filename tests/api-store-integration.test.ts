@@ -4569,15 +4569,26 @@ test("real D1 projects recent published replies with public parent context and r
        VALUES ('unapproved-parent-flag', 'flag-reporter', 'reply', 'unapproved-parent-reply', 'spam', 'received', ?)`
     ).bind(timestamp)
   ]);
-  const invalidCursor = `m1.${btoa(JSON.stringify(["not-a-timestamp", ""]))}`;
-  for (const list of [
-    () => store.listModerationReplies({ cursor: invalidCursor }),
-    () => store.listContentFlags({ cursor: invalidCursor })
-  ]) {
-    await assert.rejects(
-      list,
-      (error: unknown) => error instanceof ApiError && error.status === 400 && error.code === "invalid_cursor"
-    );
+  const cursorPayload = (input: unknown) => btoa(typeof input === "string" ? input : JSON.stringify(input))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const canonicalCursor = `m1.${cursorPayload([timestamp, "moderation-reply"])}`;
+  const invalidCursors = [
+    `m0.${cursorPayload([timestamp, "moderation-reply"])}`,
+    `m1.${cursorPayload(["not-a-timestamp", ""])}`,
+    `${canonicalCursor}=`,
+    `m1.${cursorPayload(`["${timestamp}", "moderation-reply"]`)}`,
+    `m1.${cursorPayload([timestamp, "moderation-reply", "surplus"])}`
+  ];
+  for (const cursor of invalidCursors) {
+    for (const list of [
+      () => store.listModerationReplies({ cursor }),
+      () => store.listContentFlags({ cursor })
+    ]) {
+      await assert.rejects(
+        list,
+        (error: unknown) => error instanceof ApiError && error.status === 400 && error.code === "invalid_cursor"
+      );
+    }
   }
   const boardReplyCount = async () => {
     const note = (await store.listBoard(null)).items[0] as { replies?: unknown[] } | undefined;
@@ -4904,15 +4915,26 @@ test("FakeStore mirrors public reply moderation state and audited conditional tr
     }
   );
 
-  const invalidCursor = `m1.${btoa(JSON.stringify(["not-a-timestamp", ""]))}`;
-  for (const list of [
-    () => store.listModerationReplies({ cursor: invalidCursor }),
-    () => store.listContentFlags({ cursor: invalidCursor })
-  ]) {
-    await assert.rejects(
-      list,
-      (error: unknown) => error instanceof ApiError && error.status === 400 && error.code === "invalid_cursor"
-    );
+  const cursorPayload = (input: unknown) => btoa(typeof input === "string" ? input : JSON.stringify(input))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const canonicalCursor = `m1.${cursorPayload(["2026-07-15T18:00:00.000Z", "fake-reply"])}`;
+  const invalidCursors = [
+    `m0.${cursorPayload(["2026-07-15T18:00:00.000Z", "fake-reply"])}`,
+    `m1.${cursorPayload(["not-a-timestamp", ""])}`,
+    `${canonicalCursor}=`,
+    `m1.${cursorPayload('["2026-07-15T18:00:00.000Z", "fake-reply"]')}`,
+    `m1.${cursorPayload(["2026-07-15T18:00:00.000Z", "fake-reply", "surplus"])}`
+  ];
+  for (const cursor of invalidCursors) {
+    for (const list of [
+      () => store.listModerationReplies({ cursor }),
+      () => store.listContentFlags({ cursor })
+    ]) {
+      await assert.rejects(
+        list,
+        (error: unknown) => error instanceof ApiError && error.status === 400 && error.code === "invalid_cursor"
+      );
+    }
   }
   const initialFakeReplies = await store.listModerationReplies();
   assert.deepEqual(initialFakeReplies.items.map((reply) => reply.id), ["fake-reply"]);
