@@ -58,6 +58,8 @@ test("production snapshot normalization and rows preserve private review data wi
   assert.match(html, /Review snapshot report/);
   assert.doesNotMatch(html, /approve|publish|begin review|data-report-save/i);
   assert.equal(resolveOpsView("#production-snapshot"), "production-snapshot");
+  assert.equal(resolveOpsView("#production-snapshot", false), "command");
+  assert.equal(resolveOpsView("#production-snapshot", true), "production-snapshot");
 });
 
 const uncertainRetryConfirmation = "I checked the configured sender mailbox Sent Items or provider delivery log and still want to retry this uncertain receipt.";

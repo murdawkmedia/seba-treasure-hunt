@@ -62,6 +62,9 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(html, /businessasaforceforgood\.ca/i);
   assert.match(html, /autocomplete="new-password"/);
   assert.match(html, /id="ops-recovery-form"/);
+  assert.match(html, /data-view="production-snapshot"[^>]*hidden/);
+  assert.match(client, /deploymentEnvironment/);
+  assert.match(client, /setProductionSnapshotAvailability/);
   assert.match(html, /verification code/i);
   assert.match(html, /Optional authenticator MFA/i);
 

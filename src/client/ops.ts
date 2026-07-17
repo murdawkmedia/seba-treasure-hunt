@@ -213,6 +213,7 @@ let sponsorLoadVersion = 0;
 const sponsorMutations = new Set<string>();
 let productionSnapshotLoaded = false;
 let productionSnapshotLoading = false;
+let productionSnapshotAvailable = false;
 let productionSnapshotAbortController: AbortController | null = null;
 let productionSnapshotTrigger: HTMLButtonElement | null = null;
 let productionSnapshotObjectUrls: string[] = [];
@@ -1053,9 +1054,19 @@ export function renderAuditRows(records: readonly OpsAuditRecord[]): string {
   </tr>`).join("");
 }
 
-export function resolveOpsView(value: string): OpsView {
+export function resolveOpsView(value: string, allowProductionSnapshot = true): OpsView {
   const normalized = value.replace(/^#/, "").toLowerCase();
+  if (normalized === "production-snapshot" && !allowProductionSnapshot) return "command";
   return views.includes(normalized as OpsView) ? normalized as OpsView : "command";
+}
+
+function setProductionSnapshotAvailability(environment: string): void {
+  productionSnapshotAvailable = environment === "validation";
+  const navigation = document.querySelector<HTMLButtonElement>('[data-view="production-snapshot"]');
+  if (navigation) navigation.hidden = !productionSnapshotAvailable;
+  if (!productionSnapshotAvailable && location.hash.toLowerCase() === "#production-snapshot") {
+    history.replaceState(null, "", "#command");
+  }
 }
 
 export function buildStatusMutation(
@@ -1141,6 +1152,7 @@ function showPageError(message: string): void {
 }
 
 function switchView(view: OpsView, focus = true): void {
+  view = resolveOpsView(`#${view}`, productionSnapshotAvailable);
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view]")) {
     const active = button.dataset.view === view;
     button.classList.toggle("is-active", active);
@@ -1984,7 +1996,7 @@ async function verifyStaffSession(): Promise<boolean> {
   const app = document.querySelector<HTMLElement>("#ops-app");
   if (app) app.hidden = false;
   await Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit()]);
-  switchView(resolveOpsView(location.hash), false);
+  switchView(resolveOpsView(location.hash, productionSnapshotAvailable), false);
   return true;
 }
 
@@ -1994,7 +2006,10 @@ async function initialiseManagedIdentity(): Promise<void> {
     const response = await fetch("/api/v1/config", { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
     const payload: unknown = response.ok ? await response.json() : null;
     const data = isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
-    if (isRecord(data)) publishableKey = asString(data.staffPublishableKey) || publishableKey;
+    if (isRecord(data)) {
+      publishableKey = asString(data.staffPublishableKey) || publishableKey;
+      setProductionSnapshotAvailability(asString(data.deploymentEnvironment));
+    }
   } catch {
     // The optional meta value remains a safe preview fallback.
   }
