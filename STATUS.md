@@ -15,6 +15,16 @@ validation accounts, submissions, or credentials into production.
 
 ## Update 2026-07-16
 
+- Approved and documented two validation-first designs without starting
+  implementation or changing Cloudflare resources. The first adds a manual,
+  full-fidelity production snapshot that is visible only through the existing
+  server-authorized Staff/Ops experience and can never mutate production. The
+  second accepts report photos up to 20 MB directly and browser-optimizes
+  supported sources over 20 MB and up to 50 MB, with a 30 MB prepared total.
+- The snapshot remains separate from both production and disposable validation
+  data. Public validation testing remains link-accessible, Cloudflare Access is
+  not required, and production passwords, provider secrets and sessions are
+  never copied.
 - Prepared the validation-only route-viewer and readability refinement without
   changing production: public secondary actions now use the readable filled
   button contract, and all 61 route photos open in an accessible,
@@ -73,6 +83,14 @@ validation accounts, submissions, or credentials into production.
 
 ## Decisions in force
 
+- Any production snapshot used by validation must be a manual, one-way,
+  read-only copy in dedicated D1/R2 resources. Full-fidelity personal and
+  private report data is permitted only behind existing server-side Ops
+  authorization; public and hunter routes must never query the snapshot.
+- Large report-photo support uses decimal MB: direct upload through 20 MB,
+  browser optimization above 20 MB through a 50 MB source ceiling, no more
+  than three prepared files and a 30 MB combined prepared payload. HEIC/HEIF
+  conversion remains out of scope for the first release.
 - Treat every production player-account row as real until an owner-led review
   identifies otherwise. Never wipe, reseed or copy validation data into the
   production D1 database.
@@ -93,6 +111,9 @@ validation accounts, submissions, or credentials into production.
 
 ## Current follow-ups
 
+- After owner review of the two approved specifications, create separate
+  implementation plans for the production snapshot and large-photo upload;
+  implement and deploy validation-first before seeking production approval.
 - Unpublish the disposable validation-only `test` update through the audited
   Ops workflow after an authorized validation staff session is available. Do
   not delete its private report or audit history, and do not mutate production.
