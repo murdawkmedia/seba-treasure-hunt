@@ -30,6 +30,7 @@ import {
   renderModerationRows,
   renderModerationReplyRows,
   renderContentFlagRows,
+  moderationMutationRefreshNotice,
   renderReportPrivateDetail,
   renderReportPublicationPreview,
   renderReportState,
@@ -208,6 +209,76 @@ test("fetch-mocked moderation pagers keep reply and flag cursors independent", a
   await replies.refresh();
   assert.equal(elements["#replies-table"].innerHTML, "reply-1");
   assert.equal(elements["#replies-more"].hidden, false);
+});
+
+test("a refresh queued during load-more supersedes stale appended results", async () => {
+  type Row = { id: string };
+  type ElementState = { innerHTML: string; textContent: string; dataset: Record<string, string>; hidden: boolean; disabled: boolean };
+  const elements: Record<string, ElementState> = {
+    "#table": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#state": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#more": { innerHTML: "", textContent: "", dataset: {}, hidden: true, disabled: false },
+  };
+  const documentLike = { querySelector: (selector: string) => elements[selector] ?? null } as unknown as Pick<Document, "querySelector">;
+  let releaseStalePage!: () => void;
+  const stalePage = new Promise<void>((resolve) => { releaseStalePage = resolve; });
+  const urls: string[] = [];
+  let requestCount = 0;
+  const request = async (url: string) => {
+    urls.push(url);
+    requestCount += 1;
+    if (requestCount === 1) return { response: Response.json({}), payload: { data: [{ id: "reply-current" }], page: { nextCursor: "older" } } };
+    if (requestCount === 2) {
+      await stalePage;
+      return { response: Response.json({}), payload: { data: [{ id: "reply-stale" }], page: { nextCursor: null } } };
+    }
+    return { response: Response.json({}), payload: { data: [{ id: "reply-fresh" }], page: { nextCursor: null } } };
+  };
+  const pager = createModerationPaginationController<Row>({
+    endpoint: "/api/replies", tableSelector: "#table", stateSelector: "#state", loadMoreSelector: "#more",
+    document: documentLike, request,
+    normalize: (payload) => (payload as { data: Row[] }).data,
+    render: (records) => records.map((record) => record.id).join(","), unavailableRows: "unavailable",
+    loadedMessage: (records, more) => `${records.length}:${more}`,
+  });
+
+  await pager.refresh();
+  const append = pager.loadMore();
+  const reset = pager.refresh();
+  releaseStalePage();
+  await Promise.all([append, reset]);
+
+  assert.equal(urls.length, 3);
+  assert.equal(urls[1], "/api/replies?limit=50&cursor=older");
+  assert.equal(urls[2], "/api/replies?limit=50");
+  assert.equal(elements["#table"].innerHTML, "reply-fresh");
+  assert.doesNotMatch(elements["#table"].innerHTML, /stale/);
+  assert.equal(elements["#more"].hidden, true);
+  assert.equal(elements["#more"].disabled, false);
+});
+
+test("a successful moderation action reports a failed verification refresh", async () => {
+  type Row = { id: string };
+  const elements = {
+    "#table": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#state": { innerHTML: "", textContent: "", dataset: {}, hidden: false, disabled: false },
+    "#more": { innerHTML: "", textContent: "", dataset: {}, hidden: true, disabled: false },
+  };
+  const pager = createModerationPaginationController<Row>({
+    endpoint: "/api/replies", tableSelector: "#table", stateSelector: "#state", loadMoreSelector: "#more",
+    document: { querySelector: (selector: string) => elements[selector as keyof typeof elements] ?? null } as unknown as Pick<Document, "querySelector">,
+    request: async () => ({ response: new Response("unavailable", { status: 503 }), payload: null }),
+    normalize: () => [], render: () => "", unavailableRows: "unavailable", loadedMessage: () => "loaded",
+  });
+
+  const outcome = await pager.refresh();
+  const notice = moderationMutationRefreshNotice("Reply hidden and audited.", outcome);
+  assert.equal(outcome.ok, false);
+  assert.equal(notice.kind, "error");
+  assert.match(notice.message, /Reply hidden and audited\./);
+  assert.match(notice.message, /action succeeded/i);
+  assert.match(notice.message, /verification refresh failed/i);
+  assert.match(notice.message, /refresh/i);
 });
 
 test("production snapshot normalization and rows preserve private review data without mutation controls", () => {

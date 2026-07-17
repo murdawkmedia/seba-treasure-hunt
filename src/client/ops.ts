@@ -1055,9 +1055,13 @@ export function appendDistinctModerationRecords<T extends { id: string }>(
   })];
 }
 
+export type ModerationLoadOutcome =
+  | { ok: true; recordCount: number; more: boolean }
+  | { ok: false; message: string };
+
 export interface ModerationPaginationController<T extends { id: string }> {
-  refresh(): Promise<void>;
-  loadMore(): Promise<void>;
+  refresh(): Promise<ModerationLoadOutcome>;
+  loadMore(): Promise<ModerationLoadOutcome>;
   records(): readonly T[];
 }
 
@@ -1080,6 +1084,10 @@ export function createModerationPaginationController<T extends { id: string }>(
   let loaded: T[] = [];
   let nextCursor: string | null = null;
   let loading = false;
+  let generation = 0;
+  let activeLoad: Promise<ModerationLoadOutcome> | null = null;
+  let requestedRefreshGeneration: number | null = null;
+  let refreshCycle: Promise<ModerationLoadOutcome> | null = null;
   const table = () => config.document.querySelector<HTMLElement>(config.tableSelector);
   const state = () => config.document.querySelector<HTMLElement>(config.stateSelector);
   const loadMore = () => config.document.querySelector<HTMLButtonElement>(config.loadMoreSelector);
@@ -1096,8 +1104,8 @@ export function createModerationPaginationController<T extends { id: string }>(
     button.hidden = !nextCursor || failed;
     button.disabled = loading || failed;
   };
-  const load = async (append: boolean): Promise<void> => {
-    if (loading || (append && !nextCursor)) return;
+  const load = async (append: boolean, requestGeneration: number): Promise<ModerationLoadOutcome> => {
+    if (append && !nextCursor) return { ok: true, recordCount: loaded.length, more: false };
     if (!append) {
       loaded = [];
       nextCursor = null;
@@ -1108,6 +1116,9 @@ export function createModerationPaginationController<T extends { id: string }>(
     setState(append ? "Loading older records..." : "Loading records...");
     try {
       const { response, payload } = await config.request(`${config.endpoint}?limit=50${cursor}`);
+      if (requestGeneration !== generation) {
+        return { ok: false, message: "This moderation request was superseded by a newer refresh." };
+      }
       if (!response.ok) throw new Error(apiError(payload, "The moderation queue is unavailable."));
       const page = config.normalize(payload);
       loaded = append ? appendDistinctModerationRecords(loaded, page) : page;
@@ -1115,22 +1126,76 @@ export function createModerationPaginationController<T extends { id: string }>(
       const target = table();
       if (target) target.innerHTML = config.render(loaded);
       setState(config.loadedMessage(loaded, nextCursor !== null));
+      return { ok: true, recordCount: loaded.length, more: nextCursor !== null };
     } catch (error) {
+      if (requestGeneration !== generation) {
+        return { ok: false, message: "This moderation request was superseded by a newer refresh." };
+      }
       if (!append) {
         loaded = [];
         nextCursor = null;
         const target = table();
         if (target) target.innerHTML = config.unavailableRows;
       }
-      setState(error instanceof Error ? error.message : "The moderation queue is unavailable.", "error");
+      const message = error instanceof Error ? error.message : "The moderation queue is unavailable.";
+      setState(message, "error");
       setLoadMore(true);
+      return { ok: false, message };
     } finally {
-      loading = false;
-      const failed = state()?.dataset.kind === "error";
-      setLoadMore(failed);
+      if (requestGeneration === generation) {
+        loading = false;
+        const failed = state()?.dataset.kind === "error";
+        setLoadMore(failed);
+      }
     }
   };
-  return { refresh: () => load(false), loadMore: () => load(true), records: () => loaded };
+  const startLoad = (append: boolean, requestGeneration: number): Promise<ModerationLoadOutcome> => {
+    const request = load(append, requestGeneration);
+    activeLoad = request;
+    void request.finally(() => {
+      if (activeLoad === request) activeLoad = null;
+    });
+    return request;
+  };
+  const drainRefreshes = async (): Promise<ModerationLoadOutcome> => {
+    let outcome: ModerationLoadOutcome = { ok: false, message: "The moderation refresh did not run." };
+    while (requestedRefreshGeneration !== null) {
+      if (activeLoad) await activeLoad;
+      const requestGeneration = requestedRefreshGeneration;
+      requestedRefreshGeneration = null;
+      outcome = await startLoad(false, requestGeneration);
+    }
+    return outcome;
+  };
+  const refresh = (): Promise<ModerationLoadOutcome> => {
+    requestedRefreshGeneration = ++generation;
+    if (!refreshCycle) {
+      const cycle = drainRefreshes();
+      const trackedCycle = cycle.finally(() => {
+        if (refreshCycle === trackedCycle) refreshCycle = null;
+      });
+      refreshCycle = trackedCycle;
+    }
+    return refreshCycle;
+  };
+  const append = (): Promise<ModerationLoadOutcome> => {
+    if (activeLoad || refreshCycle) {
+      return Promise.resolve({ ok: false, message: "A moderation refresh is already in progress." });
+    }
+    return startLoad(true, generation);
+  };
+  return { refresh, loadMore: append, records: () => loaded };
+}
+
+export function moderationMutationRefreshNotice(
+  successMessage: string,
+  outcome: ModerationLoadOutcome,
+): { message: string; kind: "normal" | "error" } {
+  if (outcome.ok) return { message: successMessage, kind: "normal" };
+  return {
+    message: `${successMessage} The action succeeded, but the verification refresh failed. Use Refresh before taking another action.`,
+    kind: "error",
+  };
 }
 
 export function renderProductionSnapshotReportRows(records: readonly ProductionSnapshotReport[]): string {
@@ -2311,12 +2376,12 @@ function flagsPager(): ModerationPaginationController<OpsContentFlag> {
   });
 }
 
-async function loadModerationReplies(append = false): Promise<void> {
-  await (append ? repliesPager().loadMore() : repliesPager().refresh());
+async function loadModerationReplies(append = false): Promise<ModerationLoadOutcome> {
+  return append ? repliesPager().loadMore() : repliesPager().refresh();
 }
 
-async function loadContentFlags(append = false): Promise<void> {
-  await (append ? flagsPager().loadMore() : flagsPager().refresh());
+async function loadContentFlags(append = false): Promise<ModerationLoadOutcome> {
+  return append ? flagsPager().loadMore() : flagsPager().refresh();
 }
 
 function setSponsorsState(message: string, kind: "normal" | "error" = "normal"): void {
@@ -2404,8 +2469,15 @@ async function refreshModerationAfterMutation(
   stateSelector: "#moderation-replies-state" | "#moderation-flags-state",
   message: string,
 ): Promise<void> {
-  await Promise.all([loadModerationReplies(), loadContentFlags(), loadDashboard(), loadAudit()]);
-  setModerationState(stateSelector, message);
+  const [repliesOutcome, flagsOutcome] = await Promise.all([
+    loadModerationReplies(),
+    loadContentFlags(),
+    loadDashboard(),
+    loadAudit(),
+  ]);
+  const targetOutcome = stateSelector === "#moderation-replies-state" ? repliesOutcome : flagsOutcome;
+  const notice = moderationMutationRefreshNotice(message, targetOutcome);
+  setModerationState(stateSelector, notice.message, notice.kind);
   document.querySelector<HTMLElement>(stateSelector)?.focus();
 }
 

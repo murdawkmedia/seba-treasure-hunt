@@ -163,7 +163,9 @@ test("the moderation queue provides separate accessible reply and flag controls"
   assert.match(client, /createModerationPaginationController/);
   assert.match(client, /appendDistinctModerationRecords/);
   assert.match(client, /\?limit=50\$\{cursor/);
-  assert.match(client, /loadModerationReplies\(\), loadContentFlags\(\), loadDashboard\(\), loadAudit\(\)/);
+  assert.match(client, /Promise\.all\(\[\s*loadModerationReplies\(\),\s*loadContentFlags\(\),\s*loadDashboard\(\),\s*loadAudit\(\),?\s*\]\)/);
+  assert.match(client, /const targetOutcome = stateSelector === "#moderation-replies-state" \? repliesOutcome : flagsOutcome/);
+  assert.match(client, /moderationMutationRefreshNotice\(message, targetOutcome\)/);
   assert.doesNotMatch(html, /moderation[^<]{0,80}<input[^>]+name="reason"/i);
   assert.match(css, /\.ops-moderation-action\s*\{[^}]*min-height:\s*44px/s);
   assert.match(css, /\.ops-moderation-table\s*\{[^}]*min-width:/s);
