@@ -163,7 +163,7 @@ export class FakeStore {
         !update.status || update.status === "published" ||
         (update.status === "scheduled" && typeof update.scheduledFor === "string" &&
           new Date(update.scheduledFor).getTime() <= currentTime)
-      ),
+      ).map(({ status: _status, scheduledFor: _scheduledFor, uploads: _uploads, ...publicUpdate }) => publicUpdate),
       nextCursor: null
     };
   }

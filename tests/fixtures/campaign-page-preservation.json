@@ -24,19 +24,19 @@
       "bodySha256": "63309b5a1559d8f00d5b2c604746fbba398e07f3e1d65ea2c95ff6ea110e67c8"
     },
     "updates.html": {
-      "headSha256": "9b5525b423b4b29642f69ffe8eedc461be202330cf3b57f852fd00f7ae608d58",
+      "headSha256": "a296cf058b5b909a624a150c856a728a1a7329bface756bcea2a5648bd6716a6",
       "scriptsSha256": "4cae1450b14fbdf22df10132c2214394dcdf228c36e23b67588af655f1da89df",
       "bodySha256": "7d10945bebf2ec4d9a392dc3ca0884c464e9e2d55d18c7a51001cff52537bea5"
     },
     "clue-board.html": {
-      "headSha256": "69546b31d3f93506ec56b30091bb0e6a5b555dbe2ab0417eb0d4c80e8ab4ac02",
+      "headSha256": "306b66ae686eee1817ccac6846b8a31b5ffdaa6fdfda6f63713d9378b1c9b812",
       "scriptsSha256": "33cfcfe06b304f951a5c68269a423adf42ed4d20e845dbb045298d45b3b565a7",
-      "bodySha256": "43c2098c245121e8ae0a198420d1986d3e9be59d766d042409dbe43e09b6afad"
+      "bodySha256": "761d7844168cdef76aea3ef011860453aca81a01276df8f6261fb74d41d3f484"
     },
     "report.html": {
       "headSha256": "747a06a84ec30b90ee5ba1eab418c3a8b74b6f87d64ae39e5433ad1ee6316056",
       "scriptsSha256": "575859454cb1e1cd0c049bc2683e44d54e849d460c707e105c92fc8144b7387c",
-      "bodySha256": "1f62f651168e1edce8006a96ee64f1532333ad6282ffa584ded89723d936fa59"
+      "bodySha256": "a5508581f314409bebe0e1abf5062245ab60da1cec29ebaca0541e8aeec8735c"
     },
     "rules.html": {
       "headSha256": "ba98cb29e535e1e8e646f067e892dd0bc301badd79fe7b3c66cd5193c5da553d",
@@ -46,7 +46,7 @@
     "dashboard.html": {
       "headSha256": "f4bb78659b71dea3026cab4cf77f39dcda4c40b3d9436e7e890788ef16a5acdc",
       "scriptsSha256": "e05ab979782e680caf291b2f77e492f28d3ecbfadaff5abc4e2e1f18ed5bef2d",
-      "bodySha256": "c59e7c4eb88ede5594f854bc1e7de81f7c2031b4d4231136b169f44464685e22"
+      "bodySha256": "b752797df0895f5fff6666a1654d41c25ef2cfd9e91843c003b8d058cd22e958"
     },
     "sponsors.html": {
       "headSha256": "02993d25c1786748368d5eea8b808fd54036e9fec12b95962563a408e00bd67b",

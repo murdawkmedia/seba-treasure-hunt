@@ -454,7 +454,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     assert.equal(await desktopPage.locator("dialog[open]").count(), 1, "desktop route must have exactly one open dialog");
     assert.equal(await desktopPage.locator("dialog[open]:visible").count(), 1, "desktop route must have exactly one visible dialog");
     assert.equal(await title.textContent(), "The Creek Property — The Starting Point");
-    assert.equal(await counter.textContent(), "Photo 1 of 3");
+    assert.equal(await counter.textContent(), "Image 1 of 3");
     assert.match(await original.evaluate((element) => element.href), /\/assets\/route\/stop-01\/IMG_5034\.jpg$/);
     await assertContainedRouteImage(desktopPage, image, "Desktop route photo 1");
     await assertMinimumHitTargets({ Close: close, Previous: previous, Next: next }, "Desktop route lightbox");
@@ -464,7 +464,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
 
     desktopLabel = "route-lightbox/desktop/keyboard";
     await desktopPage.keyboard.press("ArrowRight");
-    assert.equal(await counter.textContent(), "Photo 2 of 3", "ArrowRight must advance the route lightbox");
+    assert.equal(await counter.textContent(), "Image 2 of 3", "ArrowRight must advance the route lightbox");
     await desktopPage.keyboard.press("Escape");
     await dialog.waitFor({ state: "hidden" });
     await assertActiveElement(desktopPage, firstPhoto, "Route photo trigger after Escape");
@@ -489,7 +489,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     const singletonPhoto = desktopPage.locator("#stop-4 .stop-gallery .photo > a").first();
     await singletonPhoto.click();
     await dialog.waitFor({ state: "visible" });
-    assert.equal(await counter.textContent(), "Photo 1 of 1");
+    assert.equal(await counter.textContent(), "Image 1 of 1");
     assert.equal(await previous.isHidden(), true, "singleton Previous must be hidden");
     assert.equal(await previous.isDisabled(), true, "singleton Previous must be disabled");
     assert.equal(await next.isHidden(), true, "singleton Next must be hidden");
@@ -567,7 +567,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await mobilePage.mouse.down();
     await mobilePage.mouse.move(imageBox.x + imageBox.width * 0.25, imageBox.y + imageBox.height * 0.53, { steps: 4 });
     await mobilePage.mouse.up();
-    assert.equal(await counter.textContent(), "Photo 2 of 3", "horizontally dominant left swipe must advance to photo 2");
+    assert.equal(await counter.textContent(), "Image 2 of 3", "horizontally dominant left swipe must advance to photo 2");
     statesAudited += 1;
 
     mobileLabel = "route-lightbox/mobile/vertical-gesture";
@@ -575,7 +575,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await mobilePage.mouse.down();
     await mobilePage.mouse.move(imageBox.x + imageBox.width * 0.55, imageBox.y + imageBox.height * 0.7, { steps: 4 });
     await mobilePage.mouse.up();
-    assert.equal(await counter.textContent(), "Photo 2 of 3", "vertically dominant gesture must not change the route photo");
+    assert.equal(await counter.textContent(), "Image 2 of 3", "vertically dominant gesture must not change the route photo");
     await assertNoHorizontalViewportOverflow(mobilePage, "Mobile route lightbox");
     await assertMinimumHitTargets({ Close: close, Previous: previous, Next: next }, "Mobile route lightbox");
     await capture(mobilePage, "mobile-route-lightbox.png", screenshotEvidence, { fullPage: false });
@@ -606,7 +606,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await assertElementInViewport(shortPage, next, "Short route Next control");
     await assertNoHorizontalViewportOverflow(shortPage, "Short 640x360 route lightbox");
     await next.click();
-    assert.equal(await dialog.locator("[data-route-lightbox-counter]").textContent(), "Photo 2 of 3", "short route lightbox must remain operable");
+    assert.equal(await dialog.locator("[data-route-lightbox-counter]").textContent(), "Image 2 of 3", "short route lightbox must remain operable");
     statesAudited += 1;
   } finally {
     await shortContext.close();
@@ -653,7 +653,7 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
     await next.click();
     assert.equal(
       await dialog.locator("[data-route-lightbox-counter]").textContent(),
-      "Photo 2 of 3",
+      "Image 2 of 3",
       "route lightbox must remain operable at the 200% zoom-equivalent layout viewport",
     );
     statesAudited += 1;

@@ -430,15 +430,18 @@ test("stale route-video assets remain present but are absent from every public s
 test("public updates explain and render approved report evidence without authentication", () => {
   const html = read("updates.html");
   const client = read("src/client/updates.ts");
+  const viewer = read("src/client/approved-media-viewer.ts");
   const css = read("css/hunter.css");
 
   assert.match(html, /operator-approved reports may include public GPS and individually approved images/i);
   assert.match(html, /data-updates-list/);
   assert.doesNotMatch(html, /data-clerk|sign in to view|authorization/i);
   assert.match(client, /Approved hunter report/);
-  assert.match(client, /document\.createElement\("img"\)/);
-  assert.match(client, /loading = "lazy"/);
-  assert.match(client, /referrerPolicy = "no-referrer"/);
+  assert.match(client, /renderApprovedMedia/);
+  assert.match(client, /initializeApprovedMediaViewer/);
+  assert.match(viewer, /<img[^>]+loading="lazy"/);
+  assert.match(viewer, /referrerpolicy="no-referrer"/);
+  assert.match(viewer, /data-media-gallery/);
   assert.match(client, /document\.createTextNode|\.textContent\s*=/);
   assert.doesNotMatch(client, /\.innerHTML\s*=/);
   assert.match(css, /\.report-evidence-gallery/);

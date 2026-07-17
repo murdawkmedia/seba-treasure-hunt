@@ -213,7 +213,7 @@ test("publishes only the approved minor-safe report projection and selected deri
     waypointId: 1,
     latitude: 53.123,
     longitude: -114.456,
-    status: "reviewing",
+    status: "verified",
     media: [
       {
         id: "media-selected",
@@ -240,7 +240,8 @@ test("publishes only the approved minor-safe report projection and selected deri
         {
           title: "Possible clue near the creek",
           body: "Edited operator-approved story",
-          mediaIds: ["media-selected"]
+          mediaIds: ["media-selected"],
+          action: "publish_now"
         },
         { authorization: "Bearer staff-token" }
       )
@@ -325,14 +326,14 @@ test("derives adult and unsigned report attribution only from stored ownership",
       id: "report-adult-publication",
       hunterSubject: "adult-subject",
       waypointId: 2,
-      status: "reviewing",
+      status: "verified",
       media: []
     },
     {
       id: "report-anonymous-publication",
       hunterSubject: null,
       waypointId: null,
-      status: "reviewing",
+      status: "verified",
       media: []
     }
   );
@@ -346,7 +347,7 @@ test("derives adult and unsigned report attribution only from stored ownership",
       `https://www.timlostsomething.com/api/v1/ops/reports/${reportId}/publish`,
       {
         method: "POST",
-        ...json({ title, body: "Operator-edited story", mediaIds: [] }, headers)
+        ...json({ title, body: "Operator-edited story", mediaIds: [], action: "publish_now" }, headers)
       }
     );
     assert.equal(result.status, 200, reportId);
