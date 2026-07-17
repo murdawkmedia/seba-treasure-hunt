@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SNAPSHOT_TABLES,
+  SNAPSHOT_RESET_ONLY_TABLES,
   buildSnapshotSql,
   defaults,
   redactSnapshotReport,
+  orderSnapshotInsertStatements,
+  safeWranglerDiagnostic,
   reverseDeleteStatements,
   shouldCleanupUploadedObjects,
   snapshotMediaKey,
@@ -12,6 +15,33 @@ import {
   verifyDestinationSentinel,
   verifySourceSentinel,
 } from "../scripts/refresh-production-snapshot.mjs";
+
+test("provider diagnostics retain only safe error classes", () => {
+  const error = {
+    stdout: "private@example.test secret-token",
+    stderr: "Import failed: SQLITE_CONSTRAINT private@example.test",
+  };
+  assert.equal(safeWranglerDiagnostic(error), "SQLITE_CONSTRAINT");
+  assert.equal(safeWranglerDiagnostic({ stderr: "private@example.test secret-token" }), "");
+});
+
+test("snapshot inserts are ordered by the dependency-safe allowlist", () => {
+  const statements = [
+    'INSERT INTO "official_updates" VALUES(\'update-1\');',
+    'INSERT INTO "private_reports" VALUES(\'report-1\');',
+    'INSERT INTO "waypoints" VALUES(1);',
+    'INSERT INTO "zones" VALUES(\'zone-1\');',
+    'INSERT INTO "private_reports" VALUES(\'report-2\');',
+  ];
+
+  assert.deepEqual(orderSnapshotInsertStatements(statements), [
+    statements[3],
+    statements[2],
+    statements[1],
+    statements[4],
+    statements[0],
+  ]);
+});
 
 test("snapshot defaults and allowlists are immutable and exclude operational secrets", () => {
   assert.equal(Object.isFrozen(defaults), true);
@@ -28,6 +58,8 @@ test("snapshot defaults and allowlists are immutable and exclude operational sec
     "idempotency_keys",
     "webhook_events",
   ]) assert.equal(SNAPSHOT_TABLES.includes(excluded), false, excluded);
+  assert.equal(SNAPSHOT_RESET_ONLY_TABLES.includes("operator_alert_recipients"), true);
+  assert.equal(SNAPSHOT_RESET_ONLY_TABLES.includes("notification_jobs"), true);
   for (const required of [
     "private_reports",
     "media_uploads",
@@ -85,10 +117,16 @@ test("generated replacement SQL is atomic, allowlisted and marks only a verified
   });
   assert.match(sql, /^PRAGMA defer_foreign_keys = true;/);
   assert.doesNotMatch(sql, /BEGIN TRANSACTION|COMMIT;/);
+  assert.ok(sql.indexOf('INSERT INTO "player_accounts"') < sql.indexOf('INSERT INTO "private_reports"'));
   assert.match(sql, /DROP TRIGGER IF EXISTS "trg_legal_acceptance_events_immutable"/);
+  assert.match(sql, /DROP TRIGGER IF EXISTS "trg_legal_document_review_events_immutable_delete"/);
+  assert.match(sql, /DROP TRIGGER IF EXISTS "trg_waiver_acceptance_participants_immutable_delete"/);
+  assert.match(sql, /DROP TRIGGER IF EXISTS "trg_notification_delivery_events_immutable_delete"/);
   assert.match(sql, /UPDATE media_uploads SET private_object_key = 'snapshots\/snapshot-20260716\/'/);
   assert.match(sql, /'production-snapshot', 'verified'/);
-  assert.doesNotMatch(sql, /oauth_provider_state|notification_jobs|webhook_events/);
+  assert.match(sql, /DELETE FROM "notification_jobs"/);
+  assert.match(sql, /DELETE FROM "oauth_provider_state"/);
+  assert.doesNotMatch(sql, /INSERT INTO ["`]?notification_jobs|INSERT INTO ["`]?oauth_provider_state/i);
   assert.throws(() => buildSnapshotSql({
     snapshotId: "snapshot-1",
     verifiedAt: "2026-07-16T22:00:00.000Z",

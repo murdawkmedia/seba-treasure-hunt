@@ -27,6 +27,28 @@
 - Microsoft Graph delegated mail: accepted a self-addressed production delivery test from the configured campaign mailbox with the campaign contact as Reply-To.
 - Production crawl state: no `noindex` and no CFCW references in the live home output.
 
+## Validation candidate: large photos and read-only production snapshot
+
+- Production remains on the immutable deployment identified above. This
+  candidate is authorized only for the `codex-validation` Pages branch.
+- Report photos use decimal MB: direct through 20 MB; browser optimization for
+  supported JPEG/PNG/WebP sources above 20 MB through 50 MB; maximum three
+  prepared files and 30 MB combined after preparation.
+- The Ops Production Snapshot uses dedicated Preview-only resources:
+  `tim-lost-hunter-platform-production-snapshot` and
+  `tim-lost-private-media-production-snapshot`. There are no production
+  bindings or mutation routes for these resources.
+- Snapshot refresh is a manual, one-way operation guarded by production and
+  destination sentinels, distinct resource IDs, an explicit table allowlist,
+  dependency-safe insert ordering, private-media hash verification and a
+  redacted completion report.
+- The latest verified snapshot matches production at 9 players, 1 report,
+  1 staff principal, 10 audit events, 1 media record, 18 legal acceptances and
+  13 waypoints. Both foreign-key checks are clean; comparison reads wrote zero
+  production rows.
+- Final candidate verification: 396 tests passing, legal artifacts exact,
+  TypeScript checks passing, production build passing and clean diff check.
+
 ## Source-ready follow-on: Release 2 Documentary Case File
 
 - Release 2A establishes the tracked documentary design source, type system,

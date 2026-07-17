@@ -44,11 +44,28 @@ export const SNAPSHOT_TABLES = Object.freeze([
   "official_update_media",
 ]);
 
+export const SNAPSHOT_RESET_ONLY_TABLES = Object.freeze([
+  "operator_alert_recipients",
+  "notification_delivery_events",
+  "notification_job_leases",
+  "notification_jobs",
+  "campaign_rate_limit_buckets",
+  "idempotency_keys",
+  "webhook_events",
+  "oauth_provider_state",
+]);
+
 const immutableSnapshotTriggers = Object.freeze([
   "trg_legal_acceptance_events_immutable",
   "trg_legal_acceptance_events_immutable_delete",
+  "trg_legal_document_review_events_immutable",
+  "trg_legal_document_review_events_immutable_delete",
+  "trg_waiver_acceptance_participants_immutable",
+  "trg_waiver_acceptance_participants_immutable_delete",
   "trg_waiver_account_participants_immutable",
   "trg_waiver_account_participants_immutable_delete",
+  "trg_notification_delivery_events_immutable",
+  "trg_notification_delivery_events_immutable_delete",
 ]);
 
 const sqlIdentifier = (value) => `"${String(value).replaceAll('"', '""')}"`;
@@ -109,6 +126,18 @@ function insertTable(statement) {
   return statement.trim().match(/^INSERT\s+INTO\s+["`]?([A-Za-z0-9_]+)["`]?\b/i)?.[1] ?? null;
 }
 
+export function orderSnapshotInsertStatements(insertStatements) {
+  const tableOrder = new Map(SNAPSHOT_TABLES.map((table, index) => [table, index]));
+  return insertStatements
+    .map((statement, originalIndex) => ({ statement, originalIndex, table: insertTable(statement) }))
+    .sort((left, right) => {
+      const leftOrder = tableOrder.get(left.table) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = tableOrder.get(right.table) ?? Number.MAX_SAFE_INTEGER;
+      return leftOrder - rightOrder || left.originalIndex - right.originalIndex;
+    })
+    .map(({ statement }) => statement);
+}
+
 export function buildSnapshotSql({
   snapshotId,
   verifiedAt,
@@ -129,8 +158,10 @@ export function buildSnapshotSql({
   return [
     "PRAGMA defer_foreign_keys = true;",
     ...immutableSnapshotTriggers.map((trigger) => `DROP TRIGGER IF EXISTS ${sqlIdentifier(trigger)};`),
+    ...SNAPSHOT_RESET_ONLY_TABLES.map((table) => `DELETE FROM ${sqlIdentifier(table)};`),
     ...reverseDeleteStatements(),
-    ...insertStatements.map((statement) => statement.trim().replace(/;?$/, ";")),
+    ...orderSnapshotInsertStatements(insertStatements)
+      .map((statement) => statement.trim().replace(/;?$/, ";")),
     `UPDATE media_uploads SET private_object_key = ${sqlString(prefix)} || private_object_key, derivative_object_key = CASE WHEN derivative_object_key IS NULL THEN NULL ELSE ${sqlString(prefix)} || derivative_object_key END;`,
     "DELETE FROM snapshot_refresh_metadata;",
     `INSERT INTO snapshot_refresh_metadata (id, kind, status, snapshot_id, source_environment, verified_at, source_updated_at, report_count, player_count, staff_count, audit_count, media_count) VALUES (1, 'production-snapshot', 'verified', ${sqlString(snapshotId)}, 'production', ${sqlString(verifiedAt)}, ${sqlString(sourceUpdatedAt)}, ${counts.reports}, ${counts.players}, ${counts.staff}, ${counts.audit}, ${counts.media});`,
@@ -209,17 +240,37 @@ async function loadLocalEnvironment() {
   return values;
 }
 
+export function safeWranglerDiagnostic(error) {
+  const diagnosticSource = [error?.stderr, error?.stdout]
+    .filter((value) => typeof value === "string")
+    .join("\n");
+  const diagnosticPatterns = [
+    /no such (?:table|column): [A-Za-z0-9_.]+/i,
+    /(?:FOREIGN KEY|CHECK|UNIQUE) constraint failed(?:: [A-Za-z0-9_., ]+)?/i,
+    /trigger [A-Za-z0-9_]+ already exists/i,
+    /cannot start a transaction/i,
+    /incomplete input/i,
+    /SQLITE_[A-Z_]+/,
+    /near "[A-Za-z0-9_]+": syntax error/i,
+    /too many SQL variables/i,
+  ];
+  return diagnosticPatterns.map((pattern) => diagnosticSource.match(pattern)?.[0]).find(Boolean) ?? "";
+}
+
 async function wrangler(args, options = {}) {
   try {
-    const executable = process.platform === "win32" ? "npx.cmd" : "npx";
-    const result = await execFileAsync(executable, ["wrangler", ...args], {
+    const executable = process.execPath;
+    const wranglerEntry = path.join(root, "node_modules", "wrangler", "bin", "wrangler.js");
+    const result = await execFileAsync(executable, [wranglerEntry, ...args], {
       cwd: root,
       encoding: options.encoding ?? "utf8",
       maxBuffer: 32 * 1024 * 1024,
     });
     return result.stdout;
-  } catch {
-    throw new Error("A guarded Cloudflare snapshot command failed. No private provider output was retained.");
+  } catch (error) {
+    const stage = options.stage || args.slice(0, 2).filter((value) => /^[a-z0-9-]+$/i.test(value)).join(" ") || "command";
+    const diagnostic = safeWranglerDiagnostic(error);
+    throw new Error(`The guarded Cloudflare ${stage} stage failed${diagnostic ? ` (${diagnostic})` : ""}. No private provider output was retained.`);
   }
 }
 
@@ -229,8 +280,11 @@ function jsonRows(output) {
   return groups.flatMap((group) => Array.isArray(group?.results) ? group.results : []);
 }
 
-async function d1Rows(database, query) {
-  const output = await wrangler(["d1", "execute", database, "--remote", "--json", "--command", query]);
+async function d1Rows(database, query, environment = null, stage = "d1 read") {
+  const output = await wrangler(
+    ["d1", "execute", database, "--remote", "--json", "--command", query, ...(environment ? ["--env", environment] : [])],
+    { stage }
+  );
   return jsonRows(output);
 }
 
@@ -258,8 +312,8 @@ async function main() {
     sourceDatabaseId: String(ids.get(names.sourceDatabase) ?? ""),
     destinationDatabaseId: String(ids.get(names.destinationDatabase) ?? ""),
   });
-  const sourceSentinel = (await d1Rows(resources.sourceDatabase, "SELECT environment FROM environment_metadata WHERE id = 1 LIMIT 1"))[0];
-  const destinationSentinel = (await d1Rows(resources.destinationDatabase, "SELECT kind FROM snapshot_refresh_metadata WHERE id = 1 LIMIT 1"))[0];
+  const sourceSentinel = (await d1Rows(resources.sourceDatabase, "SELECT environment FROM environment_metadata WHERE id = 1 LIMIT 1", null, "production sentinel read"))[0];
+  const destinationSentinel = (await d1Rows(resources.destinationDatabase, "SELECT kind FROM snapshot_refresh_metadata WHERE id = 1 LIMIT 1", "preview", "snapshot sentinel read"))[0];
   verifySourceSentinel(sourceSentinel);
   verifyDestinationSentinel(destinationSentinel);
 
@@ -281,10 +335,10 @@ async function main() {
     ]);
     const insertStatements = exportedInsertStatements(await readFile(exportPath, "utf8"));
     const [counts] = await d1Rows(resources.sourceDatabase,
-      "SELECT (SELECT COUNT(*) FROM private_reports) AS reports, (SELECT COUNT(*) FROM player_accounts) AS players, (SELECT COUNT(*) FROM staff_principals) AS staff, (SELECT COUNT(*) FROM audit_events) AS audit, (SELECT COUNT(*) FROM media_uploads WHERE status = 'ready') AS media, (SELECT updated_at FROM case_status WHERE id = 1) AS source_updated_at");
+      "SELECT (SELECT COUNT(*) FROM private_reports) AS reports, (SELECT COUNT(*) FROM player_accounts) AS players, (SELECT COUNT(*) FROM staff_principals) AS staff, (SELECT COUNT(*) FROM audit_events) AS audit, (SELECT COUNT(*) FROM media_uploads WHERE status = 'ready') AS media, (SELECT updated_at FROM case_status WHERE id = 1) AS source_updated_at", null, "production count read");
     if (!counts) throw new Error("Production snapshot counts are unavailable.");
     const mediaRows = await d1Rows(resources.sourceDatabase,
-      "SELECT private_object_key, derivative_object_key, content_type, byte_size FROM media_uploads WHERE private_object_key IS NOT NULL OR derivative_object_key IS NOT NULL ORDER BY id");
+      "SELECT private_object_key, derivative_object_key, content_type, byte_size FROM media_uploads WHERE private_object_key IS NOT NULL OR derivative_object_key IS NOT NULL ORDER BY id", null, "production media inventory read");
     const objects = [];
     for (const row of mediaRows) {
       for (const sourceKey of [row.private_object_key, row.derivative_object_key]) {
@@ -319,8 +373,8 @@ async function main() {
     });
     await writeFile(replacementPath, sql, "utf8");
     importStarted = true;
-    await wrangler(["d1", "execute", resources.destinationDatabase, "--remote", "--yes", "--file", replacementPath]);
-    const verified = (await d1Rows(resources.destinationDatabase, "SELECT kind, status, snapshot_id FROM snapshot_refresh_metadata WHERE id = 1 LIMIT 1"))[0];
+    await wrangler(["d1", "execute", resources.destinationDatabase, "--remote", "--yes", "--file", replacementPath, "--env", "preview"], { stage: "snapshot destination import" });
+    const verified = (await d1Rows(resources.destinationDatabase, "SELECT kind, status, snapshot_id FROM snapshot_refresh_metadata WHERE id = 1 LIMIT 1", "preview", "snapshot verification read"))[0];
     if (verified?.kind !== "production-snapshot" || verified?.status !== "verified" || verified?.snapshot_id !== snapshotId) {
       throw new Error("The destination did not verify the new snapshot.");
     }
@@ -332,7 +386,9 @@ async function main() {
     if (importStarted) {
       destinationSnapshotId = await d1Rows(
         resources.destinationDatabase,
-        "SELECT snapshot_id FROM snapshot_refresh_metadata WHERE id = 1 LIMIT 1"
+        "SELECT snapshot_id FROM snapshot_refresh_metadata WHERE id = 1 LIMIT 1",
+        "preview",
+        "snapshot recovery read"
       ).then((rows) => typeof rows[0]?.snapshot_id === "string" ? rows[0].snapshot_id : null)
         .catch(() => null);
     }

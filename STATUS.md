@@ -15,6 +15,24 @@ validation accounts, submissions, or credentials into production.
 
 ## Update 2026-07-16
 
+- Implemented both approved validation-first features. Report photos now accept
+  up to 20 MB directly and browser-optimize supported JPEG/PNG/WebP sources
+  above 20 MB through 50 MB, with three-file and 30 MB prepared-total limits,
+  clear progress/failure states, cancellation and retry.
+- Added a Staff-only, GET-only Production Snapshot area to Ops. It reads from
+  dedicated validation Preview D1/R2 resources and exposes reports, players,
+  staff, audit history and private media without adding any snapshot mutation
+  route or production binding.
+- Completed a repeatable guarded snapshot refresh. The verified validation
+  snapshot matches production at 9 players, 1 report, 1 staff principal,
+  10 audit events, 1 media record, 18 legal acceptances and 13 waypoints; both
+  databases pass foreign-key checks and the production verification reads
+  wrote zero rows. The two referenced private media objects were copied and
+  hash-verified in the dedicated private snapshot bucket.
+- Verified the final source with 396 passing tests, exact legal artifacts, all
+  TypeScript projects, the production build and `git diff --check`. Production
+  has not been deployed or mutated; validation deployment and owner browser QA
+  are the remaining release steps.
 - Approved and documented two validation-first designs without starting
   implementation or changing Cloudflare resources. The first adds a manual,
   full-fidelity production snapshot that is visible only through the existing
@@ -111,9 +129,9 @@ validation accounts, submissions, or credentials into production.
 
 ## Current follow-ups
 
-- After owner review of the two approved specifications, create separate
-  implementation plans for the production snapshot and large-photo upload;
-  implement and deploy validation-first before seeking production approval.
+- Deploy the completed candidate to the `codex-validation` Pages branch and
+  complete owner browser QA of large-photo preparation and the Staff-only
+  Production Snapshot area before seeking any production approval.
 - Unpublish the disposable validation-only `test` update through the audited
   Ops workflow after an authorized validation staff session is available. Do
   not delete its private report or audit history, and do not mutate production.
