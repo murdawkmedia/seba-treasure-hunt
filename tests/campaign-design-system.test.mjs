@@ -632,12 +632,12 @@ test("light surfaces select dark focus while dark campaign chrome stays gold", (
   );
   assert.match(
     publicCss,
-    /\.answer-block,\s*\.campaign-prop,\s*\.rules,\s*\.legend,\s*\.islands,\s*\.card,\s*\.howto,\s*\.step,\s*\.evidence,\s*\.found,\s*\.longgame,\s*\.fineprint,\s*\.hunt-faq,\s*\.interview-section,\s*details\.qa,\s*\.lookfor,\s*\.stops-intro,\s*\.stop,\s*\.anchor-sponsor\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    /\.answer-block,\s*\.campaign-prop,\s*\.rules,\s*\.legend,\s*\.islands,\s*\.card,\s*\.howto,\s*\.step,\s*\.evidence,\s*\.found,\s*\.longgame,\s*\.fineprint,\s*\.hunt-faq,\s*\.interview-section,\s*details\.qa,\s*\.lookfor,\s*\.stops-intro,\s*\.stop\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
     "public light and parchment roots systematically select dark focus",
   );
   assert.match(
     publicCss,
-    /\.hero,\s*\.prize,\s*\.festival,\s*\.mapsection,\s*\.gallery,\s*\.route-teaser,\s*\.sponsor,\s*\.contact-card,\s*\.hours-banner,\s*\.checklist,\s*\.route-hero,\s*\.routevideo,\s*\.route-footnote,\s*\.evidence-section,\s*\.final-cta\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
+    /\.hero,\s*\.prize,\s*\.festival,\s*\.mapsection,\s*\.gallery,\s*\.route-teaser,\s*\.contact-card,\s*\.hours-banner,\s*\.checklist,\s*\.route-hero,\s*\.routevideo,\s*\.route-footnote,\s*\.evidence-section,\s*\.final-cta\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
     "public forest surfaces pin gold focus, including dark cards nested in paper sections",
   );
 });
@@ -741,6 +741,33 @@ test("public stylesheets expose none of the complete legacy shell selector set",
     .map(read)
     .join("\n");
   assert.deepEqual(legacyCssClassSelectors(css), []);
+});
+
+test("CSS copied into the public build contains no withdrawn sponsor selectors", () => {
+  const deliveredCssFiles = fs.readdirSync(path.join(root, "css"))
+    .filter((filename) => filename.endsWith(".css") && filename !== "sponsors.css");
+  const withdrawnSelectors = [
+    ".nav-sponsors",
+    ".anchor-sponsor",
+    ".sponsor",
+    ".tiers",
+    ".tier",
+    ".tier__amt",
+    ".sponsor-cta",
+    ".sponsor-note",
+  ];
+
+  for (const filename of deliveredCssFiles) {
+    const css = read(path.join("css", filename));
+    for (const selector of withdrawnSelectors) {
+      const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      assert.doesNotMatch(
+        css,
+        new RegExp(`${escapedSelector}(?![a-z0-9_-])`, "i"),
+        `${filename} must not publish ${selector}`,
+      );
+    }
+  }
 });
 
 test("every campaign source uses root-relative local stylesheet URLs", () => {

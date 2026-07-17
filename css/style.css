@@ -66,8 +66,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; line-height: 1.
 details.qa,
 .lookfor,
 .stops-intro,
-.stop,
-.anchor-sponsor {
+.stop {
   --campaign-focus: var(--campaign-focus-dark);
 }
 
@@ -77,7 +76,6 @@ details.qa,
 .mapsection,
 .gallery,
 .route-teaser,
-.sponsor,
 .contact-card,
 .hours-banner,
 .checklist,
@@ -441,23 +439,6 @@ section { padding: 70px 0; position: relative; }
 .year h3 { color: var(--green-900); font-size: 1.5rem; margin: 12px 0 8px; }
 .year p { margin: 0; color: var(--ink-700); }
 .heart { max-width: 760px; margin: 0 auto; text-align: center; font-size: 1.15rem; color: var(--green-900); background: rgba(224,160,30,0.12); border-left: 4px solid var(--gold-500); border-radius: 8px; padding: 16px 20px; }
-
-/* ---------- become a sponsor ---------- */
-.sponsor { background: linear-gradient(180deg, var(--green-900), var(--green-800)); color: var(--cream-100); }
-.sponsor .section-title { color: var(--cream-100); }
-.sponsor .section-lead { color: var(--cream-200); }
-.anchor-sponsor { max-width: 760px; margin: 0 auto 30px; display: flex; align-items: center; gap: 22px; background: var(--cream-100); border: 3px solid var(--gold-500); border-radius: 16px; padding: 20px 26px; text-decoration: none; box-shadow: var(--shadow-card); }
-.anchor-sponsor img { height: 90px; width: auto; flex: 0 0 auto; }
-.anchor-sponsor .tag { display: inline-block; font-family: var(--font-display); font-size: 1.15rem; color: var(--rust-600); }
-.anchor-sponsor p { margin: 4px 0 0; color: var(--ink-700); font-size: 1.02rem; }
-.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px,1fr)); gap: 18px; max-width: 1000px; margin: 0 auto 26px; }
-.tier { background: rgba(0,0,0,0.22); border: 2px solid var(--gold-500); border-radius: 14px; padding: 20px; text-align: center; }
-.tier h3 { font-family: var(--font-display); color: var(--gold-300); font-size: 1.6rem; margin: 0; }
-.tier__amt { font-family: var(--font-mono); color: var(--cream-100); font-size: 1.02rem; margin: 4px 0 10px; }
-.tier p { margin: 0; color: var(--cream-200); font-size: .92rem; }
-.sponsor-cta { text-align: center; }
-.sponsor-note { display: block; margin-top: 12px; font-family: var(--font-mono); font-size: .85rem; color: var(--cream-200); }
-@media (max-width: 560px) { .anchor-sponsor { flex-direction: column; text-align: center; } }
 
 /* ---------- the fine print (official rules) ---------- */
 .fineprint { background: linear-gradient(180deg, var(--cream-200), var(--cream-100)); }

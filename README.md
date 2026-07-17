@@ -7,7 +7,7 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 | Route | Purpose |
 |---|---|
 | `/` | Documentary case overview, real evidence and current status |
-| `/route` | Lucky 13 waypoint stories; signed-in hunters receive exact route controls |
+| `/route` | 13 Stops waypoint stories; signed-in hunters receive exact route controls |
 | `/interview` | Tim’s Account, organized as the before, along-route, and after-discovery record |
 | `/updates` | Official updates and approved community reports |
 | `/report` | Private find, tip, and safety reporting |
@@ -15,11 +15,10 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 | `/rules` | Versioned search and safety rules |
 | `/privacy` | Privacy Policy & Media Notice |
 | `/waiver` | Participation Acknowledgement, Waiver and Release |
-| `/sponsors` | Support the Search information and private inquiry form |
 
 Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and are protected by authenticated company-domain access.
 
-Sponsor inquiries submitted through `/sponsors` are stored in private D1 records with an append-only event ledger. Staff review them in the Ops Sponsors ledger; there is no automated email for sponsor inquiries.
+Public sponsorship is withdrawn. The dormant `sponsors.html` source remains in the repository for possible future review, but it is not built or routed publicly and no public submission form is available. Existing sponsor inquiry records remain private in the Ops Sponsors ledger.
 
 The Documentary Case File public-page transition is live in production on the
 identifiers recorded in the operations handoff. The newer Submission, Ops and
@@ -30,7 +29,7 @@ The validation refinement distinguishes public Case Notes from private reports,
 adds report-time public attribution, gives operators independent private,
 Case Note and draft/scheduled Official Update outcomes, supports direct Update
 media, and uses one scoped approved-media viewer across Updates, Case Notes,
-Ops and the Lucky 13 route.
+Ops and the 13 Stops route.
 
 ## Design source
 

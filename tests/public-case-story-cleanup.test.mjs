@@ -23,6 +23,16 @@ test("the public case shell uses 13 Stops and has no sponsorship destination", (
   assert.doesNotMatch(home, /Support the Search|href=["']\/?sponsors(?:\.html)?["']/i);
 });
 
+test("the README documents 13 Stops and the withdrawn public sponsorship surface", () => {
+  const readme = readFileSync(path.join(root, "README.md"), "utf8");
+
+  assert.match(readme, /\| `\/route` \| 13 Stops waypoint stories;/);
+  assert.doesNotMatch(readme, /Lucky 13|\| `\/sponsors` \||submitted through `\/sponsors`/i);
+  assert.match(readme, /Public sponsorship is withdrawn\./);
+  assert.match(readme, /`sponsors\.html` source remains in the repository/);
+  assert.match(readme, /Existing sponsor inquiry records remain private in the Ops Sponsors ledger\./);
+});
+
 test("the public build excludes the withdrawn sponsor page, stylesheet, and browser entries", async () => {
   const output = await buildSite({ temporary: true });
   try {
