@@ -190,6 +190,16 @@ test("legal detail is deliberately loaded in a private dialog and never bulk-exp
   assert.doesNotMatch(client, /participant(s)?[^\n]{0,80}buildSubscriberCsv/i);
 });
 
+test("report publication uses one native labelled confirmation checkbox", () => {
+  const html = read("ops.html");
+  const css = read("css/ops.css");
+  assert.equal((html.match(/id="report-publication-confirm"/g) ?? []).length, 1);
+  assert.match(html, /<label[^>]+for="report-publication-confirm"[^>]*class="ops-confirmation"/);
+  assert.match(html, /<input[^>]+id="report-publication-confirm"[^>]+type="checkbox"/);
+  assert.doesNotMatch(css, /\.ops-confirmation[^}]*appearance\s*:\s*none/is);
+  assert.doesNotMatch(css, /\.ops-confirmation(?:::\w+|\s+\w+::\w+)[^{]*\{[^}]*content\s*:/is);
+});
+
 test("Ops exposes a clearly separate read-only production snapshot workspace", () => {
   const html = read("ops.html");
   const client = read("src/client/ops.ts");

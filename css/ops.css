@@ -242,6 +242,10 @@ form.ops-panel { display: grid; gap: 7px; }
 .ops-chip--warning { color: #ffd092; background: rgba(240, 163, 58, .08); box-shadow: inset 0 0 0 1px rgba(240, 163, 58, .45); }
 .ops-confirm { min-height: 44px; display: flex; align-items: flex-start; gap: 9px; margin-top: 8px; padding: 9px; color: var(--ops-muted); background: rgba(7, 31, 28, .55); border-radius: 5px; }
 .ops-confirm input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--ops-gold); }
+.ops-confirmation { min-height: 44px; display: flex; align-items: flex-start; gap: 10px; margin-top: 8px; padding: 10px; color: var(--ops-muted); background: rgba(7, 31, 28, .55); border-radius: 5px; cursor: pointer; }
+.ops-confirmation input { flex: 0 0 auto; width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--ops-gold); }
+.ops-confirmation span { min-width: 0; line-height: 1.45; }
+.ops-confirmation:focus-within { box-shadow: 0 0 0 3px rgba(241, 182, 43, .42); }
 .ops-action-row { display: flex; align-items: center; flex-wrap: wrap; gap: 13px; }
 .ops-inline-result { color: var(--ops-muted); font-size: .8rem; }
 .ops-time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
