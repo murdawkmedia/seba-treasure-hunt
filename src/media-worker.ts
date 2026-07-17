@@ -1,4 +1,5 @@
 import { D1EnvironmentGuard } from "./server/environment-guard";
+import { REPORT_IMAGE_DIRECT_BYTES } from "./shared/report-image-limits";
 import type { DeploymentEnvironment } from "./server/types";
 
 export interface MediaMessage {
@@ -72,7 +73,7 @@ export async function processMediaMessage(
     isRaster &&
     safeRasterFormats.has(info.format) &&
     info.fileSize > 0 &&
-    info.fileSize <= 10 * 1024 * 1024 &&
+    info.fileSize <= REPORT_IMAGE_DIRECT_BYTES &&
     info.width > 0 &&
     info.height > 0 &&
     info.width <= 12_000 &&

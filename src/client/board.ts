@@ -53,7 +53,7 @@ declare global {
 
 const communityDisclaimer = "Community observation&mdash;not an official clue.";
 const maxImages = 3;
-const maxImageBytes = 10 * 1024 * 1024;
+const maxImageBytes = 10_000_000;
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 let turnstileSiteKey: string | null = null;
 let turnstileApi: TurnstileApi | null = null;
@@ -193,7 +193,7 @@ export function validateFieldNote(waypointId: string, body: string, files: reado
   if (files.length > maxImages) errors.push("Choose no more than 3 images.");
   for (const file of files) {
     if (!allowedImageTypes.has(file.type)) errors.push(`${file.name} is not a JPEG, PNG or WebP image.`);
-    if (file.size > maxImageBytes) errors.push(`${file.name} is larger than 10 MiB.`);
+    if (file.size > maxImageBytes) errors.push(`${file.name} is larger than 10 MB.`);
   }
   return errors;
 }

@@ -609,6 +609,51 @@ test("requires an image for find reports and stores accepted uploads privately",
   assert.equal(uploads.saved.length, 1, "an idempotent retry must not create an orphan upload");
 });
 
+test("enforces decimal 20 MB per-image and 30 MB combined report limits", async () => {
+  const jpeg = (size: number, name: string) => {
+    const bytes = new Uint8Array(size);
+    bytes.set([0xff, 0xd8, 0xff]);
+    return new File([bytes], name, { type: "image/jpeg" });
+  };
+  const report = (images: File[]) => {
+    const form = new FormData();
+    form.set("type", "tip");
+    form.set("name", "A Hunter");
+    form.set("email", "hunter@example.test");
+    form.set("locationDescription", "Near waypoint one");
+    form.set("details", "Large image boundary test.");
+    form.set("cfTurnstileResponse", "human-token");
+    for (const image of images) form.append("images", image, image.name);
+    return form;
+  };
+
+  const acceptedApp = makeApp().app;
+  const accepted = await acceptedApp.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    headers: { "idempotency-key": "image-boundary-accepted", origin: "https://www.timlostsomething.com" },
+    body: report([jpeg(20_000_000, "accepted.jpg")]),
+  });
+  assert.equal(accepted.status, 201);
+
+  const oversizedApp = makeApp().app;
+  const oversized = await oversizedApp.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    headers: { "idempotency-key": "image-boundary-oversized", origin: "https://www.timlostsomething.com" },
+    body: report([jpeg(20_000_001, "oversized.jpg")]),
+  });
+  assert.equal(oversized.status, 415);
+  assert.equal((await responseJson(oversized)).error.code, "invalid_image");
+
+  const combinedApp = makeApp().app;
+  const combined = await combinedApp.request("https://www.timlostsomething.com/api/v1/reports", {
+    method: "POST",
+    headers: { "idempotency-key": "image-boundary-combined", origin: "https://www.timlostsomething.com" },
+    body: report([jpeg(15_000_001, "combined-a.jpg"), jpeg(15_000_000, "combined-b.jpg")]),
+  });
+  assert.equal(combined.status, 413);
+  assert.equal((await responseJson(combined)).error.code, "images_total_too_large");
+});
+
 test("dispatches multipart reports by media type essence and preserves case-sensitive boundaries", async () => {
   const { app } = makeApp();
   const boundary = "AaB03xWebKitBoundary";

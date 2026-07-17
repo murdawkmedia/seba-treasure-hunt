@@ -14,7 +14,8 @@ const bytes = (...values: number[]) =>
 function makeEnv(
   format = "image/jpeg",
   databaseChanges: number | undefined = undefined,
-  sentinel = "validation"
+  sentinel = "validation",
+  fileSize = 4,
 ) {
   const puts: Array<{ key: string; options: Record<string, unknown> }> = [];
   const statements: Array<{ sql: string; values: unknown[] }> = [];
@@ -32,7 +33,7 @@ function makeEnv(
     IMAGES: {
       async info(stream: ReadableStream<Uint8Array>) {
         await new Response(stream).arrayBuffer();
-        return { format, fileSize: 4, width: 1200, height: 800 };
+        return { format, fileSize, width: 1200, height: 800 };
       },
       input(stream: ReadableStream<Uint8Array>) {
         const transformer = {
@@ -109,6 +110,16 @@ test("rejects non-raster content without creating a derivative", async () => {
   assert.deepEqual(result, { status: "rejected" });
   assert.equal(puts.length, 0);
   assert.match(statements.at(-1)?.sql ?? "", /status = 'rejected'/);
+});
+
+test("accepts exactly 20 MB and rejects one byte more", async () => {
+  const accepted = makeEnv("image/jpeg", undefined, "validation", 20_000_000);
+  assert.equal((await processMediaMessage(message, accepted.env as never)).status, "ready");
+  assert.equal(accepted.puts.length, 1);
+
+  const rejected = makeEnv("image/jpeg", undefined, "validation", 20_000_001);
+  assert.deepEqual(await processMediaMessage(message, rejected.env as never), { status: "rejected" });
+  assert.equal(rejected.puts.length, 0);
 });
 
 test("rejects untrusted object keys before touching storage", async () => {

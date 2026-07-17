@@ -1,6 +1,11 @@
 import { Hono, type Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { waypointId } from "../shared/waypoints";
+import {
+  REPORT_IMAGE_DIRECT_BYTES,
+  REPORT_IMAGE_TOTAL_BYTES,
+  REPORT_IMAGE_TYPES,
+} from "../shared/report-image-limits";
 import { ApiError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument, publicLegalState } from "./legal-documents";
 import type {
@@ -72,7 +77,7 @@ const validReportStates = new Set([
   "rejected",
   "resolved"
 ]);
-const validImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const validImageTypes = REPORT_IMAGE_TYPES;
 const validSponsorSupportTypes = new Set<SponsorSupportType>([
   "community",
   "lead",
@@ -411,13 +416,18 @@ const hasImageSignature = async (file: File) => {
 
 const validateImages = async (files: File[]) => {
   if (files.length > 3) throw new ApiError(413, "too_many_images", "Upload at most three images.");
+  let total = 0;
   for (const file of files) {
-    if (!validImageTypes.has(file.type) || file.size === 0 || file.size > 10 * 1024 * 1024) {
-      throw new ApiError(415, "invalid_image", "Images must be JPEG, PNG, or WebP and no larger than 10 MiB.");
+    if (!validImageTypes.has(file.type) || file.size === 0 || file.size > REPORT_IMAGE_DIRECT_BYTES) {
+      throw new ApiError(415, "invalid_image", "Images must be JPEG, PNG, or WebP and no larger than 20 MB.");
     }
+    total += file.size;
     if (!(await hasImageSignature(file))) {
       throw new ApiError(415, "invalid_image", "An uploaded file does not match its image type.");
     }
+  }
+  if (total > REPORT_IMAGE_TOTAL_BYTES) {
+    throw new ApiError(413, "images_total_too_large", "Prepared images may total no more than 30 MB.");
   }
 };
 

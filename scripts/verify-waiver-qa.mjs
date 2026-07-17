@@ -851,9 +851,9 @@ async function exerciseBoardBoundaries(page) {
   await page.locator("#board-feed .reply-form").waitFor();
   await page.locator('#note-waypoint').selectOption("1");
   await page.locator('#note-body').fill("Public-safe boundary observation.");
-  await page.locator('#note-images').setInputFiles({ name: "oversize-note.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
+  await page.locator('#note-images').setInputFiles({ name: "oversize-note.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(10_000_001) });
   await page.locator('#field-note-form button[type="submit"]').click();
-  assert.match(await page.locator("#note-error-summary").innerText(), /larger than 10 MiB/i, "note upload boundary must reject locally before a write");
+  assert.match(await page.locator("#note-error-summary").innerText(), /larger than 10 MB/i, "note upload boundary must reject locally before a write");
   const reply = page.locator("#board-feed .reply-form").first();
   await reply.locator('textarea[name="body"]').fill(privateFixtures.coordinates);
   await reply.locator('button[type="submit"]').click();
@@ -878,9 +878,10 @@ async function exerciseReportBoundaries(page) {
   await page.locator("[data-report-submit]").click();
   assert.match(await page.locator('[data-error-for="photo"]').innerText(), /Add a clear photo/i, "private find report boundary must require evidence without writing");
   assert.equal(await page.locator('[name="images"]').evaluate((element) => element === document.activeElement), true);
-  await page.locator('[name="images"]').setInputFiles({ name: "oversize-report.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
+  await page.locator('[name="images"]').setInputFiles({ name: "oversize-report.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(50_000_001) });
+  await page.locator('[data-error-for="photo"]').filter({ hasText: /50 MB/i }).waitFor();
   await page.locator("[data-report-submit]").click();
-  assert.match(await page.locator('[data-error-for="photo"]').innerText(), /10 MiB or smaller/i, "report upload boundary must reject locally before a write");
+  assert.match(await page.locator('[data-error-for="photo"]').innerText(), /50 MB/i, "report upload boundary must reject locally before a write");
   await page.locator("[data-report-form]").evaluate((form) => form.reset());
 }
 

@@ -33,7 +33,7 @@ test("public Case Notes are an accessible, moderated community surface", () => {
   assert.match(html, /data-note-turnstile/);
   assert.match(html, /id="board-flag-dialog"/);
   assert.match(html, /accept="image\/jpeg,image\/png,image\/webp"/);
-  assert.match(html, /Up to 3 images.*10 MiB/i);
+  assert.match(html, /Up to 3 images.*10 MB/i);
   assert.match(html, /aria-live="polite"/);
   assert.match(client, /\/api\/v1\/board\?waypoint=/);
   assert.match(client, /Community observation/);
