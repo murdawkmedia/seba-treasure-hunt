@@ -125,6 +125,11 @@ validation accounts, submissions, or credentials into production.
   live Nancy & Ron Update changed during design documentation. Implementation
   remains gated on owner review of the written specification and a subsequent
   implementation plan.
+- Murphy approved the written specification and requested implementation. The
+  test-first execution plan is recorded at
+  `docs/superpowers/plans/2026-07-17-submission-ops-publication-refinement.md`
+  with three validation checkpoints. Inline execution is next; production
+  promotion remains explicitly out of scope.
 
 ## Decisions in force
 
