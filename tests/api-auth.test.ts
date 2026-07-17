@@ -271,6 +271,284 @@ test("separates staff identity from hunter identity and repeats authorization in
   assert.equal((await responseJson(staff)).data.subject, "staff-1");
 });
 
+test("lists reply and flag moderation queues only for active staff", async () => {
+  const { app, store } = makeApp();
+  store.board.push({
+    id: "note-moderation-1",
+    status: "approved",
+    waypointId: 1,
+    body: "A public Case Note.",
+    replies: [{ id: "reply-moderation-1", body: "A public reply." }]
+  });
+  store.profiles.set("hunter-moderation-1", {
+    subject: "hunter-moderation-1",
+    publicHandle: "Hunter A7F3"
+  });
+  store.replies.push({
+    id: "reply-moderation-1",
+    noteId: "note-moderation-1",
+    authorSubject: "hunter-moderation-1",
+    body: "A public reply.",
+    status: "published",
+    createdAt: "2026-07-17T18:00:00.000Z"
+  });
+  store.flags.push({
+    id: "flag-moderation-1",
+    targetKind: "reply",
+    targetId: "reply-moderation-1",
+    reason: "unsafe",
+    status: "received",
+    createdAt: "2026-07-17T18:01:00.000Z"
+  });
+
+  for (const path of ["replies", "flags"]) {
+    const anonymous = await app.request(`https://www.timlostsomething.com/api/v1/ops/moderation/${path}`);
+    assert.equal(anonymous.status, 401);
+
+    const hunter = await app.request(`https://www.timlostsomething.com/api/v1/ops/moderation/${path}`, {
+      headers: hunterHeaders
+    });
+    assert.equal(hunter.status, 401);
+
+    const staff = await app.request(`https://www.timlostsomething.com/api/v1/ops/moderation/${path}`, {
+      headers: { authorization: "Bearer staff-token" }
+    });
+    const body = await responseJson(staff);
+    assert.equal(staff.status, 200);
+    assert.equal(staff.headers.get("cache-control"), "no-store");
+    assert.equal(body.data[0].id, `${path === "replies" ? "reply" : "flag"}-moderation-1`);
+    assert.deepEqual(body.page, { nextCursor: null });
+  }
+});
+
+test("lets active staff hide a public reply through the private moderation API", async () => {
+  const { app, store } = makeApp();
+  store.board.push({
+    id: "note-reply-hide-1",
+    status: "approved",
+    waypointId: 1,
+    body: "A public Case Note.",
+    replies: [{ id: "reply-hide-1", body: "Remove this reply." }]
+  });
+  store.profiles.set("hunter-reply-hide-1", {
+    subject: "hunter-reply-hide-1",
+    publicHandle: "Hunter B4D2"
+  });
+  store.replies.push({
+    id: "reply-hide-1",
+    noteId: "note-reply-hide-1",
+    authorSubject: "hunter-reply-hide-1",
+    body: "Remove this reply.",
+    status: "published",
+    createdAt: "2026-07-17T18:00:00.000Z"
+  });
+
+  const hidden = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/moderation/replies/reply-hide-1",
+    {
+      method: "POST",
+      ...json(
+        { action: "hide", reason: "Automated spam" },
+        { authorization: "Bearer staff-token", origin: "https://www.timlostsomething.com" }
+      )
+    }
+  );
+  assert.equal(hidden.status, 200);
+  assert.equal(hidden.headers.get("cache-control"), "no-store");
+  assert.equal((await responseJson(hidden)).data.status, "hidden");
+
+  const board = await app.request("https://www.timlostsomething.com/api/v1/board");
+  assert.deepEqual((await responseJson(board)).data[0].replies, []);
+});
+
+test("lets active staff dismiss a flag without hiding its public reply", async () => {
+  const { app, store } = makeApp();
+  store.board.push({
+    id: "note-flag-dismiss-1",
+    status: "approved",
+    waypointId: 1,
+    body: "A public Case Note.",
+    replies: [{ id: "reply-flag-dismiss-1", body: "Keep this reply." }]
+  });
+  store.profiles.set("hunter-flag-dismiss-1", {
+    subject: "hunter-flag-dismiss-1",
+    publicHandle: "Hunter C3A9"
+  });
+  store.replies.push({
+    id: "reply-flag-dismiss-1",
+    noteId: "note-flag-dismiss-1",
+    authorSubject: "hunter-flag-dismiss-1",
+    body: "Keep this reply.",
+    status: "published",
+    createdAt: "2026-07-17T18:00:00.000Z"
+  });
+  store.flags.push({
+    id: "flag-dismiss-1",
+    targetKind: "reply",
+    targetId: "reply-flag-dismiss-1",
+    reason: "unsafe",
+    status: "received",
+    createdAt: "2026-07-17T18:01:00.000Z"
+  });
+
+  const dismissed = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/moderation/flags/flag-dismiss-1",
+    {
+      method: "POST",
+      ...json(
+        { action: "dismiss", reason: "The reply is within the guidelines." },
+        { authorization: "Bearer staff-token", origin: "https://www.timlostsomething.com" }
+      )
+    }
+  );
+  assert.equal(dismissed.status, 200);
+  assert.equal((await responseJson(dismissed)).data.status, "dismissed");
+
+  const board = await app.request("https://www.timlostsomething.com/api/v1/board");
+  assert.equal((await responseJson(board)).data[0].replies[0].id, "reply-flag-dismiss-1");
+});
+
+test("validates staff reply and flag moderation mutations and resolves target hides", async () => {
+  const { app, store } = makeApp();
+  store.board.push({
+    id: "note-mutation-contract-1",
+    status: "approved",
+    waypointId: 1,
+    body: "A public Case Note.",
+    replies: [{ id: "reply-mutation-contract-1", body: "Moderate this reply." }]
+  });
+  store.profiles.set("hunter-mutation-contract-1", {
+    subject: "hunter-mutation-contract-1",
+    publicHandle: "Hunter D8E6"
+  });
+  store.replies.push({
+    id: "reply-mutation-contract-1",
+    noteId: "note-mutation-contract-1",
+    authorSubject: "hunter-mutation-contract-1",
+    body: "Moderate this reply.",
+    status: "published",
+    createdAt: "2026-07-17T18:00:00.000Z"
+  });
+  store.flags.push({
+    id: "flag-mutation-contract-1",
+    targetKind: "reply",
+    targetId: "reply-mutation-contract-1",
+    reason: "unsafe",
+    status: "received",
+    createdAt: "2026-07-17T18:01:00.000Z"
+  });
+  const staffHeaders = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com"
+  };
+  const replyPath = "https://www.timlostsomething.com/api/v1/ops/moderation/replies/reply-mutation-contract-1";
+  const flagPath = "https://www.timlostsomething.com/api/v1/ops/moderation/flags/flag-mutation-contract-1";
+
+  for (const [path, action] of [[replyPath, "hide"], [flagPath, "dismiss"]] as const) {
+    for (const headers of [{ origin: staffHeaders.origin }, { ...hunterHeaders, origin: staffHeaders.origin }]) {
+      const response = await app.request(path, {
+        method: "POST",
+        ...json({ action, reason: "A valid private moderation reason." }, headers)
+      });
+      assert.equal(response.status, 401);
+    }
+  }
+
+  const missingOrigin = await app.request(replyPath, {
+    method: "POST",
+    headers: { authorization: "Bearer staff-token", "content-type": "application/json" },
+    body: JSON.stringify({ action: "hide", reason: "A valid private moderation reason." })
+  });
+  assert.equal(missingOrigin.status, 403);
+  assert.equal((await responseJson(missingOrigin)).error.code, "origin_rejected");
+
+  const nonJson = await app.request(replyPath, {
+    method: "POST",
+    headers: { ...staffHeaders, "content-type": "text/plain" },
+    body: JSON.stringify({ action: "hide", reason: "A valid private moderation reason." })
+  });
+  assert.equal(nonJson.status, 415);
+
+  const files = new FormData();
+  files.set("images", new File(["not an image"], "proof.txt", { type: "text/plain" }));
+  const multipart = await app.request(replyPath, {
+    method: "POST",
+    headers: staffHeaders,
+    body: files
+  });
+  assert.equal(multipart.status, 415);
+
+  for (const body of [
+    { reason: "A valid private moderation reason." },
+    { action: "remove", reason: "A valid private moderation reason." },
+    { action: "hide", reason: "no" },
+    { action: "hide", reason: "x".repeat(501) }
+  ]) {
+    const response = await app.request(replyPath, {
+      method: "POST",
+      ...json(body, staffHeaders)
+    });
+    assert.equal(response.status, 422);
+    assert.equal((await responseJson(response)).error.code, "validation_failed");
+  }
+
+  const invalidFlagAction = await app.request(flagPath, {
+    method: "POST",
+    ...json({ action: "resolve", reason: "A valid private moderation reason." }, staffHeaders)
+  });
+  assert.equal(invalidFlagAction.status, 422);
+  assert.equal((await responseJson(invalidFlagAction)).error.code, "validation_failed");
+
+  const hidden = await app.request(replyPath, {
+    method: "POST",
+    ...json({ action: "hide", reason: "Automated spam" }, staffHeaders)
+  });
+  assert.equal(hidden.status, 200);
+
+  const repeatedHide = await app.request(replyPath, {
+    method: "POST",
+    ...json({ action: "hide", reason: "Automated spam" }, staffHeaders)
+  });
+  assert.equal(repeatedHide.status, 409);
+  assert.equal((await responseJson(repeatedHide)).error.code, "reply_state_conflict");
+
+  const restored = await app.request(replyPath, {
+    method: "POST",
+    ...json({ action: "restore", reason: "False positive" }, staffHeaders)
+  });
+  assert.equal(restored.status, 200);
+  const restoredBoard = await app.request("https://www.timlostsomething.com/api/v1/board");
+  assert.equal((await responseJson(restoredBoard)).data[0].replies[0].id, "reply-mutation-contract-1");
+
+  store.flags.push({
+    id: "flag-hide-target-1",
+    targetKind: "reply",
+    targetId: "reply-mutation-contract-1",
+    reason: "unsafe",
+    status: "received",
+    createdAt: "2026-07-17T18:02:00.000Z"
+  });
+  const hideTarget = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/moderation/flags/flag-hide-target-1",
+    {
+      method: "POST",
+      ...json({ action: "hide_target", reason: "The target breaks the guidelines." }, staffHeaders)
+    }
+  );
+  assert.equal(hideTarget.status, 200);
+  assert.equal((await responseJson(hideTarget)).data.status, "resolved");
+  assert.equal(store.flags.find((flag) => flag.id === "flag-hide-target-1")?.status, "resolved");
+  const hiddenBoard = await app.request("https://www.timlostsomething.com/api/v1/board");
+  assert.deepEqual((await responseJson(hiddenBoard)).data[0].replies, []);
+
+  const repeatedFlag = await app.request(flagPath, {
+    method: "POST",
+    ...json({ action: "dismiss", reason: "Already resolved by target hide." }, staffHeaders)
+  });
+  assert.equal(repeatedFlag.status, 409);
+  assert.equal((await responseJson(repeatedFlag)).error.code, "flag_state_conflict");
+});
+
 test("activates a verified staff subject only when its email was privately invited", async () => {
   const { app, store } = makeApp();
   store.staff.clear();

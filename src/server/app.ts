@@ -1850,6 +1850,76 @@ export const createApi = (deps: ApiDependencies) => {
     });
     return success(c, result.items, 200, { nextCursor: result.nextCursor });
   });
+  app.get("/api/v1/ops/moderation/replies", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    const result = await deps.store.listModerationReplies({
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.get("/api/v1/ops/moderation/flags", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    const result = await deps.store.listContentFlags({
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.post("/api/v1/ops/moderation/replies/:id", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw);
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length) {
+      throw new ApiError(415, "unsupported_media_type", "Reply moderation accepts JSON only.");
+    }
+    const action = requiredString(body, "action", { max: 10 });
+    if (action !== "hide" && action !== "restore") {
+      throw new ApiError(422, "validation_failed", "Choose hide or restore.", { field: "action" });
+    }
+    const result = await deps.store.moderateReply(
+      c.req.param("id"),
+      action,
+      requiredString(body, "reason", { min: 3, max: 500 }),
+      staff.subject
+    );
+    if (!result) {
+      throw new ApiError(
+        409,
+        "reply_state_conflict",
+        "The reply state changed. Refresh and try again."
+      );
+    }
+    return success(c, result);
+  });
+  app.post("/api/v1/ops/moderation/flags/:id", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw);
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length) {
+      throw new ApiError(415, "unsupported_media_type", "Flag moderation accepts JSON only.");
+    }
+    const action = requiredString(body, "action", { max: 20 });
+    if (action !== "dismiss" && action !== "hide_target") {
+      throw new ApiError(422, "validation_failed", "Choose dismiss or hide_target.", { field: "action" });
+    }
+    const result = await deps.store.moderateContentFlag(
+      c.req.param("id"),
+      action,
+      requiredString(body, "reason", { min: 3, max: 500 }),
+      staff.subject
+    );
+    if (!result) {
+      throw new ApiError(
+        409,
+        "flag_state_conflict",
+        "The flag or target state changed. Refresh and try again."
+      );
+    }
+    return success(c, result);
+  });
   app.get("/api/v1/ops/moderation/notes/:id/media/:mediaId", async (c) => {
     const staff = await requireStaff(deps, c.req.raw);
     const authorized = await deps.store.getFieldNoteMedia(

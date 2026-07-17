@@ -174,6 +174,22 @@ test("lists only approved community notes on the public board", async () => {
   assert.deepEqual(body.page, { nextCursor: null });
 });
 
+test("does not expose public moderation routes", async () => {
+  const { app } = makeApp();
+
+  for (const path of [
+    "/api/v1/moderation/replies",
+    "/api/v1/moderation/flags",
+    "/api/v1/moderation/replies/reply-1",
+    "/api/v1/moderation/flags/flag-1"
+  ]) {
+    const response = await app.request(`https://www.timlostsomething.com${path}`, {
+      method: path.endsWith("reply-1") || path.endsWith("flag-1") ? "POST" : "GET"
+    });
+    assert.equal(response.status, 404, path);
+  }
+});
+
 test("serves only a D1-authorized ready derivative without exposing its R2 key", async () => {
   const store = new FakeStore();
   store.publicMedia.set("media-ready", {
