@@ -4,7 +4,7 @@ import { createSerializedSubmission } from "./identity-submission";
 import { isAllowedStaffEmail } from "../server/staff-domains";
 import { routeOrder, waypointId } from "../shared/waypoints";
 
-type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit";
+type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
 type OpsSponsorState = "new" | "contacted" | "qualified" | "accepted" | "closed";
 type OpsSponsorSupportType = "community" | "lead" | "prize_in_kind" | "other";
@@ -176,7 +176,26 @@ export interface OpsSubscriberLedger {
   nextCursor: string | null;
 }
 
-const views: readonly OpsView[] = ["command", "updates", "reports", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit"];
+export interface ProductionSnapshotSummary {
+  snapshotId: string;
+  verifiedAt: string;
+  sourceUpdatedAt: string;
+  counts: { reports: number; players: number; staff: number; audit: number; media: number };
+}
+
+export interface ProductionSnapshotReport {
+  id: string;
+  reportType: string;
+  reporterName: string;
+  reporterEmail: string;
+  reporterPhone: string | null;
+  waypointRouteOrder: number | null;
+  waypointName: string | null;
+  status: string;
+  createdAt: string;
+}
+
+const views: readonly OpsView[] = ["command", "updates", "reports", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit", "production-snapshot"];
 const sponsorStates: readonly OpsSponsorState[] = ["new", "contacted", "qualified", "accepted", "closed"];
 const visibleSponsorMetricStates = ["new", "contacted", "qualified", "accepted"] as const;
 const sponsorSupportTypes: readonly OpsSponsorSupportType[] = ["community", "lead", "prize_in_kind", "other"];
@@ -192,6 +211,11 @@ let subscribersLoading = false;
 let sponsorsLoaded = false;
 let sponsorLoadVersion = 0;
 const sponsorMutations = new Set<string>();
+let productionSnapshotLoaded = false;
+let productionSnapshotLoading = false;
+let productionSnapshotAbortController: AbortController | null = null;
+let productionSnapshotTrigger: HTMLButtonElement | null = null;
+let productionSnapshotObjectUrls: string[] = [];
 
 export interface ReportReviewIntent {
   generation: number;
@@ -317,6 +341,51 @@ export function normalizeOpsDashboard(payload: unknown): OpsDashboard {
     },
     killSwitches,
   };
+}
+
+export function normalizeProductionSnapshotSummary(payload: unknown): ProductionSnapshotSummary | null {
+  const value = envelopeData(payload);
+  if (!isRecord(value) || value.kind !== "production-snapshot" || value.status !== "verified") return null;
+  const counts = isRecord(value.counts) ? value.counts : {};
+  const parsed = {
+    reports: asNumber(counts.reports),
+    players: asNumber(counts.players),
+    staff: asNumber(counts.staff),
+    audit: asNumber(counts.audit),
+    media: asNumber(counts.media),
+  };
+  if (Object.values(parsed).some((count) => count === null)) return null;
+  const snapshotId = asString(value.snapshotId);
+  const verifiedAt = asString(value.verifiedAt);
+  if (!snapshotId || !verifiedAt) return null;
+  return {
+    snapshotId,
+    verifiedAt,
+    sourceUpdatedAt: asString(value.sourceUpdatedAt),
+    counts: parsed as ProductionSnapshotSummary["counts"],
+  };
+}
+
+export function normalizeProductionSnapshotReports(payload: unknown): ProductionSnapshotReport[] {
+  return asArray(envelopeData(payload)).flatMap((value): ProductionSnapshotReport[] => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id);
+    const reportType = asString(value.reportType);
+    const reporterName = asString(value.reporterName);
+    const reporterEmail = asString(value.reporterEmail);
+    if (!id || !reportType || !reporterName || !reporterEmail) return [];
+    return [{
+      id,
+      reportType,
+      reporterName,
+      reporterEmail,
+      reporterPhone: asString(value.reporterPhone) || null,
+      waypointRouteOrder: asNumber(value.waypointRouteOrder),
+      waypointName: asString(value.waypointName) || null,
+      status: asString(value.status),
+      createdAt: asString(value.createdAt),
+    }];
+  });
 }
 
 export function normalizeOpsStaff(payload: unknown): OpsStaffRecord[] {
@@ -783,6 +852,67 @@ export function renderReportRows(records: readonly OpsReportRecord[]): string {
   </tr>`).join("");
 }
 
+export function renderProductionSnapshotReportRows(records: readonly ProductionSnapshotReport[]): string {
+  if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No reports are present in this snapshot.</span></td></tr>`;
+  return records.map((record) => {
+    const waypoint = record.waypointRouteOrder !== null && record.waypointName
+      ? `Waypoint ${record.waypointRouteOrder} — ${record.waypointName}`
+      : "Not specified";
+    const contact = `${record.reporterEmail}${record.reporterPhone ? ` / ${record.reporterPhone}` : ""}`;
+    return `<tr>
+      <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
+      <td><strong>${escapeOpsHtml(record.reporterName)}</strong><br /><span class="ops-mono">${escapeOpsHtml(record.reportType)}</span></td>
+      <td><span class="ops-mono">${escapeOpsHtml(contact)}</span></td>
+      <td>${escapeOpsHtml(waypoint)}</td>
+      <td>${escapeOpsHtml(record.status || "Unknown")}</td>
+      <td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-production-snapshot-report-id="${escapeOpsHtml(record.id)}">Review snapshot report</button></div></td>
+    </tr>`;
+  }).join("");
+}
+
+function snapshotRecords(payload: unknown): Record<string, unknown>[] {
+  return asArray(envelopeData(payload)).filter(isRecord);
+}
+
+function renderProductionSnapshotPlayerRows(records: readonly Record<string, unknown>[]): string {
+  if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No players are present in this snapshot.</span></td></tr>`;
+  return records.map((record) => {
+    const subject = asString(record.subject) || asString(record.id);
+    const fullName = asString(record.fullName) || "Name not supplied";
+    const publicHandle = asString(record.publicHandle);
+    const waiverVersion = asString(record.waiverVersion);
+    return `<tr>
+      <td><strong>${escapeOpsHtml(fullName)}</strong>${publicHandle ? `<br /><span class="ops-mono">${escapeOpsHtml(publicHandle)}</span>` : ""}</td>
+      <td><span class="ops-mono">${escapeOpsHtml(asString(record.verifiedEmail) || "Not supplied")}</span></td>
+      <td>${escapeOpsHtml(asString(record.participationBasis) || "Not recorded")}</td>
+      <td>${escapeOpsHtml(asString(record.privacyMediaVersion) || "Not accepted")}</td>
+      <td>${escapeOpsHtml(waiverVersion || "Not accepted")}</td>
+      <td>${waiverVersion && subject ? `<button class="ops-button ops-button--quiet" type="button" data-production-snapshot-waiver-subject="${escapeOpsHtml(subject)}">Review snapshot waiver</button>` : ""}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderProductionSnapshotStaffRows(records: readonly Record<string, unknown>[]): string {
+  if (records.length === 0) return `<tr><td colspan="4"><span class="ops-table-empty">No staff are present in this snapshot.</span></td></tr>`;
+  return records.map((record) => `<tr>
+    <td><strong>${escapeOpsHtml(asString(record.displayName) || "Operator")}</strong></td>
+    <td><span class="ops-mono">${escapeOpsHtml(asString(record.email))}</span></td>
+    <td>${escapeOpsHtml(asString(record.status) || "Unknown")}</td>
+    <td>${escapeOpsHtml(asString(record.lastLoginAt) ? formatOpsTime(asString(record.lastLoginAt)) : "Never")}</td>
+  </tr>`).join("");
+}
+
+function renderProductionSnapshotAuditRows(records: readonly Record<string, unknown>[]): string {
+  if (records.length === 0) return `<tr><td colspan="5"><span class="ops-table-empty">No audit events are present in this snapshot.</span></td></tr>`;
+  return records.map((record) => `<tr>
+    <td>${escapeOpsHtml(asString(record.occurredAt) ? formatOpsTime(asString(record.occurredAt)) : "Unknown")}</td>
+    <td><span class="ops-mono">${escapeOpsHtml(asString(record.actor) || "System")}</span></td>
+    <td>${escapeOpsHtml(asString(record.action))}</td>
+    <td>${escapeOpsHtml([asString(record.targetKind), asString(record.targetId)].filter(Boolean).join(":"))}</td>
+    <td class="ops-mono">${escapeOpsHtml(asString(record.metadataJson) || "{}")}</td>
+  </tr>`).join("");
+}
+
 function reportWaypointLabel(detail: Pick<OpsReportRecord, "waypointId" | "waypointRouteOrder" | "waypointName">): string {
   if (detail.waypointRouteOrder !== null && detail.waypointName) {
     return `Waypoint ${detail.waypointRouteOrder} — ${detail.waypointName}`;
@@ -1028,6 +1158,9 @@ function switchView(view: OpsView, focus = true): void {
   if (focus) document.querySelector<HTMLElement>("#ops-main")?.focus();
   if (view === "sponsors" && !sponsorsLoaded) void loadSponsors();
   if (view === "subscribers" && !subscribersLoaded && !subscribersLoading) void loadSubscribers();
+  if (view === "production-snapshot" && !productionSnapshotLoaded && !productionSnapshotLoading) {
+    void loadProductionSnapshot();
+  }
 }
 
 function renderDashboard(dashboard: OpsDashboard): void {
@@ -1100,6 +1233,202 @@ async function loadReports(): Promise<void> {
     setTable("#reports-table", renderReportRows(normalizeReports(payload)));
   } catch {
     setTable("#reports-table", `<tr><td colspan="6"><span class="ops-table-empty">Private reports are unavailable from the source.</span></td></tr>`);
+  }
+}
+
+function setProductionSnapshotState(message: string, kind: "normal" | "error" = "normal"): void {
+  const state = document.querySelector<HTMLElement>("#production-snapshot-state");
+  if (!state) return;
+  state.textContent = message;
+  if (kind === "error") state.dataset.kind = "error";
+  else delete state.dataset.kind;
+}
+
+async function loadProductionSnapshot(): Promise<void> {
+  if (productionSnapshotLoading) return;
+  productionSnapshotLoading = true;
+  const panel = document.querySelector<HTMLElement>('[data-view-panel="production-snapshot"]');
+  panel?.setAttribute("aria-busy", "true");
+  setProductionSnapshotState("Loading the latest verified production snapshot...");
+  try {
+    const [summaryResponse, reportsResponse, playersResponse, staffResponse, auditResponse] = await Promise.all([
+      opsRequest("/api/v1/ops/production-snapshot"),
+      opsRequest("/api/v1/ops/production-snapshot/reports?limit=50"),
+      opsRequest("/api/v1/ops/production-snapshot/players?limit=50"),
+      opsRequest("/api/v1/ops/production-snapshot/staff"),
+      opsRequest("/api/v1/ops/production-snapshot/audit?limit=50"),
+    ]);
+    const failed = [summaryResponse, reportsResponse, playersResponse, staffResponse, auditResponse]
+      .find(({ response }) => !response.ok);
+    if (failed) throw new Error(apiError(failed.payload, "The production snapshot is unavailable."));
+    const summary = normalizeProductionSnapshotSummary(summaryResponse.payload);
+    if (!summary) throw new Error("The production snapshot verification record is incomplete.");
+    setText("#production-snapshot-verified", formatOpsTime(summary.verifiedAt));
+    setText("#production-snapshot-id", summary.snapshotId);
+    setMetric("#production-snapshot-report-count", summary.counts.reports);
+    setMetric("#production-snapshot-player-count", summary.counts.players);
+    setMetric("#production-snapshot-staff-count", summary.counts.staff);
+    setMetric("#production-snapshot-media-count", summary.counts.media);
+    setTable("#production-snapshot-reports", renderProductionSnapshotReportRows(normalizeProductionSnapshotReports(reportsResponse.payload)));
+    setTable("#production-snapshot-players", renderProductionSnapshotPlayerRows(snapshotRecords(playersResponse.payload)));
+    setTable("#production-snapshot-staff", renderProductionSnapshotStaffRows(snapshotRecords(staffResponse.payload)));
+    setTable("#production-snapshot-audit", renderProductionSnapshotAuditRows(snapshotRecords(auditResponse.payload)));
+    productionSnapshotLoaded = true;
+    setProductionSnapshotState(`Verified production snapshot loaded from ${formatOpsTime(summary.verifiedAt)}. This workspace is read-only.`);
+  } catch (error) {
+    productionSnapshotLoaded = false;
+    for (const [selector, columns] of [
+      ["#production-snapshot-reports", 6],
+      ["#production-snapshot-players", 6],
+      ["#production-snapshot-staff", 4],
+      ["#production-snapshot-audit", 5],
+    ] as const) {
+      setTable(selector, `<tr><td colspan="${columns}"><span class="ops-table-empty">Production snapshot unavailable.</span></td></tr>`);
+    }
+    setProductionSnapshotState(error instanceof Error ? error.message : "The production snapshot is unavailable.", "error");
+  } finally {
+    productionSnapshotLoading = false;
+    panel?.removeAttribute("aria-busy");
+  }
+}
+
+function snapshotFact(label: string, value: unknown, mono = false): string {
+  return `<div><dt>${escapeOpsHtml(label)}</dt><dd${mono ? ' class="ops-mono"' : ""}>${escapeOpsHtml(value || "Not supplied")}</dd></div>`;
+}
+
+function renderProductionSnapshotReportDetail(record: Record<string, unknown>): string {
+  const waypoint = asNumber(record.waypointRouteOrder) !== null && asString(record.waypointName)
+    ? `Waypoint ${asNumber(record.waypointRouteOrder)} — ${asString(record.waypointName)}`
+    : "Not specified";
+  const coordinates = finiteNumber(record.latitude) !== null && finiteNumber(record.longitude) !== null
+    ? `${finiteNumber(record.latitude)}, ${finiteNumber(record.longitude)}`
+    : "Not supplied";
+  return `<dl class="ops-report-facts">
+    ${snapshotFact("Reference", asString(record.id), true)}
+    ${snapshotFact("Type", asString(record.reportType))}
+    ${snapshotFact("Reporter name", asString(record.reporterName))}
+    ${snapshotFact("Email", asString(record.reporterEmail), true)}
+    ${snapshotFact("Phone", asString(record.reporterPhone) || "Not supplied", true)}
+    ${snapshotFact("Account subject", asString(record.hunterSubject) || "Not signed in", true)}
+    ${snapshotFact("Participation basis", asString(record.participationBasis) || "Not recorded")}
+    ${snapshotFact("Waypoint", waypoint)}
+    ${snapshotFact("Submitted GPS", coordinates, true)}
+    ${snapshotFact("Location description", asString(record.locationDescription))}
+    ${snapshotFact("Current state", asString(record.status))}
+    ${snapshotFact("Received", asString(record.createdAt) ? formatOpsTime(asString(record.createdAt)) : "Not supplied")}
+  </dl><div class="ops-report-story"><h4>Submitted account</h4><p>${escapeOpsHtml(asString(record.details) || "No details supplied")}</p></div>`;
+}
+
+function revokeProductionSnapshotObjectUrls(): void {
+  for (const url of productionSnapshotObjectUrls) URL.revokeObjectURL(url);
+  productionSnapshotObjectUrls = [];
+}
+
+async function hydrateProductionSnapshotEvidence(
+  reportId: string,
+  media: readonly Record<string, unknown>[],
+  signal: AbortSignal
+): Promise<void> {
+  const output = document.querySelector<HTMLElement>("[data-production-snapshot-report-evidence]");
+  if (!output) return;
+  const ready = media.filter((item) => asString(item.status) === "ready" && asString(item.id));
+  output.innerHTML = ready.length
+    ? ready.map((item) => `<article class="ops-report-evidence__item"><div class="ops-report-evidence__placeholder" data-production-snapshot-media="${escapeOpsHtml(asString(item.id))}">Loading image...</div><span>${escapeOpsHtml(asString(item.contentType))} · ${escapeOpsHtml(asNumber(item.byteSize) ?? 0)} bytes</span></article>`).join("")
+    : `<p class="ops-report-evidence__empty">No ready private evidence is present in this snapshot.</p>`;
+  await Promise.all(ready.map(async (item) => {
+    const mediaId = asString(item.id);
+    const target = output.querySelector<HTMLElement>(`[data-production-snapshot-media="${CSS.escape(mediaId)}"]`);
+    if (!target) return;
+    try {
+      const headers = await opsHeaders();
+      const response = await fetch(
+        `/api/v1/ops/production-snapshot/reports/${encodeURIComponent(reportId)}/media/${encodeURIComponent(mediaId)}`,
+        { headers, credentials: "same-origin", cache: "no-store", signal }
+      );
+      if (!response.ok) throw new Error();
+      const objectUrl = URL.createObjectURL(await response.blob());
+      if (signal.aborted || !target.isConnected) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      productionSnapshotObjectUrls.push(objectUrl);
+      const image = document.createElement("img");
+      image.src = objectUrl;
+      image.alt = "Private report evidence from the read-only production snapshot";
+      target.replaceWith(image);
+    } catch {
+      if (!signal.aborted) target.textContent = "Private image unavailable.";
+    }
+  }));
+}
+
+async function openProductionSnapshotReport(reportId: string, trigger: HTMLButtonElement): Promise<void> {
+  const dialog = document.querySelector<HTMLDialogElement>("#production-snapshot-report-dialog");
+  const detail = dialog?.querySelector<HTMLElement>("[data-production-snapshot-report-detail]");
+  const evidence = dialog?.querySelector<HTMLElement>("[data-production-snapshot-report-evidence]");
+  const state = dialog?.querySelector<HTMLElement>("#production-snapshot-report-state");
+  if (!dialog || !detail || !evidence || !state) return;
+  productionSnapshotAbortController?.abort();
+  productionSnapshotAbortController = new AbortController();
+  const signal = productionSnapshotAbortController.signal;
+  productionSnapshotTrigger = trigger;
+  revokeProductionSnapshotObjectUrls();
+  detail.replaceChildren();
+  evidence.replaceChildren();
+  state.textContent = "Loading the mirrored report...";
+  if (!dialog.open) dialog.showModal();
+  try {
+    const { response, payload } = await opsRequest(
+      `/api/v1/ops/production-snapshot/reports/${encodeURIComponent(reportId)}`,
+      { signal }
+    );
+    if (!response.ok) throw new Error(apiError(payload, "The snapshot report is unavailable."));
+    const record = envelopeData(payload);
+    if (!isRecord(record) || asString(record.id) !== reportId) throw new Error("The snapshot report response was incomplete.");
+    if (signal.aborted) return;
+    detail.innerHTML = renderProductionSnapshotReportDetail(record);
+    const media = asArray(record.media).filter(isRecord);
+    state.textContent = "Read-only mirrored report loaded.";
+    await hydrateProductionSnapshotEvidence(reportId, media, signal);
+  } catch (error) {
+    if (!signal.aborted) {
+      state.textContent = error instanceof Error ? error.message : "The snapshot report is unavailable.";
+      state.dataset.kind = "error";
+    }
+  }
+}
+
+function renderProductionSnapshotWaiver(record: Record<string, unknown>): string {
+  const participants = asArray(record.participants).filter(isRecord);
+  return `<dl class="ops-legal-summary">
+    ${snapshotFact("Acceptance", asString(record.id), true)}
+    ${snapshotFact("Subject", asString(record.subject), true)}
+    ${snapshotFact("Document version", asString(record.documentVersion))}
+    ${snapshotFact("Document hash", asString(record.documentHash), true)}
+    ${snapshotFact("Action", asString(record.action))}
+    ${snapshotFact("Accepted", asString(record.acceptedAt) ? formatOpsTime(asString(record.acceptedAt)) : "Not supplied")}
+  </dl><section class="ops-legal-participants"><h3>Covered participants</h3><ul>${participants.map((participant) => `<li><strong>${escapeOpsHtml(asString(participant.fullName))}</strong> — ${escapeOpsHtml(asString(participant.role))}${asNumber(participant.birthYear) === null ? "" : `, born ${escapeOpsHtml(asNumber(participant.birthYear))}`}</li>`).join("") || "<li>No participant rows found.</li>"}</ul></section>`;
+}
+
+async function openProductionSnapshotWaiver(subject: string, trigger: HTMLButtonElement): Promise<void> {
+  const dialog = document.querySelector<HTMLDialogElement>("#production-snapshot-waiver-dialog");
+  const output = dialog?.querySelector<HTMLElement>("[data-production-snapshot-waiver-detail]");
+  const state = dialog?.querySelector<HTMLElement>("#production-snapshot-waiver-state");
+  if (!dialog || !output || !state) return;
+  productionSnapshotTrigger = trigger;
+  output.replaceChildren();
+  state.textContent = "Loading the mirrored legal record...";
+  if (!dialog.open) dialog.showModal();
+  try {
+    const { response, payload } = await opsRequest(`/api/v1/ops/production-snapshot/players/${encodeURIComponent(subject)}/waiver`);
+    if (!response.ok) throw new Error(apiError(payload, "The snapshot waiver is unavailable."));
+    const record = envelopeData(payload);
+    if (!isRecord(record) || asString(record.subject) !== subject) throw new Error("The snapshot waiver response was incomplete.");
+    output.innerHTML = renderProductionSnapshotWaiver(record);
+    state.textContent = "Read-only mirrored legal record loaded.";
+  } catch (error) {
+    state.textContent = error instanceof Error ? error.message : "The snapshot waiver is unavailable.";
+    state.dataset.kind = "error";
   }
 }
 
@@ -1863,7 +2192,7 @@ function setupWorkspace(): void {
     sidebar?.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", String(open));
   });
-  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit(), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : [])]));
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit(), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
   document.querySelector("#refresh-reports")?.addEventListener("click", () => void loadReports());
   document.querySelector("#refresh-sponsors")?.addEventListener("click", () => void loadSponsors());
   document.querySelector("#sponsor-filters")?.addEventListener("submit", (event) => {
@@ -1875,6 +2204,34 @@ function setupWorkspace(): void {
   document.querySelector("#subscriber-refresh")?.addEventListener("click", () => void loadSubscribers());
   document.querySelector("#subscriber-load-more")?.addEventListener("click", () => void loadSubscribers(true));
   document.querySelector("#subscriber-export")?.addEventListener("click", exportLoadedSubscribers);
+
+  document.querySelector("#production-snapshot-reports")?.addEventListener("click", (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>("[data-production-snapshot-report-id]");
+    const reportId = button?.dataset.productionSnapshotReportId;
+    if (button && reportId) void openProductionSnapshotReport(reportId, button);
+  });
+  document.querySelector("#production-snapshot-players")?.addEventListener("click", (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>("[data-production-snapshot-waiver-subject]");
+    const subject = button?.dataset.productionSnapshotWaiverSubject;
+    if (button && subject) void openProductionSnapshotWaiver(subject, button);
+  });
+  const snapshotReportDialog = document.querySelector<HTMLDialogElement>("#production-snapshot-report-dialog");
+  snapshotReportDialog?.querySelector("[data-production-snapshot-report-close]")?.addEventListener("click", () => snapshotReportDialog.close());
+  snapshotReportDialog?.addEventListener("close", () => {
+    productionSnapshotAbortController?.abort();
+    productionSnapshotAbortController = null;
+    revokeProductionSnapshotObjectUrls();
+    const trigger = productionSnapshotTrigger?.isConnected ? productionSnapshotTrigger : null;
+    productionSnapshotTrigger = null;
+    window.setTimeout(() => trigger?.focus(), 0);
+  });
+  const snapshotWaiverDialog = document.querySelector<HTMLDialogElement>("#production-snapshot-waiver-dialog");
+  snapshotWaiverDialog?.querySelector("[data-production-snapshot-waiver-close]")?.addEventListener("click", () => snapshotWaiverDialog.close());
+  snapshotWaiverDialog?.addEventListener("close", () => {
+    const trigger = productionSnapshotTrigger?.isConnected ? productionSnapshotTrigger : null;
+    productionSnapshotTrigger = null;
+    window.setTimeout(() => trigger?.focus(), 0);
+  });
 
   const statusForm = document.querySelector<HTMLFormElement>("#case-status-form");
   statusForm?.addEventListener("submit", async (event) => {

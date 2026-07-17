@@ -26,9 +26,39 @@ import {
   renderSubscriberRows,
   renderSponsorRows,
   renderStaffRows,
+  normalizeProductionSnapshotSummary,
+  normalizeProductionSnapshotReports,
+  renderProductionSnapshotReportRows,
   resolveOpsView,
   waiverReceiptRetryIntent,
 } from "../src/client/ops";
+
+test("production snapshot normalization and rows preserve private review data without mutation controls", () => {
+  const summary = normalizeProductionSnapshotSummary({ data: {
+    kind: "production-snapshot",
+    status: "verified",
+    snapshotId: "snapshot-20260716",
+    verifiedAt: "2026-07-16T22:00:00.000Z",
+    counts: { reports: 2, players: 5, staff: 4, audit: 20, media: 3 },
+  } });
+  assert.equal(summary?.counts.players, 5);
+
+  const reports = normalizeProductionSnapshotReports({ data: [{
+    id: "report-1",
+    reportType: "tip",
+    reporterName: "Private Hunter",
+    reporterEmail: "hunter@example.test",
+    waypointRouteOrder: 5,
+    waypointName: "Derby's Lakeview General Store",
+    status: "received",
+    createdAt: "2026-07-16T21:00:00.000Z",
+  }] });
+  const html = renderProductionSnapshotReportRows(reports);
+  assert.match(html, /hunter@example\.test/);
+  assert.match(html, /Review snapshot report/);
+  assert.doesNotMatch(html, /approve|publish|begin review|data-report-save/i);
+  assert.equal(resolveOpsView("#production-snapshot"), "production-snapshot");
+});
 
 const uncertainRetryConfirmation = "I checked the configured sender mailbox Sent Items or provider delivery log and still want to retry this uncertain receipt.";
 

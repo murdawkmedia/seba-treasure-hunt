@@ -174,3 +174,31 @@ test("legal detail is deliberately loaded in a private dialog and never bulk-exp
   assert.match(client, /window\.confirm\([^)]*receipt/i);
   assert.doesNotMatch(client, /participant(s)?[^\n]{0,80}buildSubscriberCsv/i);
 });
+
+test("Ops exposes a clearly separate read-only production snapshot workspace", () => {
+  const html = read("ops.html");
+  const client = read("src/client/ops.ts");
+  assert.match(html, /data-view="production-snapshot"/);
+  assert.match(html, /data-view-panel="production-snapshot"/);
+  assert.match(html, /Read-only production snapshot/);
+  assert.match(html, /id="production-snapshot-state"[^>]*aria-live="polite"/);
+  for (const id of [
+    "production-snapshot-reports",
+    "production-snapshot-players",
+    "production-snapshot-staff",
+    "production-snapshot-audit",
+  ]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /id="production-snapshot-report-dialog"/);
+  assert.match(html, /id="production-snapshot-waiver-dialog"/);
+
+  const panel = html.match(/<section[^>]+data-view-panel="production-snapshot"[\s\S]*?<\/section>\s*<\/main>/)?.[0] ?? "";
+  assert.ok(panel);
+  assert.doesNotMatch(panel, /<form\b|approve|publish|recovery|revoke|session|data-(?:staff|player|moderation)-action/i);
+  const snapshotDialogs = html.slice(html.indexOf('id="production-snapshot-report-dialog"'), html.indexOf('id="ops-account-dialog"'));
+  assert.doesNotMatch(snapshotDialogs, /<form\b|approve|publish|recovery|revoke|retry|data-report-(?:publish|save|begin)/i);
+
+  for (const path of ["reports", "players", "staff", "audit"]) {
+    assert.match(client, new RegExp(`/api/v1/ops/production-snapshot/${path}`));
+  }
+  assert.doesNotMatch(client, /\/api\/v1\/ops\/production-snapshot[^\n]+method:\s*["'](?:POST|PUT|PATCH|DELETE)/);
+});

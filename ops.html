@@ -122,6 +122,7 @@
           <button class="ops-nav-item" type="button" data-view="subscribers"><span aria-hidden="true">08</span>Players</button>
           <button class="ops-nav-item" type="button" data-view="access"><span aria-hidden="true">09</span>Users &amp; Access</button>
           <button class="ops-nav-item" type="button" data-view="audit"><span aria-hidden="true">10</span>Audit Trail</button>
+          <button class="ops-nav-item ops-nav-item--snapshot" type="button" data-view="production-snapshot"><span aria-hidden="true">11</span>Production Snapshot</button>
         </nav>
         <div class="ops-sidebar__foot">
           <p>All times</p><strong>America/Edmonton</strong>
@@ -257,6 +258,23 @@
           <header class="ops-view__header"><div><p class="ops-kicker">Append-only accountability</p><h1 id="audit-title">Audit Trail</h1></div><p>Security and publishing events</p></header>
           <section class="ops-panel"><div class="ops-table-wrap"><table><thead><tr><th>When</th><th>Operator</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody id="audit-table"><tr><td colspan="5"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
         </section>
+
+        <section class="ops-view ops-snapshot" data-view-panel="production-snapshot" aria-labelledby="production-snapshot-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Validation Staff / mirrored source</p><h1 id="production-snapshot-title">Production Snapshot</h1></div><p>Manual verified copy</p></header>
+          <div class="ops-snapshot-banner" role="note"><strong>Read-only production snapshot</strong><span>This workspace shows a manually verified copy. Nothing here can change the live campaign.</span></div>
+          <p class="ops-ledger-state" id="production-snapshot-state" role="status" aria-live="polite">Open this workspace to load the latest verified snapshot.</p>
+          <div class="ops-metrics ops-metrics--snapshot" aria-label="Production snapshot totals">
+            <article><span>Verified at</span><strong id="production-snapshot-verified">--</strong><small id="production-snapshot-id">No snapshot loaded</small></article>
+            <article><span>Reports</span><strong id="production-snapshot-report-count">--</strong><small>Full private records</small></article>
+            <article><span>Players</span><strong id="production-snapshot-player-count">--</strong><small>Accounts and legal state</small></article>
+            <article><span>Staff</span><strong id="production-snapshot-staff-count">--</strong><small>Access ledger</small></article>
+            <article><span>Media</span><strong id="production-snapshot-media-count">--</strong><small>Private derivatives</small></article>
+          </div>
+          <section class="ops-panel" aria-labelledby="production-snapshot-reports-title"><header class="ops-panel__header"><div><p class="ops-kicker">Full-fidelity mirror</p><h2 id="production-snapshot-reports-title">Reports</h2></div></header><div class="ops-table-wrap"><table><thead><tr><th>Received</th><th>Reporter</th><th>Contact</th><th>Waypoint</th><th>State</th><th><span class="sr-only">Detail</span></th></tr></thead><tbody id="production-snapshot-reports"><tr><td colspan="6"><span class="ops-table-empty">Snapshot not loaded</span></td></tr></tbody></table></div></section>
+          <section class="ops-panel" aria-labelledby="production-snapshot-players-title"><header class="ops-panel__header"><div><p class="ops-kicker">Account mirror</p><h2 id="production-snapshot-players-title">Players</h2></div></header><div class="ops-table-wrap"><table><thead><tr><th>Player</th><th>Email</th><th>Basis</th><th>Privacy</th><th>Waiver</th><th><span class="sr-only">Legal detail</span></th></tr></thead><tbody id="production-snapshot-players"><tr><td colspan="6"><span class="ops-table-empty">Snapshot not loaded</span></td></tr></tbody></table></div></section>
+          <section class="ops-panel" aria-labelledby="production-snapshot-staff-title"><header class="ops-panel__header"><div><p class="ops-kicker">Access mirror</p><h2 id="production-snapshot-staff-title">Staff</h2></div></header><div class="ops-table-wrap"><table><thead><tr><th>Operator</th><th>Email</th><th>State</th><th>Last sign-in</th></tr></thead><tbody id="production-snapshot-staff"><tr><td colspan="4"><span class="ops-table-empty">Snapshot not loaded</span></td></tr></tbody></table></div></section>
+          <section class="ops-panel" aria-labelledby="production-snapshot-audit-title"><header class="ops-panel__header"><div><p class="ops-kicker">Accountability mirror</p><h2 id="production-snapshot-audit-title">Audit</h2></div></header><div class="ops-table-wrap"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody id="production-snapshot-audit"><tr><td colspan="5"><span class="ops-table-empty">Snapshot not loaded</span></td></tr></tbody></table></div></section>
+        </section>
       </main>
     </div>
   </div>
@@ -314,6 +332,19 @@
       <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-retry-waiver-receipt disabled>Retry receipt</button></div>
       <p class="ops-panel__note">Participant names and birth years stay in this deliberately opened record. They are not included in the player export.</p>
     </div>
+  </dialog>
+
+  <dialog class="ops-dialog ops-report-dialog ops-snapshot-dialog" id="production-snapshot-report-dialog" aria-labelledby="production-snapshot-report-title">
+    <div class="ops-dialog__head"><div><p class="ops-kicker">Read-only production snapshot</p><h2 id="production-snapshot-report-title">Snapshot report</h2></div><button class="ops-icon-button" type="button" data-production-snapshot-report-close aria-label="Close snapshot report">&times;</button></div>
+    <div class="ops-dialog__body ops-report-dialog__body">
+      <p class="ops-ledger-state" id="production-snapshot-report-state" role="status" aria-live="polite">Choose a snapshot report to load its mirrored detail.</p>
+      <section class="ops-report-private"><h3>Submitted case details</h3><div data-production-snapshot-report-detail></div><h4>Processed private evidence</h4><div class="ops-report-evidence" data-production-snapshot-report-evidence></div></section>
+    </div>
+  </dialog>
+
+  <dialog class="ops-dialog ops-snapshot-dialog" id="production-snapshot-waiver-dialog" aria-labelledby="production-snapshot-waiver-title">
+    <div class="ops-dialog__head"><div><p class="ops-kicker">Read-only production snapshot</p><h2 id="production-snapshot-waiver-title">Snapshot waiver</h2></div><button class="ops-icon-button" type="button" data-production-snapshot-waiver-close aria-label="Close snapshot waiver">&times;</button></div>
+    <div class="ops-dialog__body"><p class="ops-ledger-state" id="production-snapshot-waiver-state" role="status" aria-live="polite">Choose a player waiver to load its mirrored legal record.</p><div data-production-snapshot-waiver-detail></div></div>
   </dialog>
 
   <dialog class="ops-dialog" id="ops-account-dialog" aria-labelledby="account-dialog-title">
