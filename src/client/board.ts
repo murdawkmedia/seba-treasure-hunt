@@ -1,4 +1,5 @@
 import { routeOrder, stopLabel, waypointId as parseWaypointId } from "../shared/waypoints";
+import { initializeApprovedMediaViewer, renderApprovedMedia } from "./approved-media-viewer";
 import { createTurnstileLifecycle } from "./turnstile-lifecycle";
 
 export interface CommunityMedia {
@@ -234,8 +235,11 @@ export function validateFieldNote(waypointId: string, body: string, files: reado
 
 function renderMedia(media: CommunityMedia[], handle: string): string {
   if (media.length === 0) return "";
-  return `<div class="field-note__media">${media
-    .map((item) => `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || `Case Note image shared by ${handle}`)}" loading="lazy" decoding="async" />`)
+  return `<div class="field-note__media" data-media-gallery data-media-gallery-title="Case Note images shared by ${escapeHtml(handle)}">${media
+    .map((item) => {
+      const alt = item.alt || `Case Note image shared by ${handle}`;
+      return renderApprovedMedia({ href: item.url, src: item.url, alt, caption: alt });
+    })
     .join("")}</div>`;
 }
 
@@ -736,6 +740,7 @@ export async function initialiseBoard(): Promise<void> {
 }
 
 if (typeof document !== "undefined") {
+  initializeApprovedMediaViewer(document);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => void initialiseBoard(), { once: true });
   else void initialiseBoard();
 }

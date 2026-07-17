@@ -1,4 +1,5 @@
 import { routeOrder, waypointId } from "../shared/waypoints";
+import { initializeApprovedMediaViewer, renderApprovedMedia } from "./approved-media-viewer";
 
 interface UpdateBase {
   id: string;
@@ -16,6 +17,8 @@ interface ApprovedReportMedia {
   id: string;
   url: string;
   contentType: "image/jpeg" | "image/png" | "image/webp";
+  alt?: string;
+  caption?: string;
 }
 
 interface ApprovedReportUpdate extends UpdateBase {
@@ -69,6 +72,12 @@ function normalizeMedia(value: unknown): ApprovedReportMedia[] {
       id: candidate.id,
       url: canonicalUrl,
       contentType: candidate.contentType as ApprovedReportMedia["contentType"],
+      ...(typeof candidate.alt === "string" && candidate.alt.trim()
+        ? { alt: candidate.alt.trim().slice(0, 200) }
+        : {}),
+      ...(typeof candidate.caption === "string" && candidate.caption.trim()
+        ? { caption: candidate.caption.trim().slice(0, 500) }
+        : {}),
     }];
   });
 }
@@ -221,14 +230,16 @@ function appendUpdates(items: OfficialUpdate[]): void {
         const gallery = document.createElement("div");
         gallery.className = "report-evidence-gallery";
         gallery.setAttribute("aria-label", `Approved images for ${update.title}`);
+        gallery.setAttribute("data-media-gallery", "");
+        gallery.dataset.mediaGalleryTitle = update.title;
         update.media.forEach((media, index) => {
-          const image = document.createElement("img");
-          image.src = media.url;
-          image.alt = `Approved image ${index + 1} for ${update.title}`;
-          image.loading = "lazy";
-          image.decoding = "async";
-          image.referrerPolicy = "no-referrer";
-          gallery.appendChild(image);
+          const alt = media.alt || `Approved image ${index + 1} for ${update.title}`;
+          gallery.insertAdjacentHTML("beforeend", renderApprovedMedia({
+            href: media.url,
+            src: media.url,
+            alt,
+            caption: media.caption || alt,
+          }));
         });
         copy.appendChild(gallery);
       }
@@ -291,6 +302,7 @@ async function loadUpdates(next: string | null = null): Promise<void> {
 }
 
 function initializeUpdates(): void {
+  initializeApprovedMediaViewer(document);
   const more = document.querySelector<HTMLButtonElement>("[data-updates-more]");
   more?.addEventListener("click", () => {
     if (cursor) void loadUpdates(cursor);

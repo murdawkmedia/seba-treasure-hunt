@@ -62,6 +62,8 @@ test("operator-reviewed Case Notes are labelled, source-private, and do not offe
   const html = renderBoardFeed({ kind: "ready", notes, canReply: true }) as string;
   assert.match(html, /Operator-reviewed Case Note/);
   assert.match(html, /53\.5, -114\.5/);
+  assert.match(html, /data-media-gallery/);
+  assert.match(html, /<a[^>]+href="\/api\/v1\/media\/media-1"[^>]+data-approved-media/);
   assert.doesNotMatch(html, /reply-form/);
   assert.doesNotMatch(html, new RegExp(sourceReportId));
   assert.doesNotMatch(JSON.stringify(notes), new RegExp(sourceReportId));

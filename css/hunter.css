@@ -348,10 +348,17 @@ button.hunter-button {
   margin-top: 18px;
 }
 
+.report-evidence-gallery .approved-media-trigger {
+  display: grid;
+  min-width: 0;
+  border-radius: 7px;
+  background: rgba(7, 31, 28, 0.7);
+}
+
 .report-evidence-gallery img {
   width: 100%;
   aspect-ratio: 4 / 3;
-  object-fit: cover;
+  object-fit: contain;
   background: rgba(7, 31, 28, 0.7);
   border: 1px solid var(--hunter-rule);
   border-radius: 7px;

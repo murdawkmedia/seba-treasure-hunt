@@ -357,7 +357,8 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
 .ops-report-public-card .ops-kicker { color: #80530e; }
 .ops-report-public-card h4 { margin: 0 0 8px; color: var(--ops-night); font-family: var(--ops-font-display); font-size: 1.55rem; overflow-wrap: anywhere; }
 .ops-report-public-card__media { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
-.ops-report-public-card__media img { width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; }
+.ops-report-public-card__media img { width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: contain; border-radius: 4px; }
+.ops-report-evidence__item > .approved-media-trigger { display: grid; min-width: 0; background: rgba(0,0,0,.2); border-radius: 4px; }
 .ops-report-public-card > p:not(.ops-kicker) { color: #173d35; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ops-report-public-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 12px 0 0; }
 .ops-report-public-card dl > div { min-width: 0; padding: 7px; background: rgba(7, 31, 28, .08); }

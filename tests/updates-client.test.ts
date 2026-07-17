@@ -60,7 +60,7 @@ test("normalizes the public allowlist for an approved report", () => {
     phone: "780-555-0101",
     sourceReportId: "private-report-id",
     media: [
-      { id: "media-1", url: "/api/v1/media/media-1", contentType: "image/webp" },
+      { id: "media-1", url: "/api/v1/media/media-1", contentType: "image/webp", alt: "Weathered bill", caption: "Near Stop 11" },
       { id: "media-2", url: "https://evil.example/media-2", contentType: "image/webp" },
       { id: "media-3", url: "/api/v1/media/media-3", contentType: "text/html" },
     ],
@@ -78,7 +78,7 @@ test("normalizes the public allowlist for an approved report", () => {
     waypointName: "The Creek Property",
     latitude: 53.123,
     longitude: -114.456,
-    media: [{ id: "media-1", url: "/api/v1/media/media-1", contentType: "image/webp" }],
+    media: [{ id: "media-1", url: "/api/v1/media/media-1", contentType: "image/webp", alt: "Weathered bill", caption: "Near Stop 11" }],
   }]);
   assert.doesNotMatch(JSON.stringify(page.items), /must-not-leak|780-555|private-report-id|evil\.example|text\/html/);
 });

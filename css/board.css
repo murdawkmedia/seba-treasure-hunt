@@ -179,7 +179,8 @@
 .field-note time { color: #655b48; font-family: var(--font-mono); font-size: .68rem; font-variant-numeric: tabular-nums; }
 .field-note__body { padding: 0 22px 13px 60px; font-size: 1.08rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .field-note__media { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; padding: 4px 22px 16px 60px; }
-.field-note__media img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; outline: 1px solid rgba(41, 33, 22, .25); }
+.field-note__media .approved-media-trigger { display: grid; min-width: 0; background: #ede5d2; border-radius: 4px; }
+.field-note__media img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; border-radius: 4px; outline: 1px solid rgba(41, 33, 22, .25); }
 .field-note__notice { margin: 0; padding: 9px 22px 9px 60px; color: #6d321f; background: rgba(157, 101, 16, .12); font-family: var(--font-mono); font-size: .66rem; letter-spacing: .04em; text-transform: uppercase; }
 .field-note__actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 22px 14px 60px; }
 .note-action { min-height: 40px; padding: 7px 11px; color: #4d3a1e; background: transparent; border: 0; box-shadow: inset 0 0 0 1px rgba(77, 58, 30, .35); border-radius: 5px; font-family: var(--font-mono); font-size: .67rem; cursor: pointer; }

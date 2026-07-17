@@ -2,6 +2,21 @@ body:has(.route-lightbox[open]) {
   overflow: hidden;
 }
 
+.approved-media-trigger {
+  color: inherit;
+  text-decoration: none;
+}
+
+.approved-media-trigger img {
+  display: block;
+  max-width: 100%;
+}
+
+.approved-media-trigger:focus-visible {
+  outline: 3px solid var(--campaign-gold-300, #f2cd6a);
+  outline-offset: 4px;
+}
+
 .route-lightbox {
   --campaign-focus: var(--campaign-focus-dark);
   width: min(1040px, calc(100vw - 48px));

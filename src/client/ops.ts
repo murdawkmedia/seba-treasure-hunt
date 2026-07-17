@@ -5,6 +5,7 @@ import { isAllowedStaffEmail } from "../server/staff-domains";
 import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
 import { nextReportStates, type ReportReviewState } from "../shared/publication";
 import { prepareReportImages, ReportImagePreparationError } from "./report-image-preparation";
+import { initializeApprovedMediaViewer } from "./approved-media-viewer";
 
 type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
@@ -1765,6 +1766,19 @@ async function hydrateReportEvidence(
       reportEvidenceObjectUrls.push(objectUrl);
       image.src = objectUrl;
       image.hidden = false;
+      let trigger = image.parentElement instanceof HTMLAnchorElement ? image.parentElement : null;
+      if (!trigger) {
+        trigger = document.createElement("a");
+        trigger.className = "approved-media-trigger";
+        trigger.target = "_blank";
+        trigger.rel = "noopener";
+        trigger.referrerPolicy = "no-referrer";
+        trigger.setAttribute("data-approved-media", "");
+        image.before(trigger);
+        trigger.append(image);
+      }
+      trigger.href = objectUrl;
+      trigger.dataset.mediaCaption = image.alt;
       placeholder.hidden = true;
       checkbox.disabled = !detail.publicationEligible;
       for (const field of item.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
@@ -1824,6 +1838,10 @@ function renderReportDialog(
   privateOutput.innerHTML = renderReportPrivateDetail(detail);
   evidenceOutput.innerHTML = renderReportEvidence(detail);
   updateUploadsOutput.innerHTML = renderReportUpdateUploads(detail);
+  evidenceOutput.setAttribute("data-media-gallery", "");
+  evidenceOutput.dataset.mediaGalleryTitle = "Submitted report evidence";
+  updateUploadsOutput.setAttribute("data-media-gallery", "");
+  updateUploadsOutput.dataset.mediaGalleryTitle = "Direct Official Update images";
 
   const title = form.elements.namedItem("title");
   const body = form.elements.namedItem("body");
@@ -3148,6 +3166,7 @@ function setupAccountDialog(): void {
 }
 
 async function initialiseOps(): Promise<void> {
+  initializeApprovedMediaViewer(document);
   setupAuthForms();
   setupWorkspace();
   setupAccountDialog();
