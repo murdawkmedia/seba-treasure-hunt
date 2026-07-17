@@ -134,7 +134,7 @@ test("operator-reviewed Case Notes are labelled, source-private, and do not offe
   }] }) as Array<Record<string, unknown>>;
   assert.equal(notes[0]?.noteKind, "operator_reviewed");
   const html = renderBoardFeed({ kind: "ready", notes, canReply: true }) as string;
-  assert.match(html, /Operator-reviewed Case Note/);
+  assert.match(html, /Case Note reviewed by a representative from SebaHub&mdash;not an official clue\./);
   assert.match(html, /53\.5, -114\.5/);
   assert.match(html, /data-media-gallery/);
   assert.match(html, /<a[^>]+href="\/api\/v1\/media\/media-1"[^>]+data-approved-media/);
