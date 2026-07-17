@@ -233,6 +233,20 @@ without repeating completed Tasks 1–3.”
 - No production or validation deployment, database migration, or data mutation
   occurred. Next: Task 5, Staff-only reply and flag moderation APIs.
 
+## Task 4 review follow-up — 2026-07-17 12:07 MDT
+
+- Tightened the Task 4 audit contract after spec review. Each private audit
+  insertion is now immediately gated by SQLite `changes() = 1` from the
+  preceding conditional transition, so a same-actor, same-millisecond repeat
+  cannot append a duplicate audit event. `hide_target` audits before resolving
+  sibling flags, preserving both the guard and all-outstanding-flags behavior.
+- Replaced timestamp-only moderation cursors with opaque versioned timestamp/id
+  cursors and strict lexicographic predicates. D1 and FakeStore now sort,
+  limit, advance and terminate identically for reply and flag listings.
+- Added fixed-clock concurrent-repeat and equal-timestamp pagination
+  regressions. Focused D1/FakeStore tests and all TypeScript projects pass;
+  no migration, deployment, or data mutation was required.
+
 - Any production snapshot used by validation must be a manual, one-way,
   read-only copy in dedicated D1/R2 resources. Full-fidelity personal and
   private report data is permitted only behind existing server-side Ops

@@ -60,6 +60,39 @@ const parseSponsorCursor = (cursor: string | null | undefined) => {
   }
 };
 
+type ModerationCursor = { createdAt: string; id: string };
+
+const moderationCursor = (createdAt: unknown, id: unknown) => {
+  const encoded = btoa(JSON.stringify([String(createdAt ?? ""), String(id ?? "")]))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `m1.${encoded}`;
+};
+
+const parseModerationCursor = (cursor: string | null | undefined): ModerationCursor | null => {
+  if (!cursor?.startsWith("m1.")) return null;
+  try {
+    const encoded = cursor.slice(3).replace(/-/g, "+").replace(/_/g, "/");
+    const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+    const parsed: unknown = JSON.parse(atob(padded));
+    if (!Array.isArray(parsed) || typeof parsed[0] !== "string" || typeof parsed[1] !== "string") {
+      return null;
+    }
+    return { createdAt: parsed[0], id: parsed[1] };
+  } catch {
+    return null;
+  }
+};
+
+const beforeModerationCursor = (record: Record<string, unknown>, cursor: ModerationCursor | null) =>
+  !cursor || String(record.createdAt ?? "") < cursor.createdAt ||
+    (String(record.createdAt ?? "") === cursor.createdAt && String(record.id ?? "") < cursor.id);
+
+const compareModerationRecords = (left: Record<string, unknown>, right: Record<string, unknown>) =>
+  String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? "")) ||
+  String(right.id ?? "").localeCompare(String(left.id ?? ""));
+
 export class FakeStore {
   status: CaseStatus | null = openStatus;
   updates: Array<Record<string, unknown>> = [
@@ -680,10 +713,14 @@ export class FakeStore {
 
   async listModerationReplies(options: { limit?: number; cursor?: string | null } = {}) {
     const limit = Math.min(Math.max(options.limit ?? 25, 1), 50);
+    const cursor = parseModerationCursor(options.cursor);
+    const replies = this.replies
+      .filter((reply) => reply.status === "published" || reply.status === "hidden")
+      .filter((reply) => beforeModerationCursor(reply, cursor))
+      .sort(compareModerationRecords);
+    const selected = replies.slice(0, limit);
     return {
-      items: this.replies
-        .filter((reply) => reply.status === "published" || reply.status === "hidden")
-        .slice(0, limit)
+      items: selected
         .map((reply) => {
           const note = this.board.find((candidate) => candidate.id === (reply.noteId ?? reply.fieldNoteId));
           return {
@@ -703,39 +740,47 @@ export class FakeStore {
             moderatedAt: reply.moderatedAt ?? null
           };
         }),
-      nextCursor: null
+      nextCursor: replies.length > limit
+        ? moderationCursor(selected.at(-1)?.createdAt, selected.at(-1)?.id)
+        : null
     };
   }
 
   async listContentFlags(options: { limit?: number; cursor?: string | null } = {}) {
     const limit = Math.min(Math.max(options.limit ?? 25, 1), 50);
+    const cursor = parseModerationCursor(options.cursor);
+    const flags = this.flags
+      .filter((flag) => flag.status === "received" || flag.status === "reviewing")
+      .flatMap((flag) => {
+        const reply = flag.targetKind === "reply"
+          ? this.replies.find((candidate) => candidate.id === flag.targetId)
+          : null;
+        const note = this.board.find((candidate) => candidate.id === (reply?.noteId ?? flag.targetId));
+        const target = reply ?? note;
+        if (!target) return [];
+        return [{
+          id: flag.id,
+          targetKind: flag.targetKind,
+          targetId: flag.targetId,
+          targetExcerpt: target.body,
+          authorHandle: this.publicAuthorHandle(target),
+          targetStatus: target.status ?? "published",
+          noteExcerpt: note?.body ?? null,
+          waypointRouteOrder: note?.waypointRouteOrder ?? null,
+          waypointName: note?.waypointName ?? null,
+          reason: flag.reason,
+          status: flag.status,
+          createdAt: flag.createdAt
+        }];
+      })
+      .filter((flag) => beforeModerationCursor(flag, cursor))
+      .sort(compareModerationRecords);
+    const selected = flags.slice(0, limit);
     return {
-      items: this.flags
-        .filter((flag) => flag.status === "received" || flag.status === "reviewing")
-        .slice(0, limit)
-        .flatMap((flag) => {
-          const reply = flag.targetKind === "reply"
-            ? this.replies.find((candidate) => candidate.id === flag.targetId)
-            : null;
-          const note = this.board.find((candidate) => candidate.id === (reply?.noteId ?? flag.targetId));
-          const target = reply ?? note;
-          if (!target) return [];
-          return [{
-            id: flag.id,
-            targetKind: flag.targetKind,
-            targetId: flag.targetId,
-            targetExcerpt: target.body,
-            authorHandle: this.publicAuthorHandle(target),
-            targetStatus: target.status ?? "published",
-            noteExcerpt: note?.body ?? null,
-            waypointRouteOrder: note?.waypointRouteOrder ?? null,
-            waypointName: note?.waypointName ?? null,
-            reason: flag.reason,
-            status: flag.status,
-            createdAt: flag.createdAt
-          }];
-        }),
-      nextCursor: null
+      items: selected,
+      nextCursor: flags.length > limit
+        ? moderationCursor(selected.at(-1)?.createdAt, selected.at(-1)?.id)
+        : null
     };
   }
 

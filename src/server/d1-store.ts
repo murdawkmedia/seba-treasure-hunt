@@ -72,6 +72,31 @@ const parseJson = <T>(input: unknown, fallback: T): T => {
 
 const pageLimit = (limit: number | undefined) => Math.min(Math.max(limit ?? 25, 1), 50);
 
+type ModerationCursor = { createdAt: string; id: string };
+
+const moderationCursor = (createdAt: unknown, id: unknown) => {
+  const encoded = btoa(JSON.stringify([value(createdAt), value(id)]))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `m1.${encoded}`;
+};
+
+const parseModerationCursor = (cursor: string | null | undefined): ModerationCursor | null => {
+  if (!cursor?.startsWith("m1.")) return null;
+  try {
+    const encoded = cursor.slice(3).replace(/-/g, "+").replace(/_/g, "/");
+    const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+    const parsed: unknown = JSON.parse(atob(padded));
+    if (!Array.isArray(parsed) || typeof parsed[0] !== "string" || typeof parsed[1] !== "string") {
+      return null;
+    }
+    return { createdAt: parsed[0], id: parsed[1] };
+  } catch {
+    return null;
+  }
+};
+
 const statusFromRow = (row: Row): CaseStatus => ({
   state: row.state as CaseStatus["state"],
   hours: {
@@ -2516,7 +2541,13 @@ export class D1DataStore implements DataStore {
     options: { limit?: number; cursor?: string | null } = {}
   ): Promise<Page> {
     const limit = pageLimit(options.limit);
-    const cursor = options.cursor ?? now();
+    const cursor = parseModerationCursor(options.cursor);
+    const pagination = cursor
+      ? "AND (r.created_at < ? OR (r.created_at = ? AND r.id < ?))"
+      : "AND r.created_at <= ?";
+    const bindings = cursor
+      ? [cursor.createdAt, cursor.createdAt, cursor.id]
+      : [now()];
     const result = await this.db
       .prepare(
         `SELECT r.id, r.field_note_id, r.body, r.status, r.created_at, r.moderated_at,
@@ -2529,10 +2560,10 @@ export class D1DataStore implements DataStore {
          JOIN field_notes n ON n.id = r.field_note_id AND n.status = 'approved'
          JOIN hunter_profiles p ON p.subject = r.author_subject
          LEFT JOIN waypoints w ON w.id = n.waypoint_id AND w.is_published = 1
-         WHERE r.status IN ('published', 'hidden') AND r.created_at <= ?
+         WHERE r.status IN ('published', 'hidden') ${pagination}
          ORDER BY r.created_at DESC, r.id DESC LIMIT ?`
       )
-      .bind(cursor, limit + 1)
+      .bind(...bindings, limit + 1)
       .all<Row>();
     const rows = result.results;
     return {
@@ -2553,7 +2584,9 @@ export class D1DataStore implements DataStore {
         createdAt: row.created_at,
         moderatedAt: nullable(row.moderated_at)
       })),
-      nextCursor: rows.length > limit ? value(rows[limit - 1]?.created_at) : null
+      nextCursor: rows.length > limit
+        ? moderationCursor(rows[limit - 1]?.created_at, rows[limit - 1]?.id)
+        : null
     };
   }
 
@@ -2561,7 +2594,13 @@ export class D1DataStore implements DataStore {
     options: { limit?: number; cursor?: string | null } = {}
   ): Promise<Page> {
     const limit = pageLimit(options.limit);
-    const cursor = options.cursor ?? now();
+    const cursor = parseModerationCursor(options.cursor);
+    const pagination = cursor
+      ? "AND (f.created_at < ? OR (f.created_at = ? AND f.id < ?))"
+      : "AND f.created_at <= ?";
+    const bindings = cursor
+      ? [cursor.createdAt, cursor.createdAt, cursor.id]
+      : [now()];
     const result = await this.db
       .prepare(
         `SELECT f.id, f.target_kind, f.target_id, f.reason, f.status, f.created_at,
@@ -2575,10 +2614,10 @@ export class D1DataStore implements DataStore {
            AND n.status = 'approved'
          JOIN hunter_profiles p ON p.subject = CASE WHEN f.target_kind = 'reply' THEN r.author_subject ELSE n.author_subject END
          LEFT JOIN waypoints w ON w.id = n.waypoint_id AND w.is_published = 1
-         WHERE f.status IN ('received', 'reviewing') AND f.created_at <= ?
+         WHERE f.status IN ('received', 'reviewing') ${pagination}
          ORDER BY f.created_at DESC, f.id DESC LIMIT ?`
       )
-      .bind(cursor, limit + 1)
+      .bind(...bindings, limit + 1)
       .all<Row>();
     const rows = result.results;
     return {
@@ -2600,7 +2639,9 @@ export class D1DataStore implements DataStore {
         status: row.status,
         createdAt: row.created_at
       })),
-      nextCursor: rows.length > limit ? value(rows[limit - 1]?.created_at) : null
+      nextCursor: rows.length > limit
+        ? moderationCursor(rows[limit - 1]?.created_at, rows[limit - 1]?.id)
+        : null
     };
   }
 
@@ -2626,12 +2667,7 @@ export class D1DataStore implements DataStore {
           "content_flag",
           flagId,
           { reason },
-          timestamp,
-          `EXISTS (
-            SELECT 1 FROM content_flags
-            WHERE id = ? AND status = 'dismissed' AND resolved_at = ? AND resolved_by = ?
-          )`,
-          [flagId, timestamp, actorSubject]
+          timestamp
         )
       ]);
       if (Number(flagResult?.meta.changes) !== 1) return null;
@@ -2649,6 +2685,14 @@ export class D1DataStore implements DataStore {
            ) AND status = 'published'`
         )
         .bind(timestamp, actorSubject, flagId),
+      this.auditStatement(
+        actorSubject,
+        "content_flag.target_hidden",
+        "content_flag",
+        flagId,
+        { reason },
+        timestamp
+      ),
       this.db
         .prepare(
           `UPDATE content_flags
@@ -2665,20 +2709,7 @@ export class D1DataStore implements DataStore {
                  AND r.moderated_at = ? AND r.moderated_by = ?
              )`
         )
-        .bind(timestamp, actorSubject, flagId, timestamp, actorSubject),
-      this.auditStatement(
-        actorSubject,
-        "content_flag.target_hidden",
-        "content_flag",
-        flagId,
-        { reason },
-        timestamp,
-        `EXISTS (
-          SELECT 1 FROM content_flags
-          WHERE id = ? AND status = 'resolved' AND resolved_at = ? AND resolved_by = ?
-        )`,
-        [flagId, timestamp, actorSubject]
-      )
+        .bind(timestamp, actorSubject, flagId, timestamp, actorSubject)
     ]);
     if (Number(replyResult?.meta.changes) !== 1) return null;
     return { id: flagId, status: "resolved", resolvedAt: timestamp };
@@ -2701,6 +2732,14 @@ export class D1DataStore implements DataStore {
            WHERE id = ? AND status = ?`
         )
         .bind(nextStatus, timestamp, actorSubject, replyId, expectedStatus),
+      this.auditStatement(
+        actorSubject,
+        action === "hide" ? "reply.hidden" : "reply.restored",
+        "field_note_reply",
+        replyId,
+        { reason },
+        timestamp
+      ),
       ...(action === "hide"
         ? [
             this.db
@@ -2712,20 +2751,7 @@ export class D1DataStore implements DataStore {
               )
               .bind(timestamp, actorSubject, replyId)
           ]
-        : []),
-      this.auditStatement(
-        actorSubject,
-        action === "hide" ? "reply.hidden" : "reply.restored",
-        "field_note_reply",
-        replyId,
-        { reason },
-        timestamp,
-        `EXISTS (
-          SELECT 1 FROM field_note_replies
-          WHERE id = ? AND status = ? AND moderated_at = ? AND moderated_by = ?
-        )`,
-        [replyId, nextStatus, timestamp, actorSubject]
-      )
+        : [])
     ]);
     if (Number(replyResult?.meta.changes) !== 1) return null;
     return { id: replyId, status: nextStatus, moderatedAt: timestamp };
@@ -4800,16 +4826,14 @@ export class D1DataStore implements DataStore {
     targetKind: string,
     targetId: string | null,
     metadata: Record<string, unknown>,
-    occurredAt: string,
-    guard: string,
-    guardBindings: unknown[]
+    occurredAt: string
   ) {
     return this.db
       .prepare(
         `INSERT INTO audit_events
          (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
-         SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard}`
+         SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`
       )
-      .bind(id(), actorSubject, action, targetKind, targetId, json(metadata), occurredAt, ...guardBindings);
+      .bind(id(), actorSubject, action, targetKind, targetId, json(metadata), occurredAt);
   }
 }

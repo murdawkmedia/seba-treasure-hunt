@@ -4725,6 +4725,70 @@ test("real D1 projects recent published replies with public parent context and r
     await db.prepare("SELECT status FROM content_flags WHERE id = 'note-hide-target-flag'").first(),
     { status: "received" }
   );
+
+  await db.prepare(
+    `INSERT INTO field_note_replies
+     (id, field_note_id, author_subject, body, status, created_at)
+     VALUES ('concurrent-reply', 'moderation-note', 'reply-author', 'Concurrent reply.', 'published', '2026-07-14T18:00:00.000Z')`
+  ).run();
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-07-17T18:00:00.000Z") });
+  try {
+    const [firstHide, repeatedHide] = await Promise.all([
+      store.moderateReply("concurrent-reply", "hide", "Confirmed spam", "staff-5"),
+      store.moderateReply("concurrent-reply", "hide", "Repeat", "staff-5")
+    ]);
+    assert.equal(firstHide?.status, "hidden");
+    assert.equal(repeatedHide, null);
+  } finally {
+    t.mock.timers.reset();
+  }
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = 'concurrent-reply'")
+      .first<{ count: number }>())?.count,
+    1
+  );
+
+  await db.batch([
+    db.prepare("UPDATE content_flags SET status = 'resolved'"),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('pagination-reply-a', 'moderation-note', 'reply-author', 'First paginated reply.', 'published', '2026-07-16T18:00:00.000Z')`
+    ),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('pagination-reply-b', 'moderation-note', 'reply-author', 'Second paginated reply.', 'published', '2026-07-16T18:00:00.000Z')`
+    ),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, status, created_at)
+       VALUES ('pagination-flag-a', 'flag-reporter', 'reply', 'pagination-reply-a', 'spam', 'received', '2026-07-16T18:00:00.000Z')`
+    ),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, status, created_at)
+       VALUES ('pagination-flag-b', 'flag-reporter', 'reply', 'pagination-reply-b', 'spam', 'received', '2026-07-16T18:00:00.000Z')`
+    )
+  ]);
+  const firstReplyPage = await store.listModerationReplies({ limit: 1 });
+  assert.equal(firstReplyPage.items[0]?.id, "pagination-reply-b");
+  assert.match(String(firstReplyPage.nextCursor), /^m1\./);
+  assert.doesNotMatch(String(firstReplyPage.nextCursor), /2026-07-16/);
+  const secondReplyPage = await store.listModerationReplies({ limit: 1, cursor: firstReplyPage.nextCursor });
+  assert.equal(secondReplyPage.items[0]?.id, "pagination-reply-a");
+  const thirdReplyPage = await store.listModerationReplies({ limit: 1, cursor: secondReplyPage.nextCursor });
+  assert.equal(thirdReplyPage.items[0]?.id, "moderation-reply");
+  const fourthReplyPage = await store.listModerationReplies({ limit: 1, cursor: thirdReplyPage.nextCursor });
+  assert.equal(fourthReplyPage.items[0]?.id, "concurrent-reply");
+  assert.equal(fourthReplyPage.nextCursor, null);
+
+  const firstFlagPage = await store.listContentFlags({ limit: 1 });
+  assert.equal(firstFlagPage.items[0]?.id, "pagination-flag-b");
+  assert.match(String(firstFlagPage.nextCursor), /^m1\./);
+  const secondFlagPage = await store.listContentFlags({ limit: 1, cursor: firstFlagPage.nextCursor });
+  assert.equal(secondFlagPage.items[0]?.id, "pagination-flag-a");
+  assert.equal(secondFlagPage.nextCursor, null);
 });
 
 test("FakeStore mirrors public reply moderation state and audited conditional transitions", async () => {
@@ -4799,4 +4863,64 @@ test("FakeStore mirrors public reply moderation state and audited conditional tr
   assert.deepEqual(store.flags.slice(-2).map((flag) => flag.status), ["resolved", "resolved"]);
   assert.equal(await store.moderateContentFlag("fake-hide-target-flag", "hide_target", "Repeat", "staff-3"), null);
   assert.equal(store.audits.filter((audit) => audit.targetId === "fake-hide-target-flag").length, 1);
+
+  store.replies.push(
+    {
+      id: "fake-pagination-reply-a",
+      noteId: "fake-note",
+      authorSubject: "reply-author",
+      body: "First paginated reply.",
+      status: "published",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    },
+    {
+      id: "fake-pagination-reply-b",
+      noteId: "fake-note",
+      authorSubject: "reply-author",
+      body: "Second paginated reply.",
+      status: "published",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    }
+  );
+  store.flags.push(
+    {
+      id: "fake-pagination-flag-a",
+      targetKind: "reply",
+      targetId: "fake-pagination-reply-a",
+      reason: "spam",
+      status: "received",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    },
+    {
+      id: "fake-pagination-flag-b",
+      targetKind: "reply",
+      targetId: "fake-pagination-reply-b",
+      reason: "spam",
+      status: "received",
+      createdAt: "2026-07-16T18:00:00.000Z"
+    }
+  );
+  const firstFakeReplyPage = await store.listModerationReplies({ limit: 1 });
+  assert.equal(firstFakeReplyPage.items[0]?.id, "fake-pagination-reply-b");
+  assert.match(String(firstFakeReplyPage.nextCursor), /^m1\./);
+  const secondFakeReplyPage = await store.listModerationReplies({
+    limit: 1,
+    cursor: firstFakeReplyPage.nextCursor
+  });
+  assert.equal(secondFakeReplyPage.items[0]?.id, "fake-pagination-reply-a");
+  const thirdFakeReplyPage = await store.listModerationReplies({
+    limit: 1,
+    cursor: secondFakeReplyPage.nextCursor
+  });
+  assert.equal(thirdFakeReplyPage.items[0]?.id, "fake-reply");
+  assert.equal(thirdFakeReplyPage.nextCursor, null);
+
+  const firstFakeFlagPage = await store.listContentFlags({ limit: 1 });
+  assert.equal(firstFakeFlagPage.items[0]?.id, "fake-pagination-flag-b");
+  const secondFakeFlagPage = await store.listContentFlags({
+    limit: 1,
+    cursor: firstFakeFlagPage.nextCursor
+  });
+  assert.equal(secondFakeFlagPage.items[0]?.id, "fake-pagination-flag-a");
+  assert.equal(secondFakeFlagPage.nextCursor, null);
 });
