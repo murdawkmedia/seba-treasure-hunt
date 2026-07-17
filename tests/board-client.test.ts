@@ -4,6 +4,53 @@ import test from "node:test";
 
 const boardModule = await import("../src/client/board") as Record<string, unknown>;
 
+const imageFile = (size: number, name = "photo.jpg", type = "image/jpeg"): File => {
+  const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], name, { type });
+  Object.defineProperty(file, "size", { configurable: true, value: size });
+  return file;
+};
+
+test("Case Note payload replaces selected sources with prepared uploads", () => {
+  const buildCaseNoteFormData = boardModule.buildCaseNoteFormData as (
+    form: HTMLFormElement,
+    prepared: readonly { source: File; upload: File; optimized: boolean }[],
+  ) => FormData;
+  const NativeFormData = globalThis.FormData;
+  class FormDataWithCaseNote extends NativeFormData {
+    constructor(form?: { body?: string; images?: File }) {
+      super();
+      if (form) {
+        this.set("body", form.body ?? "");
+        if (form.images) this.append("images", form.images, form.images.name);
+      }
+    }
+  }
+  Object.defineProperty(globalThis, "FormData", { configurable: true, value: FormDataWithCaseNote });
+  try {
+    const source = imageFile(24_000_000, "large.jpg");
+    const upload = imageFile(2_000_000, "large.webp", "image/webp");
+    const payload = buildCaseNoteFormData(
+      { body: "A public observation.", images: source } as unknown as HTMLFormElement,
+      [{ source, upload, optimized: true }],
+    );
+    assert.equal(payload.get("body"), "A public observation.");
+    assert.deepEqual((payload.getAll("images") as File[]).map((file) => [file.name, file.size]), [
+      ["large.webp", 2_000_000],
+    ]);
+  } finally {
+    Object.defineProperty(globalThis, "FormData", { configurable: true, value: NativeFormData });
+  }
+});
+
+test("Case Note validation leaves shared image limits to preparation", () => {
+  const validateFieldNote = boardModule.validateFieldNote as (
+    waypointId: string,
+    body: string,
+    files: readonly File[],
+  ) => string[];
+  assert.deepEqual(validateFieldNote("1", "A public observation.", [imageFile(11_000_000)]), []);
+});
+
 test("Case Note receipts stay pending and retry headers preserve one idempotency key", () => {
   const caseNoteReceipt = boardModule.caseNoteReceipt;
   const buildCaseNoteRequestHeaders = boardModule.buildCaseNoteRequestHeaders;

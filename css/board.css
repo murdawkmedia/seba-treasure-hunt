@@ -126,6 +126,8 @@
 .field-meta output { font-variant-numeric: tabular-nums; }
 .file-ledger { margin: 10px 0 0; padding: 0; list-style: none; color: var(--board-muted); font-size: .8rem; }
 .file-ledger li { padding: 5px 0; box-shadow: inset 0 -1px rgba(248, 240, 213, .1); overflow-wrap: anywhere; }
+.file-ledger[data-kind="error"] { color: #fff3e8; }
+.ledger-panel input[aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--board-danger); }
 .turnstile-slot { min-height: 50px; display: flex; align-items: center; margin: 16px 0; padding: 9px; color: var(--board-muted); background: rgba(7, 31, 28, .6); border-radius: 6px; font-family: var(--font-mono); font-size: .66rem; }
 
 .field-button {

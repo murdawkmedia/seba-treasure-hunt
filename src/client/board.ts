@@ -1,5 +1,15 @@
 import { routeOrder, stopLabel, waypointId as parseWaypointId } from "../shared/waypoints";
 import { initializeApprovedMediaViewer, renderApprovedMedia } from "./approved-media-viewer";
+import {
+  prepareReportImages,
+  ReportImagePreparationError,
+  type PreparedReportImage,
+} from "./report-image-preparation";
+import {
+  REPORT_IMAGE_DIRECT_BYTES,
+  REPORT_IMAGE_MAX_COUNT,
+  reportImageMegabytes,
+} from "../shared/report-image-limits";
 import { createTurnstileLifecycle } from "./turnstile-lifecycle";
 
 export interface CommunityMedia {
@@ -58,9 +68,6 @@ declare global {
 }
 
 const communityDisclaimer = "Community observation&mdash;not an official clue.";
-const maxImages = 3;
-const maxImageBytes = 10_000_000;
-const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 let turnstileSiteKey: string | null = null;
 let turnstileApi: TurnstileApi | null = null;
 let noteTurnstileToken = "";
@@ -88,6 +95,16 @@ export function failCaseNoteAttempt(idempotencyKey: string | undefined): {
   turnstileToken: "";
 } {
   return { idempotencyKey, turnstileToken: "" };
+}
+
+export function buildCaseNoteFormData(
+  form: HTMLFormElement,
+  prepared: readonly PreparedReportImage[],
+): FormData {
+  const data = new FormData(form);
+  data.delete("images");
+  for (const item of prepared) data.append("images", item.upload, item.upload.name);
+  return data;
 }
 
 export function escapeHtml(value: unknown): string {
@@ -225,11 +242,7 @@ export function validateFieldNote(waypointId: string, body: string, files: reado
   const note = body.trim();
   if (!note) errors.push("Describe what you observed.");
   if (note.length > 1200) errors.push("Case Notes must be 1,200 characters or fewer.");
-  if (files.length > maxImages) errors.push("Choose no more than 3 images.");
-  for (const file of files) {
-    if (!allowedImageTypes.has(file.type)) errors.push(`${file.name} is not a JPEG, PNG or WebP image.`);
-    if (file.size > maxImageBytes) errors.push(`${file.name} is larger than 10 MB.`);
-  }
+  if (files.length > REPORT_IMAGE_MAX_COUNT) errors.push("Choose no more than 3 images.");
   return errors;
 }
 
@@ -374,19 +387,26 @@ export async function initialiseBoard(): Promise<void> {
   let cursor: string | null = null;
   let signedIn = false;
   let pendingFlag: { kind: string; id: string; button: HTMLButtonElement } | null = null;
+  let preparedNoteImages: PreparedReportImage[] = [];
+  let notePreparationController: AbortController | null = null;
+  let notePreparationPromise: Promise<void> | null = null;
+  let notePreparationError: string | undefined;
+
+  const updateNoteSubmitState = (): void => {
+    const submit = noteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (submit) submit.disabled = !noteTurnstileToken || notePreparationPromise !== null || Boolean(notePreparationError);
+  };
 
   const disableNoteHumanCheck = (message: string): void => {
     const state = noteForm.querySelector<HTMLElement>("[data-note-turnstile-state]");
-    const submit = noteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (state) state.textContent = message;
-    if (submit) submit.disabled = true;
     noteTurnstileToken = "";
+    updateNoteSubmitState();
   };
 
   const initialiseNoteTurnstile = (): void => {
     const container = noteForm.querySelector<HTMLElement>("[data-note-turnstile]");
     const state = noteForm.querySelector<HTMLElement>("[data-note-turnstile-state]");
-    const submit = noteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (!container || !turnstileApi || !turnstileSiteKey) {
       disableNoteHumanCheck("Human check unavailable. Case Notes cannot be submitted until it is restored.");
       return;
@@ -399,7 +419,7 @@ export async function initialiseBoard(): Promise<void> {
       appearance: "interaction-only",
       callback: (token) => {
         noteTurnstileToken = token;
-        if (submit) submit.disabled = false;
+        updateNoteSubmitState();
       },
       "expired-callback": () => {
         boardTurnstileLifecycle.recordReset("field_note", "expired");
@@ -547,13 +567,82 @@ export async function initialiseBoard(): Promise<void> {
 
   const imageInput = noteForm.elements.namedItem("images");
   const fileList = document.querySelector<HTMLElement>("#note-file-list");
+  const imageStatus = document.querySelector<HTMLElement>("#note-image-status");
+  const renderNoteImageMessages = (
+    messages: readonly string[],
+    kind: "normal" | "error" = "normal",
+    statusMessage = "",
+  ): void => {
+    if (fileList) {
+      fileList.innerHTML = messages.map((message) => `<li>${escapeHtml(message)}</li>`).join("");
+      if (kind === "error") fileList.dataset.kind = "error";
+      else delete fileList.dataset.kind;
+    }
+    if (imageStatus) imageStatus.textContent = statusMessage || (kind === "error" ? messages[0] ?? "" : "");
+  };
+
+  const resetNoteImagePreparation = (clearInput = false): void => {
+    notePreparationController?.abort();
+    notePreparationController = null;
+    notePreparationPromise = null;
+    notePreparationError = undefined;
+    preparedNoteImages = [];
+    if (clearInput && imageInput instanceof HTMLInputElement) imageInput.value = "";
+    if (imageInput instanceof HTMLInputElement) imageInput.removeAttribute("aria-invalid");
+    renderNoteImageMessages([]);
+    updateNoteSubmitState();
+  };
+
   if (imageInput instanceof HTMLInputElement && fileList) {
     imageInput.addEventListener("change", () => {
+      notePreparationController?.abort();
       pendingNoteIdempotencyKey = undefined;
       const files = [...(imageInput.files ?? [])];
-      fileList.innerHTML = files.length === 0
-        ? ""
-        : files.map((file) => `<li>${escapeHtml(file.name)} &middot; ${(file.size / 1_000_000).toFixed(1)} MB</li>`).join("");
+      preparedNoteImages = [];
+      notePreparationError = undefined;
+      imageInput.removeAttribute("aria-invalid");
+      if (files.length === 0) {
+        notePreparationController = null;
+        notePreparationPromise = null;
+        renderNoteImageMessages([]);
+        updateNoteSubmitState();
+        return;
+      }
+
+      const controller = new AbortController();
+      notePreparationController = controller;
+      renderNoteImageMessages(
+        files.map((file) => file.size > REPORT_IMAGE_DIRECT_BYTES
+          ? `Optimizing ${file.name} (${reportImageMegabytes(file.size)})…`
+          : `Checking ${file.name} (${reportImageMegabytes(file.size)})…`),
+        "normal",
+        "Preparing selected photos. Keep this page open until they are ready.",
+      );
+      const current = prepareReportImages(files, { signal: controller.signal })
+        .then((prepared) => {
+          if (controller.signal.aborted || notePreparationController !== controller) return;
+          preparedNoteImages = prepared;
+          renderNoteImageMessages(prepared.map((item) => item.optimized
+            ? `${item.source.name}: ready — reduced from ${reportImageMegabytes(item.source.size)} to ${reportImageMegabytes(item.upload.size)}.`
+            : `${item.source.name}: ready at ${reportImageMegabytes(item.upload.size)}.`), "normal", "Selected photos are ready to send.");
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
+          preparedNoteImages = [];
+          notePreparationError = error instanceof ReportImagePreparationError
+            ? error.message
+            : "The selected photos could not be prepared. Choose JPEG, PNG, or WebP copies and try again.";
+          renderNoteImageMessages([notePreparationError], "error");
+          imageInput.setAttribute("aria-invalid", "true");
+        })
+        .finally(() => {
+          if (notePreparationController !== controller) return;
+          notePreparationController = null;
+          notePreparationPromise = null;
+          updateNoteSubmitState();
+        });
+      notePreparationPromise = current;
+      updateNoteSubmitState();
     });
   }
 
@@ -569,9 +658,11 @@ export async function initialiseBoard(): Promise<void> {
     const submit = noteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
     const summary = document.querySelector<HTMLElement>("#note-error-summary");
     const result = document.querySelector<HTMLElement>("#note-form-result");
-    const formData = new FormData(noteForm);
+    while (notePreparationPromise) await notePreparationPromise;
+    const formData = buildCaseNoteFormData(noteForm, preparedNoteImages);
     const files = imageInput instanceof HTMLInputElement ? [...(imageInput.files ?? [])] : [];
     const errors = validateFieldNote(asString(formData.get("waypointId")), asString(formData.get("body")), files);
+    if (notePreparationError) errors.push(notePreparationError);
     if (summary) {
       summary.hidden = errors.length === 0;
       summary.innerHTML = errors.length ? `<strong>Please fix this:</strong><ul>${errors.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul>` : "";
@@ -600,7 +691,7 @@ export async function initialiseBoard(): Promise<void> {
       pendingNoteIdempotencyKey = undefined;
       noteForm.reset();
       if (characterCount) characterCount.value = "0";
-      if (fileList) fileList.innerHTML = "";
+      resetNoteImagePreparation();
       if (noteReference) noteReference.textContent = reference;
       noteForm.hidden = true;
       if (noteReceipt) {
@@ -630,7 +721,7 @@ export async function initialiseBoard(): Promise<void> {
     if (noteReceipt) noteReceipt.hidden = true;
     if (noteReference) noteReference.textContent = "";
     if (characterCount) characterCount.value = "0";
-    if (fileList) fileList.innerHTML = "";
+    resetNoteImagePreparation();
     pendingNoteIdempotencyKey = undefined;
     noteTurnstileToken = "";
     if (turnstileApi && noteTurnstileWidget) {

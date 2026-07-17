@@ -412,6 +412,18 @@ test("Case Notes and private reports explain their different routes before submi
   assert.match(report, /does not appear in Case Notes automatically/i);
 });
 
+test("Case Notes use the shared accessible photo-preparation guidance", () => {
+  const board = read("clue-board.html");
+  assert.match(board, /Photos up to 20 MB upload directly/i);
+  assert.match(board, /larger photos up to 50 MB will be optimized on this device/i);
+  assert.match(board, /Prepared uploads may total up to 30 MB/i);
+  assert.match(board, /id="note-image-status"[^>]*aria-live="polite"/);
+  assert.match(
+    board,
+    /id="note-images"[^>]*aria-describedby="note-images-help note-image-status"/,
+  );
+});
+
 test("stale route-video assets remain present but are absent from every public static source", () => {
   const publicSource = [
     ...readdirSync(new URL("../", import.meta.url)).filter((file) => file.endsWith(".html")),
