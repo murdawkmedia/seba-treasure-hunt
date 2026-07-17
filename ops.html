@@ -317,12 +317,16 @@
             <input id="report-public-title-input" name="title" maxlength="200" required disabled />
             <label for="report-public-body">Edited public story</label>
             <textarea id="report-public-body" name="body" rows="7" maxlength="10000" required disabled></textarea>
+            <label for="report-scheduled-for">Schedule time <span class="ops-optional">(only for Schedule)</span></label>
+            <input id="report-scheduled-for" name="scheduledFor" type="datetime-local" data-report-scheduled-for disabled />
             <div data-report-public-preview></div>
             <label class="ops-confirm"><input name="confirmPublication" type="checkbox" required disabled /><span>I reviewed this exact public preview. Contact details and children&rsquo;s identities are excluded, while the shown waypoint, GPS and checked images will be public.</span></label>
             <div class="ops-action-row">
               <button class="ops-button ops-button--primary" type="button" data-report-publish-case-note disabled>Publish to Case Notes</button>
               <button class="ops-button ops-button--danger" type="button" data-report-withdraw-case-note hidden>Withdraw Case Note</button>
-              <button class="ops-button ops-button--quiet" type="submit" data-report-publish disabled>Publish Official Update</button>
+              <button class="ops-button ops-button--quiet" type="button" data-report-save-draft disabled>Save Update draft</button>
+              <button class="ops-button ops-button--quiet" type="button" data-report-schedule disabled>Schedule Official Update</button>
+              <button class="ops-button ops-button--quiet" type="button" data-report-publish data-report-publish-now disabled>Publish Official Update now</button>
               <button class="ops-button ops-button--danger" type="button" data-report-unpublish hidden>Withdraw Official Update</button>
             </div>
             <p class="ops-inline-result" id="report-publication-result" role="status" aria-live="polite" tabindex="-1"></p>

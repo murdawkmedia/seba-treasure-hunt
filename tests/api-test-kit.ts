@@ -157,7 +157,15 @@ export class FakeStore {
   }
 
   async listUpdates() {
-    return { items: this.updates, nextCursor: null };
+    const currentTime = Date.now();
+    return {
+      items: this.updates.filter((update) =>
+        !update.status || update.status === "published" ||
+        (update.status === "scheduled" && typeof update.scheduledFor === "string" &&
+          new Date(update.scheduledFor).getTime() <= currentTime)
+      ),
+      nextCursor: null
+    };
   }
 
   async getCurrentRules() {
@@ -739,7 +747,11 @@ export class FakeStore {
           : null;
     const publicationEligible = !terminal && (!hunterSubject || Boolean(profile));
     const publicationId = this.reportPublicationIds.get(id) ?? null;
-    const published = Boolean(publicationId && this.updates.some((update) => update.id === publicationId));
+    const linkedUpdate = publicationId ? this.updates.find((update) => update.id === publicationId) : null;
+    const updateStatus = typeof linkedUpdate?.status === "string" ? linkedUpdate.status : null;
+    const scheduledFor = typeof linkedUpdate?.scheduledFor === "string" ? linkedUpdate.scheduledFor : null;
+    const published = updateStatus === "published" ||
+      (updateStatus === "scheduled" && scheduledFor !== null && new Date(scheduledFor).getTime() <= Date.now());
     const caseNote = this.reportCaseNotes.get(id);
     return {
       ...safeReport,
@@ -753,7 +765,12 @@ export class FakeStore {
           : "current_legal_acceptance_required",
       publication: {
         published,
-        updateId: published ? publicationId : null
+        updateId: publicationId,
+        status: updateStatus,
+        scheduledFor,
+        title: typeof linkedUpdate?.title === "string" ? linkedUpdate.title : null,
+        body: typeof linkedUpdate?.body === "string" ? linkedUpdate.body : null,
+        mediaIds: this.reportPublicationMedia.get(id) ?? []
       },
       caseNote: {
         published: caseNote?.status === "published",
@@ -786,7 +803,10 @@ export class FakeStore {
     const report = this.reports.find((item) => item.id === id);
     if (!report) return null;
     const publicationId = this.reportPublicationIds.get(id);
-    const published = Boolean(publicationId && this.updates.some((update) => update.id === publicationId));
+    const linkedUpdate = publicationId ? this.updates.find((update) => update.id === publicationId) : null;
+    const published = linkedUpdate?.status === "published" ||
+      (linkedUpdate?.status === "scheduled" && typeof linkedUpdate.scheduledFor === "string" &&
+        new Date(linkedUpdate.scheduledFor).getTime() <= Date.now());
     if (published && (input.status === "rejected" || input.status === "resolved")) {
       throw new ApiError(
         409,
@@ -801,7 +821,13 @@ export class FakeStore {
 
   async publishReport(
     reportId: string,
-    input: { title: string; body: string; mediaIds: string[] },
+    input: {
+      title: string;
+      body: string;
+      mediaIds: string[];
+      action?: "save_draft" | "schedule" | "publish_now";
+      scheduledFor?: string | null;
+    },
     actorSubject: string
   ) {
     const report = this.reports.find((item) => item.id === reportId);
@@ -811,6 +837,14 @@ export class FakeStore {
         409,
         "report_publication_state_invalid",
         "This report cannot be published from its current state."
+      );
+    }
+    const action = input.action ?? "publish_now";
+    if ((action === "schedule" || action === "publish_now") && report.status !== "verified") {
+      throw new ApiError(
+        409,
+        "report_update_requires_verification",
+        "Verify this private report before scheduling or publishing an Official Update."
       );
     }
     const reportMedia = Array.isArray(report.media)
@@ -841,12 +875,16 @@ export class FakeStore {
       `approved-report-${this.reportPublicationIds.size + 1}`;
     const previousMedia = this.reportPublicationMedia.get(reportId) ?? [];
     for (const mediaId of previousMedia) this.publicMedia.delete(mediaId);
-    for (const media of selected) {
-      this.publicMedia.set(media.id, {
-        key: media.key,
-        contentType: media.contentType,
-        cacheControl: "no-store"
-      });
+    const status = action === "save_draft" ? "draft" : action === "schedule" ? "scheduled" : "published";
+    const scheduledFor = action === "schedule" ? input.scheduledFor ?? null : null;
+    if (status === "published") {
+      for (const media of selected) {
+        this.publicMedia.set(media.id, {
+          key: media.key,
+          contentType: media.contentType,
+          cacheControl: "no-store"
+        });
+      }
     }
     this.reportPublicationIds.set(reportId, updateId);
     this.reportPublicationMedia.set(reportId, selected.map((media) => media.id));
@@ -860,12 +898,21 @@ export class FakeStore {
       latitude: typeof report.latitude === "number" ? report.latitude : null,
       longitude: typeof report.longitude === "number" ? report.longitude : null,
       media: selected.map(({ id, url, contentType }) => ({ id, url, contentType })),
-      publishedAt: "2026-07-15T21:00:00.000Z"
+      publishedAt: status === "scheduled" ? scheduledFor : "2026-07-15T21:00:00.000Z",
+      scheduledFor,
+      status
     };
     this.updates = this.updates.filter((item) => item.id !== updateId);
     this.updates.unshift(update);
-    report.status = "verified";
-    this.audits.push({ action: "report.published", actorSubject, targetId: reportId });
+    this.audits.push({
+      action: status === "draft"
+        ? "report.update.draft_saved"
+        : status === "scheduled"
+          ? "report.update.scheduled"
+          : "report.published",
+      actorSubject,
+      targetId: reportId
+    });
     return update;
   }
 
@@ -932,7 +979,11 @@ export class FakeStore {
     const report = this.reports.find((item) => item.id === reportId);
     if (!report) return null;
     const updateId = this.reportPublicationIds.get(reportId);
-    if (updateId) this.updates = this.updates.filter((item) => item.id !== updateId);
+    const update = updateId ? this.updates.find((item) => item.id === updateId) : null;
+    if (update) {
+      update.status = "withdrawn";
+      update.scheduledFor = null;
+    }
     for (const mediaId of this.reportPublicationMedia.get(reportId) ?? []) {
       this.publicMedia.delete(mediaId);
     }

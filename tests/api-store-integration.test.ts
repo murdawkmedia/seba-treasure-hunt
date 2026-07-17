@@ -2870,6 +2870,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     reportInsert("report-stale", "hunter-stale-public", "Private Stale Name", 1, 53.125, -114.458),
     reportInsert("report-mismatch", "hunter-mismatch-public", "Original Account Name", 1, 53.127, -114.460),
     reportInsert("report-concurrent", null, "Private Concurrent Name", 1, 53.126, -114.459),
+    reportInsert("report-schedule", null, "Private Scheduled Name", 1, 53.1265, -114.4595),
     reportInsert("report-rejected-real", null, "Private Rejected Name", 1, 53.128, -114.461),
     reportInsert("report-resolved-real", null, "Private Resolved Name", 1, 53.129, -114.462),
     reportInsert("report-adult-to-minor", "hunter-adult-to-minor", "Adult To Minor", 1, 53.130, -114.463),
@@ -2992,7 +2993,15 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.equal(minorPreview?.publicAttribution, "Young Hunter");
   assert.equal(minorPreview?.publicationEligible, true);
   assert.equal(minorPreview?.publicationEligibilityReason, "eligible");
-  assert.deepEqual(minorPreview?.publication, { published: false, updateId: null });
+  assert.deepEqual(minorPreview?.publication, {
+    published: false,
+    updateId: null,
+    status: null,
+    scheduledFor: null,
+    title: null,
+    body: null,
+    mediaIds: [],
+  });
   assert.doesNotMatch(JSON.stringify(minorPreview), /Minor Handle Must Stay Private|participationBasis/);
 
   const adultPreview = await store.getReportDetail("report-adult", "staff-preview-adult");
@@ -3014,6 +3023,15 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   const anonymousPreview = await store.getReportDetail("report-community", "staff-preview-community");
   assert.equal(anonymousPreview?.publicAttribution, "Community Hunter");
   assert.equal(anonymousPreview?.publicationEligible, true);
+  await assert.rejects(
+    store.publishReport(
+      "report-schedule",
+      { title: "Too soon", body: "Not verified", mediaIds: [], action: "publish_now" },
+      "staff-publisher"
+    ),
+    (error: unknown) =>
+      error instanceof ApiError && error.code === "report_update_requires_verification"
+  );
   await assert.rejects(
     store.publishReport(
       "report-stale",
@@ -3065,6 +3083,67 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       reportId
     );
   }
+  await db
+    .prepare(
+      `UPDATE private_reports SET status = 'verified'
+       WHERE id IN ('report-adult-to-minor', 'report-minor', 'report-adult',
+                    'report-community', 'report-concurrent', 'report-schedule')`
+    )
+    .run();
+  const savedDraft = await store.publishReport(
+    "report-schedule",
+    { title: "Scheduled finding", body: "Draft body", mediaIds: [], action: "save_draft" },
+    "staff-publisher"
+  );
+  assert.equal(savedDraft?.status, "draft");
+  assert.equal(
+    (await store.listUpdates({ limit: 20 })).items.some((item) => item.id === savedDraft?.id),
+    false
+  );
+  const scheduledFor = "2099-07-17T19:00:00.000Z";
+  const scheduled = await store.publishReport(
+    "report-schedule",
+    {
+      title: "Scheduled finding",
+      body: "Scheduled body",
+      mediaIds: [],
+      action: "schedule",
+      scheduledFor,
+    },
+    "staff-publisher"
+  );
+  assert.equal(scheduled?.id, savedDraft?.id);
+  assert.equal(scheduled?.status, "scheduled");
+  const scheduledReplay = await store.publishReport(
+    "report-schedule",
+    {
+      title: "Scheduled finding",
+      body: "Scheduled body",
+      mediaIds: [],
+      action: "schedule",
+      scheduledFor,
+    },
+    "staff-publisher"
+  );
+  assert.equal(scheduledReplay?.id, scheduled?.id);
+  assert.equal(
+    (await db.prepare(
+      `SELECT COUNT(*) AS count FROM audit_events
+       WHERE target_id = 'report-schedule' AND action = 'report.update.scheduled'`
+    ).first<{ count: number }>())?.count,
+    1
+  );
+  assert.equal(
+    (await store.listUpdates({ limit: 20, cursor: "2099-07-17T18:59:59.999Z" })).items
+      .some((item) => item.id === scheduled?.id),
+    false
+  );
+  assert.equal(
+    (await store.listUpdates({ limit: 20, cursor: scheduledFor })).items
+      .some((item) => item.id === scheduled?.id),
+    true
+  );
+  await store.unpublishReport("report-schedule", "staff-publisher");
   const transitionedMinorUpdate = await store.publishReport(
     "report-adult-to-minor",
     { title: "Transitioned hunter", body: "Approved public story", mediaIds: [] },
@@ -3097,6 +3176,8 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       waypointId: 1,
       latitude: 53.123,
       longitude: -114.456,
+      scheduledFor: null,
+      status: "published",
       media: [
         {
           id: "media-selected",
@@ -3112,6 +3193,11 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.deepEqual(publishedMinorDetail?.publication, {
     published: true,
     updateId: minorUpdate.id,
+    status: "published",
+    scheduledFor: null,
+    title: "Possible clue near the creek",
+    body: "Edited operator-approved story",
+    mediaIds: ["media-selected"],
   });
   await assert.rejects(
     store.updateReport("report-minor", { status: "resolved" }, "staff-terminal-blocked"),
@@ -3344,12 +3430,15 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       createHash("sha256").update(canonicalJson(publication)).digest("hex")
     );
     assert.deepEqual(Object.keys(publication as Record<string, unknown>).sort(), [
+      "action",
       "body",
       "kind",
       "latitude",
       "longitude",
       "mediaIds",
       "publisherName",
+      "scheduledFor",
+      "status",
       "title",
       "waypointId"
     ]);
@@ -3402,7 +3491,15 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.equal(await store.publishReport("missing-report", { title: "No", body: "No", mediaIds: [] }, "staff"), null);
   assert.equal(await store.unpublishReport("missing-report", "staff"), null);
   const finalWithdrawnDetail = await store.getReportDetail("report-minor", "staff-preview-withdrawn-minor");
-  assert.deepEqual(finalWithdrawnDetail?.publication, { published: false, updateId: null });
+  assert.deepEqual(finalWithdrawnDetail?.publication, {
+    published: false,
+    updateId: minorUpdate.id,
+    status: "withdrawn",
+    scheduledFor: null,
+    title: "Possible clue near the creek",
+    body: "Re-approved public story",
+    mediaIds: [],
+  });
   const resolvedAfterUnpublish = await store.updateReport(
     "report-minor",
     { status: "resolved" },

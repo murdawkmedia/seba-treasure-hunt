@@ -545,7 +545,8 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
   const input = {
     title: "Possible clue near the creek",
     body: "Edited operator-approved story",
-    mediaIds: ["media-publish-1"]
+    mediaIds: ["media-publish-1"],
+    action: "publish_now"
   };
 
   const anonymous = await app.request(endpoint, { method: "POST", ...json(input) });
@@ -560,6 +561,14 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
   });
   assert.equal(crossOrigin.status, 403);
 
+  const unverified = await app.request(endpoint, {
+    method: "POST",
+    ...json(input, { authorization: "Bearer staff-token" })
+  });
+  assert.equal(unverified.status, 409);
+  assert.equal((await responseJson(unverified)).error.code, "report_update_requires_verification");
+  store.reports.find((report) => report.id === "report-publish-1")!.status = "verified";
+
   const published = await app.request(endpoint, {
     method: "POST",
     ...json(input, { authorization: "Bearer staff-token" })
@@ -567,7 +576,7 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
   assert.equal(published.status, 200);
   const publishedData = (await responseJson(published)).data;
   assert.equal(publishedData.kind, "approved_report");
-  assert.equal(store.reports[0]?.status, "verified");
+  assert.equal(store.reports.find((report) => report.id === "report-publish-1")?.status, "verified");
 
   const publishedDetail = await app.request(
     "https://www.timlostsomething.com/api/v1/ops/reports/report-publish-1",
@@ -576,19 +585,24 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
   assert.equal(publishedDetail.status, 200);
   assert.deepEqual((await responseJson(publishedDetail)).data.publication, {
     published: true,
-    updateId: publishedData.id
+    updateId: publishedData.id,
+    status: "published",
+    scheduledFor: null,
+    title: "Possible clue near the creek",
+    body: "Edited operator-approved story",
+    mediaIds: ["media-publish-1"]
   });
 
   const terminalWhilePublished = await app.request(
     "https://www.timlostsomething.com/api/v1/ops/reports/report-publish-1",
     {
       method: "PATCH",
-      ...json({ status: "rejected" }, { authorization: "Bearer staff-token" })
+      ...json({ status: "resolved" }, { authorization: "Bearer staff-token" })
     }
   );
   assert.equal(terminalWhilePublished.status, 409);
   assert.equal((await responseJson(terminalWhilePublished)).error.code, "report_publication_active");
-  assert.equal(store.reports[0]?.status, "verified");
+  assert.equal(store.reports.find((report) => report.id === "report-publish-1")?.status, "verified");
   assert.equal(store.updates.some((update) => update.id === publishedData.id), true);
 
   const withdrawn = await app.request(
@@ -608,18 +622,23 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
   assert.equal(withdrawnDetail.status, 200);
   assert.deepEqual((await responseJson(withdrawnDetail)).data.publication, {
     published: false,
-    updateId: null
+    updateId: publishedData.id,
+    status: "withdrawn",
+    scheduledFor: null,
+    title: "Possible clue near the creek",
+    body: "Edited operator-approved story",
+    mediaIds: []
   });
 
   const terminalAfterUnpublish = await app.request(
     "https://www.timlostsomething.com/api/v1/ops/reports/report-publish-1",
     {
       method: "PATCH",
-      ...json({ status: "rejected" }, { authorization: "Bearer staff-token" })
+      ...json({ status: "resolved" }, { authorization: "Bearer staff-token" })
     }
   );
   assert.equal(terminalAfterUnpublish.status, 200);
-  assert.equal(store.reports[0]?.status, "rejected");
+  assert.equal(store.reports.find((report) => report.id === "report-publish-1")?.status, "resolved");
 });
 
 test("publishes a reviewed report to Case Notes without creating an official Update", async () => {
@@ -667,6 +686,34 @@ test("publishes a reviewed report to Case Notes without creating an official Upd
   assert.equal(withdrawn.status, 200);
 });
 
+test("keeps report Update drafts and future schedules private until their due time", async () => {
+  const { app, store } = makeApp();
+  store.reports.push({ id: "report-draft-1", status: "verified", media: [] });
+  const endpoint = "https://www.timlostsomething.com/api/v1/ops/reports/report-draft-1/publish";
+  const headers = { authorization: "Bearer staff-token" };
+  const base = { title: "Draft finding", body: "Reviewed story", mediaIds: [] };
+
+  const draft = await app.request(endpoint, {
+    method: "POST",
+    ...json({ ...base, action: "save_draft" }, headers)
+  });
+  assert.equal(draft.status, 200);
+  assert.equal((await responseJson(draft)).data.status, "draft");
+  assert.equal(store.updates[0]?.status, "draft");
+
+  const schedule = await app.request(endpoint, {
+    method: "POST",
+    ...json({
+      ...base,
+      action: "schedule",
+      scheduledFor: "2099-07-17T19:00:00.000Z"
+    }, headers)
+  });
+  assert.equal(schedule.status, 200);
+  assert.equal((await responseJson(schedule)).data.status, "scheduled");
+  assert.equal(store.updates.filter((item) => item.id === store.updates[0]?.id).length, 1);
+});
+
 test("rejects publication-controlled fields and more than three selected images", async () => {
   const { app, store } = makeApp();
   store.reports.push({ id: "report-publish-fields", status: "reviewing", media: [] });
@@ -691,6 +738,7 @@ test("rejects publication-controlled fields and more than three selected images"
           title: "Possible clue",
           body: "Edited public story",
           mediaIds: [],
+          action: "save_draft",
           [field]: "attempted override"
         },
         headers
@@ -706,7 +754,8 @@ test("rejects publication-controlled fields and more than three selected images"
       {
         title: "Possible clue",
         body: "Edited public story",
-        mediaIds: ["media-1", "media-2", "media-3", "media-4"]
+        mediaIds: ["media-1", "media-2", "media-3", "media-4"],
+        action: "save_draft"
       },
       headers
     )
@@ -728,7 +777,7 @@ test("does not resurrect a rejected or resolved report through publication", asy
       {
         method: "POST",
         ...json(
-          { title: "Must remain private", body: "Terminal report", mediaIds: [] },
+          { title: "Must remain private", body: "Terminal report", mediaIds: [], action: "publish_now" },
           { authorization: "Bearer staff-token" }
         )
       }

@@ -261,7 +261,7 @@ const optionalString = (body: Record<string, unknown>, key: string, max: number)
 };
 
 const publicationInput = (body: Record<string, unknown>) => {
-  const allowed = new Set(["title", "body", "mediaIds"]);
+  const allowed = new Set(["title", "body", "mediaIds", "action", "scheduledFor"]);
   const forbidden = Object.keys(body).find((key) => !allowed.has(key));
   if (forbidden) {
     throw new ApiError(
@@ -276,10 +276,7 @@ const publicationInput = (body: Record<string, unknown>) => {
     !Array.isArray(rawMediaIds) ||
     rawMediaIds.length > 3 ||
     rawMediaIds.some(
-      (item) =>
-        typeof item !== "string" ||
-        item.trim().length < 1 ||
-        item.trim().length > 200
+      (item) => typeof item !== "string" || item.trim().length < 1 || item.trim().length > 200
     )
   ) {
     throw new ApiError(
@@ -298,10 +295,26 @@ const publicationInput = (body: Record<string, unknown>) => {
       { field: "mediaIds" }
     );
   }
+  const rawAction = body.action;
+  if (rawAction !== "save_draft" && rawAction !== "schedule" && rawAction !== "publish_now") {
+    throw new ApiError(422, "validation_failed", "Choose Save draft, Schedule, or Publish now.", { field: "action" });
+  }
+  const action: "save_draft" | "schedule" | "publish_now" = rawAction;
+  const scheduledFor = optionalString(body, "scheduledFor", 64);
+  if (action === "schedule") {
+    const scheduledTime = scheduledFor ? new Date(scheduledFor).getTime() : Number.NaN;
+    if (!scheduledFor || Number.isNaN(scheduledTime) || scheduledTime <= Date.now()) {
+      throw new ApiError(422, "validation_failed", "Choose a future date and time for the scheduled Update.", { field: "scheduledFor" });
+    }
+  } else if (scheduledFor !== null) {
+    throw new ApiError(422, "validation_failed", "scheduledFor is only accepted when scheduling an Update.", { field: "scheduledFor" });
+  }
   return {
     title: requiredString(body, "title", { max: 200, label: "Title" }),
     body: requiredString(body, "body", { max: 10_000, label: "Story" }),
-    mediaIds
+    mediaIds,
+    action,
+    scheduledFor
   };
 };
 

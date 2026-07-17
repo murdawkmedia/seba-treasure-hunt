@@ -108,6 +108,10 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(html, /Official Update/i);
   assert.match(html, /data-report-publish-case-note/);
   assert.match(html, /data-report-withdraw-case-note/);
+  assert.match(html, /data-report-save-draft/);
+  assert.match(html, /data-report-schedule/);
+  assert.match(html, /data-report-scheduled-for/);
+  assert.match(html, /data-report-publish-now/);
   assert.match(html, /id="report-publication-result"[^>]*aria-live="polite"/);
   assert.match(client, /\/api\/v1\/ops\/reports\/\$\{encodeURIComponent\([^)]*\)\}/);
   assert.match(client, /\/publish`/);

@@ -71,6 +71,11 @@ export interface OpsReportDetail extends OpsReportRecord {
   publication: {
     published: boolean;
     updateId: string | null;
+    status: "draft" | "scheduled" | "published" | "withdrawn" | null;
+    scheduledFor: string | null;
+    title: string | null;
+    body: string | null;
+    mediaIds: string[];
   };
   caseNote: {
     published: boolean;
@@ -268,7 +273,7 @@ export function reportPublicationConfirmationAfterInput(
   confirmed: boolean,
   controlName: string
 ): boolean {
-  return ["title", "body", "publishMedia"].includes(controlName) ? false : confirmed;
+  return ["title", "body", "publishMedia", "scheduledFor"].includes(controlName) ? false : confirmed;
 }
 
 let reportReviewTrigger: HTMLButtonElement | null = null;
@@ -492,6 +497,22 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
   const publicationUpdateId = publicationValue?.updateId === null
     ? null
     : asString(publicationValue?.updateId).trim() || null;
+  const rawPublicationStatus = asString(publicationValue?.status).trim();
+  const publicationStatus = rawPublicationStatus
+    ? (["draft", "scheduled", "published", "withdrawn"].includes(rawPublicationStatus)
+      ? rawPublicationStatus as "draft" | "scheduled" | "published" | "withdrawn"
+      : null)
+    : published
+      ? "published"
+      : null;
+  const publicationScheduledFor = publicationValue?.scheduledFor === null || !publicationValue
+    ? null
+    : asString(publicationValue.scheduledFor).trim() || null;
+  const publicationTitle = publicationStatus ? asString(publicationValue?.title).trim() || null : null;
+  const publicationBody = publicationStatus ? asString(publicationValue?.body).trim() || null : null;
+  const publicationMediaIds = asArray(publicationValue?.mediaIds)
+    .map((mediaId) => asString(mediaId).trim())
+    .filter(Boolean);
   const caseNoteValue = isRecord(value.caseNote) ? value.caseNote : null;
   const caseNotePublished = caseNoteValue ? asBoolean(caseNoteValue.published) : false;
   const caseNoteId = caseNoteValue?.noteId === null || !caseNoteValue
@@ -506,7 +527,9 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     : null;
   if (
     publicationEligible === null || !publicationEligibilityReason || published === null || caseNotePublished === null ||
-    (published ? !publicationUpdateId : publicationUpdateId !== null) ||
+    (publicationStatus === null ? publicationUpdateId !== null : !publicationUpdateId) ||
+    (publicationStatus === "scheduled" ? !publicationScheduledFor : publicationScheduledFor !== null) ||
+    (published && publicationStatus !== "published" && publicationStatus !== "scheduled") ||
     (caseNotePublished ? !caseNoteId || caseNoteStatus !== "published" : caseNoteId !== null) ||
     (publicationEligible && (!publicAttribution || publicationEligibilityReason !== "eligible"))
   ) return null;
@@ -536,7 +559,15 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     publicAttribution,
     publicationEligible,
     publicationEligibilityReason,
-    publication: { published, updateId: publicationUpdateId },
+    publication: {
+      published,
+      updateId: publicationUpdateId,
+      status: publicationStatus,
+      scheduledFor: publicationScheduledFor,
+      title: publicationTitle,
+      body: publicationBody,
+      mediaIds: publicationMediaIds,
+    },
     caseNote: { published: caseNotePublished, noteId: caseNoteId, status: caseNoteStatus },
     locationDescription: asString(value.locationDescription).trim(),
     latitude: coordinatesValid ? latitudeValue : null,
@@ -978,7 +1009,13 @@ export function renderReportPrivateDetail(detail: OpsReportDetail): string {
     <div><dt>Updated</dt><dd>${escapeOpsHtml(detail.updatedAt ? formatOpsTime(detail.updatedAt) : "Not supplied")}</dd></div>
     <div><dt>Current state</dt><dd>${escapeOpsHtml(detail.status)}</dd></div>
     <div><dt>Public Case Note</dt><dd>${escapeOpsHtml(detail.caseNote.published ? "Published" : "Not published")}</dd></div>
-    <div><dt>Public Updates post</dt><dd>${escapeOpsHtml(detail.publication.published ? "Published" : "Not published")}</dd></div>
+    <div><dt>Official Update</dt><dd>${escapeOpsHtml(
+      detail.publication.status === "scheduled" && detail.publication.scheduledFor
+        ? `${detail.publication.published ? "Live" : "Scheduled"} for ${formatOpsTime(detail.publication.scheduledFor)}`
+        : detail.publication.status
+          ? detail.publication.status[0]!.toUpperCase() + detail.publication.status.slice(1)
+          : "No draft"
+    )}</dd></div>
     <div><dt>Reporter name</dt><dd>${escapeOpsHtml(detail.name)}</dd></div>
     <div><dt>Email</dt><dd class="ops-mono">${escapeOpsHtml(detail.email)}</dd></div>
     <div><dt>Phone</dt><dd class="ops-mono">${escapeOpsHtml(detail.phone ?? "Not supplied")}</dd></div>
@@ -996,8 +1033,9 @@ export function reportReviewControls(detail: OpsReportDetail): {
   guidance: string;
 } {
   const published = detail.publication.published;
+  const hasActiveUpdate = detail.publication.status !== null && detail.publication.status !== "withdrawn";
   return {
-    showUnpublish: published,
+    showUnpublish: hasActiveUpdate,
     terminalTransitionsBlocked: published,
     guidance: published
       ? "Unpublish first before rejecting or resolving this private report."
@@ -1664,11 +1702,18 @@ async function hydrateReportEvidence(
   updateReportPublicationPreview();
 }
 
-function reportDraft(): { title: string; body: string; confirmed: boolean; mediaIds: string[] } {
+function reportDraft(): {
+  title: string;
+  body: string;
+  scheduledFor: string;
+  confirmed: boolean;
+  mediaIds: string[];
+} {
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
   return {
     title: dialog?.querySelector<HTMLInputElement>('[data-report-publication-form] [name="title"]')?.value ?? "",
     body: dialog?.querySelector<HTMLTextAreaElement>('[data-report-publication-form] [name="body"]')?.value ?? "",
+    scheduledFor: dialog?.querySelector<HTMLInputElement>('[data-report-publication-form] [name="scheduledFor"]')?.value ?? "",
     confirmed: dialog?.querySelector<HTMLInputElement>('[data-report-publication-form] [name="confirmPublication"]')?.checked ?? false,
     mediaIds: reportSelectedMediaIds(),
   };
@@ -1695,13 +1740,14 @@ function renderReportDialog(
 
   const title = form.elements.namedItem("title");
   const body = form.elements.namedItem("body");
+  const scheduledFor = form.elements.namedItem("scheduledFor");
   const confirmation = form.elements.namedItem("confirmPublication");
   if (title instanceof HTMLInputElement) {
-    title.value = draft?.title ?? "";
+    title.value = draft?.title ?? detail.publication.title ?? "";
     title.disabled = !detail.publicationEligible;
   }
   if (body instanceof HTMLTextAreaElement) {
-    body.value = draft?.body ?? "";
+    body.value = draft?.body ?? detail.publication.body ?? "";
     body.disabled = !detail.publicationEligible;
   }
   if (confirmation instanceof HTMLInputElement) {
@@ -1709,7 +1755,7 @@ function renderReportDialog(
     confirmation.disabled = !detail.publicationEligible;
   }
   for (const checkbox of evidenceOutput.querySelectorAll<HTMLInputElement>('input[name="publishMedia"]')) {
-    checkbox.checked = draft?.mediaIds.includes(checkbox.value) ?? false;
+    checkbox.checked = draft?.mediaIds.includes(checkbox.value) ?? detail.publication.mediaIds.includes(checkbox.value);
   }
 
   const controls = reportReviewControls(detail);
@@ -1717,6 +1763,8 @@ function renderReportDialog(
   const begin = dialog.querySelector<HTMLButtonElement>("[data-report-begin-review]");
   const status = dialog.querySelector<HTMLSelectElement>("[data-report-next-status]");
   const saveStatus = dialog.querySelector<HTMLButtonElement>("[data-report-save-status]");
+  const saveDraft = dialog.querySelector<HTMLButtonElement>("[data-report-save-draft]");
+  const schedule = dialog.querySelector<HTMLButtonElement>("[data-report-schedule]");
   const publish = dialog.querySelector<HTMLButtonElement>("[data-report-publish]");
   const unpublish = dialog.querySelector<HTMLButtonElement>("[data-report-unpublish]");
   const publishCaseNote = dialog.querySelector<HTMLButtonElement>("[data-report-publish-case-note]");
@@ -1729,6 +1777,14 @@ function renderReportDialog(
   if (begin) {
     begin.hidden = detail.status !== "received";
     begin.disabled = !transitions.includes("reviewing");
+  }
+  if (scheduledFor instanceof HTMLInputElement) {
+    scheduledFor.value = draft?.scheduledFor ?? (
+      detail.publication.scheduledFor
+        ? new Date(detail.publication.scheduledFor).toISOString().slice(0, 16)
+        : ""
+    );
+    scheduledFor.disabled = !detail.publicationEligible;
   }
   if (status) {
     status.replaceChildren(...selectableTransitions.map((nextState) => {
@@ -1749,9 +1805,11 @@ function renderReportDialog(
       (controls.terminalTransitionsBlocked && ["rejected", "resolved"].includes(status?.value ?? ""));
   }
   if (publish) {
-    publish.disabled = !detail.publicationEligible;
-    publish.textContent = detail.publication.published ? "Update Official Update" : "Publish Official Update";
+    publish.disabled = !detail.publicationEligible || detail.status !== "verified";
+    publish.textContent = detail.publication.published ? "Update live Official Update" : "Publish Official Update now";
   }
+  if (saveDraft) saveDraft.disabled = !detail.publicationEligible;
+  if (schedule) schedule.disabled = !detail.publicationEligible || detail.status !== "verified";
   if (unpublish) unpublish.hidden = !controls.showUnpublish;
   const destinations = reportDestinationControls(detail);
   if (publishCaseNote) {
@@ -2449,7 +2507,7 @@ function setupWorkspace(): void {
         setReportPublicationResult("");
       }
     }
-    if (["title", "body", "publishMedia"].includes(target.name)) {
+    if (["title", "body", "publishMedia", "scheduledFor"].includes(target.name)) {
       const confirmation = reportDialog.querySelector<HTMLInputElement>(
         '[data-report-publication-form] [name="confirmPublication"]'
       );
@@ -2558,8 +2616,15 @@ function setupWorkspace(): void {
     }
   });
 
-  reportDialog?.querySelector<HTMLFormElement>("[data-report-publication-form]")?.addEventListener("submit", async (event) => {
+  reportDialog?.querySelector<HTMLFormElement>("[data-report-publication-form]")?.addEventListener("submit", (event) => {
     event.preventDefault();
+  });
+
+  const mutateOfficialUpdate = async (
+    action: "save_draft" | "schedule" | "publish_now",
+    button: HTMLButtonElement
+  ): Promise<void> => {
+    if (!reportDialog) return;
     const intent = reportReviewGuard.capture();
     const signal = reportReviewAbortController?.signal;
     if (
@@ -2567,61 +2632,101 @@ function setupWorkspace(): void {
       !reportReviewIsLive(intent, reportDialog)
     ) return;
     const reportId = intent.reportId;
-    const form = event.currentTarget;
-    if (!(form instanceof HTMLFormElement)) return;
+    const form = reportDialog.querySelector<HTMLFormElement>("[data-report-publication-form]");
+    if (!form) return;
     const data = new FormData(form);
     const title = asString(data.get("title")).trim();
     const body = asString(data.get("body")).trim();
     const confirmed = data.get("confirmPublication") === "on";
     const mediaIds = reportSelectedMediaIds();
+    const scheduledLocal = asString(data.get("scheduledFor")).trim();
+    const scheduledFor = action === "schedule" && scheduledLocal
+      ? new Date(scheduledLocal).toISOString()
+      : null;
     if (!activeReportDetail.publicationEligible) {
       setReportPublicationResult("Publication is blocked until the report has current legal and profile eligibility.", "error");
       return;
     }
-    if (!title || !body || !confirmed || mediaIds.length > 3) {
-      setReportPublicationResult("Enter the public headline and edited story, select up to three images, and confirm the exact preview.", "error");
+    if (!title || !body || mediaIds.length > 3 ||
+        (action !== "save_draft" && (!confirmed || activeReportDetail.status !== "verified")) ||
+        (action === "schedule" && (!scheduledFor || new Date(scheduledFor).getTime() <= Date.now()))) {
+      setReportPublicationResult(
+        action === "save_draft"
+          ? "Enter the public headline and edited story, then select up to three images."
+          : action === "schedule"
+            ? "Verify the report, enter a future schedule time, complete the preview, and confirm it."
+            : "Verify the report, complete the public preview, select up to three images, and confirm it.",
+        "error"
+      );
       const firstInvalid = form.querySelector<HTMLElement>(":invalid");
       firstInvalid?.focus();
       return;
     }
+    const confirmationMessage = action === "save_draft"
+      ? "Save these private Official Update draft changes? Nothing will be public."
+      : action === "schedule"
+        ? `Schedule this exact Official Update for ${formatOpsTime(scheduledFor!)}?`
+        : "Publish this exact Official Update now?";
     if (
-      !window.confirm("Publish this exact public report preview to the Updates page?") ||
+      !window.confirm(confirmationMessage) ||
       !reportReviewIsLive(intent, reportDialog) || signal.aborted
     ) return;
-    const publishButton = form.querySelector<HTMLButtonElement>("[data-report-publish]");
-    if (publishButton) publishButton.disabled = true;
-    setReportPublicationResult("Publishing the approved report and refreshing the case queues...");
+    button.disabled = true;
+    setReportPublicationResult(
+      action === "save_draft"
+        ? "Saving the private Update draft..."
+        : action === "schedule"
+          ? "Scheduling the verified Official Update..."
+          : "Publishing the verified Official Update..."
+    );
     try {
       const { response, payload } = await opsRequest(`/api/v1/ops/reports/${encodeURIComponent(reportId)}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, body, mediaIds }),
+        body: JSON.stringify({ title, body, mediaIds, action, ...(scheduledFor ? { scheduledFor } : {}) }),
         signal,
       });
       if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
-      if (!response.ok) throw new Error(apiError(payload, "The report was not published."));
-      const published = envelopeData(payload);
-      if (!isRecord(published) || !asString(published.id) || !asString(published.publisherName)) {
-        throw new Error("The publication response was incomplete.");
+      if (!response.ok) throw new Error(apiError(payload, "The Official Update change was not saved."));
+      const update = envelopeData(payload);
+      if (!isRecord(update) || !asString(update.id) || !asString(update.publisherName)) {
+        throw new Error("The Official Update response was incomplete.");
       }
       await Promise.all([refreshActiveReportDetail(intent), loadReports(), loadDashboard(), loadAudit()]);
       if (!reportReviewIsLive(intent, reportDialog) || signal.aborted) return;
       const result = reportPublicationResult();
       if (result) {
-        const link = document.createElement("a");
-        link.href = `/updates#${encodeURIComponent(asString(published.id))}`;
-        link.textContent = "Open the public Updates post";
-        result.replaceChildren(document.createTextNode("Report published and audited. "), link);
+        if (action === "publish_now") {
+          const link = document.createElement("a");
+          link.href = `/updates#${encodeURIComponent(asString(update.id))}`;
+          link.textContent = "Open the public Official Update";
+          result.replaceChildren(document.createTextNode("Official Update published and audited. "), link);
+        } else {
+          result.textContent = action === "schedule"
+            ? `Official Update scheduled for ${formatOpsTime(scheduledFor!)} and audited.`
+            : "Private Official Update draft saved and audited.";
+        }
         result.dataset.kind = "normal";
       }
     } catch (error) {
       if (!reportReviewIsLive(intent, reportDialog) || signal.aborted || isAbortError(error)) return;
-      setReportPublicationResult(error instanceof Error ? error.message : "The report was not published.", "error");
+      setReportPublicationResult(error instanceof Error ? error.message : "The Official Update change was not saved.", "error");
     } finally {
-      if (publishButton && reportReviewIsLive(intent, reportDialog) && activeReportDetail?.id === reportId) {
-        publishButton.disabled = !activeReportDetail.publicationEligible;
+      if (reportReviewIsLive(intent, reportDialog) && activeReportDetail?.id === reportId) {
+        button.disabled = !activeReportDetail.publicationEligible ||
+          (action !== "save_draft" && activeReportDetail.status !== "verified");
       }
     }
+  };
+
+  reportDialog?.querySelector("[data-report-save-draft]")?.addEventListener("click", (event) => {
+    if (event.currentTarget instanceof HTMLButtonElement) void mutateOfficialUpdate("save_draft", event.currentTarget);
+  });
+  reportDialog?.querySelector("[data-report-schedule]")?.addEventListener("click", (event) => {
+    if (event.currentTarget instanceof HTMLButtonElement) void mutateOfficialUpdate("schedule", event.currentTarget);
+  });
+  reportDialog?.querySelector("[data-report-publish-now]")?.addEventListener("click", (event) => {
+    if (event.currentTarget instanceof HTMLButtonElement) void mutateOfficialUpdate("publish_now", event.currentTarget);
   });
 
   reportDialog?.querySelector("[data-report-unpublish]")?.addEventListener("click", async (event) => {

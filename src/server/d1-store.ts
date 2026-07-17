@@ -274,15 +274,18 @@ export class D1DataStore implements DataStore {
     const cursor = options.cursor ?? now();
     const result = await this.db
       .prepare(
-        `SELECT u.id, u.title, u.body, u.publisher_name, u.published_at, u.source_report_id,
+        `SELECT u.id, u.title, u.body, u.publisher_name,
+                CASE WHEN u.status = 'scheduled' THEN u.scheduled_for ELSE u.published_at END AS published_at,
+                u.source_report_id,
                 u.public_attribution, u.waypoint_id, u.latitude, u.longitude,
                 w.route_order AS waypoint_route_order, w.name AS waypoint_name
          FROM official_updates u
          LEFT JOIN waypoints w ON w.id = u.waypoint_id AND w.is_published = 1
-         WHERE u.status = 'published' AND u.published_at <= ?
-         ORDER BY u.published_at DESC, u.id DESC LIMIT ?`
+         WHERE (u.status = 'published' AND u.published_at <= ?)
+            OR (u.status = 'scheduled' AND u.scheduled_for <= ?)
+         ORDER BY published_at DESC, u.id DESC LIMIT ?`
       )
-      .bind(cursor, limit + 1)
+      .bind(cursor, cursor, limit + 1)
       .all<Row>();
     const rows = result.results;
     const hasMore = rows.length > limit;
@@ -536,8 +539,10 @@ export class D1DataStore implements DataStore {
                WHERE selected.media_id = m.id
                  AND published_update.source_report_id = m.owner_id
                  AND m.owner_kind = 'report'
-                 AND published_update.status = 'published'
-                 AND published_update.published_at <= ?
+                 AND (
+                   (published_update.status = 'published' AND published_update.published_at <= ?)
+                   OR (published_update.status = 'scheduled' AND published_update.scheduled_for <= ?)
+                 )
              )
              OR EXISTS (
                SELECT 1
@@ -552,7 +557,7 @@ export class D1DataStore implements DataStore {
            )
          LIMIT 1`
       )
-      .bind(mediaId, now(), now())
+      .bind(mediaId, now(), now(), now())
       .first<Row>();
     if (!row || !value(row.derivative_object_key).startsWith("derivatives/")) return null;
     return {
@@ -2735,9 +2740,11 @@ export class D1DataStore implements DataStore {
       const activePublication = await this.db
         .prepare(
           `SELECT 1 AS active FROM official_updates
-           WHERE source_report_id = ? AND status = 'published' LIMIT 1`
+           WHERE source_report_id = ?
+             AND (status = 'published' OR (status = 'scheduled' AND scheduled_for <= ?))
+           LIMIT 1`
         )
-        .bind(reportId)
+        .bind(reportId, now())
         .first<Row>();
       if (activePublication) {
         throw new ApiError(
@@ -2771,9 +2778,10 @@ export class D1DataStore implements DataStore {
            WHERE id = ? AND status = ?
              AND NOT EXISTS (
                SELECT 1 FROM official_updates
-               WHERE source_report_id = ? AND status = 'published'
+               WHERE source_report_id = ?
+                 AND (status = 'published' OR (status = 'scheduled' AND scheduled_for <= ?))
              )`
-        ).bind(requestedStatus, operationToken, timestamp, reportId, currentStatus, reportId)
+        ).bind(requestedStatus, operationToken, timestamp, reportId, currentStatus, reportId, timestamp)
       : this.db.prepare(
           `UPDATE private_reports SET status = ?, assigned_to = ?, updated_at = ?
            WHERE id = ? AND status = ?`
@@ -3032,7 +3040,13 @@ export class D1DataStore implements DataStore {
 
   async publishReport(
     reportId: string,
-    input: { title: string; body: string; mediaIds: string[] },
+    input: {
+      title: string;
+      body: string;
+      mediaIds: string[];
+      action?: "save_draft" | "schedule" | "publish_now";
+      scheduledFor?: string | null;
+    },
     actorSubject: string
   ): Promise<Record<string, unknown> | null> {
     const report = await this.db
@@ -3067,6 +3081,12 @@ export class D1DataStore implements DataStore {
         "This report cannot be published from its current state."
       );
     }
+    const action = input.action ?? "publish_now";
+    const desiredStatus = action === "save_draft" ? "draft" : action === "schedule" ? "scheduled" : "published";
+    const desiredScheduledFor = action === "schedule" ? input.scheduledFor ?? null : null;
+    if (action === "schedule" && (!desiredScheduledFor || Number.isNaN(new Date(desiredScheduledFor).getTime()))) {
+      throw new ApiError(422, "validation_failed", "A valid schedule time is required.");
+    }
     const hunterSubject = nullable(report.hunter_subject);
     const reportTimeEventId = nullable(report.report_time_event_id);
     const reportTimeBasis = nullable(report.report_time_basis);
@@ -3090,6 +3110,14 @@ export class D1DataStore implements DataStore {
           "Current privacy and participation acceptance is required before publication."
         );
       }
+    }
+
+    if ((action === "schedule" || action === "publish_now") && report.status !== "verified") {
+      throw new ApiError(
+        409,
+        "report_update_requires_verification",
+        "Verify this private report before scheduling or publishing an Official Update."
+      );
     }
 
     const uniqueMediaIds = [...new Set(input.mediaIds)];
@@ -3144,7 +3172,11 @@ export class D1DataStore implements DataStore {
     }
 
     const existing = await this.db
-      .prepare("SELECT id FROM official_updates WHERE source_report_id = ? LIMIT 1")
+      .prepare(
+        `SELECT id, title, body, publisher_name, published_at, scheduled_for, status,
+                public_attribution, waypoint_id, latitude, longitude
+         FROM official_updates WHERE source_report_id = ? LIMIT 1`
+      )
       .bind(reportId)
       .first<Row>();
     const deterministicUpdateId = `approved-report:${(
@@ -3152,6 +3184,7 @@ export class D1DataStore implements DataStore {
     ).slice(0, 32)}`;
     const updateId = existing ? value(existing.id) : deterministicUpdateId;
     const timestamp = now();
+    const effectivePublishedAt = desiredStatus === "scheduled" ? desiredScheduledFor! : timestamp;
     const rawLatitude = numberOrNull(report.latitude);
     const rawLongitude = numberOrNull(report.longitude);
     const validCoordinates =
@@ -3173,8 +3206,47 @@ export class D1DataStore implements DataStore {
           ? value(report.public_handle)
           : "Community Hunter";
     const waypointId = numberOrNull(report.waypoint_id);
+    if (
+      existing &&
+      existing.status === desiredStatus &&
+      existing.title === input.title &&
+      existing.body === input.body &&
+      existing.publisher_name === publisherName &&
+      nullable(existing.public_attribution) === publisherName &&
+      numberOrNull(existing.waypoint_id) === waypointId &&
+      numberOrNull(existing.latitude) === latitude &&
+      numberOrNull(existing.longitude) === longitude &&
+      nullable(existing.scheduled_for) === desiredScheduledFor
+    ) {
+      const selected = await this.db
+        .prepare("SELECT media_id FROM official_update_media WHERE update_id = ? ORDER BY media_id")
+        .bind(updateId)
+        .all<Row>();
+      const existingMediaIds = selected.results.map((row) => value(row.media_id)).sort();
+      const requestedMediaIds = [...uniqueMediaIds].sort();
+      if (existingMediaIds.length === requestedMediaIds.length &&
+          existingMediaIds.every((mediaId, index) => mediaId === requestedMediaIds[index])) {
+        return {
+          id: updateId,
+          kind: "approved_report",
+          title: input.title,
+          body: input.body,
+          publisherName,
+          waypointId,
+          latitude,
+          longitude,
+          media: uniqueMediaIds.map((mediaId) => publicMediaById.get(mediaId)!),
+          publishedAt: value(existing.published_at),
+          scheduledFor: desiredScheduledFor,
+          status: desiredStatus
+        };
+      }
+    }
     const publication = {
       kind: "approved_report",
+      action,
+      status: desiredStatus,
+      scheduledFor: desiredScheduledFor,
       title: input.title,
       body: input.body,
       publisherName,
@@ -3185,6 +3257,19 @@ export class D1DataStore implements DataStore {
     };
     const publicationHash = await sha256Hex(canonicalJson(publication));
     const operationToken = `publication:${id()}`;
+    const reportStatusGuard = desiredStatus === "draft"
+      ? "AND r.status NOT IN ('rejected', 'resolved')"
+      : "AND r.status = 'verified'";
+    const reportEventType = desiredStatus === "draft"
+      ? "update_draft_saved"
+      : desiredStatus === "scheduled"
+        ? "update_scheduled"
+        : "published";
+    const auditAction = desiredStatus === "draft"
+      ? "report.update.draft_saved"
+      : desiredStatus === "scheduled"
+        ? "report.update.scheduled"
+        : "report.published";
     const signedGuard = hunterSubject
       ? `AND r.hunter_subject = ?
          AND profile.full_name = ?
@@ -3264,11 +3349,12 @@ export class D1DataStore implements DataStore {
         .prepare(
           `INSERT INTO official_updates
            (id, title, body, publisher_subject, publisher_name, published_at, scheduled_for,
-            status, source_report_id, public_attribution, waypoint_id, latitude, longitude)
-           SELECT ?, ?, ?, ?, ?, ?, ?, 'published', r.id, ?, ?, ?, ?
+            status, source_report_id, public_attribution, waypoint_id, latitude, longitude,
+            created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, r.id, ?, ?, ?, ?, ?, ?
            FROM private_reports r
            LEFT JOIN hunter_profiles profile ON profile.subject = r.hunter_subject
-           WHERE r.id = ? AND r.status NOT IN ('rejected', 'resolved')
+           WHERE r.id = ? ${reportStatusGuard}
              AND r.created_at = ? AND r.waypoint_id IS ?
              AND r.latitude IS ? AND r.longitude IS ?
              ${signedGuard}
@@ -3279,12 +3365,13 @@ export class D1DataStore implements DataStore {
              publisher_name = excluded.publisher_name,
              published_at = excluded.published_at,
              scheduled_for = excluded.scheduled_for,
-             status = 'published',
+             status = excluded.status,
              source_report_id = excluded.source_report_id,
              public_attribution = excluded.public_attribution,
              waypoint_id = excluded.waypoint_id,
              latitude = excluded.latitude,
-             longitude = excluded.longitude`
+             longitude = excluded.longitude,
+             updated_at = excluded.updated_at`
         )
         .bind(
           updateId,
@@ -3292,12 +3379,15 @@ export class D1DataStore implements DataStore {
           input.body,
           actorSubject,
           publisherName,
-          timestamp,
+          effectivePublishedAt,
           operationToken,
+          desiredStatus,
           publisherName,
           waypointId,
           latitude,
           longitude,
+          timestamp,
+          timestamp,
           reportId,
           value(report.created_at),
           waypointId,
@@ -3332,28 +3422,19 @@ export class D1DataStore implements DataStore {
     statements.push(
       this.db
         .prepare(
-          `UPDATE private_reports SET status = 'verified', updated_at = ?
-           WHERE id = ? AND EXISTS (
-             SELECT 1 FROM official_updates marker
-             WHERE marker.id = ? AND marker.scheduled_for = ?
-           )`
-        )
-        .bind(timestamp, reportId, updateId, operationToken),
-      this.db
-        .prepare(
           `INSERT INTO report_events (id, report_id, event_type, actor_subject, occurred_at)
-           SELECT ?, ?, 'published', ?, ?
+           SELECT ?, ?, ?, ?, ?
            WHERE EXISTS (
              SELECT 1 FROM official_updates marker
              WHERE marker.id = ? AND marker.scheduled_for = ?
            )`
         )
-        .bind(id(), reportId, actorSubject, timestamp, updateId, operationToken),
+        .bind(id(), reportId, reportEventType, actorSubject, timestamp, updateId, operationToken),
       this.db
         .prepare(
           `INSERT INTO audit_events
            (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
-           SELECT ?, ?, 'report.published', 'report', ?, ?, ?
+           SELECT ?, ?, ?, 'report', ?, ?, ?
            WHERE EXISTS (
              SELECT 1 FROM official_updates marker
              WHERE marker.id = ? AND marker.scheduled_for = ?
@@ -3362,6 +3443,7 @@ export class D1DataStore implements DataStore {
         .bind(
           id(),
           actorSubject,
+          auditAction,
           reportId,
           json({
             publication,
@@ -3374,10 +3456,11 @@ export class D1DataStore implements DataStore {
         ),
       this.db
         .prepare(
-          `UPDATE official_updates SET scheduled_for = NULL
+          `UPDATE official_updates
+           SET scheduled_for = ?, status = ?, updated_at = ?
            WHERE id = ? AND scheduled_for = ?`
         )
-        .bind(updateId, operationToken)
+        .bind(desiredScheduledFor, desiredStatus, timestamp, updateId, operationToken)
     );
     const results = await this.db.batch(statements);
     const firstResult = results[0];
@@ -3392,6 +3475,13 @@ export class D1DataStore implements DataStore {
           409,
           "report_publication_state_invalid",
           "This report cannot be published from its current state."
+        );
+      }
+      if (desiredStatus !== "draft" && latestReport?.status !== "verified") {
+        throw new ApiError(
+          409,
+          "report_update_requires_verification",
+          "Verify this private report before scheduling or publishing an Official Update."
         );
       }
       if (hunterSubject) {
@@ -3413,7 +3503,9 @@ export class D1DataStore implements DataStore {
       latitude,
       longitude,
       media: uniqueMediaIds.map((mediaId) => publicMediaById.get(mediaId)!),
-      publishedAt: timestamp
+      publishedAt: effectivePublishedAt,
+      scheduledFor: desiredScheduledFor,
+      status: desiredStatus
     };
   }
 
@@ -3972,7 +4064,15 @@ export class D1DataStore implements DataStore {
     publicAttribution: string | null;
     publicationEligible: boolean;
     publicationEligibilityReason: string;
-    publication: { published: boolean; updateId: string | null };
+    publication: {
+      published: boolean;
+      updateId: string | null;
+      status: string | null;
+      scheduledFor: string | null;
+      title: string | null;
+      body: string | null;
+      mediaIds: string[];
+    };
   }> {
     const row = await this.db
       .prepare(
@@ -3982,7 +4082,10 @@ export class D1DataStore implements DataStore {
                 report_time.action AS report_time_action,
                 report_account.participation_basis AS report_time_basis,
                 publication_update.id AS publication_id,
-                publication_update.status AS publication_status
+                publication_update.status AS publication_status,
+                publication_update.scheduled_for AS publication_scheduled_for,
+                publication_update.title AS publication_title,
+                publication_update.body AS publication_body
          FROM private_reports r
          LEFT JOIN hunter_profiles profile ON profile.subject = r.hunter_subject
          LEFT JOIN legal_acceptance_events report_time ON report_time.id = (
@@ -4006,13 +4109,36 @@ export class D1DataStore implements DataStore {
         publicAttribution: null,
         publicationEligible: false,
         publicationEligibilityReason: "report_not_found",
-        publication: { published: false, updateId: null }
+        publication: {
+          published: false,
+          updateId: null,
+          status: null,
+          scheduledFor: null,
+          title: null,
+          body: null,
+          mediaIds: []
+        }
       };
     }
 
+    const publicationStatus = nullable(row.publication_status);
+    const scheduledFor = nullable(row.publication_scheduled_for);
+    const publicationId = nullable(row.publication_id);
+    const selectedMedia = publicationId
+      ? await this.db
+          .prepare("SELECT media_id FROM official_update_media WHERE update_id = ? ORDER BY position, media_id")
+          .bind(publicationId)
+          .all<Row>()
+      : { results: [] as Row[] };
     const publication = {
-      published: row.publication_status === "published",
-      updateId: row.publication_status === "published" ? nullable(row.publication_id) : null
+      published: publicationStatus === "published" ||
+        (publicationStatus === "scheduled" && scheduledFor !== null && scheduledFor <= now()),
+      updateId: publicationId,
+      status: publicationStatus,
+      scheduledFor,
+      title: publicationStatus ? nullable(row.publication_title) : null,
+      body: publicationStatus ? nullable(row.publication_body) : null,
+      mediaIds: selectedMedia.results.map((selected) => value(selected.media_id))
     };
     const preview = (fields: {
       publicAttribution: string | null;

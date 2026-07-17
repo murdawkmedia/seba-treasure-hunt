@@ -362,7 +362,13 @@ export interface DataStore {
   withdrawReportCaseNote(reportId: string, actorSubject: string): Promise<Record<string, unknown> | null>;
   publishReport(
     reportId: string,
-    input: { title: string; body: string; mediaIds: string[] },
+    input: {
+      title: string;
+      body: string;
+      mediaIds: string[];
+      action?: "save_draft" | "schedule" | "publish_now";
+      scheduledFor?: string | null;
+    },
     actorSubject: string
   ): Promise<Record<string, unknown> | null>;
   unpublishReport(reportId: string, actorSubject: string): Promise<Record<string, unknown> | null>;

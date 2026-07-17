@@ -297,6 +297,55 @@ test("report review controls follow the actual linked public post, not private v
   });
 });
 
+test("Official Update draft state stays distinct from a live scheduled publication", () => {
+  const base = {
+    id: "report-update-state",
+    type: "tip",
+    hunterSubject: null,
+    name: "Private Reporter",
+    email: "private@example.ca",
+    phone: null,
+    publicAttribution: "Community Hunter",
+    publicationEligible: true,
+    publicationEligibilityReason: "eligible",
+    caseNote: { published: false, noteId: null, status: null },
+    waypointId: null,
+    waypointRouteOrder: null,
+    waypointName: null,
+    locationDescription: "Public trail",
+    latitude: null,
+    longitude: null,
+    details: "Private report details",
+    status: "verified",
+    createdAt: "2026-07-17T18:00:00.000Z",
+    updatedAt: "2026-07-17T18:05:00.000Z",
+    media: [],
+  };
+  const draft = normalizeOpsReportDetail({ data: {
+    ...base,
+    publication: {
+      published: false,
+      updateId: "approved-report:draft",
+      status: "draft",
+      scheduledFor: null,
+    },
+  } });
+  assert.equal(draft?.publication.status, "draft");
+  assert.equal(reportReviewControls(draft!).terminalTransitionsBlocked, false);
+
+  const dueSchedule = normalizeOpsReportDetail({ data: {
+    ...base,
+    publication: {
+      published: true,
+      updateId: "approved-report:scheduled",
+      status: "scheduled",
+      scheduledFor: "2026-07-17T19:00:00.000Z",
+    },
+  } });
+  assert.equal(dueSchedule?.publication.status, "scheduled");
+  assert.equal(reportReviewControls(dueSchedule!).terminalTransitionsBlocked, true);
+});
+
 test("a deferred report open or mutation cannot replace or act on a newer dialog", async () => {
   const guard = createReportReviewGuard();
   let resolveA!: (value: string) => void;
@@ -334,6 +383,7 @@ test("editing text or media invalidates an exact publication-preview confirmatio
   assert.equal(reportPublicationConfirmationAfterInput(true, "title"), false);
   assert.equal(reportPublicationConfirmationAfterInput(true, "body"), false);
   assert.equal(reportPublicationConfirmationAfterInput(true, "publishMedia"), false);
+  assert.equal(reportPublicationConfirmationAfterInput(true, "scheduledFor"), false);
   assert.equal(reportPublicationConfirmationAfterInput(true, "confirmPublication"), true);
 });
 
