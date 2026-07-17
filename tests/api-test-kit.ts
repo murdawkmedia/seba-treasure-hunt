@@ -273,9 +273,12 @@ export class FakeStore {
   }
 
   async listBoard(waypointId: number | null) {
+    const publicItems = this.board.filter(
+      (item) => item.noteKind !== "operator_reviewed" || item.status === "published"
+    );
     const items = waypointId
-      ? this.board.filter((item) => item.waypointId === waypointId)
-      : this.board;
+      ? publicItems.filter((item) => item.waypointId === waypointId)
+      : publicItems;
     return {
       items: items.map((item) => ({
         ...item,
@@ -776,7 +779,12 @@ export class FakeStore {
   }
 
   async createFlag(input: Record<string, unknown>) {
-    const value = { ...input, id: `flag-${this.flags.length + 1}`, status: "received" };
+    const value = {
+      ...input,
+      id: `flag-${this.flags.length + 1}`,
+      status: "received",
+      createdAt: "2026-07-17T18:00:00.000Z"
+    };
     this.flags.push(value);
     return value;
   }
@@ -824,12 +832,9 @@ export class FakeStore {
     const flags = this.flags
       .filter((flag) => flag.status === "received" || flag.status === "reviewing")
       .flatMap((flag) => {
-        const reply = flag.targetKind === "reply"
-          ? this.replies.find((candidate) => candidate.id === flag.targetId)
-          : null;
-        const note = this.approvedModerationNote(reply?.noteId ?? reply?.fieldNoteId ?? flag.targetId);
-        const target = reply ?? note;
-        if (!target || !note || !this.publicAuthorProfile(target)) return [];
+        const context = this.moderationFlagContext(flag);
+        if (!context) return [];
+        const { target, note } = context;
         return [{
           id: flag.id,
           targetKind: flag.targetKind,
@@ -899,19 +904,44 @@ export class FakeStore {
       this.audits.push({ action: "content_flag.dismissed", actorSubject, targetId: id, reason });
       return { id, status: "dismissed", resolvedAt: timestamp };
     }
-    if (flag.targetKind !== "reply") return null;
-    const reply = this.replies.find((candidate) => candidate.id === flag.targetId);
-    if (!reply || reply.status !== "published") return null;
-    reply.status = "hidden";
-    reply.moderatedAt = timestamp;
-    reply.moderatedBy = actorSubject;
-    for (const candidate of this.flags) {
-      if (candidate.targetKind === "reply" && candidate.targetId === reply.id &&
-        (candidate.status === "received" || candidate.status === "reviewing")) {
-        candidate.status = "resolved";
-        candidate.resolvedAt = timestamp;
-        candidate.resolvedBy = actorSubject;
+    if (flag.targetKind === "reply") {
+      const reply = this.replies.find((candidate) => candidate.id === flag.targetId);
+      if (!reply || reply.status !== "published") return null;
+      reply.status = "hidden";
+      reply.moderatedAt = timestamp;
+      reply.moderatedBy = actorSubject;
+      for (const candidate of this.flags) {
+        if (candidate.targetKind === "reply" && candidate.targetId === reply.id &&
+          (candidate.status === "received" || candidate.status === "reviewing")) {
+          candidate.status = "resolved";
+          candidate.resolvedAt = timestamp;
+          candidate.resolvedBy = actorSubject;
+        }
       }
+    } else if (flag.targetKind === "note") {
+      const note = this.board.find(
+        (candidate) => candidate.id === flag.targetId &&
+          candidate.noteKind === "operator_reviewed" && candidate.status === "published"
+      );
+      if (!note) return null;
+      note.status = "hidden";
+      for (const candidate of this.flags) {
+        if (candidate.targetKind === "note" && candidate.targetId === note.id &&
+          (candidate.status === "received" || candidate.status === "reviewing")) {
+          candidate.status = "resolved";
+          candidate.resolvedAt = timestamp;
+          candidate.resolvedBy = actorSubject;
+        }
+      }
+      for (const [reportId, candidate] of this.reportCaseNotes) {
+        if (candidate.id !== note.id) continue;
+        for (const mediaId of this.reportCaseNoteMedia.get(reportId) ?? []) {
+          this.publicMedia.delete(mediaId);
+        }
+        break;
+      }
+    } else {
+      return null;
     }
     this.audits.push({ action: "content_flag.target_hidden", actorSubject, targetId: id, reason });
     return { id, status: "resolved", resolvedAt: timestamp };
@@ -932,7 +962,11 @@ export class FakeStore {
       status: await this.getStatus(),
       counts: {
         pendingNotes: this.notes.filter((note) => note.status === "pending").length,
-        receivedReports: this.reports.filter((report) => report.status === "received").length
+        receivedReports: this.reports.filter((report) => report.status === "received").length,
+        receivedFlags: this.flags.filter(
+          (flag) => (flag.status === "received" || flag.status === "reviewing") &&
+            this.moderationFlagContext(flag) !== null
+        ).length
       },
       killSwitches: { boardVisible: true, notesEnabled: true, repliesEnabled: true }
     };
@@ -1464,6 +1498,27 @@ export class FakeStore {
 
   private approvedModerationNote(id: unknown) {
     return this.board.find((candidate) => candidate.id === id && candidate.status === "approved") ?? null;
+  }
+
+  private moderationFlagContext(flag: Record<string, unknown>) {
+    if (flag.targetKind !== "note" && flag.targetKind !== "reply") return null;
+    const reply = flag.targetKind === "reply"
+      ? this.replies.find((candidate) => candidate.id === flag.targetId)
+      : null;
+    if (flag.targetKind === "reply" && !reply) return null;
+    if (reply && reply.status !== "published" && reply.status !== "hidden") return null;
+    const noteId = reply?.noteId ?? reply?.fieldNoteId ?? flag.targetId;
+    const note = this.board.find((candidate) => {
+      if (candidate.id !== noteId) return false;
+      return candidate.noteKind === "operator_reviewed"
+        ? candidate.status === "published" || candidate.status === "hidden"
+        : candidate.status === "approved";
+    });
+    const target = reply ?? note;
+    if (!target || !note) return null;
+    if (reply && !this.publicAuthorProfile(reply)) return null;
+    if (!reply && note.noteKind !== "operator_reviewed" && !this.publicAuthorProfile(note)) return null;
+    return { target, note };
   }
 
   private publicAuthorProfile(record: Record<string, unknown>) {

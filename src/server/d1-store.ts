@@ -2625,18 +2625,35 @@ export class D1DataStore implements DataStore {
       : [now()];
     const result = await this.db
       .prepare(
-        `SELECT f.id, f.target_kind, f.target_id, f.reason, f.status, f.created_at,
-                CASE WHEN f.target_kind = 'reply' THEN r.body ELSE n.body END AS target_excerpt,
-                CASE WHEN f.target_kind = 'reply' THEN r.status ELSE n.status END AS target_status,
-                p.participation_basis, p.public_display_name, p.public_handle,
-                n.body AS note_body, w.route_order AS waypoint_route_order, w.name AS waypoint_name
+        `WITH moderation_targets AS (
+           SELECT 'reply' AS target_kind, r.id AS target_id, r.body AS target_excerpt,
+                  r.status AS target_status, p.participation_basis, p.public_display_name,
+                  p.public_handle, NULL AS operator_attribution, n.body AS note_body,
+                  n.waypoint_id
+           FROM field_note_replies r
+           JOIN field_notes n ON n.id = r.field_note_id AND n.status = 'approved'
+           JOIN hunter_profiles p ON p.subject = r.author_subject
+           WHERE r.status IN ('published', 'hidden')
+           UNION ALL
+           SELECT 'note', n.id, n.body, n.status, p.participation_basis,
+                  p.public_display_name, p.public_handle, NULL, n.body, n.waypoint_id
+           FROM field_notes n
+           JOIN hunter_profiles p ON p.subject = n.author_subject
+           WHERE n.status = 'approved'
+           UNION ALL
+           SELECT 'note', reviewed.id, reviewed.body, reviewed.status, NULL, NULL, NULL,
+                  reviewed.public_attribution, reviewed.body, reviewed.waypoint_id
+           FROM operator_reviewed_case_notes reviewed
+           WHERE reviewed.status IN ('published', 'hidden')
+         )
+         SELECT f.id, f.target_kind, f.target_id, f.reason, f.status, f.created_at,
+                target.target_excerpt, target.target_status, target.participation_basis,
+                target.public_display_name, target.public_handle, target.operator_attribution,
+                target.note_body, w.route_order AS waypoint_route_order, w.name AS waypoint_name
          FROM content_flags f
-         LEFT JOIN field_note_replies r ON f.target_kind = 'reply' AND r.id = f.target_id
-           AND r.status IN ('published', 'hidden')
-         JOIN field_notes n ON n.id = CASE WHEN f.target_kind = 'reply' THEN r.field_note_id ELSE f.target_id END
-           AND n.status = 'approved'
-         JOIN hunter_profiles p ON p.subject = CASE WHEN f.target_kind = 'reply' THEN r.author_subject ELSE n.author_subject END
-         LEFT JOIN waypoints w ON w.id = n.waypoint_id AND w.is_published = 1
+         JOIN moderation_targets target
+           ON target.target_kind = f.target_kind AND target.target_id = f.target_id
+         LEFT JOIN waypoints w ON w.id = target.waypoint_id AND w.is_published = 1
          WHERE f.status IN ('received', 'reviewing') ${pagination}
          ORDER BY f.created_at DESC, f.id DESC LIMIT ?`
       )
@@ -2649,7 +2666,7 @@ export class D1DataStore implements DataStore {
         targetKind: row.target_kind,
         targetId: row.target_id,
         targetExcerpt: row.target_excerpt,
-        authorHandle: publicHunterIdentity({
+        authorHandle: nullable(row.operator_attribution) ?? publicHunterIdentity({
           participationBasis: nullable(row.participation_basis),
           publicDisplayName: nullable(row.public_display_name),
           publicHandle: nullable(row.public_handle)
@@ -2734,7 +2751,44 @@ export class D1DataStore implements DataStore {
         )
         .bind(timestamp, actorSubject, flagId, timestamp, actorSubject)
     ]);
-    if (Number(replyResult?.meta.changes) !== 1) return null;
+    if (Number(replyResult?.meta.changes) === 1) {
+      return { id: flagId, status: "resolved", resolvedAt: timestamp };
+    }
+
+    const [noteResult] = await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE operator_reviewed_case_notes
+           SET status = 'hidden'
+           WHERE id = (
+             SELECT target_id FROM content_flags
+             WHERE id = ? AND target_kind = 'note' AND status IN ('received', 'reviewing')
+           ) AND status = 'published'`
+        )
+        .bind(flagId),
+      this.auditStatement(
+        actorSubject,
+        "content_flag.target_hidden",
+        "content_flag",
+        flagId,
+        { reason },
+        timestamp
+      ),
+      this.db
+        .prepare(
+          `UPDATE content_flags
+           SET status = 'resolved', resolved_at = ?, resolved_by = ?
+           WHERE target_kind = 'note'
+             AND target_id = (
+               SELECT target_id FROM content_flags
+               WHERE id = ? AND target_kind = 'note' AND status IN ('received', 'reviewing')
+             )
+             AND status IN ('received', 'reviewing')
+             AND changes() = 1`
+        )
+        .bind(timestamp, actorSubject, flagId)
+    ]);
+    if (Number(noteResult?.meta.changes) !== 1) return null;
     return { id: flagId, status: "resolved", resolvedAt: timestamp };
   }
 
@@ -2872,10 +2926,27 @@ export class D1DataStore implements DataStore {
               FROM content_flags flag
               LEFT JOIN field_note_replies reply ON flag.target_kind = 'reply' AND reply.id = flag.target_id
                 AND reply.status IN ('published', 'hidden')
-              JOIN field_notes note ON note.id = CASE WHEN flag.target_kind = 'reply' THEN reply.field_note_id ELSE flag.target_id END
-                AND note.status = 'approved'
-              JOIN hunter_profiles author ON author.subject = CASE WHEN flag.target_kind = 'reply' THEN reply.author_subject ELSE note.author_subject END
-              WHERE flag.status IN ('received', 'reviewing')) AS received_flags`
+              WHERE flag.status IN ('received', 'reviewing') AND (
+                (flag.target_kind = 'reply' AND EXISTS (
+                  SELECT 1
+                  FROM field_notes note
+                  JOIN hunter_profiles author ON author.subject = reply.author_subject
+                  WHERE note.id = reply.field_note_id AND note.status = 'approved'
+                ))
+                OR (flag.target_kind = 'note' AND (
+                  EXISTS (
+                    SELECT 1
+                    FROM field_notes note
+                    JOIN hunter_profiles author ON author.subject = note.author_subject
+                    WHERE note.id = flag.target_id AND note.status = 'approved'
+                  )
+                  OR EXISTS (
+                    SELECT 1 FROM operator_reviewed_case_notes reviewed
+                    WHERE reviewed.id = flag.target_id
+                      AND reviewed.status IN ('published', 'hidden')
+                  )
+                ))
+              )) AS received_flags`
         )
         .first<Row>(),
       this.db.prepare("SELECT key, enabled FROM feature_flags").all<Row>()

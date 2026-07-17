@@ -1041,7 +1041,7 @@ export function normalizeContentFlags(payload: unknown): OpsContentFlag[] {
     const waypointRouteOrder = publicRouteOrder(value.waypointRouteOrder);
     const waypointName = value.waypointName === null ? null : asString(value.waypointName).trim();
     const validTarget = targetKind === "note"
-      ? targetStatus === "approved"
+      ? ["approved", "published", "hidden"].includes(targetStatus)
       : targetKind === "reply" && ["published", "hidden"].includes(targetStatus);
     if (!id || !targetId || !targetExcerpt || !authorHandle || !noteExcerpt || !reason || !createdAt ||
         !validTarget ||
@@ -1447,8 +1447,10 @@ export function renderContentFlagRows(records: readonly OpsContentFlag[]): strin
     const target = record.targetKind === "note"
       ? `<strong>Case Note</strong><br />${escapeOpsHtml(record.targetExcerpt)}`
       : `<strong>Reply</strong><br />${escapeOpsHtml(record.targetExcerpt)}`;
-    const hideReply = record.targetKind === "reply"
-      ? `<button class="ops-button ops-moderation-action ops-moderation-action--hide" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-target-kind="reply" data-flag-moderation-action="hide_target">Hide reply</button>`
+    const canHideTarget = record.targetKind === "reply" ||
+      (record.targetKind === "note" && record.targetStatus === "published");
+    const hideTarget = canHideTarget
+      ? `<button class="ops-button ops-moderation-action ops-moderation-action--hide" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-target-kind="${escapeOpsHtml(record.targetKind)}" data-flag-moderation-action="hide_target">Hide ${record.targetKind === "note" ? "Case Note" : "reply"}</button>`
       : "";
     return `<tr>
     <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
@@ -1457,7 +1459,7 @@ export function renderContentFlagRows(records: readonly OpsContentFlag[]): strin
     <td>${target}</td>
     <td>${escapeOpsHtml(record.reason)}</td>
     <td><span class="ops-chip">${escapeOpsHtml(record.status)}</span></td>
-    <td><div class="ops-row-actions">${hideReply}<button class="ops-button ops-button--quiet ops-moderation-action" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-target-kind="${escapeOpsHtml(record.targetKind)}" data-flag-moderation-action="dismiss">Dismiss</button></div></td>
+    <td><div class="ops-row-actions">${hideTarget}<button class="ops-button ops-button--quiet ops-moderation-action" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-target-kind="${escapeOpsHtml(record.targetKind)}" data-flag-moderation-action="dismiss">Dismiss</button></div></td>
   </tr>`;
   }).join("");
 }
@@ -2536,8 +2538,7 @@ async function moderateFlagFromButton(button: HTMLButtonElement): Promise<void> 
   const action = button.dataset.flagModerationAction;
   const targetKind = button.dataset.flagTargetKind;
   if (!id || (targetKind !== "note" && targetKind !== "reply") ||
-      (action !== "dismiss" && action !== "hide_target") ||
-      (action === "hide_target" && targetKind !== "reply")) return;
+      (action !== "dismiss" && action !== "hide_target")) return;
   const reason = privateModerationReason();
   if (reason === null) return;
   if (!reason) {
@@ -2545,7 +2546,11 @@ async function moderateFlagFromButton(button: HTMLButtonElement): Promise<void> 
     button.focus();
     return;
   }
-  if (action === "hide_target" && !window.confirm("Hide this public reply? This action is reversible and audited.")) return;
+  if (action === "hide_target") {
+    const targetLabel = targetKind === "note" ? "Case Note" : "reply";
+    const restoreNotice = targetKind === "reply" ? " This action is reversible." : "";
+    if (!window.confirm(`Hide this public ${targetLabel}?${restoreNotice} The action is audited.`)) return;
+  }
   const originalLabel = button.textContent;
   button.disabled = true;
   try {
@@ -2555,7 +2560,8 @@ async function moderateFlagFromButton(button: HTMLButtonElement): Promise<void> 
       body: JSON.stringify({ action, reason }),
     });
     if (!response.ok) throw new Error(apiError(payload, "The flag was not changed."));
-    await refreshModerationAfterMutation("#moderation-flags-state", action === "hide_target" ? "Reply hidden and its received flags resolved. The action is audited." : "Flag dismissed. The action is audited.");
+    const hiddenTarget = targetKind === "note" ? "Case Note" : "Reply";
+    await refreshModerationAfterMutation("#moderation-flags-state", action === "hide_target" ? `${hiddenTarget} hidden and its received flags resolved. The action is audited.` : "Flag dismissed. The action is audited.");
   } catch (error) {
     setModerationState("#moderation-flags-state", error instanceof Error ? error.message : "The flag was not changed.", "error");
     button.disabled = false;

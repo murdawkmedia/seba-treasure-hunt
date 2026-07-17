@@ -2519,6 +2519,175 @@ test("real D1 publishes and withdraws a report-sourced Case Note independently f
   assert.equal(await store.getPublicMedia("media-case-note"), null);
 });
 
+test("real D1 projects accepted flags for operator-reviewed Case Notes into Staff moderation", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const timestamp = "2026-07-15T18:00:00.000Z";
+  await db.batch([
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, adult_attested_at, created_at, updated_at)
+       VALUES ('private-flag-reporter', 'flag-reporter@example.test', 'Private Flag Reporter',
+               'Hunter F1A6', ?, ?, ?)`
+    ).bind(timestamp, timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO waypoints
+       (id, route_order, name, description, is_published, updated_at, updated_by)
+       VALUES (1, 1, 'Creek Property', 'Public stop.', 1, ?, 'staff-seed')`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO private_reports
+       (id, report_type, reporter_name, reporter_email, waypoint_id, location_description,
+        details, public_attribution, attribution_kind, status, created_at, updated_at)
+       VALUES ('report-flagged-case-note', 'tip', 'Private Reporter', 'private@example.test', 1,
+               'Private location', 'Private report details', 'Community Hunter',
+               'community', 'reviewing', ?, ?)`
+    ).bind(timestamp, timestamp)
+  ]);
+  const store = new D1DataStore(db);
+  const note = await store.publishReportToCaseNotes(
+    "report-flagged-case-note",
+    { body: "An operator-reviewed observation that can be reported.", mediaIds: [] },
+    "staff-publisher"
+  );
+  assert.equal(note?.noteKind, "operator_reviewed");
+
+  const flag = await store.createFlag({
+    reporterSubject: "private-flag-reporter",
+    targetKind: "note",
+    targetId: note?.id,
+    reason: "privacy",
+    details: "Private flag details must not appear in the queue."
+  });
+
+  assert.equal(
+    ((await store.getOpsDashboard()).counts as { receivedFlags: number }).receivedFlags,
+    1
+  );
+  assert.deepEqual((await store.listContentFlags()).items, [{
+    id: flag.id,
+    targetKind: "note",
+    targetId: note?.id,
+    targetExcerpt: "An operator-reviewed observation that can be reported.",
+    authorHandle: "Community Hunter",
+    targetStatus: "published",
+    noteExcerpt: "An operator-reviewed observation that can be reported.",
+    waypointRouteOrder: 1,
+    waypointName: "Creek Property",
+    reason: "privacy",
+    status: "received",
+    createdAt: flag.createdAt
+  }]);
+  assert.doesNotMatch(
+    JSON.stringify(await store.listContentFlags()),
+    /private-flag-reporter|Private flag details|private@example\.test|Private report details/
+  );
+
+  const dismissed = await store.moderateContentFlag(
+    String(flag.id),
+    "dismiss",
+    "The public note is within the guidelines.",
+    "staff-moderator"
+  );
+  assert.equal(dismissed?.status, "dismissed");
+  assert.equal((await store.listBoard(null, { limit: 10 })).items[0]?.id, note?.id);
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT action, actor_subject, target_kind, target_id, metadata_json
+       FROM audit_events WHERE target_id = ?`
+    ).bind(flag.id).first(),
+    {
+      action: "content_flag.dismissed",
+      actor_subject: "staff-moderator",
+      target_kind: "content_flag",
+      target_id: flag.id,
+      metadata_json: JSON.stringify({ reason: "The public note is within the guidelines." })
+    }
+  );
+
+  const hideFlag = await store.createFlag({
+    reporterSubject: "private-flag-reporter",
+    targetKind: "note",
+    targetId: note?.id,
+    reason: "privacy"
+  });
+  const siblingFlag = await store.createFlag({
+    reporterSubject: "private-flag-reporter",
+    targetKind: "note",
+    targetId: note?.id,
+    reason: "unsafe"
+  });
+  assert.equal(
+    ((await store.getOpsDashboard()).counts as { receivedFlags: number }).receivedFlags,
+    2
+  );
+  const equalTime = "2026-07-17T18:30:00.000Z";
+  await db.prepare(
+    `UPDATE content_flags SET created_at = ? WHERE id IN (?, ?)`
+  ).bind(equalTime, hideFlag.id, siblingFlag.id).run();
+  const expectedPageOrder = [String(hideFlag.id), String(siblingFlag.id)].sort().reverse();
+  const firstPage = await store.listContentFlags({ limit: 1 });
+  assert.equal(firstPage.items[0]?.id, expectedPageOrder[0]);
+  assert.match(String(firstPage.nextCursor), /^m1\./);
+  const secondPage = await store.listContentFlags({ limit: 1, cursor: firstPage.nextCursor });
+  assert.equal(secondPage.items[0]?.id, expectedPageOrder[1]);
+  assert.equal(secondPage.nextCursor, null);
+
+  const hidden = await store.moderateContentFlag(
+    String(hideFlag.id),
+    "hide_target",
+    "The reviewed note discloses private information.",
+    "staff-moderator"
+  );
+  assert.equal(hidden?.status, "resolved");
+  assert.equal((await store.listBoard(null, { limit: 10 })).items.length, 0);
+  assert.equal((await store.listContentFlags()).items.length, 0);
+  assert.equal(
+    ((await store.getOpsDashboard()).counts as { receivedFlags: number }).receivedFlags,
+    0
+  );
+  const resolvedFlags = await db.prepare(
+    `SELECT id, status, resolved_by FROM content_flags
+     WHERE id IN (?, ?) ORDER BY id`
+  ).bind(hideFlag.id, siblingFlag.id).all();
+  assert.deepEqual(
+    resolvedFlags.results,
+    [hideFlag.id, siblingFlag.id].sort().map((id) => ({
+      id,
+      status: "resolved",
+      resolved_by: "staff-moderator"
+    }))
+  );
+  assert.equal(
+    await store.moderateContentFlag(
+      String(hideFlag.id),
+      "hide_target",
+      "Repeated action.",
+      "staff-moderator"
+    ),
+    null
+  );
+  assert.equal(
+    (await db.prepare(
+      `SELECT COUNT(*) AS count FROM audit_events
+       WHERE action = 'content_flag.target_hidden' AND target_id = ?`
+    ).bind(hideFlag.id).first<{ count: number }>())?.count,
+    1
+  );
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT actor_subject, action, target_kind, target_id, metadata_json
+       FROM audit_events WHERE action = 'content_flag.target_hidden' AND target_id = ?`
+    ).bind(hideFlag.id).first(),
+    {
+      actor_subject: "staff-moderator",
+      action: "content_flag.target_hidden",
+      target_kind: "content_flag",
+      target_id: hideFlag.id,
+      metadata_json: JSON.stringify({ reason: "The reviewed note discloses private information." })
+    }
+  );
+});
+
 test("real D1 publishes only report-linked safe updates and selected derivatives", async (t) => {
   const migrationFiles = [
     "0001_hunter_platform.sql",

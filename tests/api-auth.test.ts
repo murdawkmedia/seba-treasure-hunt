@@ -448,6 +448,117 @@ test("lets active staff dismiss a flag without hiding its public reply", async (
   assert.equal((await responseJson(board)).data[0].replies[0].id, "reply-flag-dismiss-1");
 });
 
+test("moderates publicly accepted flags for operator-reviewed Case Notes end to end", async () => {
+  const { app, store } = makeApp();
+  store.reports.push({
+    id: "report-operator-note-flag",
+    status: "reviewing",
+    publicAttribution: "Community Hunter",
+    waypointId: 1,
+    reporterEmail: "private@example.test",
+    details: "Private report details.",
+    media: []
+  });
+  const note = await store.publishReportToCaseNotes(
+    "report-operator-note-flag",
+    { body: "A reviewed public observation.", mediaIds: [] },
+    "staff-publisher"
+  );
+  const noteId = String(note?.id);
+
+  const createFlag = (reason: string, details?: string) => app.request(
+    `https://www.timlostsomething.com/api/v1/board/note/${encodeURIComponent(noteId)}/flags`,
+    {
+      method: "POST",
+      ...json({ reason, details, turnstileToken: "human-token" }, hunterHeaders)
+    }
+  );
+  const firstFlag = await createFlag("privacy", "Private reporter context.");
+  assert.equal(firstFlag.status, 201);
+  const firstFlagBody = await responseJson(firstFlag);
+
+  const dashboard = await app.request("https://www.timlostsomething.com/api/v1/ops/dashboard", {
+    headers: { authorization: "Bearer staff-token" }
+  });
+  assert.equal((await responseJson(dashboard)).data.counts.receivedFlags, 1);
+  const queue = await app.request("https://www.timlostsomething.com/api/v1/ops/moderation/flags", {
+    headers: { authorization: "Bearer staff-token" }
+  });
+  const queueBody = await responseJson(queue);
+  assert.deepEqual(queueBody.data.map((item: { id: string }) => item.id), [firstFlagBody.data.id]);
+  assert.equal(queueBody.data[0].targetKind, "note");
+  assert.equal(queueBody.data[0].targetId, noteId);
+  assert.equal(queueBody.data[0].authorHandle, "Community Hunter");
+  assert.equal(queueBody.data[0].targetExcerpt, "A reviewed public observation.");
+  assert.doesNotMatch(
+    JSON.stringify(queueBody),
+    /private@example\.test|Private report details|Private reporter context|hunter-1/
+  );
+
+  const staffHeaders = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com"
+  };
+  const dismissed = await app.request(
+    `https://www.timlostsomething.com/api/v1/ops/moderation/flags/${encodeURIComponent(firstFlagBody.data.id)}`,
+    {
+      method: "POST",
+      ...json({ action: "dismiss", reason: "The note is within the guidelines." }, staffHeaders)
+    }
+  );
+  assert.equal(dismissed.status, 200);
+  assert.equal((await responseJson(dismissed)).data.status, "dismissed");
+  assert.equal((await responseJson(await app.request("https://www.timlostsomething.com/api/v1/board"))).data[0].id, noteId);
+
+  const hideFlag = await responseJson(await createFlag("privacy"));
+  const siblingFlag = await responseJson(await createFlag("unsafe"));
+  const expectedPageOrder = [hideFlag.data.id, siblingFlag.data.id].sort().reverse();
+  const firstPage = await responseJson(await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/moderation/flags?limit=1",
+    { headers: { authorization: "Bearer staff-token" } }
+  ));
+  assert.equal(firstPage.data[0].id, expectedPageOrder[0]);
+  assert.equal(typeof firstPage.page.nextCursor, "string");
+  const secondPage = await responseJson(await app.request(
+    `https://www.timlostsomething.com/api/v1/ops/moderation/flags?limit=1&cursor=${encodeURIComponent(firstPage.page.nextCursor)}`,
+    { headers: { authorization: "Bearer staff-token" } }
+  ));
+  assert.equal(secondPage.data[0].id, expectedPageOrder[1]);
+  assert.equal(secondPage.page.nextCursor, null);
+  const hidden = await app.request(
+    `https://www.timlostsomething.com/api/v1/ops/moderation/flags/${encodeURIComponent(hideFlag.data.id)}`,
+    {
+      method: "POST",
+      ...json({ action: "hide_target", reason: "The note discloses private information." }, staffHeaders)
+    }
+  );
+  assert.equal(hidden.status, 200);
+  assert.equal((await responseJson(hidden)).data.status, "resolved");
+  assert.deepEqual(
+    [hideFlag.data.id, siblingFlag.data.id].map(
+      (id) => store.flags.find((flag) => flag.id === id)?.status
+    ),
+    ["resolved", "resolved"]
+  );
+  assert.deepEqual(
+    (await responseJson(await app.request("https://www.timlostsomething.com/api/v1/board"))).data,
+    []
+  );
+  assert.equal(
+    store.audits.filter((audit) => audit.action === "content_flag.target_hidden" && audit.targetId === hideFlag.data.id).length,
+    1
+  );
+  const unsupportedRestore = await app.request(
+    `https://www.timlostsomething.com/api/v1/ops/moderation/flags/${encodeURIComponent(hideFlag.data.id)}`,
+    {
+      method: "POST",
+      ...json({ action: "restore_target", reason: "No restore action is part of this API." }, staffHeaders)
+    }
+  );
+  assert.equal(unsupportedRestore.status, 422);
+  assert.equal((await responseJson(unsupportedRestore)).error.code, "validation_failed");
+});
+
 test("validates staff reply and flag moderation mutations and resolves target hides", async () => {
   const { app, store } = makeApp();
   store.board.push({

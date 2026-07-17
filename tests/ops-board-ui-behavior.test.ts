@@ -125,13 +125,27 @@ test("reply and flag moderation discard malformed rows and render distinct escap
       status: "reviewing",
       createdAt: "2026-07-17T18:02:00.000Z",
     },
+    {
+      id: "flag-operator-note",
+      targetKind: "note",
+      targetId: "operator-note-1",
+      targetExcerpt: "Operator-reviewed public observation",
+      authorHandle: "Community Hunter",
+      targetStatus: "published",
+      noteExcerpt: "Operator-reviewed public observation",
+      waypointRouteOrder: 4,
+      waypointName: "The Bridge",
+      reason: "privacy",
+      status: "received",
+      createdAt: "2026-07-17T18:03:00.000Z",
+    },
     { id: "flag-negative-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: -1, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
     { id: "flag-fractional-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: 4.5, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
     { id: "flag-route-14", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: 14, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
   ] });
 
   assert.equal(replies.length, 1);
-  assert.equal(flags.length, 2);
+  assert.equal(flags.length, 3);
 
   const replyHtml = renderModerationReplyRows(replies);
   assert.match(replyHtml, /&lt;script&gt;/);
@@ -162,6 +176,13 @@ test("reply and flag moderation discard malformed rows and render distinct escap
   assert.match(noteFlagHtml, /data-flag-target-kind="note"/);
   assert.match(noteFlagHtml, /data-flag-moderation-action="dismiss"/);
   assert.doesNotMatch(noteFlagHtml, /data-flag-moderation-action="hide_target"|>Hide reply<\/button>/);
+
+  const operatorNoteFlag = flags.find((flag) => flag.targetId === "operator-note-1");
+  assert.ok(operatorNoteFlag);
+  const operatorNoteFlagHtml = renderContentFlagRows([operatorNoteFlag]);
+  assert.match(operatorNoteFlagHtml, /data-flag-target-kind="note"/);
+  assert.match(operatorNoteFlagHtml, /data-flag-moderation-action="hide_target"/);
+  assert.match(operatorNoteFlagHtml, />Hide Case Note<\/button>/);
 });
 
 test("older moderation pages append only distinct records", () => {
