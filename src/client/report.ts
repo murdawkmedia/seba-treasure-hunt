@@ -12,6 +12,7 @@ import {
   reportImageMegabytes,
 } from "../shared/report-image-limits";
 import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
+import { createTurnstileLifecycle, type TurnstileResetReason } from "./turnstile-lifecycle";
 
 export type ReportType = "find" | "tip" | "safety";
 
@@ -135,6 +136,7 @@ interface TurnstileApi {
     options: {
       sitekey: string;
       action: string;
+      appearance: "interaction-only";
       callback: (token: string) => void;
       "expired-callback": () => void;
       "error-callback": () => void;
@@ -292,6 +294,7 @@ export function reportErrorSelector(key: string): string {
 
 let turnstileToken = "";
 let turnstileWidgetId: string | undefined;
+const reportTurnstileLifecycle = createTurnstileLifecycle();
 let pendingIdempotencyKey: string | undefined;
 let preparedReportPhotos: PreparedReportImage[] = [];
 let photoPreparationController: AbortController | null = null;
@@ -331,16 +334,19 @@ async function initializeTurnstile(): Promise<void> {
   try {
     const [config, turnstile] = await Promise.all([loadPublicConfig(), waitForTurnstile()]);
     if (!config.turnstileSiteKey || !turnstile) throw new Error("human check unavailable");
+    if (!reportTurnstileLifecycle.beginRender("report")) return;
     state.textContent = "Human check ready.";
     turnstileWidgetId = turnstile.render(shell, {
       sitekey: config.turnstileSiteKey,
       action: "report",
+      appearance: "interaction-only",
       callback: (token) => {
         turnstileToken = token;
         clearFieldError("turnstileToken");
       },
       "expired-callback": () => {
         turnstileToken = "";
+        reportTurnstileLifecycle.recordReset("report", "expired");
       },
       "error-callback": () => {
         turnstileToken = "";
@@ -662,10 +668,13 @@ function errorCopy(responseStatus: number, code: string | undefined): string {
   return "The report could not be confirmed as received. Keep your evidence and try again; do not assume it was captured.";
 }
 
-function resetReportTurnstile(): void {
+function resetReportTurnstile(reason: TurnstileResetReason = "submission_failed"): void {
   turnstileToken = "";
   try {
-    if (window.turnstile && turnstileWidgetId) window.turnstile.reset(turnstileWidgetId);
+    if (window.turnstile && turnstileWidgetId) {
+      window.turnstile.reset(turnstileWidgetId);
+      reportTurnstileLifecycle.recordReset("report", reason);
+    }
   } catch {
     stateError("The human check could not reset. Reload the page before submitting another report.");
   }
@@ -778,7 +787,7 @@ function initializeReport(): void {
     const reference = receipt?.querySelector<HTMLElement>("[data-report-reference]");
     if (reference) reference.textContent = "";
     pendingIdempotencyKey = undefined;
-    resetReportTurnstile();
+    resetReportTurnstile("new_form");
     const locationReset = reportLocationResetModel();
     const locationButton = form.querySelector<HTMLButtonElement>("[data-report-use-location]");
     const locationState = form.querySelector<HTMLElement>("[data-report-location-state]");

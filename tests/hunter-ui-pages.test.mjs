@@ -223,6 +223,7 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   assert.match(html, /id="report-turnstile-label"/);
   assert.match(html, /<div\b(?=[^>]*data-turnstile)(?=[^>]*tabindex="-1")(?=[^>]*role="group")(?=[^>]*aria-labelledby="report-turnstile-label")(?=[^>]*aria-describedby="report-turnstile-hint report-turnstile-error")[^>]*>/);
   assert.match(client, /reportErrorSelector\(key\)/);
+  assert.match(client, /appearance:\s*"interaction-only"/);
   assert.match(client, /firstInvalid\?\.focus\(\)/);
   assert.match(client, /state\.textContent = "Human check ready\."/);
   assert.doesNotMatch(client, /state\.remove\(\)/);

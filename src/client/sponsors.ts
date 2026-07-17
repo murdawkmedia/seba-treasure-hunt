@@ -59,6 +59,7 @@ interface TurnstileApi {
     options: {
       sitekey: string;
       action: string;
+      appearance: "interaction-only";
       callback: (token: string) => void;
       "expired-callback": () => void;
       "error-callback": () => void;
@@ -389,6 +390,7 @@ async function initializeTurnstile(
     widget.id = turnstile.render(shell, {
       sitekey: config.turnstileSiteKey,
       action: "sponsor_inquiry",
+      appearance: "interaction-only",
       callback: (token) => {
         controller.humanVerified(token);
       },

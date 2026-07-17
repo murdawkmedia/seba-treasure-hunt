@@ -2,6 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { isAllowedTurnstileHost, TurnstileVerifier } from "../src/server/turnstile";
+import { createTurnstileLifecycle } from "../src/client/turnstile-lifecycle";
+
+test("client Turnstile lifecycle renders once and records reasoned resets without tokens", () => {
+  const lifecycle = createTurnstileLifecycle();
+  assert.equal(lifecycle.beginRender("report"), true);
+  assert.equal(lifecycle.beginRender("report"), false);
+  lifecycle.recordReset("report", "submission_failed");
+  lifecycle.recordReset("report", "new_form");
+  assert.deepEqual(lifecycle.events(), [
+    { kind: "rendered", form: "report" },
+    { kind: "reset", form: "report", reason: "submission_failed" },
+    { kind: "reset", form: "report", reason: "new_form" }
+  ]);
+  assert.deepEqual(lifecycle.counts(), { rendered: 1, reset: 2 });
+  assert.doesNotMatch(JSON.stringify(lifecycle.events()), /token/i);
+});
 
 test("Turnstile hostname checks match Cloudflare's exact-or-subdomain rule", () => {
   const allowed = ["www.timlostsomething.com", "seba-treasure-hunt.pages.dev"];

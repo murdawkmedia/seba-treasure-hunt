@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const boardModule = await import("../src/client/board") as Record<string, unknown>;
@@ -26,6 +27,13 @@ test("Case Note receipts stay pending and retry headers preserve one idempotency
     idempotencyKey: "note-key",
     turnstileToken: ""
   });
+});
+
+test("Case Note Turnstile uses interaction-only rendering and a one-render lifecycle guard", () => {
+  const source = readFileSync(new URL("../src/client/board.ts", import.meta.url), "utf8");
+  assert.match(source, /appearance:\s*"interaction-only"/);
+  assert.match(source, /beginRender\("field_note"\)/);
+  assert.match(source, /recordReset\("field_note"/);
 });
 
 type DashboardOutcome = "ok" | "unauthorized" | "network-error";

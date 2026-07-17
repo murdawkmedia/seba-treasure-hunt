@@ -1,4 +1,5 @@
 import { routeOrder, stopLabel, waypointId as parseWaypointId } from "../shared/waypoints";
+import { createTurnstileLifecycle } from "./turnstile-lifecycle";
 
 export interface CommunityMedia {
   id: string;
@@ -38,6 +39,7 @@ interface TurnstileApi {
   render(container: HTMLElement, options: {
     sitekey: string;
     action: "field_note" | "reply" | "flag";
+    appearance: "interaction-only";
     callback: (token: string) => void;
     "expired-callback": () => void;
     "error-callback": () => void;
@@ -63,6 +65,7 @@ let flagTurnstileToken = "";
 let flagTurnstileWidget: string | undefined;
 const replyTurnstileTokens = new Map<string, string>();
 const replyTurnstileWidgets = new Map<string, string>();
+const boardTurnstileLifecycle = createTurnstileLifecycle();
 let pendingNoteIdempotencyKey: string | undefined;
 
 export function caseNoteReceipt(reference: string): string {
@@ -364,15 +367,20 @@ export async function initialiseBoard(): Promise<void> {
       disableNoteHumanCheck("Human check unavailable. Case Notes cannot be submitted until it is restored.");
       return;
     }
+    if (!boardTurnstileLifecycle.beginRender("field_note")) return;
     state?.remove();
     noteTurnstileWidget = turnstileApi.render(container, {
       sitekey: turnstileSiteKey,
       action: "field_note",
+      appearance: "interaction-only",
       callback: (token) => {
         noteTurnstileToken = token;
         if (submit) submit.disabled = false;
       },
-      "expired-callback": () => disableNoteHumanCheck("Human check expired. Complete it again before submitting."),
+      "expired-callback": () => {
+        boardTurnstileLifecycle.recordReset("field_note", "expired");
+        disableNoteHumanCheck("Human check expired. Complete it again before submitting.");
+      },
       "error-callback": () => disableNoteHumanCheck("Human check unavailable. Case Notes cannot be submitted until it is restored."),
     });
   };
@@ -394,6 +402,7 @@ export async function initialiseBoard(): Promise<void> {
       const widgetId = turnstileApi.render(container, {
         sitekey: turnstileSiteKey,
         action: "reply",
+        appearance: "interaction-only",
         callback: (token) => {
           replyTurnstileTokens.set(noteId, token);
           submit.disabled = false;
@@ -424,13 +433,16 @@ export async function initialiseBoard(): Promise<void> {
     }
     if (flagTurnstileWidget) {
       turnstileApi.reset(flagTurnstileWidget);
+      boardTurnstileLifecycle.recordReset("flag", "new_form");
       if (submit) submit.disabled = true;
       return;
     }
+    if (!boardTurnstileLifecycle.beginRender("flag")) return;
     state?.remove();
     flagTurnstileWidget = turnstileApi.render(container, {
       sitekey: turnstileSiteKey,
       action: "flag",
+      appearance: "interaction-only",
       callback: (token) => {
         flagTurnstileToken = token;
         if (submit) submit.disabled = false;
@@ -554,6 +566,7 @@ export async function initialiseBoard(): Promise<void> {
     const attemptIdempotencyKey = pendingNoteIdempotencyKey;
     if (submit) submit.disabled = true;
     if (result) result.textContent = "Sending your Case Note for review...";
+    let submitted = false;
     try {
       const headers = await authHeaders(buildCaseNoteRequestHeaders(attemptIdempotencyKey, humanToken));
       const { response, payload } = await requestJson("/api/v1/board/notes", { method: "POST", body: formData, headers });
@@ -571,6 +584,7 @@ export async function initialiseBoard(): Promise<void> {
         noteReceipt.focus();
       }
       if (result) result.textContent = caseNoteReceipt(reference);
+      submitted = true;
     } catch (error) {
       const failure = failCaseNoteAttempt(attemptIdempotencyKey);
       pendingNoteIdempotencyKey = failure.idempotencyKey;
@@ -579,7 +593,10 @@ export async function initialiseBoard(): Promise<void> {
     } finally {
       noteTurnstileToken = "";
       if (submit) submit.disabled = true;
-      if (turnstileApi && noteTurnstileWidget) turnstileApi.reset(noteTurnstileWidget);
+      if (turnstileApi && noteTurnstileWidget) {
+        turnstileApi.reset(noteTurnstileWidget);
+        boardTurnstileLifecycle.recordReset("field_note", submitted ? "submitted" : "submission_failed");
+      }
     }
   });
 
@@ -592,7 +609,10 @@ export async function initialiseBoard(): Promise<void> {
     if (fileList) fileList.innerHTML = "";
     pendingNoteIdempotencyKey = undefined;
     noteTurnstileToken = "";
-    if (turnstileApi && noteTurnstileWidget) turnstileApi.reset(noteTurnstileWidget);
+    if (turnstileApi && noteTurnstileWidget) {
+      turnstileApi.reset(noteTurnstileWidget);
+      boardTurnstileLifecycle.recordReset("field_note", "new_form");
+    }
     noteForm.querySelector<HTMLSelectElement>("[name=waypointId]")?.focus();
   });
 
