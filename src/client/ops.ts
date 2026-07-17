@@ -3,6 +3,7 @@ import type { SignInResource, SignUpResource } from "@clerk/shared/types";
 import { createSerializedSubmission } from "./identity-submission";
 import { isAllowedStaffEmail } from "../server/staff-domains";
 import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
+import { nextReportStates, type ReportReviewState } from "../shared/publication";
 
 type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
@@ -1079,6 +1080,22 @@ export function renderModerationRows(records: readonly OpsModerationRecord[]): s
   }).join("");
 }
 
+const reportStateLabel = (state: string): string => ({
+  received: "Received",
+  reviewing: "Reviewing",
+  contacted: "Contacted",
+  escalated: "Escalated",
+  verified: "Verified",
+  rejected: "Rejected",
+  resolved: "Resolved",
+})[state] ?? state;
+
+export function renderReportState(
+  detail: Pick<OpsReportDetail, "status" | "assignedTo">,
+): string {
+  return `<strong>Status: ${escapeOpsHtml(reportStateLabel(detail.status))}</strong><span>Assigned to: ${escapeOpsHtml(detail.assignedTo ?? "Unassigned")}</span>`;
+}
+
 export function renderAuditRows(records: readonly OpsAuditRecord[]): string {
   if (records.length === 0) return `<tr><td colspan="5"><span class="ops-table-empty">No audit events are available from the source.</span></td></tr>`;
   return records.map((record) => `<tr>
@@ -1665,24 +1682,40 @@ function renderReportDialog(
     checkbox.checked = draft?.mediaIds.includes(checkbox.value) ?? false;
   }
 
-  const terminal = detail.status === "rejected" || detail.status === "resolved";
   const controls = reportReviewControls(detail);
+  const stateSummary = dialog.querySelector<HTMLElement>("[data-report-state-summary]");
   const begin = dialog.querySelector<HTMLButtonElement>("[data-report-begin-review]");
   const status = dialog.querySelector<HTMLSelectElement>("[data-report-next-status]");
   const saveStatus = dialog.querySelector<HTMLButtonElement>("[data-report-save-status]");
   const publish = dialog.querySelector<HTMLButtonElement>("[data-report-publish]");
   const unpublish = dialog.querySelector<HTMLButtonElement>("[data-report-unpublish]");
-  if (begin) begin.disabled = terminal || detail.status === "reviewing" || detail.status === "verified";
+  if (stateSummary) stateSummary.innerHTML = renderReportState(detail);
+  const transitions = nextReportStates(detail.status);
+  const selectableTransitions = detail.status === "received"
+    ? transitions.filter((state) => state !== "reviewing")
+    : transitions;
+  if (begin) {
+    begin.hidden = detail.status !== "received";
+    begin.disabled = !transitions.includes("reviewing");
+  }
   if (status) {
-    status.disabled = terminal;
-    for (const option of status.options) {
+    status.replaceChildren(...selectableTransitions.map((nextState) => {
+      const option = document.createElement("option");
+      option.value = nextState;
+      option.textContent = reportStateLabel(nextState);
+      return option;
+    }));
+    status.hidden = selectableTransitions.length === 0;
+    status.disabled = selectableTransitions.length === 0;
+    for (const option of [...status.options]) {
       option.disabled = controls.terminalTransitionsBlocked && ["rejected", "resolved"].includes(option.value);
     }
-    if (controls.terminalTransitionsBlocked && ["rejected", "resolved"].includes(status.value)) {
-      status.value = "contacted";
-    }
   }
-  if (saveStatus) saveStatus.disabled = terminal;
+  if (saveStatus) {
+    saveStatus.hidden = selectableTransitions.length === 0;
+    saveStatus.disabled = selectableTransitions.length === 0 ||
+      (controls.terminalTransitionsBlocked && ["rejected", "resolved"].includes(status?.value ?? ""));
+  }
   if (publish) {
     publish.disabled = !detail.publicationEligible;
     publish.textContent = detail.publication.published ? "Update publication" : "Approve & publish";
@@ -1755,7 +1788,7 @@ async function updateActiveReportStatus(status: string): Promise<void> {
   if (
     !intent || !signal || !activeReportDetail || activeReportDetail.id !== intent.reportId ||
     !reportReviewIsLive(intent, dialog) ||
-    !["reviewing", "contacted", "escalated", "rejected", "resolved"].includes(status)
+    !nextReportStates(activeReportDetail.status).includes(status as ReportReviewState)
   ) return;
   const reportId = intent.reportId;
   if (activeReportDetail.publication.published && ["rejected", "resolved"].includes(status)) {

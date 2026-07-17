@@ -1,6 +1,7 @@
 import { ApiError, ConflictError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument } from "./legal-documents";
 import { isAllowedStaffEmail, staffDisplayName } from "./staff-domains";
+import { isReportReviewState, nextReportStates } from "../shared/publication";
 import type {
   CaseStatus,
   DataStore,
@@ -2680,8 +2681,39 @@ export class D1DataStore implements DataStore {
   ): Promise<Record<string, unknown> | null> {
     const existing = await this.reportById(reportId);
     if (!existing) return null;
+    const requestedStatus = input.status;
+    const currentStatus = existing.status;
+    const terminal = requestedStatus === "rejected" || requestedStatus === "resolved";
+    if (terminal) {
+      const activePublication = await this.db
+        .prepare(
+          `SELECT 1 AS active FROM official_updates
+           WHERE source_report_id = ? AND status = 'published' LIMIT 1`
+        )
+        .bind(reportId)
+        .first<Row>();
+      if (activePublication) {
+        throw new ApiError(
+          409,
+          "report_publication_active",
+          "Unpublish the linked report post before moving this report to a terminal state."
+        );
+      }
+    }
+    if (
+      !isReportReviewState(currentStatus) ||
+      !isReportReviewState(requestedStatus) ||
+      !nextReportStates(currentStatus).includes(requestedStatus)
+    ) {
+      throw new ApiError(
+        409,
+        "report_transition_invalid",
+        `Invalid report transition: cannot move from ${String(currentStatus)} to ${String(requestedStatus)}.`
+      );
+    }
     const timestamp = now();
-    const terminal = input.status === "rejected" || input.status === "resolved";
+    const assignedTo = nullable(input.assignedTo) ?? nullable(existing.assignedTo) ??
+      (requestedStatus === "reviewing" ? actorSubject : null);
     const operationToken = `report-status:${id()}`;
     const eventId = id();
     const auditId = id();
@@ -2689,15 +2721,16 @@ export class D1DataStore implements DataStore {
       ? this.db.prepare(
           `UPDATE private_reports
            SET status = ?, assigned_to = ?, updated_at = ?
-           WHERE id = ?
+           WHERE id = ? AND status = ?
              AND NOT EXISTS (
                SELECT 1 FROM official_updates
                WHERE source_report_id = ? AND status = 'published'
              )`
-        ).bind(input.status, operationToken, timestamp, reportId, reportId)
+        ).bind(requestedStatus, operationToken, timestamp, reportId, currentStatus, reportId)
       : this.db.prepare(
-          `UPDATE private_reports SET status = ?, assigned_to = ?, updated_at = ? WHERE id = ?`
-        ).bind(input.status, operationToken, timestamp, reportId);
+          `UPDATE private_reports SET status = ?, assigned_to = ?, updated_at = ?
+           WHERE id = ? AND status = ?`
+        ).bind(requestedStatus, operationToken, timestamp, reportId, currentStatus);
     const results = await this.db.batch([
       update,
       this.db.prepare(
@@ -2709,7 +2742,7 @@ export class D1DataStore implements DataStore {
       ).bind(
         eventId,
         reportId,
-        `status.${input.status}`,
+        `status.${requestedStatus}`,
         actorSubject,
         input.note ?? null,
         timestamp,
@@ -2727,7 +2760,7 @@ export class D1DataStore implements DataStore {
         auditId,
         actorSubject,
         reportId,
-        json({ status: input.status }),
+        json({ status: requestedStatus }),
         timestamp,
         reportId,
         operationToken
@@ -2737,25 +2770,11 @@ export class D1DataStore implements DataStore {
          WHERE id = ? AND assigned_to = ?
            AND EXISTS (SELECT 1 FROM report_events WHERE id = ?)
            AND EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`
-      ).bind(input.assignedTo ?? null, reportId, operationToken, eventId, auditId)
+      ).bind(assignedTo, reportId, operationToken, eventId, auditId)
     ]);
     const updateChanged = Number(results[0]?.meta.changes) === 1;
     const historyComplete = results.every((result) => Number(result.meta.changes) === 1);
     if (terminal && !updateChanged) {
-      const activePublication = await this.db
-        .prepare(
-          `SELECT 1 AS active FROM official_updates
-           WHERE source_report_id = ? AND status = 'published' LIMIT 1`
-        )
-        .bind(reportId)
-        .first<Row>();
-      if (activePublication) {
-        throw new ApiError(
-          409,
-          "report_publication_active",
-          "Unpublish the linked report post before moving this report to a terminal state."
-        );
-      }
       throw new ConflictError("The report changed. Refresh and try again.");
     }
     if (!updateChanged || !historyComplete) {

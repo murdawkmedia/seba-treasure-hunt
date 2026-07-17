@@ -2367,6 +2367,29 @@ test("real D1 atomically changes private report state with its event and audit h
   ).bind("2026-07-15T20:00:00.000Z", "2026-07-15T20:00:00.000Z").run();
   const store = new D1DataStore(db);
 
+  await db.prepare(
+    `INSERT INTO private_reports
+     (id, report_type, reporter_name, reporter_email, location_description, details,
+      status, created_at, updated_at)
+     VALUES ('report-guided', 'tip', 'Guided Reporter', 'guided@example.test',
+             'Near the path', 'Guided details', 'received', ?, ?)`
+  ).bind("2026-07-15T20:00:00.000Z", "2026-07-15T20:00:00.000Z").run();
+  await assert.rejects(
+    store.updateReport("report-guided", { status: "verified" }, "staff-owner"),
+    /transition/i
+  );
+  const reviewing = await store.updateReport(
+    "report-guided",
+    { status: "reviewing" },
+    "staff-owner"
+  );
+  assert.equal(reviewing?.status, "reviewing");
+  assert.equal(reviewing?.assignedTo, "staff-owner");
+  await assert.rejects(
+    store.updateReport("report-guided", { status: "resolved" }, "staff-owner"),
+    /transition/i
+  );
+
   const assertRolledBack = async () => {
     assert.deepEqual(
       await db.prepare(

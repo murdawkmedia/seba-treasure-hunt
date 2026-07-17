@@ -293,11 +293,12 @@
           <div class="ops-report-status" data-report-status-actions>
             <h4>Review state</h4>
             <p>State changes are private and audited. Publication is a separate confirmed action.</p>
+            <p class="ops-report-state-summary" data-report-state-summary><strong>Status: Loading</strong><span>Assigned to: Loading</span></p>
             <div class="ops-row-actions">
               <button class="ops-button ops-button--quiet" type="button" data-report-begin-review disabled>Begin review</button>
               <label for="report-next-status">Next state<span class="sr-only"> for this private report</span></label>
-              <select id="report-next-status" data-report-next-status disabled><option value="contacted">Contacted</option><option value="escalated">Escalated</option><option value="rejected">Rejected</option><option value="resolved">Resolved</option></select>
-              <button class="ops-button ops-button--quiet" type="button" data-report-save-status disabled>Save private state</button>
+              <select id="report-next-status" data-report-next-status disabled></select>
+              <button class="ops-button ops-button--quiet" type="button" data-report-save-status disabled>Apply next state</button>
             </div>
           </div>
         </section>

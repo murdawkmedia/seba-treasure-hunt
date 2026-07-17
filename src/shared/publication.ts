@@ -20,6 +20,36 @@ export interface ResolvedPublicAttribution {
   label: string;
 }
 
+export const REPORT_REVIEW_STATES = [
+  "received",
+  "reviewing",
+  "contacted",
+  "escalated",
+  "verified",
+  "rejected",
+  "resolved",
+] as const;
+
+export type ReportReviewState = typeof REPORT_REVIEW_STATES[number];
+
+const REPORT_TRANSITIONS: Record<ReportReviewState, readonly ReportReviewState[]> = {
+  received: ["reviewing", "rejected"],
+  reviewing: ["contacted", "escalated", "verified", "rejected"],
+  contacted: ["reviewing", "verified", "rejected"],
+  escalated: ["reviewing", "verified", "rejected"],
+  verified: ["resolved"],
+  rejected: [],
+  resolved: [],
+};
+
+export function isReportReviewState(value: unknown): value is ReportReviewState {
+  return typeof value === "string" && REPORT_REVIEW_STATES.includes(value as ReportReviewState);
+}
+
+export function nextReportStates(value: unknown): readonly ReportReviewState[] {
+  return isReportReviewState(value) ? REPORT_TRANSITIONS[value] : [];
+}
+
 export const PUBLICATION_DESTINATIONS = ["private", "case_note", "official_update"] as const;
 export type PublicationDestination = typeof PUBLICATION_DESTINATIONS[number];
 

@@ -24,6 +24,7 @@ import {
   renderModerationRows,
   renderReportPrivateDetail,
   renderReportPublicationPreview,
+  renderReportState,
   renderReportRows,
   renderSubscriberRows,
   renderSponsorRows,
@@ -34,6 +35,7 @@ import {
   resolveOpsView,
   waiverReceiptRetryIntent,
 } from "../src/client/ops";
+import { nextReportStates } from "../src/shared/publication";
 
 test("Case Note moderation renders truthful media states with publication selection off", () => {
   const records = normalizeModeration({ data: [{
@@ -110,6 +112,17 @@ test("report summaries preserve numeric waypoint identifiers and offer deliberat
   assert.match(html, /Stop 04 · Seniors Centre/);
   assert.match(html, /Review report/);
   assert.doesNotMatch(html, />Begin review</);
+});
+
+test("report review states expose only guided next steps and a persistent assignment summary", () => {
+  assert.deepEqual(nextReportStates("received"), ["reviewing", "rejected"]);
+  assert.deepEqual(nextReportStates("reviewing"), ["contacted", "escalated", "verified", "rejected"]);
+  assert.deepEqual(nextReportStates("verified"), ["resolved"]);
+  assert.deepEqual(nextReportStates("resolved"), []);
+  const html = renderReportState({ status: "reviewing", assignedTo: "staff-1" });
+  assert.match(html, /Status: Reviewing/);
+  assert.match(html, /Assigned to: staff-1/);
+  assert.doesNotMatch(html, /Begin review/);
 });
 
 test("minor report publication preview exposes game facts but no private identity", () => {
