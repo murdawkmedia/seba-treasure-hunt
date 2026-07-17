@@ -507,6 +507,15 @@ test("validates staff reply and flag moderation mutations and resolves target hi
     body: JSON.stringify({ action: "hide", reason: "A valid private moderation reason." })
   });
   assert.equal(nonJson.status, 415);
+  assert.equal((await responseJson(nonJson)).error.message, "Reply moderation accepts application/json only.");
+
+  const flagNonJson = await app.request(flagPath, {
+    method: "POST",
+    headers: { ...staffHeaders, "content-type": "text/plain" },
+    body: JSON.stringify({ action: "dismiss", reason: "A valid private moderation reason." })
+  });
+  assert.equal(flagNonJson.status, 415);
+  assert.equal((await responseJson(flagNonJson)).error.message, "Flag moderation accepts application/json only.");
 
   const files = new FormData();
   files.set("images", new File(["not an image"], "proof.txt", { type: "text/plain" }));

@@ -684,10 +684,13 @@ const sameOrigin = (request: Request) => {
   }
 };
 
-const requireJsonMediaType = (request: Request) => {
+const requireJsonMediaType = (
+  request: Request,
+  message = "Sponsor inquiries accept application/json only."
+) => {
   const mediaType = mediaTypeEssence(request);
   if (mediaType !== "application/json") {
-    throw new ApiError(415, "unsupported_media_type", "Sponsor inquiries accept application/json only.");
+    throw new ApiError(415, "unsupported_media_type", message);
   }
   return mediaType;
 };
@@ -1869,7 +1872,7 @@ export const createApi = (deps: ApiDependencies) => {
   app.post("/api/v1/ops/moderation/replies/:id", async (c) => {
     sameOrigin(c.req.raw);
     const staff = await requireStaff(deps, c.req.raw);
-    const mediaType = requireJsonMediaType(c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw, "Reply moderation accepts application/json only.");
     const { body, files } = await requestBody(c.req.raw, mediaType);
     if (files.length) {
       throw new ApiError(415, "unsupported_media_type", "Reply moderation accepts JSON only.");
@@ -1896,7 +1899,7 @@ export const createApi = (deps: ApiDependencies) => {
   app.post("/api/v1/ops/moderation/flags/:id", async (c) => {
     sameOrigin(c.req.raw);
     const staff = await requireStaff(deps, c.req.raw);
-    const mediaType = requireJsonMediaType(c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw, "Flag moderation accepts application/json only.");
     const { body, files } = await requestBody(c.req.raw, mediaType);
     if (files.length) {
       throw new ApiError(415, "unsupported_media_type", "Flag moderation accepts JSON only.");
