@@ -154,7 +154,7 @@ test("report waypoint labels use public order while option values remain stable 
   if (typeof reportModule.reportWaypointLabel !== "function") return;
   assert.equal(
     reportModule.reportWaypointLabel({ id: "13", routeOrder: 5, name: "Derby's Lakeview General Store" }),
-    "Waypoint 5 — Derby's Lakeview General Store",
+    "Stop 05 · Derby's General Store",
   );
 });
 
@@ -178,7 +178,7 @@ test("actual static report choices survive partial and empty waypoint refreshes"
     ],
   });
   assert.equal(partial.length, 13);
-  assert.equal(partial[0]?.name, "Waypoint 1");
+  assert.equal(partial[0]?.name, "Stop 01 · Creek Property");
   assert.equal(partial[4]?.id, "13");
   assert.equal(partial[4]?.name, "Derby's Lakeview General Store");
   assert.equal(partial[5]?.id, "5");

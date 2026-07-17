@@ -142,6 +142,8 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
           items: [{
             id: "note-1",
             waypointId: "wp-01",
+            waypointRouteOrder: 1,
+            waypointName: "The Creek Property",
             body: "A careful public observation.",
             authorHandle: "Hunter A1B2",
             createdAt: "2026-07-11T18:00:00.000Z",
@@ -219,6 +221,7 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
   assert.equal(requests.filter((url) => url === "/api/v1/status").length, 0);
   assert.equal(requests.filter((url) => url.startsWith("/api/v1/board?")).length, 1);
   assert.match(feed.innerHTML, /data-note-id="note-1"/);
+  assert.match(feed.innerHTML, /Stop 01 · Creek Property/);
   assert.equal(feed.attributes.get("aria-busy"), "false");
   assert.equal(boardStatus.textContent, "1 approved note");
 

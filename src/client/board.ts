@@ -1,4 +1,4 @@
-import { routeOrder, waypointId as parseWaypointId } from "../shared/waypoints";
+import { routeOrder, stopLabel, waypointId as parseWaypointId } from "../shared/waypoints";
 
 export interface CommunityMedia {
   id: string;
@@ -93,9 +93,9 @@ function waypointNumber(value: unknown): number | null {
 
 function waypointLabel(note: Pick<CommunityNote, "waypointId" | "waypointRouteOrder" | "waypointName">): string {
   if (note.waypointRouteOrder !== null && note.waypointName) {
-    return `Waypoint ${note.waypointRouteOrder} — ${note.waypointName}`;
+    return stopLabel(note.waypointRouteOrder, note.waypointName);
   }
-  return waypointNumber(note.waypointId) === null ? "Waypoint not specified" : "Waypoint details unavailable";
+  return waypointNumber(note.waypointId) === null ? "Stop not specified" : "Stop details unavailable";
 }
 
 function safeMediaUrl(value: unknown): string | null {

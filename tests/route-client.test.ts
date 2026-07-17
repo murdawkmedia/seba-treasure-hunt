@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { normalizeMemberRoute } from "../src/client/route";
+import { stopLabel, stopName } from "../src/shared/waypoints";
 
 const routeWaypoints = Array.from({ length: 13 }, (_, index) => {
   const routeOrder = index + 1;
@@ -57,4 +58,11 @@ test("signed-out route data cannot carry exact links into public placeholders", 
   assert.equal(projection.state, "onboarding");
   assert.equal(projection.waypoints.length, 13);
   assert.ok(projection.waypoints.every((waypoint) => waypoint.exactUrl === null));
+});
+
+test("Lucky 13 labels stay concise while stable waypoint IDs remain separate", () => {
+  assert.equal(stopName(4, "Seba Beach Seniors Centre"), "Seniors Centre");
+  assert.equal(stopName(5, "Derby's Lakeview General Store"), "Derby's General Store");
+  assert.equal(stopLabel(11, "The Driving Range & the Digger Café"), "Stop 11 · Driving Range / Digger Café");
+  assert.equal(stopLabel(13, "Old Seba Beach School — SebaHub"), "Stop 13 · Old Seba Beach School / SebaHub");
 });

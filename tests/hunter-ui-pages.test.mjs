@@ -189,8 +189,8 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   assert.match(client, /reportImageMegabytes/);
   assert.match(client, /AbortSignal\.timeout\(120_000\)/);
   assert.match(html, /data-report-errors[^>]*role="alert"/);
-  assert.match(html, /<option value="not_sure">Not sure \/ between waypoints<\/option>/);
-  assert.match(html, /<option value="different_location">Different location<\/option>/);
+  assert.match(html, /<option value="not_sure">Not sure which stop<\/option>/);
+  assert.match(html, /<option value="different_location">Different location \/ outside the Lucky 13<\/option>/);
   const waypointSelect = html.match(/<select id="report-waypoint"[\s\S]*?<\/select>/);
   assert.ok(waypointSelect);
   const waypointValues = [...waypointSelect[0].matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]);
@@ -393,6 +393,9 @@ test("static community and reporting fallbacks preserve stable waypoint ids in p
     const select = read(file).match(new RegExp(`<select id="${selectId}"[\\s\\S]*?<\\/select>`))?.[0] ?? "";
     const values = [...select.matchAll(/<option value="(\d+)"/g)].map((match) => match[1]);
     assert.deepEqual(values, ["1", "2", "3", "4", "13", "5", "6", "7", "8", "9", "10", "11", "12"]);
+    assert.match(select, /Stop 04 · Seniors Centre/);
+    assert.match(select, /Stop 05 · Derby's General Store/);
+    assert.match(select, /Stop 11 · Driving Range \/ Digger Café/);
   }
 });
 

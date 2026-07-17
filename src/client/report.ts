@@ -11,7 +11,7 @@ import {
   REPORT_IMAGE_TYPES,
   reportImageMegabytes,
 } from "../shared/report-image-limits";
-import { routeOrder, waypointId } from "../shared/waypoints";
+import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
 
 export type ReportType = "find" | "tip" | "safety";
 
@@ -200,7 +200,7 @@ export function normalizeReportWaypoints(payload: unknown): ReportWaypoint[] {
 }
 
 export function reportWaypointLabel(waypoint: ReportWaypoint): string {
-  return `Waypoint ${waypoint.routeOrder} — ${waypoint.name}`;
+  return stopLabel(waypoint.routeOrder, waypoint.name);
 }
 
 export function mergeReportWaypointChoices(
