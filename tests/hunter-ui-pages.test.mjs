@@ -217,6 +217,7 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   assert.match(html, /data-report-receipt[^>]*hidden/);
   assert.match(html, /id="report-receipt-title">Report received privately<\/h2>/);
   assert.match(html, /data-report-reference/);
+  assert.match(html, /data-report-receipt-message/);
   assert.match(html, /review the report before anything is published/i);
   assert.match(html, /data-report-another/);
   assert.match(html, /id="report-turnstile-label"/);
@@ -397,6 +398,17 @@ test("static community and reporting fallbacks preserve stable waypoint ids in p
     assert.match(select, /Stop 05 · Derby's General Store/);
     assert.match(select, /Stop 11 · Driving Range \/ Digger Café/);
   }
+});
+
+test("Case Notes and private reports explain their different routes before submission", () => {
+  const board = read("clue-board.html");
+  const report = read("report.html");
+  assert.match(board, /public community observation/i);
+  assert.match(board, /possible find[\s\S]*private report/i);
+  assert.match(board, /data-note-reference/);
+  assert.match(board, /nothing is public until an operator approves it/i);
+  assert.match(report, /private report/i);
+  assert.match(report, /does not appear in Case Notes automatically/i);
 });
 
 test("stale route-video assets remain present but are absent from every public static source", () => {

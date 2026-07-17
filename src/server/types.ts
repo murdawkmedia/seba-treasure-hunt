@@ -162,7 +162,8 @@ export type OperatorAlertRecipientCompletion =
 
 export interface OperatorAlertCreationResult<T = Record<string, unknown>> {
   value: T;
-  operatorAlertJobId: string;
+  operatorAlertJobId: string | null;
+  replayed: boolean;
 }
 
 export interface LegalReceiptSender {
@@ -318,8 +319,13 @@ export interface DataStore {
   upsertProgress(subject: string, waypointId: number, state: string): Promise<Record<string, unknown>>;
   getHunterDashboard(subject: string): Promise<Record<string, unknown>>;
   createFieldNote(
-    input: Record<string, unknown>
+    input: Record<string, unknown>,
+    idempotencyKey: string
   ): Promise<OperatorAlertCreationResult>;
+  getFieldNoteByIdempotencyKey(
+    subject: string,
+    idempotencyKey: string
+  ): Promise<Record<string, unknown> | null>;
   claimOperatorAlertRecipients(jobId: string): Promise<OperatorAlertRecipientClaim[]>;
   completeOperatorAlertRecipient(
     claim: OperatorAlertRecipientClaim,

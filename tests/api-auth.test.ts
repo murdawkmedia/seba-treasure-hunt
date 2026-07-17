@@ -188,12 +188,33 @@ test("pre-moderates field notes, constrains replies, and accepts private abuse f
 
   const note = await app.request(
     "https://www.timlostsomething.com/api/v1/board/notes",
-    { method: "POST", ...json({ waypointId: 1, body: "Fresh boot prints beside the trail." }, hunterHeaders) }
+    {
+      method: "POST",
+      ...json(
+        { waypointId: 1, body: "Fresh boot prints beside the trail." },
+        { ...hunterHeaders, "idempotency-key": "field-note-key-1234" }
+      )
+    }
   );
   assert.equal(note.status, 201);
   const noteData = (await responseJson(note)).data;
   assert.equal(noteData.status, "pending");
   assert.equal("operatorAlertJobId" in noteData, false);
+  assert.deepEqual(operatorAlerts.calls, ["operator-note-job-1"]);
+
+  const replay = await app.request(
+    "https://www.timlostsomething.com/api/v1/board/notes",
+    {
+      method: "POST",
+      ...json(
+        { waypointId: 1, body: "Fresh boot prints beside the trail." },
+        { ...hunterHeaders, "idempotency-key": "field-note-key-1234" }
+      )
+    }
+  );
+  assert.equal(replay.status, 200);
+  assert.equal((await responseJson(replay)).data.id, noteData.id);
+  assert.equal(store.notes.length, 1);
   assert.deepEqual(operatorAlerts.calls, ["operator-note-job-1"]);
 
   const unsafeReply = await app.request(
@@ -218,6 +239,7 @@ test("pre-moderates field notes, constrains replies, and accepts private abuse f
   assert.equal((await responseJson(flag)).data.status, "received");
   assert.equal(store.flags.length, 1);
   assert.deepEqual(rateLimits.seen.map((entry) => entry.scope), [
+    "field_note",
     "field_note",
     "reply",
     "reply",
@@ -947,7 +969,7 @@ test("a current waiver unlocks hunter tools without weakening reports, moderatio
   );
   const note = await app.request("https://www.timlostsomething.com/api/v1/board/notes", {
     method: "POST",
-    headers: hunterHeaders,
+    headers: { ...hunterHeaders, "idempotency-key": "waiver-current-note-key" },
     body: form
   });
   assert.equal(note.status, 201);

@@ -166,6 +166,7 @@ export interface ReportProfilePrefill {
 export interface ReportSuccessModel {
   reference: string;
   heading: "Report received privately";
+  message: "This report stays private unless an operator deliberately approves a public version.";
 }
 
 export interface ReportAttemptFailureState {
@@ -236,6 +237,7 @@ export function reportSuccessModel(payload: unknown): ReportSuccessModel {
   return {
     reference: isRecord(data) && typeof data.id === "string" && data.id.trim() ? data.id.trim() : "recorded",
     heading: "Report received privately",
+    message: "This report stays private unless an operator deliberately approves a public version.",
   };
 }
 
@@ -724,10 +726,12 @@ async function submitReport(form: HTMLFormElement): Promise<void> {
     const receipt = document.querySelector<HTMLElement>("[data-report-receipt]");
     const heading = receipt?.querySelector<HTMLElement>("#report-receipt-title");
     const reference = receipt?.querySelector<HTMLElement>("[data-report-reference]");
+    const message = receipt?.querySelector<HTMLElement>("[data-report-receipt-message]");
     form.hidden = true;
     if (panel) panel.hidden = true;
     if (heading) heading.textContent = receiptModel.heading;
     if (reference) reference.textContent = receiptModel.reference;
+    if (message) message.textContent = receiptModel.message;
     if (receipt) {
       receipt.hidden = false;
       receipt.focus();

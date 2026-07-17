@@ -63,6 +63,25 @@ let flagTurnstileToken = "";
 let flagTurnstileWidget: string | undefined;
 const replyTurnstileTokens = new Map<string, string>();
 const replyTurnstileWidgets = new Map<string, string>();
+let pendingNoteIdempotencyKey: string | undefined;
+
+export function caseNoteReceipt(reference: string): string {
+  return `Received for moderation. Reference ${reference}. Nothing is public until an operator approves it.`;
+}
+
+export function buildCaseNoteRequestHeaders(idempotencyKey: string, humanToken: string): Headers {
+  return new Headers({
+    "Idempotency-Key": idempotencyKey,
+    "CF-Turnstile-Response": humanToken
+  });
+}
+
+export function failCaseNoteAttempt(idempotencyKey: string | undefined): {
+  idempotencyKey: string | undefined;
+  turnstileToken: "";
+} {
+  return { idempotencyKey, turnstileToken: "" };
+}
 
 export function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -319,6 +338,9 @@ export async function initialiseBoard(): Promise<void> {
   const authPrompt = document.querySelector<HTMLElement>("#board-auth-prompt");
   const flagDialog = document.querySelector<HTMLDialogElement>("#board-flag-dialog");
   const flagForm = document.querySelector<HTMLFormElement>("#board-flag-form");
+  const noteReceipt = document.querySelector<HTMLElement>("[data-note-receipt]");
+  const noteReference = noteReceipt?.querySelector<HTMLElement>("[data-note-reference]");
+  const anotherNote = noteReceipt?.querySelector<HTMLButtonElement>("[data-note-another]");
   if (!feed || !status || !filter || !more || !noteForm || !authPrompt || !flagDialog || !flagForm) return;
 
   let notes: CommunityNote[] = [];
@@ -481,17 +503,28 @@ export async function initialiseBoard(): Promise<void> {
   const body = noteForm.elements.namedItem("body");
   const characterCount = document.querySelector<HTMLOutputElement>("#note-character-count");
   if (body instanceof HTMLTextAreaElement && characterCount) {
-    body.addEventListener("input", () => { characterCount.value = String(body.value.length); });
+    body.addEventListener("input", () => {
+      characterCount.value = String(body.value.length);
+      pendingNoteIdempotencyKey = undefined;
+    });
   }
 
   const imageInput = noteForm.elements.namedItem("images");
   const fileList = document.querySelector<HTMLElement>("#note-file-list");
   if (imageInput instanceof HTMLInputElement && fileList) {
     imageInput.addEventListener("change", () => {
+      pendingNoteIdempotencyKey = undefined;
       const files = [...(imageInput.files ?? [])];
       fileList.innerHTML = files.length === 0
         ? ""
-        : files.map((file) => `<li>${escapeHtml(file.name)} &middot; ${(file.size / 1024 / 1024).toFixed(1)} MiB</li>`).join("");
+        : files.map((file) => `<li>${escapeHtml(file.name)} &middot; ${(file.size / 1_000_000).toFixed(1)} MB</li>`).join("");
+    });
+  }
+
+  const waypointField = noteForm.elements.namedItem("waypointId");
+  if (waypointField && "addEventListener" in waypointField && typeof waypointField.addEventListener === "function") {
+    waypointField.addEventListener("change", () => {
+      pendingNoteIdempotencyKey = undefined;
     });
   }
 
@@ -517,23 +550,50 @@ export async function initialiseBoard(): Promise<void> {
       return;
     }
     formData.set("cfTurnstileResponse", humanToken);
+    pendingNoteIdempotencyKey ??= crypto.randomUUID();
+    const attemptIdempotencyKey = pendingNoteIdempotencyKey;
     if (submit) submit.disabled = true;
     if (result) result.textContent = "Sending your Case Note for review...";
     try {
-      const headers = await authHeaders(humanToken ? { "CF-Turnstile-Response": humanToken } : undefined);
+      const headers = await authHeaders(buildCaseNoteRequestHeaders(attemptIdempotencyKey, humanToken));
       const { response, payload } = await requestJson("/api/v1/board/notes", { method: "POST", body: formData, headers });
       if (!response.ok) throw new Error(errorMessage(payload, "Your Case Note could not be sent."));
+      const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+      const reference = data && asString(data.id).trim() ? asString(data.id).trim() : "recorded";
+      pendingNoteIdempotencyKey = undefined;
       noteForm.reset();
       if (characterCount) characterCount.value = "0";
       if (fileList) fileList.innerHTML = "";
-      if (result) result.textContent = "Received. Your note and images stay private until a moderator approves them.";
+      if (noteReference) noteReference.textContent = reference;
+      noteForm.hidden = true;
+      if (noteReceipt) {
+        noteReceipt.hidden = false;
+        noteReceipt.focus();
+      }
+      if (result) result.textContent = caseNoteReceipt(reference);
     } catch (error) {
+      const failure = failCaseNoteAttempt(attemptIdempotencyKey);
+      pendingNoteIdempotencyKey = failure.idempotencyKey;
+      noteTurnstileToken = failure.turnstileToken;
       if (result) result.textContent = error instanceof Error ? error.message : "Your Case Note could not be sent.";
     } finally {
       noteTurnstileToken = "";
       if (submit) submit.disabled = true;
       if (turnstileApi && noteTurnstileWidget) turnstileApi.reset(noteTurnstileWidget);
     }
+  });
+
+  anotherNote?.addEventListener("click", () => {
+    noteForm.reset();
+    noteForm.hidden = false;
+    if (noteReceipt) noteReceipt.hidden = true;
+    if (noteReference) noteReference.textContent = "";
+    if (characterCount) characterCount.value = "0";
+    if (fileList) fileList.innerHTML = "";
+    pendingNoteIdempotencyKey = undefined;
+    noteTurnstileToken = "";
+    if (turnstileApi && noteTurnstileWidget) turnstileApi.reset(noteTurnstileWidget);
+    noteForm.querySelector<HTMLSelectElement>("[name=waypointId]")?.focus();
   });
 
   feed.addEventListener("submit", async (event) => {

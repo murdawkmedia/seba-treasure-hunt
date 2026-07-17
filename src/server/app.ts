@@ -1301,16 +1301,19 @@ export const createApi = (deps: ApiDependencies) => {
     const { body, files } = await requestBody(c.req.raw);
     await verifyHuman(deps, c.req.raw, body, "field_note");
     await validateImages(files);
+    const key = idempotencyKey(c.req.raw);
+    const replay = await deps.store.getFieldNoteByIdempotencyKey(hunter.subject, key);
+    if (replay) return success(c, { ...replay, media: publicMedia(replay.media) });
     const media = await deps.uploads.save(files, { kind: "field_note", subject: hunter.subject });
     const capture = await deps.store.createFieldNote({
       authorSubject: hunter.subject,
       waypointId: parseWaypoint(body.waypointId),
       body: requiredString(body, "body", { min: 5, max: 2_000, label: "Field note" }),
       media
-    });
+    }, key);
     scheduleOperatorAlert(c, deps.operatorAlerts, capture.operatorAlertJobId);
     const note = capture.value;
-    return success(c, { ...note, media: publicMedia(note.media ?? media) }, 201);
+    return success(c, { ...note, media: publicMedia(note.media ?? media) }, capture.replayed ? 200 : 201);
   });
 
   app.post("/api/v1/board/notes/:id/replies", async (c) => {

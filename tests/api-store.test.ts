@@ -237,7 +237,7 @@ test("D1 Field Note creation atomically snapshots operators for one moderation a
     waypointId: 1,
     body: "A note for moderation.",
     media: []
-  });
+  }, "field-note-test-key");
 
   assert.equal(typeof result.operatorAlertJobId, "string");
   const sql = database.batchCalls[0]!.map((statement) => statement.sql).join("\n");

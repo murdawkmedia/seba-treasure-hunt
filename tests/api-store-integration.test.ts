@@ -180,7 +180,7 @@ test("pending Case Notes project media and scope ready derivatives to the owning
     waypointId: 1,
     body: "A photographed observation awaiting moderation.",
     media: []
-  });
+  }, "pending-media-note-key");
   const noteId = String(capture.value.id);
   await db.batch([
     mediaUploadInsert(db, "note-media-ready", "field_note", noteId, "ready", "derivatives/note-media-ready.webp"),
@@ -205,6 +205,20 @@ test("pending Case Notes project media and scope ready derivatives to the owning
   );
   assert.equal(await store.getFieldNoteMedia(noteId, "note-media-processing", "staff-media-review"), null);
   assert.equal(await store.getFieldNoteMedia(noteId, "other-note-media", "staff-media-review"), null);
+
+  const replay = await store.createFieldNote({
+    authorSubject: "hunter-alert",
+    waypointId: 1,
+    body: "A different retry body must not create a duplicate.",
+    media: []
+  }, "pending-media-note-key");
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.operatorAlertJobId, null);
+  assert.equal(replay.value.id, noteId);
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS count FROM field_notes").first<{ count: number }>())?.count,
+    1
+  );
 });
 
 const officialUpdateMediaInsert = (db: D1Database, updateId: string, mediaId: string) =>
@@ -3962,7 +3976,7 @@ test("real D1 atomically creates one alert outbox and only active activated reci
     waypointId: 1,
     body: "A private note awaiting moderation.",
     media: []
-  });
+  }, "operator-alert-note-key");
   assert.equal(typeof note.operatorAlertJobId, "string");
   assert.deepEqual(
     await db

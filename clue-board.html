@@ -70,6 +70,7 @@
         <section class="ledger-panel board-submit" aria-labelledby="submit-note-title">
           <p class="ledger-label">Add to the case file</p>
           <h2 id="submit-note-title">Share a Case Note</h2>
+          <p><strong>This is a public community observation after moderation.</strong> Do not use it for a possible find, private evidence, or an exact location.</p>
           <div id="board-auth-prompt">
             <p>Sign in as a hunter to submit a note or reply. Reading the board does not require an account.</p>
             <a class="field-button" href="/dashboard#sign-in">Sign in to contribute</a>
@@ -113,12 +114,18 @@
             <button class="field-button" type="submit" disabled>Send for moderator review</button>
             <p class="form-result" id="note-form-result" role="status" aria-live="polite"></p>
           </form>
+          <div class="form-result" data-note-receipt hidden tabindex="-1" aria-live="polite">
+            <h3>Case Note received for moderation</h3>
+            <p>Reference <strong data-note-reference></strong>.</p>
+            <p>Nothing is public until an operator approves it.</p>
+            <button class="field-button field-button--quiet" type="button" data-note-another>Share another Case Note</button>
+          </div>
         </section>
 
         <section class="ledger-panel board-private-report">
           <p class="ledger-label">Think you found it?</p>
           <h2>Send the details privately</h2>
-          <p>Do not post ID details, cash evidence, find photos or an exact location here. Send the details directly to the case team.</p>
+          <p>If this is a possible find, do not post ID details, cash evidence, find photos or an exact location here. Use the private report so the case team can review it safely.</p>
           <a class="field-button field-button--quiet" href="/report">Open private report</a>
         </section>
       </aside>

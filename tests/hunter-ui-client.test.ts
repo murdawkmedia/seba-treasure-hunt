@@ -293,10 +293,12 @@ test("successful private reports retain an explicit receipt reference", () => {
   assert.deepEqual(reportSuccessModel({ id: "report-123" }), {
     reference: "report-123",
     heading: "Report received privately",
+    message: "This report stays private unless an operator deliberately approves a public version.",
   });
   assert.deepEqual(reportSuccessModel({}), {
     reference: "recorded",
     heading: "Report received privately",
+    message: "This report stays private unless an operator deliberately approves a public version.",
   });
 });
 

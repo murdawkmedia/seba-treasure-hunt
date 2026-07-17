@@ -112,6 +112,7 @@ export class FakeStore {
   progress: Array<Record<string, unknown>> = [];
   reports: Array<Record<string, unknown>> = [];
   notes: Array<Record<string, unknown>> = [];
+  noteIdempotency = new Map<string, string>();
   replies: Array<Record<string, unknown>> = [];
   flags: Array<Record<string, unknown>> = [];
   staff = new Set(["staff-1"]);
@@ -586,7 +587,15 @@ export class FakeStore {
     };
   }
 
-  async createFieldNote(input: Record<string, unknown>) {
+  async getFieldNoteByIdempotencyKey(subject: string, idempotencyKey: string) {
+    const noteId = this.noteIdempotency.get(`${subject}:${idempotencyKey}`);
+    return noteId ? this.notes.find((item) => item.id === noteId) ?? null : null;
+  }
+
+  async createFieldNote(input: Record<string, unknown>, idempotencyKey: string) {
+    const subject = String(input.authorSubject ?? "");
+    const replay = await this.getFieldNoteByIdempotencyKey(subject, idempotencyKey);
+    if (replay) return { value: replay, replayed: true, operatorAlertJobId: null };
     const value = {
       ...input,
       id: `note-${this.notes.length + 1}`,
@@ -594,6 +603,7 @@ export class FakeStore {
       createdAt: "2026-07-11T17:00:00.000Z"
     };
     this.notes.push(value);
+    this.noteIdempotency.set(`${subject}:${idempotencyKey}`, String(value.id));
     const operatorAlertJobId = `operator-note-job-${this.notes.length}`;
     this.operatorAlertClaims.set(
       operatorAlertJobId,
@@ -608,7 +618,7 @@ export class FakeStore {
         correlationId: `${operatorAlertJobId}-correlation-${index + 1}`
       }))
     );
-    return { value, operatorAlertJobId };
+    return { value, replayed: false, operatorAlertJobId };
   }
 
   async claimOperatorAlertRecipients(jobId: string) {

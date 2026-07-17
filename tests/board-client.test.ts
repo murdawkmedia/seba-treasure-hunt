@@ -3,6 +3,31 @@ import test from "node:test";
 
 const boardModule = await import("../src/client/board") as Record<string, unknown>;
 
+test("Case Note receipts stay pending and retry headers preserve one idempotency key", () => {
+  const caseNoteReceipt = boardModule.caseNoteReceipt;
+  const buildCaseNoteRequestHeaders = boardModule.buildCaseNoteRequestHeaders;
+  const failCaseNoteAttempt = boardModule.failCaseNoteAttempt;
+  assert.equal(typeof caseNoteReceipt, "function");
+  assert.equal(typeof buildCaseNoteRequestHeaders, "function");
+  assert.equal(typeof failCaseNoteAttempt, "function");
+  if (
+    typeof caseNoteReceipt !== "function" ||
+    typeof buildCaseNoteRequestHeaders !== "function" ||
+    typeof failCaseNoteAttempt !== "function"
+  ) return;
+
+  assert.match(caseNoteReceipt("TLS-N-1234"), /received for moderation/i);
+  assert.match(caseNoteReceipt("TLS-N-1234"), /TLS-N-1234/);
+  assert.doesNotMatch(caseNoteReceipt("TLS-N-1234"), /published/i);
+  const headers = buildCaseNoteRequestHeaders("note-key", "human-token") as Headers;
+  assert.equal(headers.get("Idempotency-Key"), "note-key");
+  assert.equal(headers.get("CF-Turnstile-Response"), "human-token");
+  assert.deepEqual(failCaseNoteAttempt("note-key"), {
+    idempotencyKey: "note-key",
+    turnstileToken: ""
+  });
+});
+
 type DashboardOutcome = "ok" | "unauthorized" | "network-error";
 
 class FakeElement {

@@ -2026,15 +2026,71 @@ export class D1DataStore implements DataStore {
     };
   }
 
-  async createFieldNote(input: Record<string, unknown>): Promise<{
+  async getFieldNoteByIdempotencyKey(
+    subject: string,
+    idempotencyKey: string
+  ): Promise<Record<string, unknown> | null> {
+    const scope = `field_note:${subject}`;
+    const replay = await this.db
+      .prepare(
+        `SELECT record_id FROM idempotency_keys
+         WHERE scope = ? AND idempotency_key = ? AND expires_at > ? LIMIT 1`
+      )
+      .bind(scope, idempotencyKey, now())
+      .first<Row>();
+    if (!replay) return null;
+    const row = await this.db
+      .prepare(
+        `SELECT id, waypoint_id, body, status, created_at
+         FROM field_notes WHERE id = ? AND author_subject = ? LIMIT 1`
+      )
+      .bind(replay.record_id, subject)
+      .first<Row>();
+    if (!row) return null;
+    const media = await this.db
+      .prepare(
+        `SELECT id, content_type, byte_size, status
+         FROM media_uploads WHERE owner_kind = 'field_note' AND owner_id = ? ORDER BY created_at`
+      )
+      .bind(row.id)
+      .all<Row>();
+    return {
+      id: row.id,
+      waypointId: Number(row.waypoint_id),
+      body: row.body,
+      status: row.status,
+      createdAt: row.created_at,
+      media: media.results.map((item) => ({
+        id: item.id,
+        contentType: item.content_type,
+        size: Number(item.byte_size),
+        status: item.status
+      }))
+    };
+  }
+
+  async createFieldNote(
+    input: Record<string, unknown>,
+    idempotencyKey: string
+  ): Promise<{
     value: Record<string, unknown>;
-    operatorAlertJobId: string;
+    operatorAlertJobId: string | null;
+    replayed: boolean;
   }> {
+    const subject = value(input.authorSubject);
+    const replay = await this.getFieldNoteByIdempotencyKey(subject, idempotencyKey);
+    if (replay) return { value: replay, operatorAlertJobId: null, replayed: true };
     const noteId = id();
     const operatorAlertJobId = id();
     const createdAt = now();
     const media = mediaFromInput(input.media);
     const statements = [
+      this.db
+        .prepare(
+          `INSERT INTO idempotency_keys (scope, idempotency_key, record_id, created_at, expires_at)
+           VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', ?, '+24 hours'))`
+        )
+        .bind(`field_note:${subject}`, idempotencyKey, noteId, createdAt, createdAt),
       this.db
         .prepare(
           `INSERT INTO field_notes
@@ -2060,9 +2116,16 @@ export class D1DataStore implements DataStore {
     for (const item of media) {
       statements.push(this.mediaStatement(item, "field_note", noteId, value(input.authorSubject)));
     }
-    await this.db.batch(statements);
+    try {
+      await this.db.batch(statements);
+    } catch (error) {
+      const winner = await this.getFieldNoteByIdempotencyKey(subject, idempotencyKey);
+      if (winner) return { value: winner, operatorAlertJobId: null, replayed: true };
+      throw error;
+    }
     return {
       operatorAlertJobId,
+      replayed: false,
       value: {
         id: noteId,
         waypointId: input.waypointId,
