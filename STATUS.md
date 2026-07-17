@@ -15,6 +15,19 @@ validation accounts, submissions, or credentials into production.
 
 ## Update 2026-07-16
 
+- Prepared the validation-only route-viewer and readability refinement without
+  changing production: public secondary actions now use the readable filled
+  button contract, and all 61 route photos open in an accessible,
+  waypoint-scoped lightbox with keyboard, swipe, failure, reduced-motion,
+  mobile and 200%-zoom coverage.
+- Confirmed the production D1 environment sentinel remains `production` and
+  recorded a read-only pre-deploy baseline of six player-account rows and one
+  published update. The check wrote zero rows. All six accounts are protected;
+  no production account, report, legal acceptance or update will be treated as
+  disposable during validation work.
+- Kept the disposable validation update isolated in the validation database.
+  A Pages validation deployment does not copy that record, validation accounts
+  or validation submissions into production.
 - Completed Release 2B in source without deploying it. Production remains unchanged pending explicit owner approval.
 - Rebuilt the homepage as a documentary case record: hero status context, case-at-a-glance facts, primary real evidence, exact fictional-reference disclosure, Tim's chronology, Lucky 13 overview, one approved update, safe actions, private reporting, Support the Search and verified FAQ.
 - Removed public pirate language, ornament and retired artwork; deleted both `sunny-pirate-treasure-seba-beach` files. Tim's 19 answer bodies, all 13 route waypoint IDs/order, 61 route photos, access controls and legal bodies remain unchanged.
@@ -55,6 +68,12 @@ validation accounts, submissions, or credentials into production.
 
 ## Decisions in force
 
+- Treat every production player-account row as real until an owner-led review
+  identifies otherwise. Never wipe, reseed or copy validation data into the
+  production D1 database.
+- Validation releases may deploy code only through the `codex-validation`
+  Pages branch with Preview bindings. Production data mutations and published
+  update changes require a separate explicit approval and audited Ops action.
 - Exact route controls remain available only to authenticated hunters.
 - Public route stories and approved-report GPS locations remain public.
 - Private evidence is never auto-published; operators make a separate explicit
