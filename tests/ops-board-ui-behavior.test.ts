@@ -11,6 +11,8 @@ import {
   applyWaiverReceiptRetryState,
   createReportReviewGuard,
   normalizeModeration,
+  normalizeModerationReplies,
+  normalizeContentFlags,
   normalizeOpsDashboard,
   normalizeOpsReportDetail,
   reportDestinationControls,
@@ -24,6 +26,8 @@ import {
   renderReportEvidence,
   renderReportUpdateUploads,
   renderModerationRows,
+  renderModerationReplyRows,
+  renderContentFlagRows,
   renderReportPrivateDetail,
   renderReportPublicationPreview,
   renderReportState,
@@ -64,6 +68,66 @@ test("Case Note moderation renders truthful media states with publication select
   assert.doesNotMatch(html, /name="publicMedia" value="ready"[^>]*checked/);
   assert.match(html, /name="publicMedia" value="processing"[^>]*disabled/);
   assert.match(html, /name="publicMedia" value="rejected"[^>]*disabled/);
+});
+
+test("reply and flag moderation discard malformed rows and render distinct escaped actions", () => {
+  const replies = normalizeModerationReplies({ data: [
+    {
+      id: "reply-1",
+      noteId: "note-1",
+      noteExcerpt: "Parent <note>",
+      waypointRouteOrder: 4,
+      waypointName: "The <Bridge>",
+      body: "Reply <script>alert(1)</script>",
+      authorHandle: "Hunter <A1B2>",
+      status: "published",
+      flagCount: 2,
+      createdAt: "2026-07-17T18:00:00.000Z",
+      moderatedAt: null,
+    },
+    { id: "reply-malformed", body: "Missing required moderation fields" },
+  ] });
+  const flags = normalizeContentFlags({ data: [
+    {
+      id: "flag-1",
+      targetKind: "reply",
+      targetId: "reply-1",
+      targetExcerpt: "Reply <script>alert(1)</script>",
+      authorHandle: "Hunter <A1B2>",
+      targetStatus: "published",
+      noteExcerpt: "Parent <note>",
+      waypointRouteOrder: 4,
+      waypointName: "The <Bridge>",
+      reason: "harassment <img src=x>",
+      status: "received",
+      createdAt: "2026-07-17T18:01:00.000Z",
+    },
+    { id: "flag-note", targetKind: "note", targetId: "note-1" },
+  ] });
+
+  assert.equal(replies.length, 1);
+  assert.equal(flags.length, 1);
+
+  const replyHtml = renderModerationReplyRows(replies);
+  assert.match(replyHtml, /&lt;script&gt;/);
+  assert.doesNotMatch(replyHtml, /<script>|<img/);
+  assert.match(replyHtml, /data-reply-moderation-action="hide"/);
+  assert.doesNotMatch(replyHtml, /data-reply-moderation-action="restore"/);
+  assert.match(replyHtml, />Hide<\/button>/);
+
+  const hiddenReplyHtml = renderModerationReplyRows([{ ...replies[0]!, status: "hidden" }]);
+  assert.match(hiddenReplyHtml, /data-reply-moderation-action="restore"/);
+  assert.doesNotMatch(hiddenReplyHtml, /data-reply-moderation-action="hide"/);
+  assert.match(hiddenReplyHtml, />Restore<\/button>/);
+
+  const flagHtml = renderContentFlagRows(flags);
+  assert.match(flagHtml, /&lt;script&gt;/);
+  assert.match(flagHtml, /&lt;img src=x&gt;/);
+  assert.doesNotMatch(flagHtml, /<script>|<img/);
+  assert.match(flagHtml, /data-flag-moderation-action="hide_target"/);
+  assert.match(flagHtml, /data-flag-moderation-action="dismiss"/);
+  assert.match(flagHtml, />Hide reply<\/button>/);
+  assert.match(flagHtml, />Dismiss<\/button>/);
 });
 
 test("production snapshot normalization and rows preserve private review data without mutation controls", () => {

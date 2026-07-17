@@ -140,6 +140,34 @@ interface OpsModerationMedia {
   status: string;
 }
 
+export interface OpsModerationReply {
+  id: string;
+  noteId: string;
+  noteExcerpt: string;
+  waypointRouteOrder: number | null;
+  waypointName: string | null;
+  body: string;
+  authorHandle: string;
+  status: "published" | "hidden";
+  flagCount: number;
+  createdAt: string;
+  moderatedAt: string | null;
+}
+
+export interface OpsContentFlag {
+  id: string;
+  targetId: string;
+  targetExcerpt: string;
+  authorHandle: string;
+  targetStatus: "published" | "hidden";
+  noteExcerpt: string;
+  waypointRouteOrder: number | null;
+  waypointName: string | null;
+  reason: string;
+  status: "received" | "reviewing";
+  createdAt: string;
+}
+
 interface OpsAuditRecord {
   id: string;
   createdAt: string;
@@ -947,6 +975,66 @@ export function renderReportRows(records: readonly OpsReportRecord[]): string {
   </tr>`).join("");
 }
 
+function moderationRecords(payload: unknown): unknown[] {
+  const data = envelopeData(payload);
+  return Array.isArray(data) ? data : isRecord(data) ? asArray(data.items) : [];
+}
+
+function validModerationTime(value: unknown): string | null {
+  const text = asString(value).trim();
+  return text && !Number.isNaN(new Date(text).valueOf()) ? text : null;
+}
+
+export function normalizeModerationReplies(payload: unknown): OpsModerationReply[] {
+  return moderationRecords(payload).flatMap((value): OpsModerationReply[] => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id).trim();
+    const noteId = asString(value.noteId).trim();
+    const noteExcerpt = asString(value.noteExcerpt);
+    const body = asString(value.body);
+    const authorHandle = asString(value.authorHandle).trim();
+    const createdAt = validModerationTime(value.createdAt);
+    const status = asString(value.status);
+    const flagCount = asNumber(value.flagCount);
+    const waypointRouteOrder = finiteNumber(value.waypointRouteOrder);
+    const waypointName = value.waypointName === null ? null : asString(value.waypointName).trim();
+    const moderatedAt = value.moderatedAt === null ? null : validModerationTime(value.moderatedAt);
+    if (!id || !noteId || !noteExcerpt || !body || !authorHandle || !createdAt ||
+        !["published", "hidden"].includes(status) || flagCount === null ||
+        (value.waypointRouteOrder !== null && waypointRouteOrder === null) ||
+        (value.waypointName !== null && !waypointName) ||
+        (value.moderatedAt !== null && moderatedAt === null)) return [];
+    return [{ id, noteId, noteExcerpt, waypointRouteOrder, waypointName, body, authorHandle,
+      status: status as "published" | "hidden", flagCount, createdAt, moderatedAt }];
+  });
+}
+
+export function normalizeContentFlags(payload: unknown): OpsContentFlag[] {
+  return moderationRecords(payload).flatMap((value): OpsContentFlag[] => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id).trim();
+    const targetId = asString(value.targetId).trim();
+    const targetExcerpt = asString(value.targetExcerpt);
+    const authorHandle = asString(value.authorHandle).trim();
+    const targetStatus = asString(value.targetStatus);
+    const noteExcerpt = asString(value.noteExcerpt);
+    const reason = asString(value.reason).trim();
+    const status = asString(value.status);
+    const createdAt = validModerationTime(value.createdAt);
+    const waypointRouteOrder = finiteNumber(value.waypointRouteOrder);
+    const waypointName = value.waypointName === null ? null : asString(value.waypointName).trim();
+    if (!id || !targetId || !targetExcerpt || !authorHandle || !noteExcerpt || !reason || !createdAt ||
+        value.targetKind !== "reply" || !["published", "hidden"].includes(targetStatus) ||
+        !["received", "reviewing"].includes(status) ||
+        (value.waypointRouteOrder !== null && waypointRouteOrder === null) ||
+        (value.waypointName !== null && !waypointName)) return [];
+    return [{ id, targetId, targetExcerpt, authorHandle,
+      targetStatus: targetStatus as "published" | "hidden", noteExcerpt,
+      waypointRouteOrder, waypointName, reason,
+      status: status as "received" | "reviewing", createdAt }];
+  });
+}
+
 export function renderProductionSnapshotReportRows(records: readonly ProductionSnapshotReport[]): string {
   if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No reports are present in this snapshot.</span></td></tr>`;
   return records.map((record) => {
@@ -1159,6 +1247,41 @@ export function renderModerationRows(records: readonly OpsModerationRecord[]): s
     <td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="approved">Approve</button><button class="ops-button ops-button--danger" type="button" data-moderation-id="${escapeOpsHtml(record.id)}" data-moderation-decision="rejected">Reject</button></div></td>
   </tr>`;
   }).join("");
+}
+
+export function renderModerationReplyRows(records: readonly OpsModerationReply[]): string {
+  if (records.length === 0) return `<tr><td colspan="7"><span class="ops-table-empty">No public replies are awaiting review.</span></td></tr>`;
+  return records.map((record) => {
+    const action = record.status === "published" ? "hide" : "restore";
+    const label = action === "hide" ? "Hide" : "Restore";
+    return `<tr>
+      <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
+      <td>${escapeOpsHtml(record.authorHandle)}</td>
+      <td>${escapeOpsHtml(moderationWaypointLabel(record))}</td>
+      <td>${escapeOpsHtml(record.body)}</td>
+      <td><span class="ops-chip">${escapeOpsHtml(record.status)}</span></td>
+      <td>${escapeOpsHtml(record.flagCount)} open ${record.flagCount === 1 ? "flag" : "flags"}</td>
+      <td><button class="ops-button ops-moderation-action${action === "hide" ? " ops-moderation-action--hide" : " ops-button--quiet"}" type="button" data-reply-moderation-id="${escapeOpsHtml(record.id)}" data-reply-moderation-action="${action}">${label}</button></td>
+    </tr>`;
+  }).join("");
+}
+
+export function renderContentFlagRows(records: readonly OpsContentFlag[]): string {
+  if (records.length === 0) return `<tr><td colspan="7"><span class="ops-table-empty">No received reply flags require review.</span></td></tr>`;
+  return records.map((record) => `<tr>
+    <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
+    <td>${escapeOpsHtml(record.authorHandle)}</td>
+    <td>${escapeOpsHtml(moderationWaypointLabel(record))}</td>
+    <td>${escapeOpsHtml(record.targetExcerpt)}</td>
+    <td>${escapeOpsHtml(record.reason)}</td>
+    <td><span class="ops-chip">${escapeOpsHtml(record.status)}</span></td>
+    <td><div class="ops-row-actions"><button class="ops-button ops-moderation-action ops-moderation-action--hide" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-moderation-action="hide_target">Hide reply</button><button class="ops-button ops-button--quiet ops-moderation-action" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-moderation-action="dismiss">Dismiss</button></div></td>
+  </tr>`).join("");
+}
+
+function moderationWaypointLabel(record: Pick<OpsModerationReply | OpsContentFlag, "waypointRouteOrder" | "waypointName">): string {
+  if (record.waypointRouteOrder !== null && record.waypointName) return `Stop ${String(record.waypointRouteOrder).padStart(2, "0")} · ${record.waypointName}`;
+  return "Public Case Note";
 }
 
 export function renderReportUpdateUploads(detail: OpsReportDetail): string {
@@ -2040,12 +2163,50 @@ async function updateActiveReportStatus(status: string): Promise<void> {
 }
 
 async function loadModeration(): Promise<void> {
+  await Promise.allSettled([loadModerationNotes(), loadModerationReplies(), loadContentFlags()]);
+}
+
+async function loadModerationNotes(): Promise<void> {
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/moderation/notes");
     if (!response.ok) throw new Error(apiError(payload, "The moderation queue is unavailable."));
     setTable("#moderation-table", renderModerationRows(normalizeModeration(payload)));
   } catch {
     setTable("#moderation-table", `<tr><td colspan="6"><span class="ops-table-empty">The moderation queue is unavailable from the source.</span></td></tr>`);
+  }
+}
+
+function setModerationState(selector: "#moderation-replies-state" | "#moderation-flags-state", message: string, kind: "normal" | "error" = "normal"): void {
+  const state = document.querySelector<HTMLElement>(selector);
+  if (!state) return;
+  state.textContent = message;
+  if (kind === "error") state.dataset.kind = "error";
+  else delete state.dataset.kind;
+}
+
+async function loadModerationReplies(): Promise<void> {
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/moderation/replies?limit=50");
+    if (!response.ok) throw new Error(apiError(payload, "The public replies queue is unavailable."));
+    const records = normalizeModerationReplies(payload);
+    setTable("#moderation-replies-table", renderModerationReplyRows(records));
+    setModerationState("#moderation-replies-state", records.length === 0 ? "Public replies loaded. No reply action is currently needed." : `${records.length} public ${records.length === 1 ? "reply" : "replies"} loaded for review.`);
+  } catch (error) {
+    setTable("#moderation-replies-table", `<tr><td colspan="7"><span class="ops-table-empty">The public replies queue is unavailable from the source.</span></td></tr>`);
+    setModerationState("#moderation-replies-state", error instanceof Error ? error.message : "The public replies queue is unavailable.", "error");
+  }
+}
+
+async function loadContentFlags(): Promise<void> {
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/moderation/flags?limit=50");
+    if (!response.ok) throw new Error(apiError(payload, "The received flags queue is unavailable."));
+    const records = normalizeContentFlags(payload);
+    setTable("#moderation-flags-table", renderContentFlagRows(records));
+    setModerationState("#moderation-flags-state", records.length === 0 ? "Received flags loaded. No flag action is currently needed." : `${records.length} received ${records.length === 1 ? "flag" : "flags"} loaded for review.`);
+  } catch (error) {
+    setTable("#moderation-flags-table", `<tr><td colspan="7"><span class="ops-table-empty">The received flags queue is unavailable from the source.</span></td></tr>`);
+    setModerationState("#moderation-flags-state", error instanceof Error ? error.message : "The received flags queue is unavailable.", "error");
   }
 }
 
@@ -2119,6 +2280,83 @@ async function loadAudit(): Promise<void> {
     setTable("#audit-table", renderAuditRows(normalizeAudit(payload)));
   } catch {
     setTable("#audit-table", `<tr><td colspan="5"><span class="ops-table-empty">The audit trail is unavailable from the source.</span></td></tr>`);
+  }
+}
+
+function privateModerationReason(): string | null {
+  const entered = window.prompt("Record a private reason for this audited action:", "");
+  if (entered === null) return null;
+  const reason = entered.trim();
+  if (reason.length < 3 || reason.length > 500) return "";
+  return reason;
+}
+
+async function refreshModerationAfterMutation(
+  stateSelector: "#moderation-replies-state" | "#moderation-flags-state",
+  message: string,
+): Promise<void> {
+  await Promise.all([loadModerationReplies(), loadContentFlags(), loadDashboard(), loadAudit()]);
+  setModerationState(stateSelector, message);
+  document.querySelector<HTMLElement>(stateSelector)?.focus();
+}
+
+async function moderateReplyFromButton(button: HTMLButtonElement): Promise<void> {
+  const id = button.dataset.replyModerationId;
+  const action = button.dataset.replyModerationAction;
+  if (!id || (action !== "hide" && action !== "restore")) return;
+  const reason = privateModerationReason();
+  if (reason === null) return;
+  if (!reason) {
+    setModerationState("#moderation-replies-state", "Enter a private reason between 3 and 500 characters before continuing.", "error");
+    button.focus();
+    return;
+  }
+  if (action === "hide" && !window.confirm("Hide this public reply? This action is reversible and audited.")) return;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  try {
+    const { response, payload } = await opsRequest(`/api/v1/ops/moderation/replies/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, reason }),
+    });
+    if (!response.ok) throw new Error(apiError(payload, "The reply was not changed."));
+    await refreshModerationAfterMutation("#moderation-replies-state", action === "hide" ? "Reply hidden. The action is audited and can be restored." : "Reply restored. The action is audited.");
+  } catch (error) {
+    setModerationState("#moderation-replies-state", error instanceof Error ? error.message : "The reply was not changed.", "error");
+    button.disabled = false;
+    button.textContent = originalLabel;
+    button.focus();
+  }
+}
+
+async function moderateFlagFromButton(button: HTMLButtonElement): Promise<void> {
+  const id = button.dataset.flagModerationId;
+  const action = button.dataset.flagModerationAction;
+  if (!id || (action !== "dismiss" && action !== "hide_target")) return;
+  const reason = privateModerationReason();
+  if (reason === null) return;
+  if (!reason) {
+    setModerationState("#moderation-flags-state", "Enter a private reason between 3 and 500 characters before continuing.", "error");
+    button.focus();
+    return;
+  }
+  if (action === "hide_target" && !window.confirm("Hide this public reply? This action is reversible and audited.")) return;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  try {
+    const { response, payload } = await opsRequest(`/api/v1/ops/moderation/flags/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, reason }),
+    });
+    if (!response.ok) throw new Error(apiError(payload, "The flag was not changed."));
+    await refreshModerationAfterMutation("#moderation-flags-state", action === "hide_target" ? "Reply hidden and its received flags resolved. The action is audited." : "Flag dismissed. The action is audited.");
+  } catch (error) {
+    setModerationState("#moderation-flags-state", error instanceof Error ? error.message : "The flag was not changed.", "error");
+    button.disabled = false;
+    button.textContent = originalLabel;
+    button.focus();
   }
 }
 
@@ -2505,6 +2743,18 @@ function setupWorkspace(): void {
   document.querySelector("#subscriber-refresh")?.addEventListener("click", () => void loadSubscribers());
   document.querySelector("#subscriber-load-more")?.addEventListener("click", () => void loadSubscribers(true));
   document.querySelector("#subscriber-export")?.addEventListener("click", exportLoadedSubscribers);
+  document.querySelector("#moderation-replies-table")?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLButtonElement>("[data-reply-moderation-id][data-reply-moderation-action]");
+    if (button && !button.disabled) void moderateReplyFromButton(button);
+  });
+  document.querySelector("#moderation-flags-table")?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLButtonElement>("[data-flag-moderation-id][data-flag-moderation-action]");
+    if (button && !button.disabled) void moderateFlagFromButton(button);
+  });
 
   document.querySelector("#production-snapshot-reports")?.addEventListener("click", (event) => {
     const button = (event.target as Element).closest<HTMLButtonElement>("[data-production-snapshot-report-id]");

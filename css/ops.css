@@ -267,6 +267,11 @@ td { padding: 10px 9px; color: var(--ops-ink); box-shadow: inset 0 -1px rgba(248
 td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .62rem; font-variant-numeric: tabular-nums; }
 .ops-table-empty { display: block; padding: 23px 6px; color: var(--ops-muted); text-align: center; }
 .ops-row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 160px; }
+.ops-moderation-table { min-width: 880px; }
+.ops-moderation-table td { max-width: 34ch; overflow-wrap: anywhere; }
+.ops-moderation-action { min-height: 44px; }
+.ops-moderation-action--hide { color: #fff4ef; background: #7a2e28; box-shadow: inset 0 0 0 1px var(--ops-danger); }
+.ops-moderation-action--hide:hover { background: #93342d; }
 .ops-ledger-state { margin: 0 0 13px; padding: 10px 12px; color: var(--ops-muted); background: rgba(7, 31, 28, .48); border-radius: 5px; box-shadow: inset 3px 0 rgba(241, 182, 43, .5); font-size: .84rem; }
 .ops-ledger-state[data-kind="error"] { color: #ffd5cb; box-shadow: inset 3px 0 var(--ops-danger); }
 .ops-ledger-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 13px; color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .6rem; font-variant-numeric: tabular-nums; }

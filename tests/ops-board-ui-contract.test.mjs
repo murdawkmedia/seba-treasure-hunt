@@ -135,6 +135,33 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.doesNotMatch(html, /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/);
 });
 
+test("the moderation queue provides separate accessible reply and flag controls", () => {
+  const html = read("ops.html");
+  const client = read("src/client/ops.ts");
+  const css = read("css/ops.css");
+
+  for (const id of ["moderation-replies-table", "moderation-flags-table"]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  for (const id of ["moderation-replies-state", "moderation-flags-state"]) {
+    assert.match(html, new RegExp(`id="${id}"[^>]*role="status"[^>]*aria-live="polite"`));
+  }
+  assert.match(html, /<h2[^>]*>Public replies<\/h2>/);
+  assert.match(html, /<h2[^>]*>Received flags<\/h2>/);
+  assert.match(client, /\/api\/v1\/ops\/moderation\/replies/);
+  assert.match(client, /\/api\/v1\/ops\/moderation\/flags/);
+  assert.match(client, /data-reply-moderation-action/);
+  assert.match(client, /data-flag-moderation-action/);
+  assert.match(client, /window\.prompt\([^)]*private reason/i);
+  assert.match(client, /window\.confirm\([^)]*reversible[^)]*audited/i);
+  assert.match(client, /Promise\.allSettled\(/);
+  assert.match(client, /loadModerationReplies\(\), loadContentFlags\(\), loadDashboard\(\), loadAudit\(\)/);
+  assert.doesNotMatch(html, /moderation[^<]{0,80}<input[^>]+name="reason"/i);
+  assert.match(css, /\.ops-moderation-action\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(css, /\.ops-moderation-table\s*\{[^}]*min-width:/s);
+  assert.match(css, /\.ops-moderation-action--hide\s*\{[^}]*var\(--ops-danger\)/s);
+});
+
 test("public UI sources contain no real staff address or generic transition-all", () => {
   const sources = [
     "clue-board.html",
