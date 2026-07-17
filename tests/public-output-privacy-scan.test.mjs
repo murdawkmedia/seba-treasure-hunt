@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-test("Dashboard static HTML and client bundle are public scan surfaces and fixture leaks fail closed", async () => {
+test("Dashboard and Ops static assets are public scan surfaces while the Pages worker is not served", async () => {
   const { scanBuiltOutputPrivacy } = await import("../scripts/qa-output-privacy.mjs");
   const root = await mkdtemp(path.join(os.tmpdir(), "tim-lost-output-scan-test-"));
   const fixture = "qa-private-dashboard-leak";
@@ -18,13 +20,43 @@ test("Dashboard static HTML and client bundle are public scan surfaces and fixtu
     await writeFile(path.join(root, "_worker.js"), `const privateWorker = ${JSON.stringify(fixture)};`, "utf8");
 
     const result = await scanBuiltOutputPrivacy({ distRoot: root, privateFixtureValues: [fixture] });
-    assert.deepEqual(result.publicSurfaceOutputs.files.sort(), ["assets/app/dashboard.js", "dashboard.html"]);
+    assert.deepEqual(result.publicSurfaceOutputs.files.sort(), ["assets/app/dashboard.js", "assets/app/ops.js", "dashboard.html", "ops.html"]);
     assert.deepEqual(
       result.publicSurfaceOutputs.privacyFindings.map(({ file }) => file).sort(),
-      ["assets/app/dashboard.js", "dashboard.html"],
+      ["assets/app/dashboard.js", "assets/app/ops.js", "dashboard.html", "ops.html"],
     );
-    assert.deepEqual(result.privateBundleOutputs.files.sort(), ["_worker.js", "assets/app/ops.js", "ops.html"]);
-    assert.equal(result.privateBundleOutputs.privacyFindings.length, 3);
+    assert.deepEqual(result.privateBundleOutputs.files, ["_worker.js"]);
+    assert.equal(result.privateBundleOutputs.privacyFindings.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("privacy scanner CLI scans served Ops assets, reports safely, and imports without running", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "tim-lost-output-cli-test-"));
+  const scriptPath = fileURLToPath(new URL("../scripts/qa-output-privacy.mjs", import.meta.url));
+  const privateSentinel = "qa-private-credential-sentinel";
+
+  try {
+    await mkdir(path.join(root, "assets", "app"), { recursive: true });
+    await writeFile(path.join(root, "ops.html"), `<main>${privateSentinel}</main>`, "utf8");
+    await writeFile(path.join(root, "assets", "app", "ops.js"), `const leaked = ${JSON.stringify(privateSentinel)};`, "utf8");
+    await writeFile(path.join(root, "_worker.js"), `const serverOnly = ${JSON.stringify(privateSentinel)};`, "utf8");
+
+    const failed = spawnSync(process.execPath, [scriptPath, root], { encoding: "utf8" });
+    assert.equal(failed.status, 1);
+    assert.match(failed.stdout, /privacy scan failed/i);
+    assert.match(failed.stdout, /ops\.html|assets\/app\/ops\.js/);
+    assert.doesNotMatch(`${failed.stdout}\n${failed.stderr}`, new RegExp(privateSentinel));
+
+    const imported = spawnSync(
+      process.execPath,
+      ["--input-type=module", "--eval", `await import(${JSON.stringify(pathToFileURL(scriptPath).href)})`],
+      { encoding: "utf8" },
+    );
+    assert.equal(imported.status, 0);
+    assert.equal(imported.stdout, "");
+    assert.equal(imported.stderr, "");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

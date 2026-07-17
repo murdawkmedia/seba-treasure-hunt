@@ -151,10 +151,14 @@ test("the moderation queue provides separate accessible reply and flag controls"
   }
   assert.match(html, /<h2[^>]*>Public replies<\/h2>/);
   assert.match(html, /<h2[^>]*>Received flags<\/h2>/);
+  assert.match(html, /<th>Flagged content<\/th>/);
   assert.match(client, /\/api\/v1\/ops\/moderation\/replies/);
   assert.match(client, /\/api\/v1\/ops\/moderation\/flags/);
   assert.match(client, /data-reply-moderation-action/);
   assert.match(client, /data-flag-moderation-action/);
+  assert.match(client, /data-flag-target-kind/);
+  assert.match(client, /targetKind\s*===\s*"note"/);
+  assert.match(client, /targetKind\s*!==\s*"reply"/);
   assert.match(client, /window\.prompt\([^)]*private reason/i);
   assert.match(client, /window\.confirm\([^)]*reversible[^)]*audited/i);
   assert.match(client, /Promise\.allSettled\(/);
@@ -166,6 +170,7 @@ test("the moderation queue provides separate accessible reply and flag controls"
   assert.match(client, /Promise\.all\(\[\s*loadModerationReplies\(\),\s*loadContentFlags\(\),\s*loadDashboard\(\),\s*loadAudit\(\),?\s*\]\)/);
   assert.match(client, /const targetOutcome = stateSelector === "#moderation-replies-state" \? repliesOutcome : flagsOutcome/);
   assert.match(client, /moderationMutationRefreshNotice\(message, targetOutcome\)/);
+  assert.match(client, /await refreshModerationAfterMutation\("#moderation-flags-state"/);
   assert.doesNotMatch(html, /moderation[^<]{0,80}<input[^>]+name="reason"/i);
   assert.match(css, /\.ops-moderation-action\s*\{[^}]*min-height:\s*44px/s);
   assert.match(css, /\.ops-moderation-table\s*\{[^}]*min-width:/s);

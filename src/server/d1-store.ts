@@ -2622,6 +2622,7 @@ export class D1DataStore implements DataStore {
                 n.body AS note_body, w.route_order AS waypoint_route_order, w.name AS waypoint_name
          FROM content_flags f
          LEFT JOIN field_note_replies r ON f.target_kind = 'reply' AND r.id = f.target_id
+           AND r.status IN ('published', 'hidden')
          JOIN field_notes n ON n.id = CASE WHEN f.target_kind = 'reply' THEN r.field_note_id ELSE f.target_id END
            AND n.status = 'approved'
          JOIN hunter_profiles p ON p.subject = CASE WHEN f.target_kind = 'reply' THEN r.author_subject ELSE n.author_subject END
@@ -2860,6 +2861,7 @@ export class D1DataStore implements DataStore {
              (SELECT COUNT(*)
               FROM content_flags flag
               LEFT JOIN field_note_replies reply ON flag.target_kind = 'reply' AND reply.id = flag.target_id
+                AND reply.status IN ('published', 'hidden')
               JOIN field_notes note ON note.id = CASE WHEN flag.target_kind = 'reply' THEN reply.field_note_id ELSE flag.target_id END
                 AND note.status = 'approved'
               JOIN hunter_profiles author ON author.subject = CASE WHEN flag.target_kind = 'reply' THEN reply.author_subject ELSE note.author_subject END

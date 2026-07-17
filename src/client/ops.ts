@@ -163,10 +163,11 @@ export interface OpsModerationReply {
 
 export interface OpsContentFlag {
   id: string;
+  targetKind: "note" | "reply";
   targetId: string;
   targetExcerpt: string;
   authorHandle: string;
-  targetStatus: "published" | "hidden";
+  targetStatus: "approved" | "published" | "hidden";
   noteExcerpt: string;
   waypointRouteOrder: number | null;
   waypointName: string | null;
@@ -1028,6 +1029,7 @@ export function normalizeContentFlags(payload: unknown): OpsContentFlag[] {
   return moderationRecords(payload).flatMap((value): OpsContentFlag[] => {
     if (!isRecord(value)) return [];
     const id = asString(value.id).trim();
+    const targetKind = asString(value.targetKind);
     const targetId = asString(value.targetId).trim();
     const targetExcerpt = asString(value.targetExcerpt);
     const authorHandle = asString(value.authorHandle).trim();
@@ -1038,13 +1040,16 @@ export function normalizeContentFlags(payload: unknown): OpsContentFlag[] {
     const createdAt = validModerationTime(value.createdAt);
     const waypointRouteOrder = publicRouteOrder(value.waypointRouteOrder);
     const waypointName = value.waypointName === null ? null : asString(value.waypointName).trim();
+    const validTarget = targetKind === "note"
+      ? targetStatus === "approved"
+      : targetKind === "reply" && ["published", "hidden"].includes(targetStatus);
     if (!id || !targetId || !targetExcerpt || !authorHandle || !noteExcerpt || !reason || !createdAt ||
-        value.targetKind !== "reply" || !["published", "hidden"].includes(targetStatus) ||
+        !validTarget ||
         !["received", "reviewing"].includes(status) ||
         (value.waypointRouteOrder !== null && waypointRouteOrder === null) ||
         (value.waypointName !== null && !waypointName)) return [];
-    return [{ id, targetId, targetExcerpt, authorHandle,
-      targetStatus: targetStatus as "published" | "hidden", noteExcerpt,
+    return [{ id, targetKind: targetKind as "note" | "reply", targetId, targetExcerpt, authorHandle,
+      targetStatus: targetStatus as "approved" | "published" | "hidden", noteExcerpt,
       waypointRouteOrder, waypointName, reason,
       status: status as "received" | "reviewing", createdAt }];
   });
@@ -1437,16 +1442,24 @@ export function renderModerationReplyRows(records: readonly OpsModerationReply[]
 }
 
 export function renderContentFlagRows(records: readonly OpsContentFlag[]): string {
-  if (records.length === 0) return `<tr><td colspan="7"><span class="ops-table-empty">No received reply flags require review.</span></td></tr>`;
-  return records.map((record) => `<tr>
+  if (records.length === 0) return `<tr><td colspan="7"><span class="ops-table-empty">No received content flags require review.</span></td></tr>`;
+  return records.map((record) => {
+    const target = record.targetKind === "note"
+      ? `<strong>Case Note</strong><br />${escapeOpsHtml(record.targetExcerpt)}`
+      : `<strong>Reply</strong><br />${escapeOpsHtml(record.targetExcerpt)}`;
+    const hideReply = record.targetKind === "reply"
+      ? `<button class="ops-button ops-moderation-action ops-moderation-action--hide" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-target-kind="reply" data-flag-moderation-action="hide_target">Hide reply</button>`
+      : "";
+    return `<tr>
     <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
     <td>${escapeOpsHtml(record.authorHandle)}</td>
     <td>${escapeOpsHtml(moderationWaypointLabel(record))}</td>
-    <td>${escapeOpsHtml(record.targetExcerpt)}</td>
+    <td>${target}</td>
     <td>${escapeOpsHtml(record.reason)}</td>
     <td><span class="ops-chip">${escapeOpsHtml(record.status)}</span></td>
-    <td><div class="ops-row-actions"><button class="ops-button ops-moderation-action ops-moderation-action--hide" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-moderation-action="hide_target">Hide reply</button><button class="ops-button ops-button--quiet ops-moderation-action" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-moderation-action="dismiss">Dismiss</button></div></td>
-  </tr>`).join("");
+    <td><div class="ops-row-actions">${hideReply}<button class="ops-button ops-button--quiet ops-moderation-action" type="button" data-flag-moderation-id="${escapeOpsHtml(record.id)}" data-flag-target-kind="${escapeOpsHtml(record.targetKind)}" data-flag-moderation-action="dismiss">Dismiss</button></div></td>
+  </tr>`;
+  }).join("");
 }
 
 function moderationWaypointLabel(record: Pick<OpsModerationReply | OpsContentFlag, "waypointRouteOrder" | "waypointName">): string {
@@ -2521,7 +2534,10 @@ async function moderateReplyFromButton(button: HTMLButtonElement): Promise<void>
 async function moderateFlagFromButton(button: HTMLButtonElement): Promise<void> {
   const id = button.dataset.flagModerationId;
   const action = button.dataset.flagModerationAction;
-  if (!id || (action !== "dismiss" && action !== "hide_target")) return;
+  const targetKind = button.dataset.flagTargetKind;
+  if (!id || (targetKind !== "note" && targetKind !== "reply") ||
+      (action !== "dismiss" && action !== "hide_target") ||
+      (action === "hide_target" && targetKind !== "reply")) return;
   const reason = privateModerationReason();
   if (reason === null) return;
   if (!reason) {

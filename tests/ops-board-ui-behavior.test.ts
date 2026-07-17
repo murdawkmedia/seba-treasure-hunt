@@ -111,14 +111,27 @@ test("reply and flag moderation discard malformed rows and render distinct escap
       status: "received",
       createdAt: "2026-07-17T18:01:00.000Z",
     },
-    { id: "flag-note", targetKind: "note", targetId: "note-1" },
+    {
+      id: "flag-note",
+      targetKind: "note",
+      targetId: "note-1",
+      targetExcerpt: "Case Note <strong>observation</strong>",
+      authorHandle: "Hunter <C3D4>",
+      targetStatus: "approved",
+      noteExcerpt: "Case Note <strong>observation</strong>",
+      waypointRouteOrder: 4,
+      waypointName: "The <Bridge>",
+      reason: "spam <svg onload=alert(1)>",
+      status: "reviewing",
+      createdAt: "2026-07-17T18:02:00.000Z",
+    },
     { id: "flag-negative-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: -1, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
     { id: "flag-fractional-route", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: 4.5, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
     { id: "flag-route-14", targetKind: "reply", targetId: "reply-1", targetExcerpt: "Reply", authorHandle: "Hunter", targetStatus: "published", noteExcerpt: "Parent", waypointRouteOrder: 14, waypointName: "Bridge", reason: "unsafe", status: "received", createdAt: "2026-07-17T18:01:00.000Z" },
   ] });
 
   assert.equal(replies.length, 1);
-  assert.equal(flags.length, 1);
+  assert.equal(flags.length, 2);
 
   const replyHtml = renderModerationReplyRows(replies);
   assert.match(replyHtml, /&lt;script&gt;/);
@@ -140,6 +153,15 @@ test("reply and flag moderation discard malformed rows and render distinct escap
   assert.match(flagHtml, /data-flag-moderation-action="dismiss"/);
   assert.match(flagHtml, />Hide reply<\/button>/);
   assert.match(flagHtml, />Dismiss<\/button>/);
+
+  const noteFlag = flags.find((flag) => flag.targetKind === "note");
+  assert.ok(noteFlag);
+  const noteFlagHtml = renderContentFlagRows([noteFlag]);
+  assert.match(noteFlagHtml, /Case Note/);
+  assert.match(noteFlagHtml, /&lt;strong&gt;observation&lt;\/strong&gt;/);
+  assert.match(noteFlagHtml, /data-flag-target-kind="note"/);
+  assert.match(noteFlagHtml, /data-flag-moderation-action="dismiss"/);
+  assert.doesNotMatch(noteFlagHtml, /data-flag-moderation-action="hide_target"|>Hide reply<\/button>/);
 });
 
 test("older moderation pages append only distinct records", () => {

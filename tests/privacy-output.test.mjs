@@ -33,7 +33,9 @@ test("public output privacy scan catches board identity, moderation and object-k
       [...new Set(result.publicSurfaceOutputs.privacyFindings.map(({ fixture }) => fixture))].sort(),
       [...privateValues].sort(),
     );
-    assert.equal(result.privateBundleOutputs.privacyFindings.length, privateValues.length);
+    assert.equal(result.publicSurfaceOutputs.files.includes("ops.html"), true);
+    assert.equal(result.publicSurfaceOutputs.privacyFindings.filter(({ file }) => file === "ops.html").length, privateValues.length);
+    assert.equal(result.privateBundleOutputs.privacyFindings.length, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

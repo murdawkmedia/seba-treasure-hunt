@@ -4675,6 +4675,16 @@ test("real D1 projects recent published replies with public parent context and r
       `INSERT INTO content_flags
        (id, reporter_subject, target_kind, target_id, reason, status, created_at)
        VALUES ('unapproved-parent-flag', 'flag-reporter', 'reply', 'unapproved-parent-reply', 'spam', 'received', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO field_note_replies
+       (id, field_note_id, author_subject, body, status, created_at)
+       VALUES ('deleted-target-reply', 'moderation-note', 'reply-author', 'Deleted target.', 'deleted', ?)`
+    ).bind(timestamp),
+    db.prepare(
+      `INSERT INTO content_flags
+       (id, reporter_subject, target_kind, target_id, reason, status, created_at)
+       VALUES ('deleted-target-flag', 'flag-reporter', 'reply', 'deleted-target-reply', 'spam', 'received', ?)`
     ).bind(timestamp)
   ]);
   assert.deepEqual((await store.getOpsDashboard()).counts, {
