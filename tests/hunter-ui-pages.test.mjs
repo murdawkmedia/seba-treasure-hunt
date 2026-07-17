@@ -180,7 +180,14 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   assert.match(html, /data-turnstile/);
   assert.match(read("src/client/report.ts"), /action:\s*"report"/);
   assert.match(html, /JPEG, PNG, or WebP/i);
-  assert.match(html, /10 MiB/i);
+  assert.match(html, /Photos up to 20 MB upload directly/i);
+  assert.match(html, /larger photos up to 50 MB will be optimized on this device/i);
+  assert.match(html, /Prepared uploads may total up to 30 MB/i);
+  assert.match(html, /data-report-photo-status[^>]*aria-live="polite"/);
+  assert.match(html, /data-report-photo-clear[^>]*hidden/);
+  assert.match(client, /prepareReportImages/);
+  assert.match(client, /reportImageMegabytes/);
+  assert.match(client, /AbortSignal\.timeout\(120_000\)/);
   assert.match(html, /data-report-errors[^>]*role="alert"/);
   assert.match(html, /<option value="not_sure">Not sure \/ between waypoints<\/option>/);
   assert.match(html, /<option value="different_location">Different location<\/option>/);

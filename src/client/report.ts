@@ -1,4 +1,16 @@
 import { campaignHunterSession } from "./account";
+import {
+  prepareReportImages,
+  ReportImagePreparationError,
+  type PreparedReportImage,
+} from "./report-image-preparation";
+import {
+  REPORT_IMAGE_DIRECT_BYTES,
+  REPORT_IMAGE_MAX_COUNT,
+  REPORT_IMAGE_TOTAL_BYTES,
+  REPORT_IMAGE_TYPES,
+  reportImageMegabytes,
+} from "../shared/report-image-limits";
 import { routeOrder, waypointId } from "../shared/waypoints";
 
 export type ReportType = "find" | "tip" | "safety";
@@ -35,8 +47,6 @@ export type ReportErrors = Partial<
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const allowedTypes = new Set<ReportType>(["find", "tip", "safety"]);
-const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-const maxImageBytes = 10 * 1024 * 1024;
 
 export function validateReportDraft(draft: ReportDraft): ReportErrors {
   const errors: ReportErrors = {};
@@ -67,15 +77,18 @@ function allPhotos(draft: ReportDraft): File[] {
 
 function validatePhotos(draft: ReportDraft): string | undefined {
   const photos = allPhotos(draft);
-  if (photos.length > 3) return "Choose no more than three images.";
+  if (photos.length > REPORT_IMAGE_MAX_COUNT) return "Choose no more than three images.";
+  let total = 0;
   for (const photo of photos) {
-    if (!allowedImageTypes.has(photo.type)) {
+    if (!REPORT_IMAGE_TYPES.has(photo.type)) {
       return "Images must be JPEG, PNG, or WebP files.";
     }
-    if (photo.size > maxImageBytes) {
-      return "Each image must be 10 MiB or smaller.";
+    if (photo.size > REPORT_IMAGE_DIRECT_BYTES) {
+      return "Each prepared image must be 20 MB or smaller.";
     }
+    total += photo.size;
   }
+  if (total > REPORT_IMAGE_TOTAL_BYTES) return "Prepared images may total no more than 30 MB.";
   return undefined;
 }
 
@@ -100,12 +113,15 @@ export function buildReportPayload(draft: ReportDraft): Record<string, string | 
   return payload;
 }
 
-export function buildReportFormData(draft: ReportDraft): FormData {
+export function buildReportFormData(
+  draft: ReportDraft,
+  photos: readonly File[] = allPhotos(draft),
+): FormData {
   const formData = new FormData();
   for (const [key, value] of Object.entries(buildReportPayload(draft))) {
     formData.set(key, String(value));
   }
-  for (const photo of allPhotos(draft)) formData.append("images", photo, photo.name);
+  for (const photo of photos) formData.append("images", photo, photo.name);
   return formData;
 }
 
@@ -275,6 +291,10 @@ export function reportErrorSelector(key: string): string {
 let turnstileToken = "";
 let turnstileWidgetId: string | undefined;
 let pendingIdempotencyKey: string | undefined;
+let preparedReportPhotos: PreparedReportImage[] = [];
+let photoPreparationController: AbortController | null = null;
+let photoPreparationPromise: Promise<void> | null = null;
+let photoPreparationError: string | undefined;
 
 async function loadPublicConfig(): Promise<PublicConfig> {
   const response = await fetch("/api/v1/config", {
@@ -381,9 +401,12 @@ function showErrors(errors: ReportErrors): void {
   firstInvalid?.focus();
 }
 
-function readDraft(form: HTMLFormElement): ReportDraft {
+function readDraft(
+  form: HTMLFormElement,
+  preparedPhotos: readonly File[] = preparedReportPhotos.map((item) => item.upload),
+): ReportDraft {
   const data = new FormData(form);
-  const files = Array.from(form.querySelector<HTMLInputElement>("[name=images]")?.files ?? []);
+  const files = [...preparedPhotos];
   const latitude = Number(data.get("latitude"));
   const longitude = Number(data.get("longitude"));
   const hasCoordinates =
@@ -533,6 +556,101 @@ function initializeTypeBehavior(): void {
   update();
 }
 
+function renderPhotoStatuses(messages: readonly string[], kind: "normal" | "error" = "normal"): void {
+  const list = document.querySelector<HTMLUListElement>("[data-report-photo-status]");
+  if (!list) return;
+  list.replaceChildren();
+  if (kind === "error") list.dataset.kind = "error";
+  else delete list.dataset.kind;
+  for (const message of messages) {
+    const item = document.createElement("li");
+    item.textContent = message;
+    list.append(item);
+  }
+}
+
+function resetPhotoPreparation(input?: HTMLInputElement | null): void {
+  photoPreparationController?.abort();
+  photoPreparationController = null;
+  photoPreparationPromise = null;
+  photoPreparationError = undefined;
+  preparedReportPhotos = [];
+  if (input) input.value = "";
+  renderPhotoStatuses([]);
+  const clear = document.querySelector<HTMLButtonElement>("[data-report-photo-clear]");
+  if (clear) clear.hidden = true;
+  clearFieldError("photo");
+}
+
+function initializePhotoPreparation(): void {
+  const input = document.querySelector<HTMLInputElement>("[name=images]");
+  const clear = document.querySelector<HTMLButtonElement>("[data-report-photo-clear]");
+  const submit = document.querySelector<HTMLButtonElement>("[data-report-submit]");
+  if (!input || !clear) return;
+
+  input.addEventListener("change", () => {
+    photoPreparationController?.abort();
+    preparedReportPhotos = [];
+    photoPreparationError = undefined;
+    pendingIdempotencyKey = undefined;
+    const files = Array.from(input.files ?? []);
+    clear.hidden = files.length === 0;
+    if (files.length === 0) {
+      renderPhotoStatuses([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    photoPreparationController = controller;
+    if (submit) submit.disabled = true;
+    renderPhotoStatuses(
+      files.map((file) =>
+        file.size > REPORT_IMAGE_DIRECT_BYTES
+          ? `Optimizing ${file.name} (${reportImageMegabytes(file.size)})…`
+          : `Checking ${file.name} (${reportImageMegabytes(file.size)})…`,
+      ),
+    );
+
+    const current = prepareReportImages(files, { signal: controller.signal })
+      .then((prepared) => {
+        if (controller.signal.aborted || photoPreparationController !== controller) return;
+        preparedReportPhotos = prepared;
+        renderPhotoStatuses(
+          prepared.map((item) =>
+            item.optimized
+              ? `${item.source.name}: ready — reduced from ${reportImageMegabytes(item.source.size)} to ${reportImageMegabytes(item.upload.size)}.`
+              : `${item.source.name}: ready at ${reportImageMegabytes(item.upload.size)}.`,
+          ),
+        );
+        clearFieldError("photo");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
+        preparedReportPhotos = [];
+        photoPreparationError = error instanceof ReportImagePreparationError
+          ? error.message
+          : "The selected photos could not be prepared. Choose JPEG, PNG, or WebP copies and try again.";
+        renderPhotoStatuses([photoPreparationError], "error");
+        const fieldError = document.querySelector<HTMLElement>('[data-error-for="photo"]');
+        if (fieldError) fieldError.textContent = photoPreparationError;
+        input.setAttribute("aria-invalid", "true");
+      })
+      .finally(() => {
+        if (photoPreparationController !== controller) return;
+        photoPreparationController = null;
+        photoPreparationPromise = null;
+        if (submit) submit.disabled = false;
+      });
+    photoPreparationPromise = current;
+  });
+
+  clear.addEventListener("click", () => {
+    resetPhotoPreparation(input);
+    pendingIdempotencyKey = undefined;
+    input.focus();
+  });
+}
+
 function errorCopy(responseStatus: number, code: string | undefined): string {
   if (responseStatus === 503 && code === "uploads_unavailable") {
     return "Photo storage is unavailable, so this find report was not captured. Keep your evidence and try again later.";
@@ -554,10 +672,13 @@ function resetReportTurnstile(): void {
 async function submitReport(form: HTMLFormElement): Promise<void> {
   const submit = document.querySelector<HTMLButtonElement>("[data-report-submit]");
   const result = document.querySelector<HTMLElement>("[data-report-result]");
-  const draft = readDraft(form);
+  if (photoPreparationPromise) await photoPreparationPromise;
+  const preparedFiles = preparedReportPhotos.map((item) => item.upload);
+  const draft = readDraft(form, preparedFiles);
   const errors = validateReportDraft(draft);
   const photoError = validatePhotos(draft);
   if (photoError) errors.photo = photoError;
+  if (photoPreparationError) errors.photo = photoPreparationError;
   showErrors(errors);
   if (Object.keys(errors).length > 0) return;
 
@@ -570,12 +691,12 @@ async function submitReport(form: HTMLFormElement): Promise<void> {
   const attemptIdempotencyKey = pendingIdempotencyKey;
 
   try {
-    const photos = allPhotos(draft);
+    const photos = preparedFiles;
     const hunterToken = await signedInReportToken();
     const headers = buildReportRequestHeaders(attemptIdempotencyKey, hunterToken);
     let body: BodyInit;
     if (photos.length > 0) {
-      body = buildReportFormData(draft);
+      body = buildReportFormData(draft, photos);
     } else {
       headers.set("Content-Type", "application/json");
       body = JSON.stringify(buildReportPayload(draft));
@@ -585,7 +706,7 @@ async function submitReport(form: HTMLFormElement): Promise<void> {
       headers,
       body,
       credentials: "same-origin",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(120_000),
     });
     const envelope: unknown = await response.json().catch(() => null);
     const errorCode =
@@ -632,6 +753,7 @@ function initializeReport(): void {
   const another = document.querySelector<HTMLButtonElement>("[data-report-another]");
   initializeLocationCapture();
   initializeTypeBehavior();
+  initializePhotoPreparation();
   void initializeTurnstile();
   void loadWaypointOptions();
   void prefillSignedInReporter();
@@ -645,6 +767,7 @@ function initializeReport(): void {
   another?.addEventListener("click", () => {
     if (!form) return;
     form.reset();
+    resetPhotoPreparation(form.querySelector<HTMLInputElement>("[name=images]"));
     form.hidden = false;
     if (panel) panel.hidden = false;
     if (receipt) receipt.hidden = true;

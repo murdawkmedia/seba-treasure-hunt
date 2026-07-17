@@ -735,6 +735,33 @@ button.hunter-button {
   color: #ffb8b2;
 }
 
+.report-photo-status {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 22px;
+  color: var(--hunter-muted);
+  font-size: 0.9rem;
+}
+
+.report-photo-status:empty {
+  display: none;
+}
+
+.report-photo-status li {
+  overflow-wrap: anywhere;
+}
+
+.report-photo-status[data-kind="error"] {
+  color: #ffb8b2;
+}
+
+.report-photo-clear {
+  width: fit-content;
+  min-height: 44px;
+  margin-top: 10px;
+}
+
 .location-capture {
   display: flex;
   align-items: center;

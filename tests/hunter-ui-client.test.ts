@@ -8,6 +8,7 @@ import {
 } from "../src/client/status";
 import {
   applyPrefill,
+  buildReportFormData,
   buildReportRequestHeaders,
   buildReportPayload,
   failReportAttempt,
@@ -315,6 +316,19 @@ test("find reports require an image while tips and safety reports do not", () =>
     "Add a clear photo for a find claim.",
   );
   assert.deepEqual(validateReportDraft({ ...baseReport, type: "safety" }), {});
+});
+
+test("report form data uses browser-prepared upload files", () => {
+  const original = new File(["original"], "large.jpg", { type: "image/jpeg" });
+  const prepared = new File(["prepared"], "large.webp", { type: "image/webp" });
+  const formData = buildReportFormData(
+    { ...baseReport, type: "find", photo: original },
+    [prepared],
+  );
+  const images = formData.getAll("images");
+  assert.equal(images.length, 1);
+  assert.equal((images[0] as File).name, "large.webp");
+  assert.equal((images[0] as File).type, "image/webp");
 });
 
 test("report payload includes coordinates only after explicit location capture", () => {

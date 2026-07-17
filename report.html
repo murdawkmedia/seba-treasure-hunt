@@ -131,8 +131,10 @@
 
               <div class="form-field form-field--full">
                 <label for="report-photo">Photographs <span data-photo-required-copy>(required for a find)</span></label>
-                <input id="report-photo" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="report-photo-hint report-photo-error" />
-                <span class="field-hint" id="report-photo-hint">Up to three JPEG, PNG, or WebP images; maximum 10 MiB each. Images are private unless an operator separately approves a metadata-free public derivative.</span>
+                <input id="report-photo" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="report-photo-hint report-photo-status report-photo-error" />
+                <span class="field-hint" id="report-photo-hint">Add up to three JPEG, PNG, or WebP photos. Photos up to 20 MB upload directly; larger photos up to 50 MB will be optimized on this device. Prepared uploads may total up to 30 MB. Images are private unless an operator separately approves a metadata-free public derivative.</span>
+                <ul class="report-photo-status" id="report-photo-status" data-report-photo-status aria-live="polite" aria-relevant="additions text"></ul>
+                <button class="hunter-button hunter-button--quiet report-photo-clear" type="button" data-report-photo-clear hidden>Clear selected photos</button>
                 <span class="field-error" id="report-photo-error" data-error-for="photo"></span>
               </div>
 
