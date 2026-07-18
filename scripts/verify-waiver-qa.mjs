@@ -430,7 +430,7 @@ function reportSummary() {
     type: "find",
     waypointId: reportFixture.waypointId,
     createdAt: "2026-07-15T22:00:00.000Z",
-    status: "reviewing",
+    status: "verified",
     mediaCount: 2,
   };
 }
@@ -497,6 +497,9 @@ function opsReadResponse(url, legalDocument, fixtureState) {
     return { status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") };
   }
   if (pathname === "/api/v1/ops/moderation/notes") return jsonResponse({ data: [] });
+  if (pathname === "/api/v1/ops/moderation/replies" || pathname === "/api/v1/ops/moderation/flags") {
+    return jsonResponse({ data: [], page: { nextCursor: null } });
+  }
   if (pathname === "/api/v1/ops/staff") return jsonResponse({ data: [] });
   if (pathname === "/api/v1/ops/audit") return jsonResponse({ data: [] });
   if (pathname === "/api/v1/ops/players") return jsonResponse({ data: {
@@ -746,20 +749,55 @@ async function exerciseMinorSignupGate(page, fixtureState, legalDocument) {
   assert.match(await signup.locator("[data-signup-errors]").innerText(), /parent or legal guardian/i, "minor signup and guardian permission must fail closed until attested");
   await signup.locator('[name="guardianPermissionAttested"]').check();
   assert.equal(await signup.locator('[name="guardianPermissionAttested"]').isChecked(), true);
-  await signup.locator('[data-signup-review="privacy-media"]').click();
+  const privacyReview = signup.locator('[data-signup-review="privacy-media"]');
+  const waiverReview = signup.locator('[data-signup-review="waiver"]');
+  const privacyAcceptance = signup.locator('[name="privacyMediaAccepted"]');
+  const waiverAcceptance = signup.locator('[name="waiverAccepted"]');
+  const assertAcceptanceUnchanged = async (state) => {
+    assert.equal(await privacyAcceptance.isChecked(), false, `${state}: privacy acceptance remains participant-controlled`);
+    assert.equal(await waiverAcceptance.isChecked(), false, `${state}: waiver acceptance remains participant-controlled`);
+  };
+
+  await assertAcceptanceUnchanged("before legal review");
+  await privacyReview.click();
   const privacyDialog = page.locator('[data-signup-dialog="privacy-media"]');
   await privacyDialog.waitFor({ state: "visible" });
+  await privacyDialog.locator("iframe").waitFor({ state: "visible" });
+  assert.equal(await privacyDialog.locator("[data-signup-dialog-status]").isHidden(), true, "trusted embedded readiness hides the loading state");
+  if (await privacyDialog.locator("[data-signup-dialog-fallback]").getAttribute("href") !== "/privacy#media-notice") {
+    throw new Error("Privacy legal fallback must target the canonical media notice.");
+  }
   assert.equal(await signup.getAttribute("data-privacy-media-version"), privacyMediaVersion);
-  assert.equal(await signup.locator('[name="privacyMediaAccepted"]').isEnabled(), true);
-  await privacyDialog.locator("[data-signup-dialog-close]").click();
-  await signup.locator('[data-signup-review="waiver"]').click();
+  assert.equal(await privacyAcceptance.isEnabled(), true);
+  await privacyDialog.locator(".signup-legal-dialog__header").getByRole("button", { name: "Close Privacy Policy and Media Notice" }).click();
+  await privacyDialog.waitFor({ state: "hidden" });
+  assert.equal(await privacyReview.evaluate((element) => element === document.activeElement), true, "top Close restores focus to the Privacy review trigger");
+  await assertAcceptanceUnchanged("after top Close");
+
+  await privacyReview.click();
+  await privacyDialog.locator("iframe").waitFor({ state: "visible" });
+  await page.keyboard.press("Escape");
+  await privacyDialog.waitFor({ state: "hidden" });
+  assert.equal(await privacyReview.evaluate((element) => element === document.activeElement), true, "Escape restores focus to the Privacy review trigger");
+  await assertAcceptanceUnchanged("after Escape");
+
+  await waiverReview.click();
   const waiverDialog = page.locator('[data-signup-dialog="waiver"]');
   await waiverDialog.waitFor({ state: "visible" });
+  await waiverDialog.locator("iframe").waitFor({ state: "visible" });
+  assert.equal(await waiverDialog.locator("[data-signup-dialog-status]").isHidden(), true, "trusted waiver readiness hides the loading state");
+  if (await waiverDialog.locator("[data-signup-dialog-fallback]").getAttribute("href") !== "/waiver") {
+    throw new Error("Waiver legal fallback must target the canonical waiver.");
+  }
   assert.equal(await signup.getAttribute("data-waiver-version"), "2026.2");
-  assert.equal(await signup.locator('[name="waiverAccepted"]').isEnabled(), true);
-  await waiverDialog.locator("[data-signup-dialog-close]").click();
-  await signup.locator('[name="privacyMediaAccepted"]').check();
-  await signup.locator('[name="waiverAccepted"]').check();
+  assert.equal(await waiverAcceptance.isEnabled(), true);
+  await waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to account setup" }).click();
+  await waiverDialog.waitFor({ state: "hidden" });
+  assert.equal(await waiverReview.evaluate((element) => element === document.activeElement), true, "bottom Done restores focus to the Waiver review trigger");
+  await assertAcceptanceUnchanged("after bottom Done");
+
+  await privacyAcceptance.check();
+  await waiverAcceptance.check();
   await signup.locator('button[type="submit"]').click();
   const verify = page.locator("#hunter-verify-form");
   await verify.waitFor({ state: "visible" });
@@ -851,9 +889,10 @@ async function exerciseBoardBoundaries(page) {
   await page.locator("#board-feed .reply-form").waitFor();
   await page.locator('#note-waypoint').selectOption("1");
   await page.locator('#note-body').fill("Public-safe boundary observation.");
-  await page.locator('#note-images').setInputFiles({ name: "oversize-note.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(10_000_001) });
-  await page.locator('#field-note-form button[type="submit"]').click();
-  assert.match(await page.locator("#note-error-summary").innerText(), /larger than 10 MB/i, "note upload boundary must reject locally before a write");
+  await page.locator('#note-images').setInputFiles({ name: "oversize-note.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(50_000_001) });
+  const noteImageStatus = page.locator("#note-image-status");
+  await noteImageStatus.filter({ hasText: /larger than 50 MB/i }).waitFor();
+  assert.match(await noteImageStatus.innerText(), /larger than 50 MB/i, "note upload boundary must reject locally before a write");
   const reply = page.locator("#board-feed .reply-form").first();
   await reply.locator('textarea[name="body"]').fill(privateFixtures.coordinates);
   await reply.locator('button[type="submit"]').click();
@@ -928,12 +967,21 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     assert.equal(await reportPage.page.locator('[name="name"]').inputValue(), privateFixtures.minorName, "signed-in report prefill must use the private profile name");
     assert.equal(await reportPage.page.locator('[name="email"]').inputValue(), privateFixtures.email, "signed-in report prefill must use the verified profile email");
     const expectedReportOptions = [
-      { value: "not_sure", label: "Not sure / between waypoints" },
-      ...publicWaypointFixtures.map(({ id, routeOrder, name }) => ({
-        value: String(id),
-        label: `Waypoint ${routeOrder} — ${name}`,
-      })),
-      { value: "different_location", label: "Different location" },
+      { value: "not_sure", label: "Not sure which stop" },
+      { value: "1", label: "Stop 01 · Creek Property" },
+      { value: "2", label: "Stop 02 · Public Beach / Market Lot" },
+      { value: "3", label: "Stop 03 · Randy's Beach" },
+      { value: "4", label: "Stop 04 · Seniors Centre" },
+      { value: "13", label: "Stop 05 · Derby's General Store" },
+      { value: "5", label: "Stop 06 · Gated Road / School Grounds" },
+      { value: "6", label: "Stop 07 · Back Trails" },
+      { value: "7", label: "Stop 08 · Lodge Trails" },
+      { value: "8", label: "Stop 09 · Vista Lands" },
+      { value: "9", label: "Stop 10 · Cliff-Edge Slope" },
+      { value: "10", label: "Stop 11 · Driving Range / Digger Café" },
+      { value: "11", label: "Stop 12 · Kokanee Springs Front Gate" },
+      { value: "12", label: "Stop 13 · Old Seba Beach School / SebaHub" },
+      { value: "different_location", label: "Different location / outside the 13-stop route" },
     ];
     const actualReportOptions = await reportPage.page.locator('[name="waypointId"] option').evaluateAll((options) =>
       options.map((option) => ({ value: option.value, label: (option.textContent ?? "").trim() })),
@@ -947,12 +995,14 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     await reportPage.page.locator('[name="details"]').fill(privateFixtures.reportEvidence);
     await reportPage.page.locator('[data-report-latitude]').evaluate((input, value) => { input.value = value; }, String(reportFixture.latitude));
     await reportPage.page.locator('[data-report-longitude]').evaluate((input, value) => { input.value = value; }, String(reportFixture.longitude));
+    await reportPage.page.locator('[name="publicAttributionKind"][value="community"]').check();
     await reportPage.page.locator('[name="images"]').setInputFiles([
       { name: "selected-public-candidate.png", mimeType: "image/png", buffer: png },
       { name: "private-evidence.png", mimeType: "image/png", buffer: png },
     ]);
     await reportPage.page.locator('[name="accuracy"]').check();
     await reportPage.page.locator('[data-turnstile]').filter({ hasText: /Test-only mocked human check/i }).waitFor();
+    await reportPage.page.locator('[data-report-submit]:not([disabled])').waitFor();
     await reportPage.page.locator('[data-report-submit]').click();
     await reportPage.page.locator('[data-report-receipt]').waitFor({ state: "visible" });
     assert.equal(await reportPage.page.locator('[data-report-reference]').innerText(), reportFixture.id, "explicit report receipt must show the private reference");

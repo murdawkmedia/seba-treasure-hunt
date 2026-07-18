@@ -84,3 +84,49 @@ test("legal viewer hides and detaches stale iframe documents across close and ov
     await browser.close();
   }
 });
+
+test("legal dialog dismisses a backdrop click but not a click on dialog content", { timeout: 30_000 }, async () => {
+  const bundle = await build({
+    stdin: {
+      contents: `
+        import * as dashboard from "./src/client/dashboard.ts";
+        window.__installLegalBackdropDismissal = dashboard.installSignupLegalDialogBackdropDismissal;
+      `,
+      resolveDir: root,
+      sourcefile: "legal-dialog-backdrop-entry.ts",
+    },
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    target: "es2023",
+    write: false,
+    logLevel: "silent",
+  });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<dialog><div data-dialog-content><button type="button">Inside</button></div></dialog>');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+
+    const states = await page.evaluate(() => {
+      const dialog = document.querySelector("dialog");
+      if (typeof window.__installLegalBackdropDismissal !== "function") {
+        return { installed: false, afterContentClick: null, afterBackdropClick: null };
+      }
+      window.__installLegalBackdropDismissal(dialog);
+      dialog.showModal();
+      dialog.querySelector("[data-dialog-content]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const afterContentClick = dialog.open;
+      dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return { installed: true, afterContentClick, afterBackdropClick: dialog.open };
+    });
+
+    assert.deepEqual(states, {
+      installed: true,
+      afterContentClick: true,
+      afterBackdropClick: false,
+    });
+  } finally {
+    await browser.close();
+  }
+});

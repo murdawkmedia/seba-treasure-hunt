@@ -142,6 +142,7 @@ test("waiver QA exercises built clients and mocks only auth, APIs, and providers
 test("signup legal QA selectors cover both close paths, readiness, and readable failure fallback", async () => {
   const dashboard = await read("dashboard.html");
   const client = await read("src/client/dashboard.ts");
+  const runner = await readRunner();
 
   assert.equal((dashboard.match(/data-signup-dialog-close/g) ?? []).length, 4);
   assert.equal((dashboard.match(/Done &mdash; back to account setup/g) ?? []).length, 2);
@@ -150,6 +151,17 @@ test("signup legal QA selectors cover both close paths, readiness, and readable 
   assert.match(client, /tim-lost:legal-embed-ready/);
   assert.match(client, /event\.origin\s*!==\s*window\.location\.origin/);
   assert.match(client, /The embedded legal document could not be displayed/);
+  assert.match(runner, /signup-legal-dialog__header["']\)\.getByRole\(["']button["'],\s*\{\s*name:\s*["']Close Privacy Policy and Media Notice["']/);
+  assert.match(runner, /signup-legal-dialog__footer["']\)\.getByRole\(["']button["'],\s*\{\s*name:\s*["']Done — back to account setup["']/);
+  assert.match(runner, /keyboard\.press\(["']Escape["']\)/);
+  assert.match(runner, /data-signup-dialog-status/);
+  assert.match(runner, /data-signup-dialog-fallback/);
+  assert.match(runner, /document\.activeElement/);
+  assert.match(runner, /privacyAcceptance\s*=\s*signup\.locator\(["']\[name=[^\]]*privacyMediaAccepted[^\]]*\]["']\)/);
+  assert.match(runner, /waiverAcceptance\s*=\s*signup\.locator\(["']\[name=[^\]]*waiverAccepted[^\]]*\]["']\)/);
+  assert.match(runner, /privacyAcceptance\.isChecked\(\)/);
+  assert.match(runner, /waiverAcceptance\.isChecked\(\)/);
+  assert.doesNotMatch(runner, /locator\(["']\[data-signup-dialog-close\]["']\)\.click\(\)/);
 });
 
 test("waiver QA installs a zero-external-write boundary before every page", async () => {

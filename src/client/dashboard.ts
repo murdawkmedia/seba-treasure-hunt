@@ -109,6 +109,12 @@ export function createSignupLegalViewerLoadCoordinator(
   };
 }
 
+export function installSignupLegalDialogBackdropDismissal(dialog: HTMLDialogElement): void {
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+}
+
 interface SignupLegalReviewPreparation {
   kind: SignupLegalDocumentKind;
   identity: LegalDocumentIdentity;
@@ -1831,6 +1837,7 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
   for (const dialog of document.querySelectorAll<HTMLDialogElement>("[data-signup-dialog]")) {
     const loads = createSignupLegalViewerLoadCoordinator(dialog);
     viewerLoads.set(dialog, loads);
+    installSignupLegalDialogBackdropDismissal(dialog);
     for (const close of dialog.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
       close.addEventListener("click", () => dialog.close());
     }
