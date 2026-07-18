@@ -20,16 +20,16 @@ Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and a
 
 Public sponsorship is withdrawn. The dormant `sponsors.html` source remains in the repository for possible future review, but it is not built or routed publicly and no public submission form is available. Existing sponsor inquiry records remain private in the Ops Sponsors ledger.
 
-The Documentary Case File public-page transition is live in production on the
-identifiers recorded in the operations handoff. The newer Submission, Ops and
-Publication Refinement is deployed only to the disposable validation branch;
-production promotion still requires separate owner approval.
+The Documentary Case File public-page transition, Submission, Ops and
+Publication Refinement, and resilient mobile account onboarding are live in
+production on the identifiers recorded in the operations handoff.
 
-The validation refinement distinguishes public Case Notes from private reports,
-adds report-time public attribution, gives operators independent private,
-Case Note and draft/scheduled Official Update outcomes, supports direct Update
-media, and uses one scoped approved-media viewer across Updates, Case Notes,
-Ops and the 13 Stops route.
+The current release distinguishes public Case Notes from private reports, adds
+report-time public attribution, gives operators independent private, Case Note
+and draft/scheduled Official Update outcomes, supports direct Update media,
+and uses one scoped approved-media viewer across Updates, Case Notes, Ops and
+the 13 Stops route. Mobile signup and password flows return to explicit,
+restartable recovery states when the identity provider does not answer.
 
 ## Design source
 

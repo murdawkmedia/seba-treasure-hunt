@@ -5,19 +5,21 @@
 - Canonical site: `https://www.timlostsomething.com`
 - Apex redirect: `https://timlostsomething.com` permanently preserves the path and query string when redirecting to `www`.
 - Cloudflare Pages project: `seba-treasure-hunt`
-- Production application commit: `2fdefe6`
-- Production Pages deployment: `f917fb4f-8e81-4cae-b429-9c15356215da`
-- Latest production data revision: `b44edb8f9b4374459505454a488ac04363600f48`
-- Media worker version: `d0476c29-0bfc-450c-b30e-4fcba9aa99d5`
+- Production application commit: `5e01e7f`
+- Production Pages deployment: `3731fa07-9748-4be2-8c27-abc533e87554`
+- D1 migrations applied through `0015_submission_ops_publication_refinement.sql`
+- Media worker version: `7cc2b2c0-15ae-49a4-899c-be878657d9c5`
 - Production database environment sentinel: `production`
 - Production route: 13 waypoints, with separate Seniors Centre and Derby's General Store records.
 
 ## Release verification
 
-- Full automated suite: 396 passing.
+- Complete static/legacy suite: passing.
+- TypeScript suite outside the known local Miniflare runner issue: 515 passing.
+- Focused real-D1 publication and moderation integration suite: 8 passing.
 - TypeScript checks: passing.
 - Production build: passing.
-- D1 migrations: 1–14 applied; no pending migrations.
+- D1 migrations: 1–15 applied; no pending migrations.
 - D1 foreign-key check: clean.
 - Anonymous waypoint API: 13 public waypoints and zero exact member map URLs.
 - Live staff password login: verified with an active company-domain operator.
@@ -26,10 +28,11 @@
 - Microsoft Graph delegated mail: accepted a self-addressed production delivery test from the configured campaign mailbox with the campaign contact as Reply-To.
 - Production crawl state: no `noindex` and no CFCW references in the live home output.
 
-## Validation candidate: large photos and read-only production snapshot
+## Validation history and promoted refinements
 
-- Production remains on the immutable deployment identified above. This
-  candidate is authorized only for the `codex-validation` Pages branch.
+- The validation-reviewed submission, publication and mobile onboarding work
+  was promoted to the production identifiers recorded above on 2026-07-18
+  after explicit owner approval.
 - Validation source commit: `621ebc9`.
 - Immutable validation deployment:
   `https://7f6f435c.seba-treasure-hunt.pages.dev`.
@@ -56,6 +59,14 @@
   2026-07-17. The production runtime uses only the standard production D1/R2,
   identity and mail bindings; the snapshot controls and bindings remain
   validation-only.
+- The promoted release adds independent private, Case Note and Official Update
+  outcomes; direct Update media; reply and flag moderation; safe public hunter
+  identity; and bounded recovery for stalled signup, verification, sign-in,
+  session activation and password-reset provider calls.
+- The production D1 was exported to the ignored private backup store and a
+  Time Travel restore point was confirmed immediately before migration 0015.
+  Existing production row counts were identical before and after promotion,
+  and the post-release foreign-key check was clean.
 
 ## Production follow-on: Release 2 Documentary Case File
 
@@ -77,6 +88,12 @@
   production identifiers and verification counts in this document.
 
 ## Rollback
+
+- Current release tag: `production-submission-onboarding-2026-07-18`
+- Immediate pre-release tag: `production-pre-submission-onboarding-2026-07-18`
+- Immediate previous production Pages deployment:
+  `https://f917fb4f.seba-treasure-hunt.pages.dev`
+- Immediate previous production source: `2fdefe6`
 
 - Git tag: `production-pre-hunter-platform-2026-07-16`
 - Tagged source: `5552a57668417aef2fbd97d63e819807e2ee92dc`

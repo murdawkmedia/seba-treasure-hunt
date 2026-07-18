@@ -5,13 +5,50 @@ Last updated: 2026-07-18
 ## Current state
 
 The Tim Lost Something hunter platform is live at
-`https://www.timlostsomething.com`. The public campaign, password-based hunter
-accounts, company-domain Ops access, private reports, moderated Field Notes,
-Lucky 13 route, participation waiver, transactional email, and operator alerts
+`https://www.timlostsomething.com`. The public case, password-based hunter
+accounts, company-domain Ops access, private reports, moderated Case Notes,
+13 Stops route, participation waiver, transactional email, and operator alerts
 are active in production.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-07-18 — Production promotion
+
+- Murphy explicitly approved production promotion after validation and owner
+  testing. The exact application source at `5e01e7f` is live at
+  `https://www.timlostsomething.com` and immutable Pages deployment
+  `https://3731fa07.seba-treasure-hunt.pages.dev`.
+- Applied additive production migration
+  `0015_submission_ops_publication_refinement.sql`, then deployed production
+  media processor version `7cc2b2c0-15ae-49a4-899c-be878657d9c5` before the
+  Pages application so new Official Update media could not reach an old queue
+  consumer.
+- Created a gitignored pre-migration D1 export and confirmed a Cloudflare Time
+  Travel restore point. Migration 0015 is fully applied with no pending
+  migration and a clean foreign-key check.
+- Fresh release verification passed the exact legal artifact check, every
+  TypeScript project, a clean production build, the complete static/legacy
+  suite, 515 TypeScript tests outside the known local Miniflare runner issue,
+  and eight focused real-D1 publication/moderation integration tests.
+- Isolated browser QA covered 66 navigations and 102 states with zero console,
+  page, request or write errors. The waiver/onboarding QA observed 1,106
+  requests with zero external writes, forbidden provider attempts or privacy
+  findings. The tracked public source scan found no local paths, credentials,
+  private keys, live service tokens or private workflow references.
+- Live desktop and 390px mobile review found no console warnings/errors or
+  horizontal overflow. The signed-in production route hydrated all 13 exact
+  links; signed-out waypoint data still exposes 13 stories and zero exact map
+  links. All public, legal, account and Ops routes returned successfully; the
+  withdrawn sponsorship route returns 404; the apex redirect preserves paths
+  and queries.
+- Production data was preserved. Before and after release it remained at 15
+  player accounts, 4 private reports, 5 Case Notes, 2 Official Updates, 1 staff
+  principal, 30 audit events, 18 media rows, 13 published waypoints and 28
+  legal acceptances. Final verification reads wrote zero rows.
+- GitHub `main` was fast-forwarded through the exact deployed source. The prior
+  immutable production deployment and source remain available for immediate
+  code rollback; database rollback remains a separate, deliberate action.
 
 ## Update 2026-07-18 — Validation mobile signup recovery
 
@@ -378,19 +415,18 @@ without repeating completed Tasks 1–3.”
   check-in guidance is displayed.
 - `DESIGN.md` is the source of truth for the suspenseful, conversational,
   community-led and lightly playful Documentary Case File direction, with
-  SebaHub as host rather than subject. Release 2B applies that direction to the
-  public source while production remains unchanged pending approval.
+  SebaHub as host rather than subject. Release 2B and the current submission,
+  publication and onboarding refinement are active in production; future
+  material departures still require explicit review.
 
 ## Current follow-ups
-
-- Review
-  `docs/superpowers/specs/2026-07-17-submission-ops-publication-refinement-design.md`,
-  then prepare the implementation plan only after owner approval of the written
-  specification.
 
 - Monitor the production report-photo flow and operator alerts during ordinary
   use; retain the previous immutable production deployment for immediate code
   rollback if an issue appears.
+- Monitor mobile signup recovery, direct Official Update media, scheduled
+  Updates, Case Note publication, reply/flag moderation and public hunter
+  identity during ordinary production use.
 - Unpublish the disposable validation-only `test` update through the audited
   Ops workflow after an authorized validation staff session is available. Do
   not delete its private report or audit history, and do not mutate production.
@@ -400,11 +436,8 @@ without repeating completed Tasks 1–3.”
 - Add visible waypoint-progress tracking later; it remains intentionally
   deferred.
 - Rotate bootstrap and API credentials after the launch window.
-- Review the complete Release 2 source in validation, then seek explicit owner
-  approval before any production rollout.
-- After an approved deployment, smoke-test `/`, `/route`, `/interview`,
-  `/updates`, `/clue-board`, `/sponsors`, `/start` and `/report` before updating
-  production commit and deployment identifiers.
+- Diagnose the local Miniflare runner hang separately; it did not reproduce in
+  the focused real-D1 integration release gate.
 
 See `README.md` for build and operating contracts and
 `docs/operations/2026-07-16-production-release.md` for release and rollback
