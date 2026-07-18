@@ -48,6 +48,46 @@ const legalDocumentIdentitiesMatch = (
 
 type SignupLegalDocumentKind = "privacy-media" | "waiver";
 
+export interface SignupLegalViewerLoadLease {
+  generation: number;
+  signal: AbortSignal;
+}
+
+interface SignupLegalViewerLoadCoordinator {
+  begin: () => SignupLegalViewerLoadLease;
+  invalidate: () => void;
+  isCurrent: (lease: SignupLegalViewerLoadLease) => boolean;
+  apply: (lease: SignupLegalViewerLoadLease, update: () => void) => boolean;
+}
+
+export function createSignupLegalViewerLoadCoordinator(): SignupLegalViewerLoadCoordinator {
+  let generation = 0;
+  let controller: AbortController | null = null;
+  const isCurrent = (lease: SignupLegalViewerLoadLease): boolean =>
+    controller !== null && lease.generation === generation &&
+    lease.signal === controller.signal && !lease.signal.aborted;
+
+  return {
+    begin: () => {
+      controller?.abort();
+      controller = new AbortController();
+      generation += 1;
+      return Object.freeze({ generation, signal: controller.signal });
+    },
+    invalidate: () => {
+      generation += 1;
+      controller?.abort();
+      controller = null;
+    },
+    isCurrent,
+    apply: (lease, update) => {
+      if (!isCurrent(lease)) return false;
+      update();
+      return true;
+    },
+  };
+}
+
 interface SignupLegalReviewPreparation {
   kind: SignupLegalDocumentKind;
   identity: LegalDocumentIdentity;
@@ -1708,9 +1748,11 @@ function reloadSignupLegalViewer(
   dialog: HTMLDialogElement,
   url: string,
   kind: SignupLegalDocumentKind,
+  signal: AbortSignal,
 ): Promise<void> {
   const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
   if (!currentViewer) return Promise.reject(new Error("The legal document viewer is unavailable."));
+  if (signal.aborted) return Promise.reject(new DOMException("The legal document load was cancelled.", "AbortError"));
   const viewer = currentViewer.cloneNode(false) as HTMLIFrameElement;
   viewer.removeAttribute("src");
   return new Promise<void>((resolve, reject) => {
@@ -1723,6 +1765,7 @@ function reloadSignupLegalViewer(
       settled = true;
       window.clearTimeout(timeout);
       window.removeEventListener("message", handleReadyMessage);
+      signal.removeEventListener("abort", handleAbort);
       callback();
     };
     const handleReadyMessage = (event: MessageEvent): void => {
@@ -1734,7 +1777,11 @@ function reloadSignupLegalViewer(
       if (event.data.route !== expectedRoute) return;
       finish(resolve);
     };
+    const handleAbort = (): void => {
+      finish(() => reject(new DOMException("The legal document load was cancelled.", "AbortError")));
+    };
     window.addEventListener("message", handleReadyMessage);
+    signal.addEventListener("abort", handleAbort, { once: true });
     viewer.addEventListener(
       "error",
       () => finish(() => reject(new Error("The embedded legal document could not be displayed. Use the full-page link below."))),
@@ -1761,7 +1808,10 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
   storeSignupLegalIdentity(form, "waiver", config.waiver);
 
   const restoreFocus = new Map<HTMLDialogElement, HTMLButtonElement>();
+  const viewerLoads = new Map<HTMLDialogElement, SignupLegalViewerLoadCoordinator>();
   for (const dialog of document.querySelectorAll<HTMLDialogElement>("[data-signup-dialog]")) {
+    const loads = createSignupLegalViewerLoadCoordinator();
+    viewerLoads.set(dialog, loads);
     for (const close of dialog.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
       close.addEventListener("click", () => dialog.close());
     }
@@ -1769,6 +1819,7 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
       dialog.dataset.signupDialogCloseReason = "escape";
     });
     dialog.addEventListener("close", () => {
+      loads.invalidate();
       delete dialog.dataset.signupDialogCloseReason;
       const trigger = restoreFocus.get(dialog);
       restoreFocus.delete(dialog);
@@ -1782,6 +1833,9 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
       if (kind !== "privacy-media" && kind !== "waiver") return;
       const dialog = document.querySelector<HTMLDialogElement>(`[data-signup-dialog="${kind}"]`);
       if (!dialog) return;
+      const loads = viewerLoads.get(dialog);
+      if (!loads) return;
+      const load = loads.begin();
       const status = dialog.querySelector<HTMLElement>("[data-signup-dialog-status]");
       const viewer = dialog.querySelector<HTMLIFrameElement>("iframe");
       restoreFocus.set(dialog, button);
@@ -1794,6 +1848,7 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
       dialog.querySelector<HTMLButtonElement>("[data-signup-dialog-close]")?.focus();
       try {
         const currentConfig = await loadPublicConfig();
+        if (!loads.isCurrent(load)) return;
         const identity = kind === "privacy-media" ? currentConfig.privacyMedia : currentConfig.waiver;
         if (!isLegalDocumentIdentity(identity)) {
           throw new Error("The current legal document identity is unavailable.");
@@ -1801,22 +1856,26 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
         await prepareSignupLegalReview({
           kind,
           identity,
-          loadViewer: (url) => reloadSignupLegalViewer(dialog, url, kind),
+          loadViewer: (url) => reloadSignupLegalViewer(dialog, url, kind, load.signal),
         });
-        storeSignupLegalIdentity(form, kind, identity);
-        if (status) status.hidden = true;
+        loads.apply(load, () => {
+          storeSignupLegalIdentity(form, kind, identity);
+          if (status) status.hidden = true;
+        });
       } catch (error) {
-        const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
-        if (currentViewer) currentViewer.hidden = true;
-        if (status) {
-          const message = error instanceof Error
-            ? error.message
-            : "The embedded legal document could not be displayed. Use the full-page link below.";
-          status.textContent = /full-page link/i.test(message)
-            ? message
-            : `${message} Use the full-page link below.`;
-          status.hidden = false;
-        }
+        loads.apply(load, () => {
+          const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
+          if (currentViewer) currentViewer.hidden = true;
+          if (status) {
+            const message = error instanceof Error
+              ? error.message
+              : "The embedded legal document could not be displayed. Use the full-page link below.";
+            status.textContent = /full-page link/i.test(message)
+              ? message
+              : `${message} Use the full-page link below.`;
+            status.hidden = false;
+          }
+        });
       }
     })(); });
   }

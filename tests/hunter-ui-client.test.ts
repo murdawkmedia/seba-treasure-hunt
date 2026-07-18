@@ -24,6 +24,7 @@ import {
 } from "../src/client/report";
 import {
   buildProfilePayload,
+  createSignupLegalViewerLoadCoordinator,
   profileMutationInvalidatesWaiver,
   supervisedDependantsState,
   validateProfileDraft,
@@ -486,4 +487,33 @@ test("signup legal review never needs to toggle acceptance controls", () => {
   assert.match(setup, /dialog\.showModal\(\)/);
   assert.match(setup, /reloadSignupLegalViewer/);
   assert.doesNotMatch(setup, /\.checked\s*=|\.disabled\s*=/);
+});
+
+test("rapid legal viewer close and reopen prevents a stale timeout from replacing newer ready state", () => {
+  interface LoadLease {
+    signal: AbortSignal;
+  }
+  interface LoadCoordinator {
+    begin: () => LoadLease;
+    invalidate: () => void;
+    apply: (lease: LoadLease, update: () => void) => boolean;
+  }
+
+  const coordinator: LoadCoordinator = createSignupLegalViewerLoadCoordinator();
+
+  const firstOpen = coordinator.begin();
+  coordinator.invalidate();
+  assert.equal(firstOpen.signal.aborted, true, "closing aborts the first iframe load and its timer");
+
+  const reopened = coordinator.begin();
+  let presentation: "loading" | "ready" | "failure" = "loading";
+  assert.equal(coordinator.apply(reopened, () => { presentation = "ready"; }), true);
+  assert.equal(coordinator.apply(firstOpen, () => { presentation = "failure"; }), false);
+  assert.equal(presentation, "ready", "the first load's stale timeout cannot overwrite the reopened viewer");
+
+  const overlappingOpen = coordinator.begin();
+  assert.equal(reopened.signal.aborted, true, "a newer open aborts an overlapping prior load");
+  assert.equal(coordinator.apply(reopened, () => { presentation = "failure"; }), false);
+  assert.equal(coordinator.apply(overlappingOpen, () => { presentation = "ready"; }), true);
+  assert.equal(presentation, "ready");
 });
