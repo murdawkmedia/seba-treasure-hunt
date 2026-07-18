@@ -353,11 +353,34 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
 .ops-report-evidence__empty { color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .6rem; }
 .ops-report-evidence__item label { min-height: 40px; display: flex; align-items: center; gap: 8px; color: var(--ops-ink); }
 .ops-report-evidence__item input { width: 18px; height: 18px; accent-color: var(--ops-gold); }
-.ops-report-status { margin-top: 18px; padding-top: 12px; box-shadow: inset 0 1px rgba(248, 240, 213, .12); }
-.ops-report-status p { margin-bottom: 9px; }
-.ops-report-status .ops-row-actions { justify-content: flex-start; min-width: 0; }
-.ops-report-status label { align-self: center; color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .6rem; }
-.ops-report-status select { width: auto; max-width: 100%; min-height: 40px; }
+.ops-report-status { min-width: 0; display: grid; gap: 10px; margin-top: 18px; padding-top: 12px; box-shadow: inset 0 1px rgba(248, 240, 213, .12); }
+.ops-report-status h4,
+.ops-report-status p { margin-block: 0; }
+.ops-report-state-summary { min-width: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid var(--ops-line); border-radius: 5px; background: rgba(4, 22, 19, .5); }
+.ops-report-state-summary strong { display: inline-flex; min-height: 32px; align-items: center; padding: 3px 9px; border: 1px solid currentColor; border-radius: 999px; color: var(--ops-gold); }
+.ops-report-state-summary span { overflow-wrap: anywhere; }
+.ops-report-status__explanation { color: var(--ops-ink) !important; }
+.ops-report-status label { color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .65rem; }
+.ops-report-status select,
+.ops-report-status textarea { width: 100%; max-width: 100%; min-height: 44px; }
+.ops-report-status textarea { min-height: 88px; resize: vertical; }
+.ops-action-row--workflow { min-width: 0; align-items: stretch; }
+.ops-action-row--workflow .ops-button { min-height: 44px; }
+.ops-report-status .ops-inline-result { min-height: 1.45em; }
+.ops-report-history { min-width: 0; padding-top: 4px; border-top: 1px solid var(--ops-line); }
+.ops-report-history summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--ops-ink); font-family: var(--ops-font-ledger); font-size: .65rem; }
+.ops-report-history ol { display: grid; gap: 7px; margin: 0 0 10px; padding: 0; list-style: none; }
+.ops-report-history li { min-width: 0; display: grid; gap: 4px; padding: 9px; border-left: 3px solid var(--ops-gold); background: rgba(4, 22, 19, .5); }
+.ops-report-history li > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+.ops-report-history li strong,
+.ops-report-history li span,
+.ops-report-history li p,
+.ops-report-history li time { overflow-wrap: anywhere; }
+.ops-report-history li p { color: var(--ops-ink); white-space: pre-wrap; }
+.ops-report-history li span,
+.ops-report-history li time { color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .56rem; }
+.ops-report-public-guidance { padding: 10px; border-left: 3px solid var(--ops-gold); color: var(--ops-ink) !important; background: rgba(4, 22, 19, .42); }
+.ops-report-public [data-report-prepare-public] { min-height: 44px; margin-bottom: 10px; }
 .ops-report-public-card { min-width: 0; margin: 14px 0 4px; padding: 14px; background: #f8f0d5; border-radius: 6px; color: var(--ops-night); }
 .ops-report-public-card .ops-kicker { color: #80530e; }
 .ops-report-public-card h4 { margin: 0 0 8px; color: var(--ops-night); font-family: var(--ops-font-display); font-size: 1.55rem; overflow-wrap: anywhere; }
@@ -434,6 +457,11 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
   .ops-report-public-card dl { grid-template-columns: 1fr; }
   .ops-report-destinations { grid-template-columns: 1fr; }
   .ops-report-facts > div { grid-template-columns: 1fr; gap: 2px; }
+  .ops-report-status,
+  .ops-report-status select,
+  .ops-report-status textarea,
+  .ops-action-row--workflow,
+  .ops-action-row--workflow .ops-button { min-width: 0; width: 100%; }
   .ops-snapshot-banner { position: static; align-items: flex-start; flex-direction: column; }
 }
 

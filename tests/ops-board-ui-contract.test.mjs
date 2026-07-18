@@ -106,8 +106,26 @@ test("the case-room console exposes every approved ledger and safe account contr
     /Select each ready image you want to include in Case Notes or an Official Update/i
   );
   assert.match(html, /Nothing is selected automatically/i);
-  assert.match(client, /Reopen report/i);
   assert.match(html, /data-report-status-actions/);
+  assert.match(html, /Review workflow/i);
+  assert.match(html, /Status: Loading/i);
+  assert.match(html, /data-report-status-explanation/);
+  assert.match(html, /Move report to/i);
+  assert.match(html, /Private note or reason/i);
+  assert.match(html, /Apply status/i);
+  assert.match(html, /Unassign report/i);
+  assert.match(html, /Refresh report/i);
+  assert.match(html, /Recent status history/i);
+  assert.match(html, /Open full audit trail/i);
+  assert.match(html, /data-report-public-guidance/);
+  assert.match(html, /Prepare public outcome/i);
+  assert.doesNotMatch(html, /Begin review/i);
+  assert.doesNotMatch(html, /data-report-begin-review/);
+  assert.doesNotMatch(client, /Add an optional private note for this status change/i);
+  assert.doesNotMatch(client, /JSON\.stringify\(\{[^}]*assignedTo[^}]*\}\)/s);
+  assert.match(client, /buildReportWorkflowMutation/);
+  assert.match(client, /data-report-next-status[^\n]+addEventListener\("change"/);
+  assert.match(client, /data-report-save-status[^\n]+addEventListener\("click"/);
   assert.match(html, /data-report-publication-form/);
   assert.match(html, /data-report-public-preview/);
   assert.match(html, /Choose public destination/i);
@@ -248,6 +266,16 @@ test("report publication uses one native labelled confirmation checkbox", () => 
   assert.match(html, /<input[^>]+id="report-publication-confirm"[^>]+type="checkbox"/);
   assert.doesNotMatch(css, /\.ops-confirmation[^}]*appearance\s*:\s*none/is);
   assert.doesNotMatch(css, /\.ops-confirmation(?:::\w+|\s+\w+::\w+)[^{]*\{[^}]*content\s*:/is);
+});
+
+test("the report workflow dropdown is descriptive and only Apply sends the audited mutation", () => {
+  const client = read("src/client/ops.ts");
+  const selectHandler = client.match(/data-report-next-status[^\n]+addEventListener\("change",[\s\S]*?\n\s*\}\);/)?.[0] ?? "";
+  const applyHandler = client.match(/data-report-save-status[^\n]+addEventListener\("click",[\s\S]*?\n\s*\}\);/)?.[0] ?? "";
+  assert.ok(selectHandler, "next-status change handler");
+  assert.doesNotMatch(selectHandler, /opsRequest|fetch\(|method:\s*"PATCH"|updateActiveReportStatus/);
+  assert.ok(applyHandler, "apply-status click handler");
+  assert.match(applyHandler, /applyActiveReportWorkflow/);
 });
 
 test("Ops exposes a clearly separate read-only production snapshot workspace", () => {

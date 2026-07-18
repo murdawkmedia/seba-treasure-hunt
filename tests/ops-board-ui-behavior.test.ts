@@ -8,6 +8,7 @@ import {
 } from "../src/client/board";
 import {
   buildSubscriberCsv,
+  buildReportWorkflowMutation,
   applyWaiverReceiptRetryState,
   appendDistinctModerationRecords,
   createModerationPaginationController,
@@ -19,7 +20,9 @@ import {
   moderationAttentionCount,
   normalizeOpsReportDetail,
   reportDestinationControls,
+  reportPublicOutcomeGuidance,
   reportReviewControls,
+  reportWorkflowControls,
   reportPublicationConfirmationAfterInput,
   normalizeReports,
   normalizeOpsSponsors,
@@ -27,6 +30,7 @@ import {
   normalizeOpsWaiverDetail,
   renderOpsWaiverDetail,
   renderReportEvidence,
+  renderReportHistory,
   renderReportUpdateUploads,
   renderModerationRows,
   renderModerationReplyRows,
@@ -582,6 +586,135 @@ test("report review controls follow the actual linked public post, not private v
     updatePublished: false,
   });
   assert.match(renderReportPrivateDetail(hidden), /Hidden by moderation/);
+});
+
+test("guided report workflow normalizes staff history and builds explicit reversible mutations", () => {
+  const detail = normalizeOpsReportDetail({ data: {
+    id: "report-resolved-workflow",
+    type: "find",
+    hunterSubject: "hunter-private",
+    name: "Private Reporter",
+    email: "private@example.test",
+    phone: null,
+    publicAttribution: "Hunter A7F3",
+    publicationEligible: true,
+    publicationEligibilityReason: "eligible",
+    publication: { published: false, updateId: null },
+    caseNote: { published: false, noteId: null, status: null },
+    waypointId: 3,
+    waypointRouteOrder: 3,
+    waypointName: "Waypoint Three",
+    locationDescription: "Near the public trail",
+    latitude: 53.1,
+    longitude: -114.4,
+    details: "Private report details",
+    status: "resolved",
+    assignedTo: "staff-1",
+    createdAt: "2026-07-18T10:00:00.000Z",
+    updatedAt: "2026-07-18T10:05:00.000Z",
+    history: [
+      {
+        id: "event-1",
+        type: "status.reviewing",
+        actor: "staff-1",
+        note: "Initial <assessment>",
+        occurredAt: "2026-07-18T10:05:00.000Z",
+      },
+      {
+        id: "event-2",
+        type: "assignment.unassigned",
+        actor: null,
+        note: null,
+        occurredAt: "2026-07-18T10:04:00.000Z",
+      },
+      { id: "bad-type", type: "private.payload", actor: "staff-2", note: "no", occurredAt: "2026-07-18T10:03:00.000Z" },
+      { id: "bad-time", type: "status.resolved", actor: "staff-2", note: "no", occurredAt: "not-a-time" },
+    ],
+    media: [],
+  } });
+  assert.ok(detail);
+  assert.equal(detail.history.length, 2);
+
+  const model = reportWorkflowControls(detail, "reviewing");
+  assert.equal(model.currentLabel, "Resolved");
+  assert.match(model.currentExplanation, /internal work.*complete/i);
+  assert.deepEqual(model.destinations.map((item) => item.value), ["reviewing"]);
+  assert.equal(model.reasonRequired, true);
+  assert.equal(model.confirmationRequired, true);
+  assert.equal(model.canUnassign, true);
+
+  assert.deepEqual(buildReportWorkflowMutation(detail, {
+    operation: "transition",
+    status: "reviewing",
+    note: "New evidence requires another review.",
+    confirmed: true,
+  }), {
+    operation: "transition",
+    expectedStatus: "resolved",
+    status: "reviewing",
+    note: "New evidence requires another review.",
+    confirmed: true,
+  });
+
+  assert.deepEqual(buildReportWorkflowMutation(detail, {
+    operation: "unassign",
+    note: " Hand back to the shared queue. ",
+    confirmed: true,
+  }), {
+    operation: "unassign",
+    expectedStatus: "resolved",
+    note: "Hand back to the shared queue.",
+    confirmed: true,
+  });
+
+  const history = renderReportHistory(detail.history);
+  assert.match(history, /Reviewing/);
+  assert.match(history, /Unassigned/);
+  assert.match(history, /Initial &lt;assessment&gt;/);
+  assert.doesNotMatch(history, /<assessment>/);
+  assert.match(history, /datetime="2026-07-18T10:05:00.000Z"/);
+  assert.match(reportPublicOutcomeGuidance(detail, "reviewing"), /Reopen this report/i);
+});
+
+test("guided report workflow exposes truthful public-content blockers", () => {
+  const base = normalizeOpsReportDetail({ data: {
+    id: "report-workflow-blockers",
+    type: "tip",
+    hunterSubject: "hunter-private",
+    name: "Private Reporter",
+    email: "private@example.test",
+    phone: null,
+    publicAttribution: "Hunter B8C2",
+    publicationEligible: true,
+    publicationEligibilityReason: "eligible",
+    publication: {
+      published: false,
+      updateId: "approved-report-workflow-blockers",
+      status: "draft",
+      scheduledFor: null,
+      title: "Draft",
+      body: "Draft body",
+    },
+    caseNote: { published: false, noteId: null, status: null },
+    waypointId: null,
+    waypointRouteOrder: null,
+    waypointName: null,
+    locationDescription: "Different spot",
+    latitude: null,
+    longitude: null,
+    details: "Private report details",
+    status: "verified",
+    assignedTo: null,
+    createdAt: "2026-07-18T10:00:00.000Z",
+    updatedAt: "2026-07-18T10:05:00.000Z",
+    history: [],
+    media: [],
+  } });
+  assert.ok(base);
+  const destinations = reportWorkflowControls(base, "reviewing").destinations;
+  assert.equal(destinations.find((item) => item.value === "reviewing")?.blockedReason, "Withdraw the linked Official Update first.");
+  assert.equal(destinations.find((item) => item.value === "resolved")?.blockedReason, "Withdraw the linked Official Update first.");
+  assert.match(reportPublicOutcomeGuidance(base, "reviewing"), /Withdraw the linked Official Update/i);
 });
 
 test("direct Update uploads start unselected and require publication metadata", () => {

@@ -294,28 +294,45 @@
           <h4>Processed private evidence</h4>
           <p class="ops-panel__note">Select each ready image you want to include in Case Notes or an Official Update. Nothing is selected automatically.</p>
           <div class="ops-report-evidence" data-report-evidence></div>
-          <div class="ops-report-status" data-report-status-actions>
-            <h4>Review state</h4>
-            <p>State changes are private and audited. Publication is a separate confirmed action.</p>
-            <p class="ops-report-state-summary" data-report-state-summary><strong>Status: Loading</strong><span>Assigned to: Loading</span></p>
-            <div class="ops-row-actions">
-              <button class="ops-button ops-button--quiet" type="button" data-report-begin-review disabled>Begin review</button>
-              <label for="report-next-status">Next state<span class="sr-only"> for this private report</span></label>
-              <select id="report-next-status" data-report-next-status disabled></select>
-              <button class="ops-button ops-button--quiet" type="button" data-report-save-status disabled>Apply next state</button>
+          <section class="ops-report-status" data-report-status-actions aria-labelledby="report-workflow-title">
+            <h4 id="report-workflow-title">Review workflow</h4>
+            <p>Private review state and public publication are separate audited decisions.</p>
+            <div class="ops-report-state-summary" data-report-state-summary>
+              <strong>Status: Loading</strong><span>Assigned to: Loading</span>
             </div>
-          </div>
+            <p class="ops-report-status__explanation" data-report-status-explanation></p>
+            <label for="report-next-status">Move report to</label>
+            <select id="report-next-status" data-report-next-status aria-describedby="report-next-status-help" disabled>
+              <option value="">Choose a next stage</option>
+            </select>
+            <p id="report-next-status-help" class="ops-panel__note" data-report-next-status-help>Choose a stage to see what it means. Nothing saves until Apply status.</p>
+            <label for="report-status-note">Private note or reason <span data-report-reason-requirement>(optional)</span></label>
+            <textarea id="report-status-note" data-report-status-note rows="3" maxlength="2000" disabled></textarea>
+            <div class="ops-action-row ops-action-row--workflow">
+              <button class="ops-button ops-button--primary" type="button" data-report-save-status disabled>Apply status</button>
+              <button class="ops-button ops-button--quiet" type="button" data-report-unassign disabled>Unassign report</button>
+              <button class="ops-button ops-button--quiet" type="button" data-report-refresh>Refresh report</button>
+            </div>
+            <p class="ops-inline-result" data-report-workflow-result role="status" aria-live="polite" tabindex="-1"></p>
+            <details class="ops-report-history">
+              <summary>Recent status history</summary>
+              <ol data-report-history></ol>
+              <button class="ops-button ops-button--quiet" type="button" data-report-open-audit>Open full audit trail</button>
+            </details>
+          </section>
         </section>
 
         <section class="ops-report-public" aria-labelledby="report-public-title">
           <p class="ops-kicker">Public allowlist preview</p>
-          <h3 id="report-public-title">Choose public destination</h3>
+          <h3 id="report-public-title" tabindex="-1">Choose public destination</h3>
           <p>Email, phone, private name and account identifiers are never included. Waypoint and submitted GPS are public game facts after approval.</p>
           <div class="ops-report-destinations" aria-label="Publication choices">
             <article><strong>Keep private</strong><span>Continue the audited review without publishing anything.</span></article>
             <article><strong>Case Notes</strong><span>Share a reviewed community observation. It is not an official clue.</span></article>
             <article><strong>Official Update</strong><span>Reserve for meaningful verified evidence or a campaign announcement.</span></article>
           </div>
+          <p class="ops-report-public-guidance" data-report-public-guidance role="status"></p>
+          <button class="ops-button ops-button--quiet" type="button" data-report-prepare-public hidden>Prepare public outcome</button>
           <form class="ops-form ops-form--compact" data-report-publication-form novalidate>
             <label for="report-public-title-input">Public headline</label>
             <input id="report-public-title-input" name="title" maxlength="200" required disabled />

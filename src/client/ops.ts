@@ -3,7 +3,14 @@ import type { SignInResource, SignUpResource } from "@clerk/shared/types";
 import { createSerializedSubmission } from "./identity-submission";
 import { isAllowedStaffEmail } from "../server/staff-domains";
 import { routeOrder, stopLabel, waypointId } from "../shared/waypoints";
-import { nextReportStates, type ReportReviewState } from "../shared/publication";
+import {
+  isReportReviewState,
+  nextReportStates,
+  reportStateCopy,
+  reportTransitionRequiresConfirmation,
+  reportTransitionRequiresReason,
+  type ReportReviewState,
+} from "../shared/report-workflow";
 import { prepareReportImages, ReportImagePreparationError } from "./report-image-preparation";
 import { initializeApprovedMediaViewer } from "./approved-media-viewer";
 
@@ -74,6 +81,14 @@ export interface OpsUpdateUpload extends OpsReportMedia {
   position: number | null;
 }
 
+export interface OpsReportHistoryEvent {
+  id: string;
+  type: string;
+  actor: string | null;
+  note: string | null;
+  occurredAt: string;
+}
+
 export interface OpsReportDetail extends OpsReportRecord {
   updatedAt: string;
   hunterSubject: string | null;
@@ -104,6 +119,7 @@ export interface OpsReportDetail extends OpsReportRecord {
   details: string;
   assignedTo: string | null;
   media: OpsReportMedia[];
+  history: OpsReportHistoryEvent[];
 }
 
 export interface OpsSponsorRecord {
@@ -612,6 +628,26 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     return [{ id: mediaId, contentType, size, status: mediaStatus }];
   });
   if (media.length !== asArray(value.media).length) return null;
+  const history = asArray(value.history).flatMap((candidate): OpsReportHistoryEvent[] => {
+    if (!isRecord(candidate)) return [];
+    const eventId = asString(candidate.id).trim();
+    const eventType = asString(candidate.type).trim();
+    const occurredAt = asString(candidate.occurredAt).trim();
+    const statusEvent = eventType.startsWith("status.") && isReportReviewState(eventType.slice("status.".length));
+    const actorValid = candidate.actor === null || typeof candidate.actor === "string";
+    const noteValid = candidate.note === null || typeof candidate.note === "string";
+    if (
+      !eventId || (!statusEvent && eventType !== "assignment.unassigned") ||
+      !occurredAt || Number.isNaN(new Date(occurredAt).valueOf()) || !actorValid || !noteValid
+    ) return [];
+    return [{
+      id: eventId,
+      type: eventType,
+      actor: asString(candidate.actor).trim() || null,
+      note: asString(candidate.note).trim() || null,
+      occurredAt,
+    }];
+  }).slice(0, 8);
   return {
     id,
     type,
@@ -645,6 +681,7 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     details,
     assignedTo: asString(value.assignedTo).trim() || null,
     media,
+    history,
   };
 }
 
@@ -1526,15 +1563,111 @@ export function reportDestinationControls(detail: OpsReportDetail): {
   };
 }
 
-const reportStateLabel = (state: string): string => ({
-  received: "Received",
-  reviewing: "Reviewing",
-  contacted: "Contacted",
-  escalated: "Escalated",
-  verified: "Verified",
-  rejected: "Rejected",
-  resolved: "Resolved",
-})[state] ?? state;
+const reportStateLabel = (state: string): string => isReportReviewState(state)
+  ? reportStateCopy(state).operatorLabel
+  : state;
+
+export function reportWorkflowControls(
+  detail: Pick<OpsReportDetail, "status" | "assignedTo" | "publication" | "caseNote">,
+  selected: string,
+): {
+  currentLabel: string;
+  currentExplanation: string;
+  destinations: Array<{ value: ReportReviewState; label: string; explanation: string; blockedReason: string | null }>;
+  reasonRequired: boolean;
+  confirmationRequired: boolean;
+  canUnassign: boolean;
+} {
+  if (!isReportReviewState(detail.status)) {
+    return {
+      currentLabel: "Unknown",
+      currentExplanation: "Refresh this report before changing its workflow.",
+      destinations: [],
+      reasonRequired: false,
+      confirmationRequired: false,
+      canUnassign: false,
+    };
+  }
+  const current = detail.status;
+  const officialUpdateActive = detail.publication.status !== null && detail.publication.status !== "withdrawn";
+  const caseNotePublic = detail.caseNote.status === "published";
+  const destinations = nextReportStates(current).map((destination) => {
+    const copy = reportStateCopy(destination);
+    const officialUpdateBlocks = officialUpdateActive && (
+      destination === "resolved" || destination === "rejected" ||
+      (current === "verified" && destination === "reviewing")
+    );
+    const caseNoteBlocks = caseNotePublic && destination === "rejected";
+    return {
+      value: destination,
+      label: copy.operatorLabel,
+      explanation: copy.operatorExplanation,
+      blockedReason: officialUpdateBlocks
+        ? "Withdraw the linked Official Update first."
+        : caseNoteBlocks
+          ? "Withdraw the linked Case Note first."
+          : null,
+    };
+  });
+  const selectedState = isReportReviewState(selected) && nextReportStates(current).includes(selected)
+    ? selected
+    : null;
+  return {
+    currentLabel: reportStateCopy(current).operatorLabel,
+    currentExplanation: reportStateCopy(current).operatorExplanation,
+    destinations,
+    reasonRequired: selectedState !== null && reportTransitionRequiresReason(current, selectedState),
+    confirmationRequired: selectedState !== null && reportTransitionRequiresConfirmation(current, selectedState),
+    canUnassign: detail.assignedTo !== null,
+  };
+}
+
+export function buildReportWorkflowMutation(
+  detail: Pick<OpsReportDetail, "status">,
+  intent:
+    | { operation: "transition"; status: ReportReviewState; note: string; confirmed: boolean }
+    | { operation: "unassign"; note: string; confirmed: boolean },
+): Record<string, unknown> {
+  return intent.operation === "transition"
+    ? {
+        operation: "transition",
+        expectedStatus: detail.status,
+        status: intent.status,
+        note: intent.note.trim() || undefined,
+        confirmed: intent.confirmed,
+      }
+    : {
+        operation: "unassign",
+        expectedStatus: detail.status,
+        note: intent.note.trim() || undefined,
+        confirmed: intent.confirmed,
+      };
+}
+
+export function renderReportHistory(events: readonly OpsReportHistoryEvent[]): string {
+  if (events.length === 0) return `<li class="ops-report-history__empty">No recent workflow events are available.</li>`;
+  return events.map((event) => {
+    const label = event.type === "assignment.unassigned"
+      ? "Unassigned"
+      : reportStateLabel(event.type.slice("status.".length));
+    return `<li><div><strong>${escapeOpsHtml(label)}</strong><span>${escapeOpsHtml(event.actor ?? "System")}</span></div>${event.note ? `<p>${escapeOpsHtml(event.note)}</p>` : ""}<time datetime="${escapeOpsHtml(event.occurredAt)}">${escapeOpsHtml(formatOpsTime(event.occurredAt))}</time></li>`;
+  }).join("");
+}
+
+export function reportPublicOutcomeGuidance(detail: OpsReportDetail, selected: string): string {
+  const activeUpdate = detail.publication.status !== null && detail.publication.status !== "withdrawn";
+  if (activeUpdate) return "Withdraw the linked Official Update before reopening or closing this report.";
+  if (detail.caseNote.status === "published" && selected === "rejected") {
+    return "Withdraw the linked Case Note before rejecting this report.";
+  }
+  if (detail.status === "resolved" || detail.status === "rejected") {
+    return "Reopen this report for review before preparing a new public outcome.";
+  }
+  if (detail.status === "verified") {
+    return "Facts are verified. Choose and review a public outcome; nothing publishes automatically.";
+  }
+  return "Case Notes remain a separate editorial decision. Verify the report before scheduling or publishing an Official Update.";
+}
 
 export function renderReportState(
   detail: Pick<OpsReportDetail, "status" | "assignedTo">,
@@ -1602,6 +1735,12 @@ function apiError(payload: unknown, fallback: string): string {
   if (!isRecord(payload)) return fallback;
   const error = isRecord(payload.error) ? payload.error : payload;
   return asString(error.message) || fallback;
+}
+
+function apiErrorCode(payload: unknown): string {
+  if (!isRecord(payload)) return "";
+  const error = isRecord(payload.error) ? payload.error : payload;
+  return asString(error.code).trim();
 }
 
 async function opsHeaders(base?: HeadersInit): Promise<Headers> {
@@ -2002,6 +2141,14 @@ function reportSelectedMediaIds(): string[] {
     .map((input) => input.value);
 }
 
+function setReportWorkflowResult(message: string, kind: "normal" | "error" = "normal"): void {
+  const result = document.querySelector<HTMLElement>("[data-report-workflow-result]");
+  if (!result) return;
+  result.textContent = message;
+  result.dataset.kind = kind;
+  if (kind === "error") result.focus({ preventScroll: true });
+}
+
 function reportSelectedReportMediaIds(): string[] {
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
   if (!dialog) return [];
@@ -2109,11 +2256,12 @@ async function hydrateReportEvidence(
       trigger.href = objectUrl;
       trigger.dataset.mediaCaption = image.alt;
       placeholder.hidden = true;
-      checkbox.disabled = !detail.publicationEligible;
+      const publicOutcomeEditable = detail.publicationEligible && detail.status !== "resolved" && detail.status !== "rejected";
+      checkbox.disabled = !publicOutcomeEditable;
       for (const field of item.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
         "[data-update-media-alt], [data-update-media-caption]"
       )) {
-        field.disabled = !detail.publicationEligible || !checkbox.checked;
+        field.disabled = !publicOutcomeEditable || !checkbox.checked;
       }
     } catch (error) {
       if (!reportReviewIsLive(intent, dialog) || signal.aborted || isAbortError(error)) return;
@@ -2147,6 +2295,68 @@ function reportDraft(): {
   };
 }
 
+function renderReportWorkflow(detail: OpsReportDetail, selected = ""): void {
+  const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
+  if (!dialog) return;
+  const stateSummary = dialog.querySelector<HTMLElement>("[data-report-state-summary]");
+  const explanation = dialog.querySelector<HTMLElement>("[data-report-status-explanation]");
+  const status = dialog.querySelector<HTMLSelectElement>("[data-report-next-status]");
+  const help = dialog.querySelector<HTMLElement>("[data-report-next-status-help]");
+  const note = dialog.querySelector<HTMLTextAreaElement>("[data-report-status-note]");
+  const requirement = dialog.querySelector<HTMLElement>("[data-report-reason-requirement]");
+  const apply = dialog.querySelector<HTMLButtonElement>("[data-report-save-status]");
+  const unassign = dialog.querySelector<HTMLButtonElement>("[data-report-unassign]");
+  const refresh = dialog.querySelector<HTMLButtonElement>("[data-report-refresh]");
+  const history = dialog.querySelector<HTMLOListElement>("[data-report-history]");
+  const publicGuidance = dialog.querySelector<HTMLElement>("[data-report-public-guidance]");
+  const preparePublic = dialog.querySelector<HTMLButtonElement>("[data-report-prepare-public]");
+  const model = reportWorkflowControls(detail, selected);
+  const selectedDestination = model.destinations.find((destination) => destination.value === selected) ?? null;
+  const blockedReasons = [...new Set(model.destinations.flatMap((destination) => destination.blockedReason ? [destination.blockedReason] : []))];
+
+  if (stateSummary) stateSummary.innerHTML = renderReportState(detail);
+  if (explanation) explanation.textContent = model.currentExplanation;
+  if (status) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = model.destinations.length === 0 ? "No next stage available" : "Choose a next stage";
+    status.replaceChildren(placeholder, ...model.destinations.map((destination) => {
+      const option = document.createElement("option");
+      option.value = destination.value;
+      option.textContent = destination.label;
+      option.disabled = destination.blockedReason !== null;
+      return option;
+    }));
+    status.disabled = model.destinations.length === 0;
+    status.value = selectedDestination && !selectedDestination.blockedReason ? selectedDestination.value : "";
+  }
+  if (help) {
+    help.textContent = selectedDestination?.blockedReason
+      ?? (selectedDestination
+        ? `${selectedDestination.explanation}${model.reasonRequired ? " Record a private reason before applying." : ""}`
+        : `Choose a stage to see what it means. Nothing saves until Apply status.${blockedReasons.length ? ` ${blockedReasons.join(" ")}` : ""}`);
+  }
+  if (note) {
+    note.disabled = model.destinations.length === 0 && !model.canUnassign;
+    note.required = model.reasonRequired;
+    note.setAttribute("aria-required", String(model.reasonRequired));
+  }
+  if (requirement) requirement.textContent = model.reasonRequired ? "(required for this change)" : "(optional)";
+  if (apply) apply.disabled = !selectedDestination || selectedDestination.blockedReason !== null;
+  if (unassign) unassign.disabled = !model.canUnassign;
+  if (refresh) refresh.disabled = false;
+  if (history) history.innerHTML = renderReportHistory(detail.history);
+  if (publicGuidance) publicGuidance.textContent = reportPublicOutcomeGuidance(detail, selected);
+  if (preparePublic) preparePublic.hidden = detail.status !== "verified";
+}
+
+function renderActiveReportWorkflowSelection(): void {
+  const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
+  if (!dialog || !activeReportDetail) return;
+  const selected = dialog.querySelector<HTMLSelectElement>("[data-report-next-status]")?.value ?? "";
+  renderReportWorkflow(activeReportDetail, selected);
+}
+
 function renderReportDialog(
   detail: OpsReportDetail,
   intent: ReportReviewIntent,
@@ -2176,17 +2386,18 @@ function renderReportDialog(
   const body = form.elements.namedItem("body");
   const scheduledFor = form.elements.namedItem("scheduledFor");
   const confirmation = form.elements.namedItem("confirmPublication");
+  const publicOutcomeEditable = detail.publicationEligible && detail.status !== "resolved" && detail.status !== "rejected";
   if (title instanceof HTMLInputElement) {
     title.value = draft?.title ?? detail.publication.title ?? "";
-    title.disabled = !detail.publicationEligible;
+    title.disabled = !publicOutcomeEditable;
   }
   if (body instanceof HTMLTextAreaElement) {
     body.value = draft?.body ?? detail.publication.body ?? "";
-    body.disabled = !detail.publicationEligible;
+    body.disabled = !publicOutcomeEditable;
   }
   if (confirmation instanceof HTMLInputElement) {
     confirmation.checked = draft?.confirmed ?? false;
-    confirmation.disabled = !detail.publicationEligible;
+    confirmation.disabled = !publicOutcomeEditable;
   }
   for (const checkbox of dialog.querySelectorAll<HTMLInputElement>('input[name="publishMedia"]')) {
     checkbox.checked = draft?.mediaIds.includes(checkbox.value) ?? detail.publication.mediaIds.includes(checkbox.value);
@@ -2205,28 +2416,16 @@ function renderReportDialog(
   }
 
   const controls = reportReviewControls(detail);
-  const stateSummary = dialog.querySelector<HTMLElement>("[data-report-state-summary]");
-  const begin = dialog.querySelector<HTMLButtonElement>("[data-report-begin-review]");
-  const status = dialog.querySelector<HTMLSelectElement>("[data-report-next-status]");
-  const saveStatus = dialog.querySelector<HTMLButtonElement>("[data-report-save-status]");
   const saveDraft = dialog.querySelector<HTMLButtonElement>("[data-report-save-draft]");
   const schedule = dialog.querySelector<HTMLButtonElement>("[data-report-schedule]");
   const publish = dialog.querySelector<HTMLButtonElement>("[data-report-publish]");
   const unpublish = dialog.querySelector<HTMLButtonElement>("[data-report-unpublish]");
   const publishCaseNote = dialog.querySelector<HTMLButtonElement>("[data-report-publish-case-note]");
   const withdrawCaseNote = dialog.querySelector<HTMLButtonElement>("[data-report-withdraw-case-note]");
-  if (stateSummary) stateSummary.innerHTML = renderReportState(detail);
-  const transitions = nextReportStates(detail.status);
-  const selectableTransitions = detail.status === "received"
-    ? transitions.filter((state) => state !== "reviewing")
-    : transitions;
-  if (begin) {
-    begin.hidden = detail.status !== "received";
-    begin.disabled = !transitions.includes("reviewing");
-  }
+  renderReportWorkflow(detail);
   const updateFiles = form.querySelector<HTMLInputElement>("[data-report-update-files]");
   const uploadUpdateImages = form.querySelector<HTMLButtonElement>("[data-report-upload-update-images]");
-  const canUploadUpdateMedia = detail.publicationEligible && Boolean(detail.publication.updateId);
+  const canUploadUpdateMedia = publicOutcomeEditable && Boolean(detail.publication.updateId);
   if (updateFiles) updateFiles.disabled = !canUploadUpdateMedia;
   if (uploadUpdateImages) uploadUpdateImages.disabled = !canUploadUpdateMedia;
   if (scheduledFor instanceof HTMLInputElement) {
@@ -2235,38 +2434,19 @@ function renderReportDialog(
         ? new Date(detail.publication.scheduledFor).toISOString().slice(0, 16)
         : ""
     );
-    scheduledFor.disabled = !detail.publicationEligible;
-  }
-  if (status) {
-    status.replaceChildren(...selectableTransitions.map((nextState) => {
-      const option = document.createElement("option");
-      option.value = nextState;
-      option.textContent = reportStateLabel(nextState);
-      return option;
-    }));
-    status.hidden = selectableTransitions.length === 0;
-    status.disabled = selectableTransitions.length === 0;
-    for (const option of [...status.options]) {
-      option.disabled = controls.terminalTransitionsBlocked && ["rejected", "resolved"].includes(option.value);
-    }
-  }
-  if (saveStatus) {
-    saveStatus.hidden = selectableTransitions.length === 0;
-    saveStatus.disabled = selectableTransitions.length === 0 ||
-      (controls.terminalTransitionsBlocked && ["rejected", "resolved"].includes(status?.value ?? ""));
-    saveStatus.textContent = detail.status === "resolved" ? "Reopen report" : "Apply next state";
+    scheduledFor.disabled = !publicOutcomeEditable;
   }
   if (publish) {
     publish.disabled = !detail.publicationEligible || detail.status !== "verified";
     publish.textContent = detail.publication.published ? "Update live Official Update" : "Publish Official Update now";
   }
-  if (saveDraft) saveDraft.disabled = !detail.publicationEligible;
+  if (saveDraft) saveDraft.disabled = !publicOutcomeEditable;
   if (schedule) schedule.disabled = !detail.publicationEligible || detail.status !== "verified";
   if (unpublish) unpublish.hidden = !controls.showUnpublish;
   const destinations = reportDestinationControls(detail);
   if (publishCaseNote) {
     publishCaseNote.hidden = !destinations.showPublishCaseNote;
-    publishCaseNote.disabled = !detail.publicationEligible;
+    publishCaseNote.disabled = !publicOutcomeEditable;
   }
   if (withdrawCaseNote) withdrawCaseNote.hidden = !destinations.showWithdrawCaseNote;
   updateReportPublicationPreview();
@@ -2302,9 +2482,14 @@ async function openReportDetail(reportId: string, trigger: HTMLButtonElement): P
   dialog.querySelector<HTMLElement>("[data-report-private-detail]")?.replaceChildren();
   dialog.querySelector<HTMLElement>("[data-report-evidence]")?.replaceChildren();
   dialog.querySelector<HTMLElement>("[data-report-public-preview]")?.replaceChildren();
+  dialog.querySelector<HTMLElement>("[data-report-history]")?.replaceChildren();
   const form = dialog.querySelector<HTMLFormElement>("[data-report-publication-form]");
   form?.reset();
-  for (const control of dialog.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>("[data-report-status-actions] button, [data-report-status-actions] select, [data-report-publication-form] input, [data-report-publication-form] textarea, [data-report-publication-form] button")) {
+  const workflowNote = dialog.querySelector<HTMLTextAreaElement>("[data-report-status-note]");
+  if (workflowNote) workflowNote.value = "";
+  const preparePublic = dialog.querySelector<HTMLButtonElement>("[data-report-prepare-public]");
+  if (preparePublic) preparePublic.hidden = true;
+  for (const control of dialog.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>("[data-report-status-actions] button, [data-report-status-actions] select, [data-report-status-actions] textarea, [data-report-publication-form] input, [data-report-publication-form] textarea, [data-report-publication-form] button")) {
     control.disabled = true;
   }
   const unpublish = dialog.querySelector<HTMLButtonElement>("[data-report-unpublish]");
@@ -2312,6 +2497,7 @@ async function openReportDetail(reportId: string, trigger: HTMLButtonElement): P
   const withdrawCaseNote = dialog.querySelector<HTMLButtonElement>("[data-report-withdraw-case-note]");
   if (withdrawCaseNote) withdrawCaseNote.hidden = true;
   setReportPublicationResult("");
+  setReportWorkflowResult("");
   setReportReviewState("Loading the selected private report and audited evidence controls...");
   if (!dialog.open) dialog.showModal();
   try {
@@ -2335,43 +2521,131 @@ async function refreshActiveReportDetail(intent = reportReviewGuard.capture()): 
   renderReportDialog(detail, intent, signal, draft);
 }
 
-async function updateActiveReportStatus(status: string): Promise<void> {
+async function applyActiveReportWorkflow(): Promise<void> {
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
   const intent = reportReviewGuard.capture();
   const signal = reportReviewAbortController?.signal;
+  const detail = activeReportDetail;
+  const statusSelect = dialog?.querySelector<HTMLSelectElement>("[data-report-next-status]");
+  const noteField = dialog?.querySelector<HTMLTextAreaElement>("[data-report-status-note]");
   if (
-    !intent || !signal || !activeReportDetail || activeReportDetail.id !== intent.reportId ||
-    !reportReviewIsLive(intent, dialog) ||
-    !nextReportStates(activeReportDetail.status).includes(status as ReportReviewState)
+    !dialog || !intent || !signal || !detail || detail.id !== intent.reportId || !statusSelect || !noteField ||
+    !reportReviewIsLive(intent, dialog) || !isReportReviewState(detail.status) ||
+    !isReportReviewState(statusSelect.value) || !nextReportStates(detail.status).includes(statusSelect.value)
   ) return;
-  const reportId = intent.reportId;
-  if (activeReportDetail.publication.published && ["rejected", "resolved"].includes(status)) {
-    setReportReviewState("Unpublish first before rejecting or resolving this private report.", "error");
+  const from = detail.status;
+  const to = statusSelect.value;
+  const destination = reportWorkflowControls(detail, to).destinations.find((item) => item.value === to);
+  if (!destination || destination.blockedReason) {
+    setReportWorkflowResult(destination?.blockedReason ?? "Choose an available next stage.", "error");
     return;
   }
-  const note = status === "reviewing"
-    ? activeReportDetail.status === "resolved"
-      ? "Resolved report reopened for publication review"
-      : "Review opened in the private case room"
-    : window.prompt("Add an optional private note for this status change:", "");
-  if (
-    note === null || !window.confirm(`Change this private report to ${status}? This action is audited.`) ||
-    !reportReviewIsLive(intent, dialog) || signal.aborted
-  ) return;
-  setReportReviewState(`Saving private ${status} state...`);
+  const note = noteField.value.trim();
+  if (reportTransitionRequiresReason(from, to) && !note) {
+    setReportWorkflowResult("Record a private reason before applying this status.", "error");
+    noteField.focus();
+    return;
+  }
+  const confirmed = !reportTransitionRequiresConfirmation(from, to) || window.confirm(
+    `Change this report from ${reportStateCopy(from).operatorLabel} to ${reportStateCopy(to).operatorLabel}? ` +
+    "This change will be recorded in the audit trail and will not publish anything."
+  );
+  if (!confirmed || !reportReviewIsLive(intent, dialog) || signal.aborted) return;
+  const reportId = intent.reportId;
+  const applyButton = dialog.querySelector<HTMLButtonElement>("[data-report-save-status]");
+  if (applyButton) applyButton.disabled = true;
+  setReportWorkflowResult(`Applying ${reportStateCopy(to).operatorLabel}...`);
+  let mutationSaved = false;
   try {
     const { response, payload } = await opsRequest(`/api/v1/ops/reports/${encodeURIComponent(reportId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, note: note.trim() || undefined }),
+      body: JSON.stringify(buildReportWorkflowMutation(detail, {
+        operation: "transition",
+        status: to,
+        note,
+        confirmed,
+      })),
       signal,
     });
     if (!reportReviewIsLive(intent, dialog) || signal.aborted) return;
-    if (!response.ok) throw new Error(apiError(payload, "The report state was not changed."));
+    if (!response.ok) {
+      const code = apiErrorCode(payload);
+      if (code === "report_transition_stale" || code === "version_conflict") {
+        setReportWorkflowResult("The report changed. Refresh report and try again.", "error");
+        return;
+      }
+      throw new Error(apiError(payload, "The report status was not changed."));
+    }
+    mutationSaved = true;
+    noteField.value = "";
     await Promise.all([refreshActiveReportDetail(intent), loadReports(), loadDashboard(), loadAudit()]);
+    if (reportReviewIsLive(intent, dialog)) {
+      setReportWorkflowResult(`${reportStateCopy(to).operatorLabel} saved. Nothing was published.`);
+    }
   } catch (error) {
     if (!reportReviewIsLive(intent, dialog) || signal.aborted || isAbortError(error)) return;
-    setReportReviewState(error instanceof Error ? error.message : "The report state was not changed.", "error");
+    setReportWorkflowResult(
+      mutationSaved
+        ? "The status was saved, but the refreshed report could not be loaded. Refresh report to continue."
+        : error instanceof Error ? error.message : "The report status was not changed.",
+      "error"
+    );
+  } finally {
+    if (reportReviewIsLive(intent, dialog) && !mutationSaved && applyButton) applyButton.disabled = false;
+  }
+}
+
+async function unassignActiveReport(): Promise<void> {
+  const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
+  const intent = reportReviewGuard.capture();
+  const signal = reportReviewAbortController?.signal;
+  const detail = activeReportDetail;
+  const noteField = dialog?.querySelector<HTMLTextAreaElement>("[data-report-status-note]");
+  if (
+    !dialog || !intent || !signal || !detail || detail.id !== intent.reportId || !detail.assignedTo || !noteField ||
+    !reportReviewIsLive(intent, dialog) || !isReportReviewState(detail.status)
+  ) return;
+  if (!window.confirm("Unassign this report? Its review status will not change, and the action will be recorded.")) return;
+  const reportId = intent.reportId;
+  const button = dialog.querySelector<HTMLButtonElement>("[data-report-unassign]");
+  if (button) button.disabled = true;
+  setReportWorkflowResult("Returning this report to the shared queue...");
+  let mutationSaved = false;
+  try {
+    const { response, payload } = await opsRequest(`/api/v1/ops/reports/${encodeURIComponent(reportId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildReportWorkflowMutation(detail, {
+        operation: "unassign",
+        note: noteField.value,
+        confirmed: true,
+      })),
+      signal,
+    });
+    if (!reportReviewIsLive(intent, dialog) || signal.aborted) return;
+    if (!response.ok) {
+      const code = apiErrorCode(payload);
+      if (code === "report_transition_stale" || code === "version_conflict" || code === "report_assignment_stale") {
+        setReportWorkflowResult("The report changed. Refresh report and try again.", "error");
+        return;
+      }
+      throw new Error(apiError(payload, "The report was not unassigned."));
+    }
+    mutationSaved = true;
+    noteField.value = "";
+    await Promise.all([refreshActiveReportDetail(intent), loadReports(), loadDashboard(), loadAudit()]);
+    if (reportReviewIsLive(intent, dialog)) setReportWorkflowResult("Report unassigned. Its review status did not change.");
+  } catch (error) {
+    if (!reportReviewIsLive(intent, dialog) || signal.aborted || isAbortError(error)) return;
+    setReportWorkflowResult(
+      mutationSaved
+        ? "The report was unassigned, but the refreshed report could not be loaded. Refresh report to continue."
+        : error instanceof Error ? error.message : "The report was not unassigned.",
+      "error"
+    );
+  } finally {
+    if (reportReviewIsLive(intent, dialog) && !mutationSaved && button) button.disabled = false;
   }
 }
 
@@ -3092,20 +3366,40 @@ function setupWorkspace(): void {
   });
 
   const reportDialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
-  reportDialog?.querySelector("[data-report-begin-review]")?.addEventListener("click", async () => {
-    try {
-      await updateActiveReportStatus("reviewing");
-    } catch (error) {
-      setReportReviewState(error instanceof Error ? error.message : "The report state was not changed.", "error");
-    }
+  reportDialog?.querySelector("[data-report-next-status]")?.addEventListener("change", () => {
+    setReportWorkflowResult("");
+    renderActiveReportWorkflowSelection();
   });
   reportDialog?.querySelector("[data-report-save-status]")?.addEventListener("click", async () => {
-    const status = reportDialog.querySelector<HTMLSelectElement>("[data-report-next-status]")?.value ?? "";
+    await applyActiveReportWorkflow();
+  });
+  reportDialog?.querySelector("[data-report-unassign]")?.addEventListener("click", async () => {
+    await unassignActiveReport();
+  });
+  reportDialog?.querySelector("[data-report-refresh]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const intent = reportReviewGuard.capture();
+    if (!intent) return;
+    button.disabled = true;
+    setReportWorkflowResult("Refreshing this private report...");
     try {
-      await updateActiveReportStatus(status);
+      await refreshActiveReportDetail(intent);
+      if (reportReviewIsLive(intent, reportDialog)) setReportWorkflowResult("Report refreshed from the verified source.");
     } catch (error) {
-      setReportReviewState(error instanceof Error ? error.message : "The report state was not changed.", "error");
+      if (!reportReviewIsLive(intent, reportDialog) || isAbortError(error)) return;
+      setReportWorkflowResult(error instanceof Error ? error.message : "The report could not be refreshed.", "error");
+    } finally {
+      if (reportReviewIsLive(intent, reportDialog)) button.disabled = false;
     }
+  });
+  reportDialog?.querySelector("[data-report-prepare-public]")?.addEventListener("click", () => {
+    reportDialog.querySelector<HTMLElement>("#report-public-title")?.focus({ preventScroll: false });
+  });
+  reportDialog?.querySelector("[data-report-open-audit]")?.addEventListener("click", () => {
+    reportReviewTrigger = null;
+    reportDialog.close();
+    switchView("audit");
+    void loadAudit();
   });
   reportDialog?.addEventListener("input", (event) => {
     const target = event.target;
@@ -3455,7 +3749,9 @@ function setupWorkspace(): void {
     reportDialog.querySelector<HTMLElement>("[data-report-private-detail]")?.replaceChildren();
     reportDialog.querySelector<HTMLElement>("[data-report-evidence]")?.replaceChildren();
     reportDialog.querySelector<HTMLElement>("[data-report-public-preview]")?.replaceChildren();
+    reportDialog.querySelector<HTMLElement>("[data-report-history]")?.replaceChildren();
     setReportPublicationResult("");
+    setReportWorkflowResult("");
     setReportReviewState("Choose Review report to load one private submission.");
     const trigger = reportReviewTrigger?.isConnected
       ? reportReviewTrigger
