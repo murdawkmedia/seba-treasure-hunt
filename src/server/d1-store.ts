@@ -360,12 +360,10 @@ export class D1DataStore implements DataStore {
     const rows = result.results;
     const hasMore = rows.length > limit;
     const selected = rows.slice(0, limit);
-    const reportUpdateIds = selected
-      .filter((row) => nullable(row.source_report_id) !== null)
-      .map((row) => value(row.id));
+    const selectedUpdateIds = selected.map((row) => value(row.id));
     const mediaByUpdate = new Map<string, Record<string, unknown>[]>();
-    if (reportUpdateIds.length > 0) {
-      const placeholders = reportUpdateIds.map(() => "?").join(",");
+    if (selectedUpdateIds.length > 0) {
+      const placeholders = selectedUpdateIds.map(() => "?").join(",");
       const media = await this.db
         .prepare(
           `SELECT selected.update_id, media.id, media.content_type,
@@ -385,7 +383,7 @@ export class D1DataStore implements DataStore {
              AND upload.derivative_object_key IS NOT NULL
            ORDER BY position, id`
         )
-        .bind(...reportUpdateIds, ...reportUpdateIds)
+        .bind(...selectedUpdateIds, ...selectedUpdateIds)
         .all<Row>();
       for (const row of media.results) {
         const updateId = value(row.update_id);
@@ -408,7 +406,8 @@ export class D1DataStore implements DataStore {
           title: row.title,
           body: row.body,
           publishedAt: row.published_at,
-          publisherName: publicUpdatePublisherName(row.publisher_name)
+          publisherName: publicUpdatePublisherName(row.publisher_name),
+          media: mediaByUpdate.get(value(row.id)) ?? []
         };
       }
       return {
@@ -3255,10 +3254,6 @@ export class D1DataStore implements DataStore {
           : "Withdrawn Official Updates are read-only."
       );
     }
-    if (input.mediaIds.length > 0 || (input.mediaSelections?.length ?? 0) > 0) {
-      throw new ApiError(422, "publication_media_invalid", "Selected Update media is not available yet.");
-    }
-
     const timestamp = now();
     const desiredStatus = input.action === "save_draft"
       ? "draft"
@@ -3276,46 +3271,142 @@ export class D1DataStore implements DataStore {
       throw new ApiError(422, "validation_failed", "scheduledFor is only accepted when scheduling an Update.");
     }
 
+    const mediaIds = [...new Set(input.mediaIds)];
+    if (mediaIds.length !== input.mediaIds.length || mediaIds.length > 3) {
+      throw new ApiError(422, "publication_media_invalid", "Select no more than three distinct Update images.");
+    }
+    if (input.mediaSelections && input.mediaSelections.length !== mediaIds.length) {
+      throw new ApiError(422, "publication_media_invalid", "Publication image details must match the selected images.");
+    }
+    const mediaSelections = mediaIds.map((mediaId, position) => {
+      const supplied = input.mediaSelections?.[position];
+      if (supplied && supplied.id !== mediaId) {
+        throw new ApiError(422, "publication_media_invalid", "Publication image details must follow the selected image order.");
+      }
+      return {
+        id: mediaId,
+        position,
+        altText: supplied?.altText?.trim() || null,
+        caption: supplied?.caption?.trim() || null
+      };
+    });
+    if (mediaIds.length > 0) {
+      const placeholders = mediaIds.map(() => "?").join(",");
+      const readyResult = await this.db
+        .prepare(
+          `SELECT id FROM official_update_uploads
+           WHERE update_id = ? AND id IN (${placeholders})
+             AND status = 'ready' AND derivative_object_key IS NOT NULL
+             AND content_type IN ('image/jpeg', 'image/png', 'image/webp')`
+        )
+        .bind(updateId, ...mediaIds)
+        .all<Row>();
+      const readyIds = new Set(readyResult.results.map((row) => value(row.id)));
+      if (mediaIds.some((mediaId) => !readyIds.has(mediaId))) {
+        throw new ApiError(422, "publication_media_invalid", "Selected Update media is not ready for publication.");
+      }
+      if (mediaSelections.some((selection) => !selection.altText)) {
+        throw new ApiError(422, "publication_media_alt_required", "Add concise alt text for every selected Update image.");
+      }
+    }
+
+    const currentSelectionResult = await this.db
+      .prepare(
+        `SELECT upload_id, alt_text, caption, position
+         FROM official_update_uploaded_media
+         WHERE update_id = ? ORDER BY position, upload_id`
+      )
+      .bind(updateId)
+      .all<Row>();
+    const currentSelections = currentSelectionResult.results.map((row) => ({
+      id: value(row.upload_id),
+      position: Number(row.position),
+      altText: nullable(row.alt_text),
+      caption: nullable(row.caption)
+    }));
+
     if (
       currentStatus === desiredStatus &&
       value(existing.title) === input.title &&
       value(existing.body) === input.body &&
-      nullable(existing.scheduled_for) === desiredScheduledFor
+      nullable(existing.scheduled_for) === desiredScheduledFor &&
+      JSON.stringify(currentSelections) === JSON.stringify(mediaSelections)
     ) {
-      return opsUpdateFromRow(existing, []);
+      return opsUpdateFromRow(existing, await this.officialUpdateUploads(updateId));
     }
 
     const publishedAt = desiredStatus === "scheduled" ? desiredScheduledFor! : timestamp;
-    const updateResult = await this.db
-      .prepare(
-        `UPDATE official_updates
-         SET title = ?, body = ?, published_at = ?, scheduled_for = ?,
-             status = ?, updated_at = ?
-         WHERE id = ? AND source_report_id IS NULL AND status = ?`
-      )
-      .bind(
-        input.title,
-        input.body,
-        publishedAt,
-        desiredScheduledFor,
-        desiredStatus,
-        timestamp,
-        updateId,
-        currentStatus
-      )
-      .run();
-    if (!updateResult.meta.changes) throw new ConflictError("The Official Update changed. Refresh and try again.");
-
     const action = desiredStatus === "draft"
       ? "update.draft_saved"
       : desiredStatus === "scheduled"
         ? "update.scheduled"
         : "update.published";
-    await this.audit(actorSubject, action, "official_update", updateId, {
-      previousStatus: currentStatus,
-      status: desiredStatus,
-      scheduledFor: desiredScheduledFor
-    });
+    const operationToken = `operation:${id()}`;
+    const previousUpdatedAt = nullable(existing.updated_at) ?? "";
+    const statements = [
+      this.db
+        .prepare(
+          `UPDATE official_updates SET scheduled_for = ?
+           WHERE id = ? AND source_report_id IS NULL AND status = ?
+             AND COALESCE(updated_at, '') = ?`
+        )
+        .bind(operationToken, updateId, currentStatus, previousUpdatedAt),
+      this.db
+        .prepare(
+          `DELETE FROM official_update_uploaded_media
+           WHERE update_id = ? AND EXISTS (
+             SELECT 1 FROM official_updates WHERE id = ? AND scheduled_for = ?
+           )`
+        )
+        .bind(updateId, updateId, operationToken),
+      ...mediaSelections.map((selection) => this.db
+        .prepare(
+          `INSERT INTO official_update_uploaded_media
+           (update_id, upload_id, selected_by, selected_at, position, alt_text, caption)
+           SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (
+             SELECT 1 FROM official_updates WHERE id = ? AND scheduled_for = ?
+           )`
+        )
+        .bind(
+          updateId,
+          selection.id,
+          actorSubject,
+          timestamp,
+          selection.position,
+          selection.altText,
+          selection.caption,
+          updateId,
+          operationToken
+        )),
+      this.db
+        .prepare(
+          `UPDATE official_updates
+           SET title = ?, body = ?, published_at = ?, scheduled_for = ?,
+               status = ?, updated_at = ?
+           WHERE id = ? AND source_report_id IS NULL AND scheduled_for = ?`
+        )
+        .bind(
+          input.title,
+          input.body,
+          publishedAt,
+          desiredScheduledFor,
+          desiredStatus,
+          timestamp,
+          updateId,
+          operationToken
+        ),
+      this.auditStatement(actorSubject, action, "official_update", updateId, {
+        previousStatus: currentStatus,
+        status: desiredStatus,
+        scheduledFor: desiredScheduledFor,
+        mediaIds
+      }, timestamp)
+    ];
+    const results = await this.db.batch(statements);
+    const finalUpdate = results[results.length - 2];
+    if (!results[0]?.meta.changes || !finalUpdate?.meta.changes) {
+      throw new ConflictError("The Official Update changed. Refresh and try again.");
+    }
     const updated = await this.db
       .prepare(
         `SELECT id, title, body, publisher_name, status, published_at,
@@ -3324,7 +3415,7 @@ export class D1DataStore implements DataStore {
       )
       .bind(updateId)
       .first<Row>();
-    return updated ? opsUpdateFromRow(updated, []) : null;
+    return updated ? opsUpdateFromRow(updated, await this.officialUpdateUploads(updateId)) : null;
   }
 
   async withdrawUpdate(
@@ -3367,6 +3458,97 @@ export class D1DataStore implements DataStore {
       scheduled_for: null,
       updated_at: timestamp
     }, []);
+  }
+
+  async addUpdateUploads(
+    updateId: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const update = await this.db
+      .prepare(
+        `SELECT id, status FROM official_updates
+         WHERE id = ? AND source_report_id IS NULL LIMIT 1`
+      )
+      .bind(updateId)
+      .first<Row>();
+    if (!update) return null;
+    if (update.status !== "draft") {
+      throw new ApiError(409, "update_state_invalid", "Return this Official Update to Draft before changing its images.");
+    }
+    await this.storeUpdateUploads(updateId, media, actorSubject);
+    await this.audit(actorSubject, "update.media_uploaded", "official_update", updateId, {
+      mediaCount: media.length
+    });
+    const row = await this.db
+      .prepare(
+        `SELECT id, title, body, publisher_name, status, published_at,
+                scheduled_for, created_at, updated_at
+         FROM official_updates WHERE id = ? LIMIT 1`
+      )
+      .bind(updateId)
+      .first<Row>();
+    return row ? opsUpdateFromRow(row, await this.officialUpdateUploads(updateId)) : null;
+  }
+
+  async getUpdateMedia(
+    updateId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT upload.derivative_object_key, upload.content_type
+         FROM official_update_uploads upload
+         JOIN official_updates update_record ON update_record.id = upload.update_id
+         WHERE upload.update_id = ? AND upload.id = ?
+           AND update_record.source_report_id IS NULL
+           AND upload.status = 'ready' AND upload.derivative_object_key IS NOT NULL
+         LIMIT 1`
+      )
+      .bind(updateId, mediaId)
+      .first<Row>();
+    const key = nullable(row?.derivative_object_key);
+    if (!row || !key?.startsWith("derivatives/") || key === "derivatives/") return null;
+    await this.audit(actorSubject, "update.media_viewed", "official_update", updateId, { mediaId });
+    return { key, contentType: value(row.content_type) };
+  }
+
+  async removeUpdateUpload(
+    updateId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const upload = await this.db
+      .prepare(
+        `SELECT upload.id, update_record.status AS update_status
+         FROM official_update_uploads upload
+         JOIN official_updates update_record ON update_record.id = upload.update_id
+         WHERE upload.update_id = ? AND upload.id = ?
+           AND update_record.source_report_id IS NULL AND upload.status != 'deleted'
+         LIMIT 1`
+      )
+      .bind(updateId, mediaId)
+      .first<Row>();
+    if (!upload) return null;
+    if (upload.update_status !== "draft") {
+      throw new ApiError(409, "update_state_invalid", "Return this Official Update to Draft before removing an image.");
+    }
+    const timestamp = now();
+    const results = await this.db.batch([
+      this.db
+        .prepare("DELETE FROM official_update_uploaded_media WHERE update_id = ? AND upload_id = ?")
+        .bind(updateId, mediaId),
+      this.db
+        .prepare(
+          `UPDATE official_update_uploads SET status = 'deleted', processed_at = ?
+           WHERE update_id = ? AND id = ? AND status != 'deleted'`
+        )
+        .bind(timestamp, updateId, mediaId)
+    ]);
+    if (!results[1]?.meta.changes) return null;
+    await this.audit(actorSubject, "update.media_removed", "official_update", updateId, { mediaId });
+    return { id: mediaId, updateId, status: "deleted" };
   }
 
   async listReports(options: { limit?: number; cursor?: string | null } = {}): Promise<Page> {
@@ -4494,37 +4676,13 @@ export class D1DataStore implements DataStore {
   ): Promise<Record<string, unknown> | null> {
     const update = await this.db
       .prepare(
-        `SELECT update_record.id, COUNT(upload.id) AS upload_count
-         FROM official_updates update_record
-         LEFT JOIN official_update_uploads upload ON upload.update_id = update_record.id
-         WHERE update_record.source_report_id = ?
-         GROUP BY update_record.id LIMIT 1`
+        `SELECT id FROM official_updates
+         WHERE source_report_id = ? LIMIT 1`
       )
       .bind(reportId)
       .first<Row>();
     if (!update) return null;
-    if (media.length === 0 || media.length > 3) {
-      throw new ApiError(422, "validation_failed", "Choose one to three Update images.");
-    }
-    if (Number(update.upload_count ?? 0) + media.length > 3) {
-      throw new ApiError(422, "validation_failed", "An Official Update can have no more than three direct uploads.");
-    }
-    const timestamp = now();
-    await this.db.batch(media.map((item) => this.db.prepare(
-      `INSERT INTO official_update_uploads
-       (id, update_id, uploader_subject, private_object_key, content_type,
-        byte_size, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      item.id,
-      update.id,
-      actorSubject,
-      item.key,
-      item.contentType ?? "application/octet-stream",
-      item.size ?? 0,
-      item.status,
-      timestamp
-    )));
+    await this.storeUpdateUploads(value(update.id), media, actorSubject);
     await this.audit(actorSubject, "report.update.media_uploaded", "report", reportId, {
       updateId: update.id,
       mediaCount: media.length
@@ -5341,6 +5499,66 @@ export class D1DataStore implements DataStore {
         media.status,
         now()
       );
+  }
+
+  private async officialUpdateUploads(updateId: string): Promise<Record<string, unknown>[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT upload.id, upload.content_type, upload.byte_size, upload.status,
+                selected.alt_text, selected.caption, selected.position
+         FROM official_update_uploads upload
+         LEFT JOIN official_update_uploaded_media selected
+           ON selected.update_id = upload.update_id AND selected.upload_id = upload.id
+         WHERE upload.update_id = ? AND upload.status != 'deleted'
+         ORDER BY upload.created_at, upload.id`
+      )
+      .bind(updateId)
+      .all<Row>();
+    return result.results.map((upload) => ({
+      id: value(upload.id),
+      contentType: value(upload.content_type),
+      size: Number(upload.byte_size ?? 0),
+      status: value(upload.status),
+      altText: nullable(upload.alt_text),
+      caption: nullable(upload.caption),
+      position: numberOrNull(upload.position)
+    }));
+  }
+
+  private async storeUpdateUploads(
+    updateId: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<void> {
+    if (media.length === 0 || media.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three Update images.");
+    }
+    const count = await this.db
+      .prepare(
+        `SELECT COUNT(*) AS upload_count FROM official_update_uploads
+         WHERE update_id = ? AND status NOT IN ('deleted', 'rejected')`
+      )
+      .bind(updateId)
+      .first<Row>();
+    if (Number(count?.upload_count ?? 0) + media.length > 3) {
+      throw new ApiError(422, "validation_failed", "An Official Update can have no more than three direct uploads.");
+    }
+    const timestamp = now();
+    await this.db.batch(media.map((item) => this.db.prepare(
+      `INSERT INTO official_update_uploads
+       (id, update_id, uploader_subject, private_object_key, content_type,
+        byte_size, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      item.id,
+      updateId,
+      actorSubject,
+      item.key,
+      item.contentType ?? "application/octet-stream",
+      item.size ?? 0,
+      item.status,
+      timestamp
+    )));
   }
 
   private async audit(

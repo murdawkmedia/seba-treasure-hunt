@@ -260,12 +260,26 @@ export class FakeStore {
         !update.status || update.status === "published" ||
         (update.status === "scheduled" && typeof update.scheduledFor === "string" &&
           new Date(update.scheduledFor).getTime() <= currentTime)
-      ).map(({ status: _status, scheduledFor: _scheduledFor, uploads: _uploads, ...publicUpdate }) =>
-        typeof publicUpdate.publisherName === "string" &&
-        /^(?:campaign ops|campaign operator)$/i.test(publicUpdate.publisherName.trim())
-          ? { ...publicUpdate, publisherName: "A representative from SebaHub" }
-          : publicUpdate
-      ),
+      ).map(({ status: _status, scheduledFor: _scheduledFor, uploads: storedUploads, ...publicUpdate }) => {
+        const uploads = Array.isArray(storedUploads)
+          ? storedUploads as Array<Record<string, unknown>>
+          : [];
+        const media = uploads
+          .filter((upload) => typeof upload.position === "number" && upload.status === "ready")
+          .sort((left, right) => Number(left.position) - Number(right.position))
+          .map((upload) => ({
+            id: upload.id,
+            url: `/api/v1/media/${String(upload.id)}`,
+            contentType: upload.contentType,
+            ...(upload.altText ? { alt: upload.altText } : {}),
+            ...(upload.caption ? { caption: upload.caption } : {})
+          }));
+        const projected: Record<string, unknown> = { ...publicUpdate, media };
+        return typeof projected.publisherName === "string" &&
+          /^(?:campaign ops|campaign operator)$/i.test(projected.publisherName.trim())
+          ? { ...projected, publisherName: "A representative from SebaHub" }
+          : projected;
+      }),
       nextCursor: null
     };
   }
@@ -1095,9 +1109,25 @@ export class FakeStore {
     if (currentStatus === "published" || currentStatus === "withdrawn") {
       throw new ApiError(409, "update_state_invalid", "This Official Update is not editable.");
     }
-    if (input.mediaIds.length || input.mediaSelections?.length) {
-      throw new ApiError(422, "publication_media_invalid", "Selected Update media is not available yet.");
+    const mediaIds = [...new Set(input.mediaIds)];
+    if (mediaIds.length !== input.mediaIds.length || mediaIds.length > 3) {
+      throw new ApiError(422, "publication_media_invalid", "Select no more than three distinct Update images.");
     }
+    const uploads = Array.isArray(update.uploads)
+      ? update.uploads as Array<Record<string, unknown>>
+      : [];
+    const selections = mediaIds.map((mediaId, position) => {
+      const upload = uploads.find((candidate) => candidate.id === mediaId);
+      const supplied = input.mediaSelections?.[position];
+      if (!upload || upload.status !== "ready" || supplied?.id !== mediaId) {
+        throw new ApiError(422, "publication_media_invalid", "Selected Update media is not ready for publication.");
+      }
+      const altText = supplied.altText?.trim() || null;
+      if (!altText) {
+        throw new ApiError(422, "publication_media_alt_required", "Add concise alt text for every selected Update image.");
+      }
+      return { upload, position, altText, caption: supplied.caption?.trim() || null };
+    });
     const status = input.action === "save_draft"
       ? "draft"
       : input.action === "schedule"
@@ -1119,6 +1149,24 @@ export class FakeStore {
       publishedAt: status === "scheduled" ? input.scheduledFor : "2026-07-11T18:05:00.000Z",
       updatedAt: "2026-07-11T18:05:00.000Z",
     });
+    for (const upload of uploads) {
+      upload.position = null;
+      upload.altText = null;
+      upload.caption = null;
+      this.publicMedia.delete(String(upload.id));
+    }
+    for (const selection of selections) {
+      selection.upload.position = selection.position;
+      selection.upload.altText = selection.altText;
+      selection.upload.caption = selection.caption;
+      if (status === "published") {
+        this.publicMedia.set(String(selection.upload.id), {
+          key: String(selection.upload.key),
+          contentType: String(selection.upload.contentType ?? "application/octet-stream"),
+          cacheControl: "no-store"
+        });
+      }
+    }
     this.audits.push({
       action: status === "draft" ? "update.draft_saved" : status === "scheduled" ? "update.scheduled" : "update.published",
       actorSubject,
@@ -1138,8 +1186,84 @@ export class FakeStore {
     }
     update.status = "withdrawn";
     update.scheduledFor = null;
+    if (Array.isArray(update.uploads)) {
+      for (const upload of update.uploads as Array<Record<string, unknown>>) {
+        this.publicMedia.delete(String(upload.id));
+      }
+    }
     this.audits.push({ action: "update.withdrawn", actorSubject, targetId: id });
     return update;
+  }
+
+  async addUpdateUploads(id: string, media: StoredMedia[], actorSubject: string) {
+    const update = this.updates.find((item) =>
+      item.id === id && item.kind !== "approved_report" && !item.sourceReportId
+    );
+    if (!update) return null;
+    if (update.status !== "draft") {
+      throw new ApiError(409, "update_state_invalid", "Return this Official Update to Draft before changing its images.");
+    }
+    if (media.length === 0 || media.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three Update images.");
+    }
+    const uploads = Array.isArray(update.uploads)
+      ? update.uploads as Array<Record<string, unknown>>
+      : [];
+    const activeCount = uploads.filter((upload) =>
+      upload.status !== "deleted" && upload.status !== "rejected"
+    ).length;
+    if (activeCount + media.length > 3) {
+      throw new ApiError(422, "validation_failed", "An Official Update can have no more than three direct uploads.");
+    }
+    uploads.push(...media.map((item) => ({
+      id: item.id,
+      contentType: item.contentType,
+      size: item.size,
+      status: item.status,
+      altText: null,
+      caption: null,
+      position: null,
+      key: item.key
+    })));
+    update.uploads = uploads;
+    this.audits.push({ action: "update.media_uploaded", actorSubject, targetId: id });
+    return this.getOpsUpdateDetail(id, actorSubject);
+  }
+
+  async getUpdateMedia(id: string, mediaId: string, actorSubject: string) {
+    const update = this.updates.find((item) =>
+      item.id === id && item.kind !== "approved_report" && !item.sourceReportId
+    );
+    const uploads = Array.isArray(update?.uploads)
+      ? update.uploads as Array<Record<string, unknown>>
+      : [];
+    const media = uploads.find((item) => item.id === mediaId && item.status === "ready");
+    const key = typeof media?.key === "string" ? media.key : "";
+    if (!key.startsWith("derivatives/") || key === "derivatives/") return null;
+    this.audits.push({ action: "update.media_viewed", actorSubject, targetId: id, mediaId });
+    return { key, contentType: String(media?.contentType ?? "application/octet-stream") };
+  }
+
+  async removeUpdateUpload(id: string, mediaId: string, actorSubject: string) {
+    const update = this.updates.find((item) =>
+      item.id === id && item.kind !== "approved_report" && !item.sourceReportId
+    );
+    if (!update) return null;
+    if (update.status !== "draft") {
+      throw new ApiError(409, "update_state_invalid", "Return this Official Update to Draft before removing an image.");
+    }
+    const uploads = Array.isArray(update.uploads)
+      ? update.uploads as Array<Record<string, unknown>>
+      : [];
+    const media = uploads.find((item) => item.id === mediaId && item.status !== "deleted");
+    if (!media) return null;
+    media.status = "deleted";
+    media.position = null;
+    media.altText = null;
+    media.caption = null;
+    this.publicMedia.delete(mediaId);
+    this.audits.push({ action: "update.media_removed", actorSubject, targetId: id, mediaId });
+    return { id: mediaId, updateId: id, status: "deleted" };
   }
 
   async listReports() {

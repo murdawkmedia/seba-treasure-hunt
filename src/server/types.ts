@@ -400,6 +400,21 @@ export interface DataStore {
     actorSubject: string
   ): Promise<Record<string, unknown> | null>;
   withdrawUpdate(id: string, actorSubject: string): Promise<Record<string, unknown> | null>;
+  addUpdateUploads(
+    id: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  getUpdateMedia(
+    id: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null>;
+  removeUpdateUpload(
+    id: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
   listReports(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   /** Returns private report detail only after its privacy-safe staff-view audit append succeeds. */
   getReportDetail(id: string, actorSubject: string): Promise<Record<string, unknown> | null>;

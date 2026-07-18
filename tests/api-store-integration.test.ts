@@ -377,6 +377,108 @@ test("standalone Official Updates use a private draft-first audited lifecycle", 
   );
 });
 
+test("Update-owned uploads are private, capped, removable, and public only when selected", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const store = new D1DataStore(db);
+  const first = await store.createUpdate({ title: "First", body: "Private" }, "staff-a");
+  const second = await store.createUpdate({ title: "Second", body: "Private" }, "staff-a");
+  const stored = (mediaId: string) => ({
+    id: mediaId,
+    key: `private/official_update/${mediaId}/original.jpg`,
+    contentType: "image/jpeg",
+    size: 1024,
+    status: "processing" as const,
+  });
+  const markReady = (mediaId: string) => db
+    .prepare(
+      `UPDATE official_update_uploads
+       SET derivative_object_key = ?, status = 'ready', processed_at = ?
+       WHERE id = ?`
+    )
+    .bind(`derivatives/${mediaId}.webp`, "2026-07-18T18:00:00.000Z", mediaId)
+    .run();
+
+  await store.addUpdateUploads(String(first.id), [stored("upload-a")], "staff-a");
+  await markReady("upload-a");
+  assert.deepEqual(
+    await store.getUpdateMedia(String(first.id), "upload-a", "staff-a"),
+    { key: "derivatives/upload-a.webp", contentType: "image/jpeg" }
+  );
+  assert.equal(await store.getUpdateMedia(String(second.id), "upload-a", "staff-a"), null);
+  assert.equal((await store.listUpdates()).items.some((item) => item.id === first.id), false);
+
+  await assert.rejects(
+    store.addUpdateUploads(
+      String(first.id),
+      [stored("upload-b"), stored("upload-c"), stored("upload-d")],
+      "staff-a"
+    ),
+    /no more than three/i
+  );
+
+  assert.equal(
+    (await store.removeUpdateUpload(String(first.id), "upload-a", "staff-a"))?.status,
+    "deleted"
+  );
+  assert.equal(await store.getUpdateMedia(String(first.id), "upload-a", "staff-a"), null);
+
+  await store.addUpdateUploads(
+    String(first.id),
+    [stored("upload-b"), stored("upload-c"), stored("upload-d")],
+    "staff-a"
+  );
+  await Promise.all([markReady("upload-b"), markReady("upload-c"), markReady("upload-d")]);
+
+  const published = await store.mutateUpdate(
+    String(first.id),
+    {
+      title: "Three public images",
+      body: "Only the selected derivatives are public.",
+      mediaIds: ["upload-c", "upload-b", "upload-d"],
+      mediaSelections: [
+        { id: "upload-c", altText: "Third trail view", caption: null },
+        { id: "upload-b", altText: "Second trail view", caption: "Near the path" },
+        { id: "upload-d", altText: "Fourth trail view", caption: null },
+      ],
+      action: "publish_now",
+      scheduledFor: null,
+    },
+    "staff-a"
+  );
+  assert.equal(published?.status, "published");
+
+  const publicUpdate = (await store.listUpdates()).items.find((item) => item.id === first.id);
+  assert.deepEqual(publicUpdate?.media, [
+    {
+      id: "upload-c",
+      url: "/api/v1/media/upload-c",
+      contentType: "image/jpeg",
+      alt: "Third trail view",
+    },
+    {
+      id: "upload-b",
+      url: "/api/v1/media/upload-b",
+      contentType: "image/jpeg",
+      alt: "Second trail view",
+      caption: "Near the path",
+    },
+    {
+      id: "upload-d",
+      url: "/api/v1/media/upload-d",
+      contentType: "image/jpeg",
+      alt: "Fourth trail view",
+    },
+  ]);
+  assert.deepEqual(await store.getPublicMedia("upload-b"), {
+    key: "derivatives/upload-b.webp",
+    contentType: "image/jpeg",
+    cacheControl: "no-store",
+  });
+
+  await store.withdrawUpdate(String(first.id), "staff-a");
+  assert.equal(await store.getPublicMedia("upload-b"), null);
+});
+
 const applyOperatorAlertMigration = async (db: D1Database) => {
   const sql = await readFile(
     path.join(root, "migrations", "0013_operator_submission_alerts.sql"),
