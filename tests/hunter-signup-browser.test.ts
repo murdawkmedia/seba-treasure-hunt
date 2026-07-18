@@ -348,6 +348,7 @@ test("a retained safe resume without a provider attempt exposes explicit recover
     await installResume(page, "local", resumeRecord());
     assert.equal(await setup(page, null), "lost_attempt");
     assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-retry]").isVisible(), false);
     assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-restart]").isVisible(), true);
     assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-back-to-sign-in]").isVisible(), true);
     assert.match(await page.locator("[data-signup-lost-detail]").textContent() ?? "", /no longer has the matching/i);
@@ -585,7 +586,9 @@ for (const correlation of [null, "sua_different"] as const) {
       await installResume(page, "session", resumeRecord({ providerAttemptId: correlation }));
       await setup(page, preparedAttempt());
       await page.evaluate(() => { (window as unknown as Record<string, unknown>).__resendCalls = 0; });
-      await page.locator("[data-signup-retry]").click();
+      const retry = page.locator("[data-signup-retry]");
+      assert.equal(await retry.isVisible(), false);
+      await retry.evaluate((button: HTMLButtonElement) => button.click());
       await page.waitForFunction(() => /cannot be retried safely/i.test(
         document.querySelector("[data-signup-lost-detail]")?.textContent ?? "",
       ), undefined, { timeout: 2_000 });

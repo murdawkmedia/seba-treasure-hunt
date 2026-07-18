@@ -2042,7 +2042,7 @@ function showSignupVerification(resume: HunterSignupResumeRecord, status: string
 function showLostSignupAttempt(copy: string, options: { retryAvailable?: boolean } = {}): void {
   showAuthForm("hunter-signup-lost-state");
   const retry = document.querySelector<HTMLButtonElement>("[data-signup-retry]");
-  if (retry) retry.hidden = options.retryAvailable === false;
+  if (retry) retry.hidden = options.retryAvailable !== true;
   const detail = document.querySelector<HTMLElement>("[data-signup-lost-detail]");
   if (detail) detail.textContent = copy;
   const heading = document.querySelector<HTMLElement>("#hunter-signup-lost-state h3");
@@ -3140,10 +3140,13 @@ function setupAccountForms(
         });
         persistSignupResume(currentSignupResume);
       }
-      showLostSignupAttempt(identityError(
-        error,
-        error instanceof Error ? error.message : "The verification code could not be requested.",
-      ));
+      showLostSignupAttempt(
+        identityError(
+          error,
+          error instanceof Error ? error.message : "The verification code could not be requested.",
+        ),
+        { retryAvailable: correlationValidated },
+      );
       if (currentSignupResume?.resendAvailableAt) {
         startSignupResendCooldown(currentSignupResume.resendAvailableAt);
       }
@@ -3458,7 +3461,15 @@ function setupAccountForms(
     return "verification";
   }
   if (reconciliation.state === "lost_attempt") {
-    showLostSignupAttempt("This browser kept your safe account details, but the identity provider no longer has the matching secure sign-up attempt.");
+    const retryAvailable = Boolean(
+      resume.providerAttemptId &&
+      providerAttempt.id === resume.providerAttemptId &&
+      providerAttempt.emailAddress?.trim().toLowerCase() === resume.emailAddress
+    );
+    showLostSignupAttempt(
+      "This browser kept your safe account details, but the identity provider no longer has the matching secure sign-up attempt.",
+      { retryAvailable },
+    );
     if (resume.resendAvailableAt) startSignupResendCooldown(resume.resendAvailableAt);
     return "lost_attempt";
   }
