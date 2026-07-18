@@ -51,10 +51,7 @@ type SignupLegalDocumentKind = "privacy-media" | "waiver";
 interface SignupLegalReviewPreparation {
   kind: SignupLegalDocumentKind;
   identity: LegalDocumentIdentity;
-  previousIdentity: LegalDocumentIdentity | null;
   loadViewer: (url: string) => Promise<void>;
-  setAccepted: (accepted: boolean) => void;
-  setEnabled: (enabled: boolean) => void;
 }
 
 function signupLegalViewerUrl(
@@ -74,13 +71,8 @@ function signupLegalViewerUrl(
 export async function prepareSignupLegalReview(
   preparation: SignupLegalReviewPreparation,
 ): Promise<string> {
-  preparation.setEnabled(false);
-  if (!legalDocumentIdentitiesMatch(preparation.previousIdentity, preparation.identity)) {
-    preparation.setAccepted(false);
-  }
   const viewerUrl = signupLegalViewerUrl(preparation.kind, preparation.identity);
   await preparation.loadViewer(viewerUrl);
-  preparation.setEnabled(true);
   return viewerUrl;
 }
 
@@ -96,7 +88,7 @@ export function assertReviewedSignupDocumentsCurrent(
 
 export class SignupLegalDocumentsChangedError extends Error {
   constructor() {
-    super("The legal documents changed while your email was being verified. Open and review the current documents, then accept them again.");
+    super("The legal documents changed while your email was being verified. Return to account setup and accept the current documents again.");
   }
 }
 
@@ -114,11 +106,15 @@ export function validateHunterSignupDraft(draft: HunterSignupDraft): HunterSignu
   } else if (draft.participationBasis === "minor_guardian_permission" && !draft.guardianPermissionAttested) {
     errors.guardianPermission = "Confirm that your parent or legal guardian reviewed the documents, gave permission, and will supervise your participation.";
   }
-  if (!draft.privacyMediaReviewed || !draft.privacyMediaAccepted || !isLegalDocumentIdentity(draft.privacyMediaDocument)) {
-    errors.privacyMedia = "Open and review the current Privacy Policy & Media Notice, then accept it.";
+  if (!draft.privacyMediaAccepted) {
+    errors.privacyMedia = "Accept the current Privacy Policy & Media Notice.";
+  } else if (!isLegalDocumentIdentity(draft.privacyMediaDocument)) {
+    errors.privacyMedia = "The current Privacy Policy & Media Notice is unavailable. Refresh and try again.";
   }
-  if (!draft.waiverReviewed || !draft.waiverAccepted || !isLegalDocumentIdentity(draft.waiverDocument)) {
-    errors.waiver = "Open and review the current Participation Waiver, then accept it.";
+  if (!draft.waiverAccepted) {
+    errors.waiver = "Accept the current Participation Waiver.";
+  } else if (!isLegalDocumentIdentity(draft.waiverDocument)) {
+    errors.waiver = "The current Participation Waiver is unavailable. Refresh and try again.";
   }
   return errors;
 }
@@ -1708,91 +1704,121 @@ function showHunterSignupErrors(form: HTMLFormElement, errors: HunterSignupError
   if (messages.length) summary.focus();
 }
 
-function reloadSignupLegalViewer(dialog: HTMLDialogElement, url: string): Promise<void> {
+function reloadSignupLegalViewer(
+  dialog: HTMLDialogElement,
+  url: string,
+  kind: SignupLegalDocumentKind,
+): Promise<void> {
   const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
   if (!currentViewer) return Promise.reject(new Error("The legal document viewer is unavailable."));
   const viewer = currentViewer.cloneNode(false) as HTMLIFrameElement;
   viewer.removeAttribute("src");
-  viewer.src = url;
   return new Promise<void>((resolve, reject) => {
+    let settled = false;
     const timeout = window.setTimeout(() => {
-      reject(new Error("The legal document viewer took too long to load."));
+      finish(() => reject(new Error("The embedded legal document could not be displayed. Use the full-page link below.")));
     }, 12_000);
     const finish = (callback: () => void): void => {
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timeout);
+      window.removeEventListener("message", handleReadyMessage);
       callback();
     };
-    viewer.addEventListener("load", () => finish(resolve), { once: true });
+    const handleReadyMessage = (event: MessageEvent): void => {
+      if (event.origin !== window.location.origin) return;
+      if (event.source !== viewer.contentWindow) return;
+      if (!isRecord(event.data) || event.data.type !== "tim-lost:legal-embed-ready" ||
+          event.data.embed !== "signup") return;
+      const expectedRoute = kind === "privacy-media" ? "privacy" : "waiver";
+      if (event.data.route !== expectedRoute) return;
+      finish(resolve);
+    };
+    window.addEventListener("message", handleReadyMessage);
     viewer.addEventListener(
       "error",
-      () => finish(() => reject(new Error("The legal document viewer could not be loaded."))),
+      () => finish(() => reject(new Error("The embedded legal document could not be displayed. Use the full-page link below."))),
       { once: true },
     );
     currentViewer.replaceWith(viewer);
+    viewer.src = url;
   });
 }
 
-function setupSignupLegalReview(form: HTMLFormElement): void {
+function storeSignupLegalIdentity(
+  form: HTMLFormElement,
+  kind: SignupLegalDocumentKind,
+  identity: LegalDocumentIdentity | null,
+): void {
+  if (!identity) return;
+  const prefix = kind === "privacy-media" ? "privacyMedia" : "waiver";
+  form.dataset[`${prefix}Version`] = identity.version;
+  form.dataset[`${prefix}Hash`] = identity.hash;
+}
+
+function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): void {
+  storeSignupLegalIdentity(form, "privacy-media", config.privacyMedia);
+  storeSignupLegalIdentity(form, "waiver", config.waiver);
+
+  const restoreFocus = new Map<HTMLDialogElement, HTMLButtonElement>();
+  for (const dialog of document.querySelectorAll<HTMLDialogElement>("[data-signup-dialog]")) {
+    for (const close of dialog.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
+      close.addEventListener("click", () => dialog.close());
+    }
+    dialog.addEventListener("cancel", () => {
+      dialog.dataset.signupDialogCloseReason = "escape";
+    });
+    dialog.addEventListener("close", () => {
+      delete dialog.dataset.signupDialogCloseReason;
+      const trigger = restoreFocus.get(dialog);
+      restoreFocus.delete(dialog);
+      if (trigger?.isConnected) trigger.focus();
+    });
+  }
+
   for (const button of form.querySelectorAll<HTMLButtonElement>("[data-signup-review]")) {
     button.addEventListener("click", () => { void (async () => {
       const kind = button.dataset.signupReview;
       if (kind !== "privacy-media" && kind !== "waiver") return;
       const dialog = document.querySelector<HTMLDialogElement>(`[data-signup-dialog="${kind}"]`);
       if (!dialog) return;
-      const prefix = kind === "privacy-media" ? "privacyMedia" : "waiver";
-      const previousIdentityValue = {
-        version: form.dataset[`${prefix}Version`],
-        hash: form.dataset[`${prefix}Hash`],
-      };
-      const previousIdentity = isLegalDocumentIdentity(previousIdentityValue)
-        ? previousIdentityValue
-        : null;
-      const input = form.querySelector<HTMLInputElement>(
-        kind === "privacy-media" ? 'input[name="privacyMediaAccepted"]' : 'input[name="waiverAccepted"]',
-      );
-      form.dataset[`${prefix}Reviewed`] = "false";
-      if (input) input.disabled = true;
-      button.disabled = true;
+      const status = dialog.querySelector<HTMLElement>("[data-signup-dialog-status]");
+      const viewer = dialog.querySelector<HTMLIFrameElement>("iframe");
+      restoreFocus.set(dialog, button);
+      if (status) {
+        status.textContent = "Loading the current legal document…";
+        status.hidden = false;
+      }
+      if (viewer) viewer.hidden = false;
+      if (!dialog.open) dialog.showModal();
+      dialog.querySelector<HTMLButtonElement>("[data-signup-dialog-close]")?.focus();
       try {
-        const identity = kind === "privacy-media"
-          ? (await loadPublicConfig()).privacyMedia
-          : waiverDocumentFrom(await (async () => {
-            const response = await fetch("/api/v1/legal/waiver", {
-              headers: { Accept: "application/json" },
-              cache: "no-store",
-              credentials: "same-origin",
-            });
-            if (!response.ok) throw new Error("The current participation waiver could not be loaded.");
-            return await response.json();
-          })());
+        const currentConfig = await loadPublicConfig();
+        const identity = kind === "privacy-media" ? currentConfig.privacyMedia : currentConfig.waiver;
         if (!isLegalDocumentIdentity(identity)) {
           throw new Error("The current legal document identity is unavailable.");
         }
         await prepareSignupLegalReview({
           kind,
           identity,
-          previousIdentity,
-          loadViewer: (url) => reloadSignupLegalViewer(dialog, url),
-          setAccepted: (accepted) => {
-            if (input) input.checked = accepted;
-          },
-          setEnabled: (enabled) => {
-            if (input) input.disabled = !enabled;
-          },
+          loadViewer: (url) => reloadSignupLegalViewer(dialog, url, kind),
         });
-        form.dataset[`${prefix}Reviewed`] = "true";
-        form.dataset[`${prefix}Version`] = identity.version;
-        form.dataset[`${prefix}Hash`] = identity.hash;
-        dialog.showModal();
+        storeSignupLegalIdentity(form, kind, identity);
+        if (status) status.hidden = true;
       } catch (error) {
-        authMessage(error instanceof Error ? error.message : "The legal document could not be loaded.", "error");
-      } finally {
-        button.disabled = false;
+        const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
+        if (currentViewer) currentViewer.hidden = true;
+        if (status) {
+          const message = error instanceof Error
+            ? error.message
+            : "The embedded legal document could not be displayed. Use the full-page link below.";
+          status.textContent = /full-page link/i.test(message)
+            ? message
+            : `${message} Use the full-page link below.`;
+          status.hidden = false;
+        }
       }
     })(); });
-  }
-  for (const close of document.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
-    close.addEventListener("click", () => close.closest<HTMLDialogElement>("dialog")?.close());
   }
 }
 
@@ -1866,7 +1892,7 @@ async function finalizeVerifiedSignup(auth: HunterAuthHook, draft: HunterSignupD
   });
 }
 
-function setupAccountForms(auth: HunterAuthHook): void {
+function setupAccountForms(auth: HunterAuthHook, config: PublicConfig): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-show-auth]")) {
     button.addEventListener("click", () => showAuthForm(button.dataset.showAuth ?? "hunter-sign-in-form"));
   }
@@ -1895,7 +1921,7 @@ function setupAccountForms(auth: HunterAuthHook): void {
 
   const signUp = document.querySelector<HTMLFormElement>("#hunter-sign-up-form");
   if (signUp) {
-    setupSignupLegalReview(signUp);
+    setupSignupLegalReview(signUp, config);
     setupParticipationBasis(signUp);
   }
   const runSignUp = signUp ? createSerializedSubmission(async () => {
@@ -2036,7 +2062,7 @@ async function initializeDashboard(): Promise<void> {
     authMessage("Hunter identity is not configured in this build. No password is accepted locally.", "error");
     return;
   }
-  setupAccountForms(auth);
+  setupAccountForms(auth, config);
   if (!hunterClerk.user) {
     showSignedOut("signed-out");
     authMessage("Secure account access is ready.");

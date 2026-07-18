@@ -545,8 +545,20 @@ button.hunter-button {
   display: flex;
   align-items: flex-start;
   gap: 9px;
+  min-height: 44px;
   margin: 8px 0;
+  padding-block: 6px;
   font-weight: 400;
+}
+
+.check-row input[type="checkbox"],
+.check-row input[type="radio"] {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: 5px;
+  accent-color: var(--hunter-gold);
 }
 
 .signup-legal {
@@ -571,18 +583,29 @@ button.hunter-button {
 }
 
 .signup-legal-dialog {
+  display: none;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(960px, calc(100vw - 28px));
+  height: min(860px, calc(100vh - 28px));
+  height: min(860px, calc(100dvh - 28px));
   max-height: calc(100vh - 28px);
+  max-height: calc(100dvh - 28px);
   padding: 0;
+  overflow: hidden;
   color: var(--hunter-ink-dark);
   background: var(--hunter-paper);
   border: 2px solid var(--hunter-gold);
   border-radius: 10px;
 }
 
+.signup-legal-dialog[open] { display: grid; }
+
 .signup-legal-dialog::backdrop { background: rgba(2, 16, 14, 0.78); }
 
 .signup-legal-dialog__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -608,11 +631,79 @@ button.hunter-button {
 .signup-legal-dialog iframe {
   display: block;
   width: 100%;
-  height: min(68vh, 720px);
+  height: 100%;
+  min-height: 0;
   border: 0;
 }
 
-.signup-legal-dialog > p { margin: 12px 18px 18px; }
+.signup-legal-dialog__viewer {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  background: #fffaf0;
+}
+
+.signup-legal-dialog iframe[hidden] { display: none; }
+
+.signup-legal-dialog__status {
+  margin: 0;
+  padding: 12px 18px;
+  color: var(--hunter-ink-dark);
+  background: var(--hunter-paper-deep);
+}
+
+.signup-legal-dialog__status[hidden] { display: none; }
+
+.signup-legal-dialog__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px;
+  background: var(--hunter-paper);
+  border-top: 1px solid var(--hunter-paper-deep);
+}
+
+.legal-embed--signup .skip-link,
+.legal-embed--signup .case-strip,
+.legal-embed--signup .campaign-header,
+.legal-embed--signup .campaign-footer,
+.legal-embed--signup .waiver-print-action {
+  display: none !important;
+}
+
+.legal-embed--signup body {
+  min-height: auto;
+}
+
+@media (max-width: 620px) {
+  .signup-legal-dialog {
+    width: calc(100vw - 12px);
+    height: calc(100vh - 12px);
+    height: calc(100dvh - 12px);
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+
+  .signup-legal-dialog__header,
+  .signup-legal-dialog__footer {
+    padding: 10px 12px;
+  }
+
+  .signup-legal-dialog__header h2 { font-size: clamp(1.35rem, 7vw, 1.85rem); }
+
+  .signup-legal-dialog__footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .signup-legal-dialog__footer .hunter-button { width: 100%; }
+}
 
 .profile-editor {
   scroll-margin-top: var(--stacked-header-height);

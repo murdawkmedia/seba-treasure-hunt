@@ -57,14 +57,29 @@ test("Ops offers only provider-managed player recovery and session revocation", 
   assert.doesNotMatch(client, /data-player-action="(?:set-password|view-password)"/);
 });
 
-test("onboarding keeps the active waiver separate and locked until its review is recorded", () => {
+test("onboarding keeps legal acceptance direct, required, and independent from opening documents", () => {
   const html = read("dashboard.html");
-  assert.match(html, /name="privacyMediaAccepted"[^>]*required/);
+  const privacyAcceptance = html.match(/<input\b(?=[^>]*name="privacyMediaAccepted")[^>]*>/)?.[0] ?? "";
+  const waiverAcceptance = html.match(/<input\b(?=[^>]*name="waiverAccepted")[^>]*>/)?.[0] ?? "";
+
+  for (const [label, input] of [["privacy", privacyAcceptance], ["waiver", waiverAcceptance]]) {
+    assert.match(input, /\brequired\b/, `${label} acceptance is required`);
+    assert.doesNotMatch(input, /\b(?:disabled|checked)\b/, `${label} acceptance starts enabled and unchecked`);
+  }
   assert.match(html, /href="\/privacy#media-notice"/);
   assert.match(html, /href="\/waiver"/);
-  assert.match(html, /name="waiverAccepted"[^>]*disabled/);
   assert.match(html, /name="guardianAttested"/);
   assert.doesNotMatch(html, /Participation waiver[^<]*coming soon|name="participationWaiver"/i);
+});
+
+test("signup legal dialogs have labelled top close controls and sticky completion actions", () => {
+  const html = read("dashboard.html");
+  for (const kind of ["privacy-media", "waiver"]) {
+    const dialog = html.match(new RegExp(`<dialog\\b(?=[^>]*data-signup-dialog="${kind}")[^>]*>[\\s\\S]*?<\\/dialog>`))?.[0] ?? "";
+    assert.match(dialog, /signup-legal-dialog__header[\s\S]*?<button\b(?=[^>]*data-signup-dialog-close)(?=[^>]*aria-label="Close [^"]+")[^>]*>/);
+    assert.match(dialog, /signup-legal-dialog__footer[\s\S]*?<button\b[^>]*data-signup-dialog-close[^>]*>Done &mdash; back to account setup<\/button>/);
+    assert.match(dialog, /data-signup-dialog-status[^>]*role="status"/);
+  }
 });
 
 test("privacy page adapts the SebaHub media notice to the hunt without importing unrelated claims", () => {

@@ -72,6 +72,7 @@ const generatedPage = `<!doctype html>
   <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
   <script type="module" src="/assets/app/waiver.js"></script>
+  <script type="module" src="/assets/app/legal-embed.js"></script>
 </body>
 </html>
 `;

@@ -33,6 +33,19 @@ test("the waiver is a clean public route and allowlisted build artifact", () => 
   assert.match(build, /"waiver\.html"/);
   assert.match(build, /legal:verify/);
   assert.ok(existsSync("src/client/waiver.ts"));
+  assert.ok(existsSync("src/client/legal-embed.ts"));
+});
+
+test("legal documents load the presentation-only signup embed outside authoritative content", () => {
+  const waiver = readFileSync("waiver.html", "utf8");
+  const privacy = readFileSync("privacy.html", "utf8");
+
+  for (const [name, html] of [["waiver", waiver], ["privacy", privacy]]) {
+    const legalMain = html.match(/<main id="main" tabindex="-1">[\s\S]*?<\/main>/)?.[0] ?? "";
+    assert.ok(legalMain, `${name} keeps its authoritative legal main`);
+    assert.doesNotMatch(legalMain, /legal-embed\.js/);
+    assert.match(html.slice(html.indexOf("</main>")), /<script type="module" src="\/assets\/app\/legal-embed\.js"><\/script>/);
+  }
 });
 
 test("the approved waiver and privacy legal bodies retain their exact hashes", () => {

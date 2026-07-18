@@ -62,8 +62,8 @@
             <div class="form-field"><label for="hunter-sign-up-confirm">Confirm password</label><input id="hunter-sign-up-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></div>
           </div>
           <fieldset class="signup-legal">
-            <legend>Required legal review</legend>
-            <p>Open both current documents here before accepting them. Your acceptance is stored against your verified account after email verification.</p>
+            <legend>Required legal acceptance</legend>
+            <p>You can review either current document here or in a full page. Opening a document is optional; acceptance is your separate required action and is stored against your verified account after email verification.</p>
             <div class="signup-legal__actions">
               <button class="hunter-button hunter-button--quiet" type="button" data-signup-review="privacy-media">View Privacy Policy &amp; Media Notice</button>
               <button class="hunter-button hunter-button--quiet" type="button" data-signup-review="waiver">View Participation Waiver</button>
@@ -74,8 +74,8 @@
               <label class="check-row"><input name="participationBasis" type="radio" value="minor_guardian_permission" required /><span>I am under 18.</span></label>
               <label class="check-row" data-guardian-permission hidden><input name="guardianPermissionAttested" type="checkbox" /><span>My parent or legal guardian reviewed these documents with me, gave permission, and will supervise my participation.</span></label>
             </fieldset>
-            <label class="check-row"><input name="privacyMediaAccepted" type="checkbox" required disabled /><span>I have read and agree to the current <a href="/privacy#media-notice" target="_blank" rel="noopener">Privacy Policy &amp; Media Notice</a>.</span></label>
-            <label class="check-row"><input name="waiverAccepted" type="checkbox" required disabled /><span>I have read and accept the current <a href="/waiver" target="_blank" rel="noopener">Participation Waiver</a>.</span></label>
+            <label class="check-row"><input name="privacyMediaAccepted" type="checkbox" required /><span>I have read and agree to the current <a href="/privacy#media-notice" target="_blank" rel="noopener">Privacy Policy &amp; Media Notice</a>.</span></label>
+            <label class="check-row"><input name="waiverAccepted" type="checkbox" required /><span>I have read and accept the current <a href="/waiver" target="_blank" rel="noopener">Participation Waiver</a>.</span></label>
             <div class="field-error" data-signup-errors role="alert" hidden></div>
           </fieldset>
           <div id="clerk-captcha"></div>
@@ -100,16 +100,22 @@
         <p><a href="/route">Continue with the public route</a></p>
       </section>
 
-      <dialog class="signup-legal-dialog" data-signup-dialog="privacy-media" aria-labelledby="signup-privacy-title">
+      <dialog class="signup-legal-dialog" data-signup-dialog="privacy-media" aria-labelledby="signup-privacy-title" aria-describedby="signup-privacy-status">
         <div class="signup-legal-dialog__header"><h2 id="signup-privacy-title">Privacy Policy &amp; Media Notice</h2><button type="button" data-signup-dialog-close aria-label="Close Privacy Policy and Media Notice">&times;</button></div>
-        <iframe title="Current Privacy Policy and Media Notice"></iframe>
-        <p><a href="/privacy#media-notice" target="_blank" rel="noopener">Open the full notice in a new tab</a></p>
+        <div class="signup-legal-dialog__viewer">
+          <p id="signup-privacy-status" class="signup-legal-dialog__status" data-signup-dialog-status role="status">Loading the current notice&hellip;</p>
+          <iframe title="Current Privacy Policy and Media Notice"></iframe>
+        </div>
+        <div class="signup-legal-dialog__footer"><a data-signup-dialog-fallback href="/privacy#media-notice" target="_blank" rel="noopener">Open the full notice in a new tab</a><button class="hunter-button" type="button" data-signup-dialog-close>Done &mdash; back to account setup</button></div>
       </dialog>
 
-      <dialog class="signup-legal-dialog" data-signup-dialog="waiver" aria-labelledby="signup-waiver-title">
+      <dialog class="signup-legal-dialog" data-signup-dialog="waiver" aria-labelledby="signup-waiver-title" aria-describedby="signup-waiver-status">
         <div class="signup-legal-dialog__header"><h2 id="signup-waiver-title">Participation Waiver</h2><button type="button" data-signup-dialog-close aria-label="Close Participation Waiver">&times;</button></div>
-        <iframe title="Current Participation Waiver"></iframe>
-        <p><a href="/waiver" target="_blank" rel="noopener">Open the full waiver in a new tab</a></p>
+        <div class="signup-legal-dialog__viewer">
+          <p id="signup-waiver-status" class="signup-legal-dialog__status" data-signup-dialog-status role="status">Loading the current waiver&hellip;</p>
+          <iframe title="Current Participation Waiver"></iframe>
+        </div>
+        <div class="signup-legal-dialog__footer"><a data-signup-dialog-fallback href="/waiver" target="_blank" rel="noopener">Open the full waiver in a new tab</a><button class="hunter-button" type="button" data-signup-dialog-close>Done &mdash; back to account setup</button></div>
       </dialog>
 
       <section class="dashboard-grid" data-dashboard-content hidden aria-label="Your Hunter Dashboard" style="margin-top: 22px">

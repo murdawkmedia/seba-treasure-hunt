@@ -139,6 +139,19 @@ test("waiver QA exercises built clients and mocks only auth, APIs, and providers
   assert.match(script, /data-retry-waiver-receipt/);
 });
 
+test("signup legal QA selectors cover both close paths, readiness, and readable failure fallback", async () => {
+  const dashboard = await read("dashboard.html");
+  const client = await read("src/client/dashboard.ts");
+
+  assert.equal((dashboard.match(/data-signup-dialog-close/g) ?? []).length, 4);
+  assert.equal((dashboard.match(/Done &mdash; back to account setup/g) ?? []).length, 2);
+  assert.equal((dashboard.match(/data-signup-dialog-status/g) ?? []).length, 2);
+  assert.equal((dashboard.match(/data-signup-dialog-fallback/g) ?? []).length, 2);
+  assert.match(client, /tim-lost:legal-embed-ready/);
+  assert.match(client, /event\.origin\s*!==\s*window\.location\.origin/);
+  assert.match(client, /The embedded legal document could not be displayed/);
+});
+
 test("waiver QA installs a zero-external-write boundary before every page", async () => {
   const script = await readRunner();
   const allowedMatch = script.match(/const allowedWritePaths = new Set\(\[([^]*?)\]\);/);

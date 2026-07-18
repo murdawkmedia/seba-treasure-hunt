@@ -46,16 +46,16 @@
     "dashboard.html": {
       "headSha256": "f4bb78659b71dea3026cab4cf77f39dcda4c40b3d9436e7e890788ef16a5acdc",
       "scriptsSha256": "e05ab979782e680caf291b2f77e492f28d3ecbfadaff5abc4e2e1f18ed5bef2d",
-      "bodySha256": "1a3e85fc3d4b8a8ba4004826af2c1988c0baf429c55c0376fb34ee5de578f785"
+      "bodySha256": "16711d42c02000cc094ef78904fef7bc24eb2a5d46ddc418c714e8fb7add286f"
     },
     "privacy.html": {
       "headSha256": "4a5cb1cd4f2d89b79ddeec49975ac17a0611d52b1391579cd4979edc418cfa0e",
-      "scriptsSha256": "1401289e16acc7528e52ffec169a0ac9075a169914aa014a02c4ccd61be8c6ec",
+      "scriptsSha256": "5361acbcdb25a1388c9ccb027ea1dfe84644f38c0c7aa915678053bcf5f8ead3",
       "bodySha256": "28b1a065f1d8f30d53f568cb6712940e10ebcd1d59342b64a322851abceeed3c"
     },
     "waiver.html": {
       "headSha256": "3ffb9af866eb7c5fc24ebeb33e9bb53201ad66e500355053bda74358779a54d3",
-      "scriptsSha256": "5833cd69d2f9d7f8962234eaf8a3ad95a0dffa58d78cb5498dc007dfcdd1ca6e",
+      "scriptsSha256": "be9ccbc5f662af1ed9938b9fce381bfdf46ae5fe5e95ad99566926137ada8301",
       "bodySha256": "5cc2983f0513ad7fcc8f433563aaabcdc39a141d17e385ca95ff077f15d1f8d7"
     },
     "community-guidelines.html": {

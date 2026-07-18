@@ -7,7 +7,6 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   realpath,
   rm,
   writeFile,
@@ -20,6 +19,20 @@ import { CAMPAIGN_PAGES, renderCampaignPage } from "./campaign-shell.mjs";
 const modulePath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(modulePath), "..");
 const legalPages = new Set(["privacy.html", "waiver.html"]);
+const clientEntryNames = Object.freeze([
+  "account",
+  "board",
+  "dashboard",
+  "legal-embed",
+  "ops",
+  "report",
+  "route",
+  "route-lightbox",
+  "start",
+  "status",
+  "updates",
+  "waiver",
+]);
 
 const staticFiles = [
   "index.html",
@@ -175,20 +188,7 @@ async function emitBuild({ dist, mediaDist, renderedCampaignPages }) {
   await rm(path.join(dist, "css", "sponsors.css"), { force: true });
 
   const clientDirectory = path.join(root, "src", "client");
-  const clientEntries = [];
-  try {
-    for (const entry of await readdir(clientDirectory, { withFileTypes: true })) {
-      if (
-        entry.isFile() &&
-        entry.name.endsWith(".ts") &&
-        !["sponsors.ts", "sponsor-submission.ts"].includes(entry.name)
-      ) {
-        clientEntries.push(path.join(clientDirectory, entry.name));
-      }
-    }
-  } catch {
-    // Client entries are introduced incrementally; an empty directory is valid.
-  }
+  const clientEntries = clientEntryNames.map((name) => path.join(clientDirectory, `${name}.ts`));
 
   const common = {
     bundle: true,
@@ -218,16 +218,14 @@ async function emitBuild({ dist, mediaDist, renderedCampaignPages }) {
     conditions: ["worker", "browser"],
   });
 
-  if (clientEntries.length > 0) {
-    await build({
-      ...common,
-      entryPoints: clientEntries,
-      outdir: path.join(dist, "assets", "app"),
-      platform: "browser",
-      splitting: true,
-      entryNames: "[name]",
-    });
-  }
+  await build({
+    ...common,
+    entryPoints: clientEntries,
+    outdir: path.join(dist, "assets", "app"),
+    platform: "browser",
+    splitting: true,
+    entryNames: "[name]",
+  });
 }
 
 export async function buildSite(options = {}) {

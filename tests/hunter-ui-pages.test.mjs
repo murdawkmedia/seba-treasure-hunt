@@ -133,7 +133,6 @@ test("start and dashboard explain the member tool without pretending historical 
   assert.match(dashboard, /name="marketing"/);
   assert.match(dashboard, /name="privacyMediaAccepted"/);
   assert.match(dashboard, /data-waiver-form/);
-  assert.match(dashboard, /name="waiverAccepted"[^>]*disabled/);
   assert.doesNotMatch(dashboard, /name="sms"|data-profile-turnstile/);
   assert.doesNotMatch(dashboard, /53\.\d+|-114\.\d+/);
 });
@@ -397,6 +396,45 @@ test("static community and reporting fallbacks preserve stable waypoint ids in p
     assert.match(select, /Stop 05 · Derby's General Store/);
     assert.match(select, /Stop 11 · Driving Range \/ Digger Café/);
   }
+});
+
+test("signup legal review is optional, focus-safe, and never controls acceptance", () => {
+  const dashboard = read("dashboard.html");
+  const client = read("src/client/dashboard.ts");
+  const setup = client.match(/function setupSignupLegalReview[\s\S]*?\r?\n}\r?\n\r?\nasync function saveSignupProfileAndPrivacy/)?.[0] ?? "";
+
+  for (const name of ["privacyMediaAccepted", "waiverAccepted"]) {
+    const input = dashboard.match(new RegExp(`<input\\b(?=[^>]*name="${name}")[^>]*>`))?.[0] ?? "";
+    assert.match(input, /\brequired\b/);
+    assert.doesNotMatch(input, /\b(?:checked|disabled)\b/);
+  }
+  assert.match(setup, /showModal\(\)/);
+  assert.match(setup, /\[data-signup-dialog-close\][\s\S]*?focus\(\)/);
+  assert.match(setup, /addEventListener\("close"[\s\S]*?focus\(\)/);
+  assert.match(setup, /addEventListener\("cancel"/);
+  assert.match(client, /event\.origin\s*!==\s*window\.location\.origin/);
+  assert.match(client, /event\.source\s*!==\s*viewer\.contentWindow/);
+  assert.doesNotMatch(setup, /input\.disabled\s*=|input\.checked\s*=/);
+});
+
+test("signup legal embeds preserve legal mains while suppressing page-only chrome", () => {
+  const embed = read("src/client/legal-embed.ts");
+  const build = read("scripts/build.mjs");
+  const privacy = read("privacy.html");
+  const waiver = read("waiver.html");
+
+  assert.match(embed, /searchParams\.get\("embed"\)\s*!==\s*SIGNUP_EMBED/);
+  assert.match(embed, /dataset\.legalEmbed\s*=\s*SIGNUP_EMBED/);
+  assert.match(embed, /classList\.add\("legal-embed--signup"\)/);
+  assert.match(embed, /postMessage\([\s\S]*?window\.location\.origin/);
+  assert.doesNotMatch(embed, /privacyMediaAccepted|waiverAccepted|checked\s*=|localStorage|sessionStorage/);
+  for (const html of [privacy, waiver]) {
+    assert.match(html, /<script type="module" src="\/assets\/app\/legal-embed\.js"><\/script>/);
+    assert.match(html, /<main id="main" tabindex="-1">[\s\S]*?<\/main>/);
+  }
+  assert.match(build, /const clientEntryNames = Object\.freeze\(\[/);
+  assert.match(build, /"legal-embed"/);
+  assert.doesNotMatch(build, /readdir\(clientDirectory/);
 });
 
 test("Case Notes and private reports explain their different routes before submission", () => {

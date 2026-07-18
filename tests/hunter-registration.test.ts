@@ -35,13 +35,11 @@ const validDraft: HunterSignupDraft = {
   waiverDocument,
 };
 
-test("hunter signup cannot reach Clerk before both current legal documents are reviewed and accepted", () => {
+test("hunter signup requires direct legal acceptance but does not require opening either document", () => {
   assert.deepEqual(validateHunterSignupDraft(validDraft), {});
-  assert.deepEqual(validateHunterSignupDraft({ ...validDraft, privacyMediaReviewed: false }), {
-    privacyMedia: "Open and review the current Privacy Policy & Media Notice, then accept it.",
-  });
+  assert.deepEqual(validateHunterSignupDraft({ ...validDraft, privacyMediaReviewed: false, waiverReviewed: false }), {});
   assert.deepEqual(validateHunterSignupDraft({ ...validDraft, waiverAccepted: false }), {
-    waiver: "Open and review the current Participation Waiver, then accept it.",
+    waiver: "Accept the current Participation Waiver.",
   });
 });
 
@@ -105,42 +103,34 @@ test("legal signup review requires exact document versions and hashes", () => {
     ...validDraft,
     privacyMediaDocument: null,
   }), {
-    privacyMedia: "Open and review the current Privacy Policy & Media Notice, then accept it.",
+    privacyMedia: "The current Privacy Policy & Media Notice is unavailable. Refresh and try again.",
   });
   assert.deepEqual(validateHunterSignupDraft({
     ...validDraft,
     waiverDocument: { version: "2026.2", hash: "not-a-document-hash" },
   }), {
-    waiver: "Open and review the current Participation Waiver, then accept it.",
+    waiver: "The current Participation Waiver is unavailable. Refresh and try again.",
   });
 });
 
-test("signup legal review reloads the viewer for the fetched identity before enabling acceptance", async () => {
+test("signup legal review loads the fetched identity without changing acceptance state", async () => {
   let finishLoad!: () => void;
   const loaded = new Promise<void>((resolve) => { finishLoad = resolve; });
   const events: string[] = [];
   let viewerUrl = "";
-  let enabled = true;
   const review = prepareSignupLegalReview({
     kind: "privacy-media",
     identity: { version: "2026.4", hash: "c".repeat(64) },
-    previousIdentity: null,
     loadViewer: async (url) => {
       viewerUrl = url;
       events.push("load-start");
       await loaded;
       events.push("load-complete");
     },
-    setAccepted: () => events.push("clear-acceptance"),
-    setEnabled: (value) => {
-      enabled = value;
-      events.push(value ? "enable" : "disable");
-    },
   });
 
   await Promise.resolve();
-  assert.equal(enabled, false);
-  assert.deepEqual(events, ["disable", "clear-acceptance", "load-start"]);
+  assert.deepEqual(events, ["load-start"]);
   assert.equal(
     viewerUrl,
     `/privacy.html?embed=signup&documentVersion=2026.4&documentHash=${"c".repeat(64)}#media-notice`,
@@ -148,25 +138,21 @@ test("signup legal review reloads the viewer for the fetched identity before ena
 
   finishLoad();
   assert.equal(await review, viewerUrl);
-  assert.equal(enabled, true);
-  assert.deepEqual(events, ["disable", "clear-acceptance", "load-start", "load-complete", "enable"]);
+  assert.deepEqual(events, ["load-start", "load-complete"]);
 });
 
-test("a changed signup legal identity unchecks prior acceptance before viewer reload", async () => {
+test("opening a changed signup legal identity never changes prior acceptance", async () => {
   let accepted = true;
   await prepareSignupLegalReview({
     kind: "waiver",
     identity: { version: "2026.3", hash: "d".repeat(64) },
-    previousIdentity: waiverDocument,
     loadViewer: async (url) => {
       assert.equal(
         url,
         `/waiver.html?embed=signup&documentVersion=2026.3&documentHash=${"d".repeat(64)}`,
       );
-      assert.equal(accepted, false, "the prior acceptance is cleared before the new document loads");
+      assert.equal(accepted, true, "loading is independent from the participant's acceptance control");
     },
-    setAccepted: (value) => { accepted = value; },
-    setEnabled: () => undefined,
   });
-  assert.equal(accepted, false);
+  assert.equal(accepted, true);
 });

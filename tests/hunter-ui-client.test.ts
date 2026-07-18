@@ -478,3 +478,12 @@ test("minor participants cannot retain or submit supervised-dependent rows", () 
     [],
   );
 });
+
+test("signup legal review never needs to toggle acceptance controls", () => {
+  const client = readFileSync(new URL("../src/client/dashboard.ts", import.meta.url), "utf8");
+  const setup = client.match(/function setupSignupLegalReview[\s\S]*?\r?\n}\r?\n\r?\nasync function saveSignupProfileAndPrivacy/)?.[0] ?? "";
+
+  assert.match(setup, /dialog\.showModal\(\)/);
+  assert.match(setup, /reloadSignupLegalViewer/);
+  assert.doesNotMatch(setup, /\.checked\s*=|\.disabled\s*=/);
+});
