@@ -145,11 +145,16 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
   const source = String.raw`
     let hydrated = { ...attempt };
     hydrated.create = async function () {
+      window.__createCalls = Number(window.__createCalls || 0) + 1;
+      if (window.__createGate) await window.__createGate;
+      window.__createCompleted = Number(window.__createCompleted || 0) + 1;
       if (window.__createFailure === true) throw new Error("Account provider response was interrupted.");
       return hydrated;
     };
     hydrated.prepareEmailAddressVerification = async function () {
       window.__resendCalls = Number(window.__resendCalls || 0) + 1;
+      if (window.__prepareGate) await window.__prepareGate;
+      window.__prepareCompleted = Number(window.__prepareCompleted || 0) + 1;
       if (window.__resendFailure === true) {
         throw {
           retryAfter: window.__retryAfterSeconds,
@@ -203,6 +208,27 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
   return page.evaluate(({ attempt, cooldown, body }) => (
     new Function("attempt", "cooldown", body)(attempt, cooldown)
   ), { attempt: providerAttempt, cooldown: cooldownMs, body: source });
+}
+
+async function installOperationGate(page: Page, kind: "create" | "prepare"): Promise<void> {
+  await page.evaluate((gateKind) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const state = window as unknown as Record<string, unknown>;
+    state[gateKind === "create" ? "__createGate" : "__prepareGate"] = gate;
+    state[gateKind === "create" ? "__releaseCreate" : "__releasePrepare"] = release;
+  }, kind);
+}
+
+async function fillValidSignup(page: Page): Promise<void> {
+  await page.locator('#hunter-sign-in-form [data-show-auth="hunter-sign-up-form"]').click();
+  await page.locator('#hunter-sign-up-form [name="fullName"]').fill("Alex Hunter");
+  await page.locator('#hunter-sign-up-form [name="email"]').fill("alex@example.test");
+  await page.locator('#hunter-sign-up-form [name="password"]').fill("a-secure-password");
+  await page.locator('#hunter-sign-up-form [name="confirmPassword"]').fill("a-secure-password");
+  await page.locator('#hunter-sign-up-form [name="participationBasis"][value="adult"]').check();
+  await page.locator('#hunter-sign-up-form [name="privacyMediaAccepted"]').check();
+  await page.locator('#hunter-sign-up-form [name="waiverAccepted"]').check();
 }
 
 const preparedAttempt = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -390,6 +416,14 @@ test("Retry provider errors persist the Clerk retryAfter cooldown", async () => 
     assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0)), 1);
     const stored = JSON.parse((await page.evaluate((key) => sessionStorage.getItem(key), storageKey))!);
     assert.ok(stored.resendAvailableAt > Date.now() + 1_000);
+    const retry = page.locator("[data-signup-retry]");
+    assert.equal(await retry.isDisabled(), true);
+    assert.match(await retry.textContent() ?? "", /Retry.*in \d+s/i);
+    await retry.evaluate((button: HTMLButtonElement) => button.click());
+    assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0)), 1);
+    await page.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-retry]")?.disabled === false, undefined, { timeout: 5_000 });
+    await retry.click();
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0) === 2);
   } finally {
     await page.close();
   }
@@ -442,14 +476,71 @@ test("resend cooldown survives reload and lost state announces after focus moves
   }
   const lost = await signupPage();
   try {
-    await installResume(lost, "local", resumeRecord());
+    await installResume(lost, "local", resumeRecord({ resendAvailableAt: Date.now() + 5_000 }));
     await setup(lost, { id: "sua_different", status: null, emailAddress: "alex@example.test" });
     assert.equal(await lost.evaluate(() => document.activeElement?.id), "hunter-signup-lost-title");
     assert.match(await lost.locator("[data-signup-lost-detail]").textContent() ?? "", /safe account details/i);
+    assert.equal(await lost.locator("[data-signup-retry]").isDisabled(), true);
+    assert.match(await lost.locator("[data-signup-retry]").textContent() ?? "", /Retry.*in \d+s/i);
   } finally {
     await lost.close();
   }
 });
+
+for (const operation of ["Create", "Retry", "Resend"] as const) {
+  test(`pending ${operation} cannot restore cleared signup state after deliberate exit`, async () => {
+    const page = await signupPage();
+    try {
+      if (operation !== "Create") await installResume(page, "session", resumeRecord());
+      await setup(
+        page,
+        operation === "Retry"
+          ? preparedAttempt({ status: null, verifications: { emailAddress: { status: null, strategy: null } } })
+          : preparedAttempt(),
+        200,
+      );
+      await installOperationGate(page, operation === "Create" ? "create" : "prepare");
+      if (operation === "Create") {
+        await fillValidSignup(page);
+        await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+        await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__createCalls ?? 0) === 1);
+        await page.locator("#hunter-sign-up-form [data-signup-back-to-sign-in]").click();
+      } else if (operation === "Retry") {
+        await page.locator("[data-signup-retry]").click();
+        await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0) === 1);
+        await page.locator("#hunter-signup-lost-state [data-signup-back-to-sign-in]").click();
+      } else {
+        await page.locator("[data-signup-resend]").click();
+        await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0) === 1);
+        await page.locator("#hunter-verify-form [data-signup-back-to-sign-in]").click();
+      }
+      const exitMessage = await page.locator("[data-auth-message]").textContent();
+      await page.evaluate((releaseName) => {
+        const release = (window as unknown as Record<string, () => void>)[releaseName];
+        if (!release) throw new Error(`Missing ${releaseName}`);
+        release();
+      }, operation === "Create" ? "__releaseCreate" : "__releasePrepare");
+      await page.waitForFunction((completedName) => Number(
+        (window as unknown as Record<string, unknown>)[completedName] ?? 0,
+      ) === 1, operation === "Create" ? "__createCompleted" : "__prepareCompleted");
+      await page.waitForFunction(() => document.querySelector<HTMLFormElement>("#hunter-sign-in-form")?.hidden === false);
+      assert.deepEqual(await page.evaluate((key) => ({
+        session: sessionStorage.getItem(key),
+        local: localStorage.getItem(key),
+      }), storageKey), { session: null, local: null });
+      assert.equal(await page.locator("#hunter-sign-in-form").isVisible(), true);
+      assert.equal(await page.locator("#hunter-verify-form").isVisible(), false);
+      assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), false);
+      assert.equal(await page.locator("[data-auth-message]").textContent(), exitMessage);
+      assert.doesNotMatch(
+        await page.locator("[data-signup-verification-status]").textContent() ?? "",
+        /Requesting|new code|Please wait/i,
+      );
+    } finally {
+      await page.close();
+    }
+  });
+}
 
 test("real verification exits clear both tiers and route to the selected form", async () => {
   for (const [selector, expectedForm] of [

@@ -2143,16 +2143,42 @@ function setupAccountForms(
   const resendCooldownMs = dependencies.resendCooldownMs ?? 30_000;
   let resendCooldownTimer: number | null = null;
   let currentSignupResume = resumeStore.read();
-  const clearSignupResume = (): void => {
+  let signupOperationGeneration = 0;
+  const beginSignupOperation = (): number => ++signupOperationGeneration;
+  const signupOperationIsCurrent = (generation: number): boolean =>
+    generation === signupOperationGeneration;
+  const resetSignupOperationControls = (): void => {
+    const create = document.querySelector<HTMLButtonElement>('#hunter-sign-up-form button[type="submit"]');
+    const retry = document.querySelector<HTMLButtonElement>("[data-signup-retry]");
+    const resend = document.querySelector<HTMLButtonElement>("[data-signup-resend]");
+    if (create) { create.disabled = false; create.textContent = "Create account"; }
+    if (retry) { retry.disabled = false; retry.textContent = "Retry sending the code"; }
+    if (resend) { resend.disabled = false; resend.textContent = "Resend code"; }
+    setSignupVerificationStatus("Enter the code from your email.");
+  };
+  const invalidateSignupOperations = (): void => {
+    signupOperationGeneration += 1;
     if (resendCooldownTimer !== null) window.clearInterval(resendCooldownTimer);
     resendCooldownTimer = null;
+    resetSignupOperationControls();
+  };
+  const clearSignupResume = (): void => {
+    invalidateSignupOperations();
     resumeStore.clear();
     currentSignupResume = null;
     signUpAttempt = null;
   };
 
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-show-auth]")) {
-    button.addEventListener("click", () => showAuthForm(button.dataset.showAuth ?? "hunter-sign-in-form"));
+    button.addEventListener("click", () => {
+      const destination = button.dataset.showAuth ?? "hunter-sign-in-form";
+      if (destination === "hunter-recovery-form" || destination === "hunter-sign-in-form") {
+        clearSignupResume();
+      } else {
+        invalidateSignupOperations();
+      }
+      showAuthForm(destination);
+    });
   }
 
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-signup-restart]")) {
@@ -2258,12 +2284,19 @@ function setupAccountForms(
     }
   };
   const startSignupResendCooldown = (availableAt = Date.now() + resendCooldownMs): void => {
-    const button = document.querySelector<HTMLButtonElement>("[data-signup-resend]");
-    if (!button) return;
+    const resend = document.querySelector<HTMLButtonElement>("[data-signup-resend]");
+    const retry = document.querySelector<HTMLButtonElement>("[data-signup-retry]");
+    if (!resend && !retry) return;
     const update = (): void => {
       const remaining = Math.max(0, Math.ceil((availableAt - Date.now()) / 1_000));
-      button.disabled = remaining > 0;
-      button.textContent = remaining > 0 ? `Resend code in ${remaining}s` : "Resend code";
+      if (resend) {
+        resend.disabled = remaining > 0;
+        resend.textContent = remaining > 0 ? `Resend code in ${remaining}s` : "Resend code";
+      }
+      if (retry) {
+        retry.disabled = remaining > 0;
+        retry.textContent = remaining > 0 ? `Retry sending code in ${remaining}s` : "Retry sending the code";
+      }
       if (remaining === 0 && resendCooldownTimer !== null) {
         window.clearInterval(resendCooldownTimer);
         resendCooldownTimer = null;
@@ -2280,15 +2313,20 @@ function setupAccountForms(
     if (!hunterClerk?.client || Object.keys(errors).length) return;
     const submit = signUp.querySelector<HTMLButtonElement>('button[type="submit"]');
     const label = submit?.textContent ?? "Create account";
+    const operationGeneration = beginSignupOperation();
     if (submit) { submit.disabled = true; submit.textContent = "Sending code…"; }
     try {
       const resume = createHunterSignupResume(draft);
       let persisted = persistSignupResume(resume);
       signUpAttempt = null;
-      signUpAttempt = await hunterClerk.client.signUp.create({ emailAddress: draft.emailAddress, password: draft.password });
+      const createdAttempt = await hunterClerk.client.signUp.create({ emailAddress: draft.emailAddress, password: draft.password });
+      if (!signupOperationIsCurrent(operationGeneration)) return;
+      signUpAttempt = createdAttempt;
       currentSignupResume = updateHunterSignupResume(resume, { providerAttemptId: signUpAttempt.id ?? null });
       persisted = persistSignupResume(currentSignupResume) && persisted;
-      signUpAttempt = await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
+      const preparedAttempt = await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
+      if (!signupOperationIsCurrent(operationGeneration)) return;
+      signUpAttempt = preparedAttempt;
       if (reconcileHunterSignupResume(currentSignupResume, signUpAttempt).state !== "verification") {
         throw new Error("Email-code verification could not be prepared.");
       }
@@ -2305,6 +2343,7 @@ function setupAccountForms(
       startSignupResendCooldown(currentSignupResume.resendAvailableAt ?? undefined);
       authMessage("Check your email for one verification code.", "success");
     } catch (error) {
+      if (!signupOperationIsCurrent(operationGeneration)) return;
       const copy = identityError(
         error,
         error instanceof Error ? error.message : "Your account could not be created.",
@@ -2319,7 +2358,10 @@ function setupAccountForms(
       }
       authMessage(copy, "error");
     } finally {
-      if (submit) { submit.disabled = false; submit.textContent = label; }
+      if (signupOperationIsCurrent(operationGeneration) && submit) {
+        submit.disabled = false;
+        submit.textContent = label;
+      }
     }
   }) : null;
   signUp?.addEventListener("submit", (event) => {
@@ -2330,6 +2372,11 @@ function setupAccountForms(
   document.querySelector<HTMLButtonElement>("[data-signup-retry]")?.addEventListener("click", async (event) => {
     const button = event.currentTarget;
     if (!(button instanceof HTMLButtonElement) || button.disabled || !currentSignupResume || !hunterClerk?.client) return;
+    if (currentSignupResume.resendAvailableAt && currentSignupResume.resendAvailableAt > Date.now()) {
+      startSignupResendCooldown(currentSignupResume.resendAvailableAt);
+      return;
+    }
+    const operationGeneration = beginSignupOperation();
     button.disabled = true;
     let correlationValidated = false;
     try {
@@ -2340,7 +2387,9 @@ function setupAccountForms(
         throw new Error("This secure sign-up attempt cannot be retried safely. Restart account setup or sign in to an existing account.");
       }
       correlationValidated = true;
-      signUpAttempt = await providerCandidate.prepareEmailAddressVerification({ strategy: "email_code" });
+      const preparedAttempt = await providerCandidate.prepareEmailAddressVerification({ strategy: "email_code" });
+      if (!signupOperationIsCurrent(operationGeneration)) return;
+      signUpAttempt = preparedAttempt;
       if (reconcileHunterSignupResume(currentSignupResume, signUpAttempt).state !== "verification") {
         throw new Error("Email-code verification could not be prepared.");
       }
@@ -2351,6 +2400,7 @@ function setupAccountForms(
       showSignupVerification(currentSignupResume, "A new verification code was requested. Enter it below.");
       startSignupResendCooldown(currentSignupResume.resendAvailableAt ?? undefined);
     } catch (error) {
+      if (!signupOperationIsCurrent(operationGeneration)) return;
       if (correlationValidated && currentSignupResume) {
         currentSignupResume = updateHunterSignupResume(currentSignupResume, {
           resendAvailableAt: nextHunterSignupResendAvailableAt(currentSignupResume, resendCooldownMs, Date.now(), error),
@@ -2361,8 +2411,17 @@ function setupAccountForms(
         error,
         error instanceof Error ? error.message : "The verification code could not be requested.",
       ));
+      if (currentSignupResume?.resendAvailableAt) {
+        startSignupResendCooldown(currentSignupResume.resendAvailableAt);
+      }
     } finally {
-      button.disabled = false;
+      if (!signupOperationIsCurrent(operationGeneration)) return;
+      if (currentSignupResume?.resendAvailableAt && currentSignupResume.resendAvailableAt > Date.now()) {
+        startSignupResendCooldown(currentSignupResume.resendAvailableAt);
+      } else {
+        button.disabled = false;
+        button.textContent = "Retry sending the code";
+      }
     }
   });
 
@@ -2492,10 +2551,17 @@ function setupAccountForms(
       showLostSignupAttempt("The secure sign-up attempt is no longer available. Restart account setup or sign in to an existing account.");
       return;
     }
+    if (resume.resendAvailableAt && resume.resendAvailableAt > Date.now()) {
+      startSignupResendCooldown(resume.resendAvailableAt);
+      return;
+    }
+    const operationGeneration = beginSignupOperation();
     button.disabled = true;
     setSignupVerificationStatus("Requesting another code…");
     try {
-      signUpAttempt = await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
+      const preparedAttempt = await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
+      if (!signupOperationIsCurrent(operationGeneration)) return;
+      signUpAttempt = preparedAttempt;
       if (reconcileHunterSignupResume(resume, signUpAttempt).state !== "verification") {
         throw new Error("A new email-code verification attempt could not be prepared.");
       }
@@ -2506,6 +2572,7 @@ function setupAccountForms(
       startSignupResendCooldown(currentSignupResume.resendAvailableAt ?? undefined);
       if (persisted) setSignupVerificationStatus(`A new code was sent to ${resume.maskedEmail}.`, "success");
     } catch (error) {
+      if (!signupOperationIsCurrent(operationGeneration)) return;
       currentSignupResume = updateHunterSignupResume(resume, {
         resendAvailableAt: nextHunterSignupResendAvailableAt(resume, resendCooldownMs, Date.now(), error),
       });
@@ -2617,10 +2684,12 @@ function setupAccountForms(
   }
   if (reconciliation.state === "lost_attempt") {
     showLostSignupAttempt("This browser kept your safe account details, but the identity provider no longer has the matching secure sign-up attempt.");
+    if (resume.resendAvailableAt) startSignupResendCooldown(resume.resendAvailableAt);
     return "lost_attempt";
   }
   if (reconciliation.state === "unsupported") {
     showLostSignupAttempt("The identity provider needs an account step this page cannot continue. Restart account setup or sign in to an existing account.");
+    if (resume.resendAvailableAt) startSignupResendCooldown(resume.resendAvailableAt);
     return "unsupported";
   }
 
