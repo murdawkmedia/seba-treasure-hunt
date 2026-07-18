@@ -282,8 +282,8 @@ validation accounts, submissions, or credentials into production.
   failure was a Miniflare local-proxy `EADDRINUSE 127.0.0.1:53309` in an
   unrelated waiver-lifecycle case, not an assertion failure. The interrupted
   retry, typecheck, spec review and code-quality review remain outstanding.
-- Worktree: `C:\Users\Murphy\.config\superpowers\worktrees\tim-lost-production-release`;
-  branch `codex/tim-lost-production-release`; clean after the checkpoint
+- Worktree: local release worktree on branch
+  `codex/tim-lost-production-release`; clean after the checkpoint
   commits; 24 commits ahead of the tracked remote at checkpoint time.
 - No test runner, local server, build, migration, deployment or database
   operation remained running. Production and validation services/data were
