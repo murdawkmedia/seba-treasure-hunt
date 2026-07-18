@@ -83,6 +83,7 @@ const scenarios = [
   "private find report boundary",
   "report upload boundary",
   "minor signup and guardian permission",
+  "legal viewer failure recovery",
   "signed-in report prefill",
   "thirteen waypoints plus two fallback choices",
   "signed-out route exact-link privacy",
@@ -729,6 +730,59 @@ async function assertPrintCss(page, surface) {
   return state;
 }
 
+async function exerciseSignupLegalFailureRecovery(page, origin) {
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/privacy.html" && url.searchParams.get("embed") === "signup") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: "<!doctype html><title>Suppressed legal readiness fixture</title>",
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await goto(page, origin, "/dashboard");
+  await page.clock.install();
+
+  const signup = page.locator("#hunter-sign-up-form");
+  await page.locator('[data-show-auth="hunter-sign-up-form"]').click();
+  await signup.waitFor({ state: "visible" });
+  const failureReview = signup.locator('[data-signup-review="privacy-media"]');
+  const failureAcceptance = signup.locator('[name="privacyMediaAccepted"]');
+  const otherAcceptance = signup.locator('[name="waiverAccepted"]');
+  assert.equal(await failureAcceptance.isEnabled(), true, "failure recovery keeps Privacy acceptance usable");
+  assert.equal(await otherAcceptance.isEnabled(), true, "failure recovery keeps Waiver acceptance usable");
+  assert.equal(await failureAcceptance.isChecked(), false, "failure recovery never checks Privacy acceptance");
+  assert.equal(await otherAcceptance.isChecked(), false, "failure recovery never checks Waiver acceptance");
+
+  await failureReview.click();
+  const failureDialog = page.locator('[data-signup-dialog="privacy-media"]');
+  const failureViewer = failureDialog.locator("iframe");
+  const failureStatus = failureDialog.locator("[data-signup-dialog-status]");
+  await failureDialog.waitFor({ state: "visible" });
+  await page.waitForFunction(() => document.querySelector('[data-signup-dialog="privacy-media"] iframe')?.hasAttribute("src"));
+  await page.clock.fastForward(12_000);
+  await failureStatus.filter({ hasText: /embedded legal document could not be displayed/i }).waitFor({ state: "visible" });
+  assert.match(await failureStatus.innerText(), /Use the full-page link below/i, "failure recovery shows readable fallback guidance");
+  assert.equal(await failureViewer.isHidden(), true, "failed legal iframe is hidden");
+  assert.equal(await failureViewer.getAttribute("src"), null, "failed legal iframe source is detached");
+  if (await failureDialog.locator("[data-signup-dialog-fallback]").getAttribute("href") !== "/privacy#media-notice") {
+    throw new Error("Legal failure recovery must retain the canonical full-page Privacy fallback.");
+  }
+  assert.equal(await failureAcceptance.isEnabled(), true, "failed legal loading does not disable Privacy acceptance");
+  assert.equal(await otherAcceptance.isEnabled(), true, "failed legal loading does not disable Waiver acceptance");
+  assert.equal(await failureAcceptance.isChecked(), false, "failed legal loading does not imply Privacy acceptance");
+  assert.equal(await otherAcceptance.isChecked(), false, "failed legal loading does not imply Waiver acceptance");
+  await failureDialog.locator(".signup-legal-dialog__header").getByRole("button", { name: "Close Privacy Policy and Media Notice" }).click();
+  await failureDialog.waitFor({ state: "hidden" });
+  assert.equal(await failureReview.evaluate((element) => element === document.activeElement), true, "failure close restores focus to the legal review trigger");
+  await failureAcceptance.check();
+  assert.equal(await failureAcceptance.isChecked(), true, "participant can explicitly accept after embedded-view failure");
+  assert.equal(await otherAcceptance.isChecked(), false, "explicit Privacy acceptance does not change Waiver acceptance");
+}
+
 async function exerciseMinorSignupGate(page, fixtureState, legalDocument) {
   const signup = page.locator("#hunter-sign-up-form");
   const signIn = page.locator("#hunter-sign-in-form");
@@ -1144,6 +1198,13 @@ async function run() {
       await goto(noKey.page, origin, "/dashboard");
       assert.match(await noKey.page.locator("[data-auth-message]").innerText(), /not configured|unavailable/i, "dashboard no-key state must be truthful");
     } finally { await noKey.context.close(); }
+
+    const legalFailureState = { mode: "signup", signedOut: true, accepted: false, receiptStatus: "pending" };
+    const legalFailurePage = await createQaPage(browser, viewports[0], origin, networkLedger, legalDocument, legalFailureState, clerkChunkPaths);
+    try {
+      await exerciseSignupLegalFailureRecovery(legalFailurePage.page, origin);
+      assert.deepEqual(legalFailurePage.consoleProblems, [], "legal viewer failure recovery must have no console errors");
+    } finally { await legalFailurePage.context.close(); }
 
     const signupState = { mode: "signup", signedOut: true, accepted: false, receiptStatus: "pending" };
     const signupPage = await createQaPage(browser, viewports[0], origin, networkLedger, legalDocument, signupState, clerkChunkPaths);

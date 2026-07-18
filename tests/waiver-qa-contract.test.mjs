@@ -139,7 +139,7 @@ test("waiver QA exercises built clients and mocks only auth, APIs, and providers
   assert.match(script, /data-retry-waiver-receipt/);
 });
 
-test("signup legal QA selectors cover both close paths, readiness, and readable failure fallback", async () => {
+test("signup legal QA covers success controls and deterministic failure recovery", async () => {
   const dashboard = await read("dashboard.html");
   const client = await read("src/client/dashboard.ts");
   const runner = await readRunner();
@@ -162,6 +162,15 @@ test("signup legal QA selectors cover both close paths, readiness, and readable 
   assert.match(runner, /privacyAcceptance\.isChecked\(\)/);
   assert.match(runner, /waiverAcceptance\.isChecked\(\)/);
   assert.doesNotMatch(runner, /locator\(["']\[data-signup-dialog-close\]["']\)\.click\(\)/);
+  assert.match(runner, /async function exerciseSignupLegalFailureRecovery\(/);
+  assert.match(runner, /page\.clock\.install\(\)/);
+  assert.match(runner, /page\.clock\.fastForward\(12_000\)/);
+  assert.match(runner, /embedded legal document could not be displayed/i);
+  assert.match(runner, /failureViewer\.isHidden\(\)/);
+  assert.match(runner, /failureViewer\.getAttribute\(["']src["']\)/);
+  assert.match(runner, /failureAcceptance\.isEnabled\(\)/);
+  assert.match(runner, /failureAcceptance\.isChecked\(\)/);
+  assert.match(runner, /failureReview[^;]*document\.activeElement/);
 });
 
 test("waiver QA installs a zero-external-write boundary before every page", async () => {
