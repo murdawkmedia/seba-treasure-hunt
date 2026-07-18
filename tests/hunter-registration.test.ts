@@ -129,6 +129,66 @@ test("signup resume survives a fresh tab session through the bounded local fallb
   assert.equal(local.values.size, 0);
 });
 
+test("signup resume selects and synchronizes the newest valid cross-tab record", () => {
+  const session = new MemoryStorage();
+  const local = new MemoryStorage();
+  const namespace = "https://validation.example.test:validation";
+  const store = createHunterSignupResumeStore({
+    sessionStorage: session,
+    localStorage: local,
+    namespace,
+    now: () => 20_000,
+  });
+  const oldSession = createHunterSignupResume(validDraft, 10_000);
+  const newLocal = createHunterSignupResume({
+    ...validDraft,
+    fullName: "New Local Participant",
+    privacyMediaDocument: { version: "2026.4", hash: "c".repeat(64) },
+  }, 15_000);
+  session.setItem(store.key, serializeHunterSignupResume(oldSession));
+  local.setItem(store.key, serializeHunterSignupResume(newLocal));
+
+  assert.deepEqual(store.read(), newLocal);
+  assert.deepEqual(parseHunterSignupResume(session.getItem(store.key), 20_000), newLocal);
+  assert.deepEqual(parseHunterSignupResume(local.getItem(store.key), 20_000), newLocal);
+
+  const newerSession = createHunterSignupResume({
+    ...validDraft,
+    fullName: "Newest Session Participant",
+    waiverDocument: { version: "2026.5", hash: "d".repeat(64) },
+  }, 18_000);
+  session.setItem(store.key, serializeHunterSignupResume(newerSession));
+  assert.deepEqual(store.read(), newerSession);
+  assert.deepEqual(parseHunterSignupResume(local.getItem(store.key), 20_000), newerSession);
+
+  const tiedLocal = createHunterSignupResume({ ...validDraft, fullName: "Tied Local Participant" }, 18_000);
+  local.setItem(store.key, serializeHunterSignupResume(tiedLocal));
+  assert.deepEqual(store.read(), newerSession, "session tier wins deterministic createdAt ties");
+});
+
+test("signup resume uses a stable key and sweeps prior-version records from both tiers", () => {
+  const session = new MemoryStorage();
+  const local = new MemoryStorage();
+  const namespace = "https://validation.example.test:validation";
+  const store = createHunterSignupResumeStore({
+    sessionStorage: session,
+    localStorage: local,
+    namespace,
+    now: () => 20_000,
+  });
+  assert.equal(store.key, `tim-lost:hunter-signup-resume:${encodeURIComponent(namespace)}`);
+  const prior = JSON.stringify({ ...createHunterSignupResume(validDraft, 10_000), version: 0 });
+  const legacyKey = `tim-lost:hunter-signup-resume:v0:${encodeURIComponent(namespace)}`;
+  session.setItem(store.key, prior);
+  local.setItem(store.key, prior);
+  session.setItem(legacyKey, prior);
+  local.setItem(legacyKey, prior);
+
+  assert.equal(store.read(), null);
+  assert.equal(session.values.size, 0);
+  assert.equal(local.values.size, 0);
+});
+
 test("signup resume reconnects only to the matching provider-managed pending attempt", () => {
   const resume = createHunterSignupResume(validDraft, 1_000);
   const pending = {
@@ -148,6 +208,31 @@ test("signup resume reconnects only to the matching provider-managed pending att
     missingFields: ["first_name"],
     verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
   }).state, "unsupported");
+});
+
+test("signup resume accepts only a prepared pending email-code provider attempt", () => {
+  const resume = createHunterSignupResume(validDraft, 1_000);
+  const prepared = {
+    status: "missing_requirements",
+    emailAddress: "alex@example.test",
+    createdSessionId: null,
+    unverifiedFields: ["email_address"],
+    missingFields: [],
+    verifications: { emailAddress: { status: "unverified", strategy: "email_code" } },
+  };
+  assert.equal(reconcileHunterSignupResume(resume, prepared).state, "verification");
+  for (const attempt of [
+    { ...prepared, verifications: { emailAddress: { status: null, strategy: null } } },
+    { ...prepared, verifications: { emailAddress: { status: "failed", strategy: "email_code" } } },
+    { ...prepared, verifications: { emailAddress: { status: "expired", strategy: "email_code" } } },
+    { ...prepared, verifications: { emailAddress: { status: "verified", strategy: "email_code" } } },
+    { ...prepared, verifications: { emailAddress: { status: "unverified", strategy: "email_link" } } },
+    { ...prepared, missingFields: ["first_name"] },
+    { ...prepared, unverifiedFields: [] },
+    { ...prepared, unverifiedFields: ["email_address", "phone_number"] },
+  ]) {
+    assert.notEqual(reconcileHunterSignupResume(resume, attempt).state, "verification");
+  }
 });
 
 test("successful verification after reload finalizes from the recovered safe draft and clears it", async () => {
@@ -281,18 +366,18 @@ test("signup legal review loads the fetched identity without changing acceptance
   assert.deepEqual(events, ["load-start", "load-complete"]);
 });
 
-test("opening a changed signup legal identity never changes prior acceptance", async () => {
-  let accepted = true;
-  await prepareSignupLegalReview({
-    kind: "waiver",
-    identity: { version: "2026.3", hash: "d".repeat(64) },
-    loadViewer: async (url) => {
-      assert.equal(
-        url,
-        `/waiver.html?embed=signup&documentVersion=2026.3&documentHash=${"d".repeat(64)}`,
-      );
-      assert.equal(accepted, true, "loading is independent from the participant's acceptance control");
-    },
-  });
-  assert.equal(accepted, true);
+test("signup legal acceptance stays checked only when the loaded identity is unchanged", async () => {
+  const module = await import("../src/client/dashboard") as Record<string, unknown>;
+  assert.equal(typeof module.signupLegalAcceptanceAfterIdentityLoad, "function");
+  if (typeof module.signupLegalAcceptanceAfterIdentityLoad !== "function") return;
+  const acceptanceAfterLoad = module.signupLegalAcceptanceAfterIdentityLoad as (
+    previous: LegalDocumentIdentity | null,
+    next: LegalDocumentIdentity,
+    accepted: boolean,
+  ) => boolean;
+  const changed = { version: "2026.3", hash: "d".repeat(64) };
+  assert.equal(acceptanceAfterLoad(waiverDocument, waiverDocument, true), true);
+  assert.equal(acceptanceAfterLoad(waiverDocument, changed, true), false);
+  assert.equal(acceptanceAfterLoad(null, changed, true), false);
+  assert.equal(acceptanceAfterLoad(waiverDocument, changed, false), false);
 });

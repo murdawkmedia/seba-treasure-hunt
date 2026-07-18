@@ -183,32 +183,53 @@ const safeRead = (storage: SignupResumeStorage | null, key: string): string | nu
 };
 
 export function createHunterSignupResumeStore(options: SignupResumeStoreOptions): HunterSignupResumeStore {
-  const key = `tim-lost:hunter-signup-resume:v${SIGNUP_RESUME_VERSION}:${encodeURIComponent(options.namespace)}`;
+  const encodedNamespace = encodeURIComponent(options.namespace);
+  const key = `tim-lost:hunter-signup-resume:${encodedNamespace}`;
+  const legacyKeys = Array.from(
+    { length: SIGNUP_RESUME_VERSION + 1 },
+    (_value, version) => `tim-lost:hunter-signup-resume:v${version}:${encodedNamespace}`,
+  );
+  const allKeys = [key, ...legacyKeys];
   const now = options.now ?? Date.now;
+  const clearTier = (storage: SignupResumeStorage | null): void => {
+    for (const storageKey of allKeys) safeRemove(storage, storageKey);
+  };
   const readTier = (storage: SignupResumeStorage | null): HunterSignupResumeRecord | null => {
-    const serialized = safeRead(storage, key);
-    const record = parseHunterSignupResume(serialized, now());
-    if (serialized && !record) safeRemove(storage, key);
-    return record;
+    let newest: HunterSignupResumeRecord | null = null;
+    for (const storageKey of allKeys) {
+      const serialized = safeRead(storage, storageKey);
+      const record = parseHunterSignupResume(serialized, now());
+      if (serialized && !record) safeRemove(storage, storageKey);
+      if (record && (!newest || record.createdAt > newest.createdAt)) newest = record;
+    }
+    return newest;
   };
   return {
     key,
     read: () => {
       const sessionRecord = readTier(options.sessionStorage);
-      if (sessionRecord) return sessionRecord;
       const localRecord = readTier(options.localStorage);
-      if (!localRecord) return null;
-      safeWrite(options.sessionStorage, key, serializeHunterSignupResume(localRecord));
-      return localRecord;
+      const selected = localRecord && (!sessionRecord || localRecord.createdAt > sessionRecord.createdAt)
+        ? localRecord
+        : sessionRecord;
+      if (!selected) return null;
+      const serialized = serializeHunterSignupResume(selected);
+      clearTier(options.sessionStorage);
+      clearTier(options.localStorage);
+      safeWrite(options.sessionStorage, key, serialized);
+      safeWrite(options.localStorage, key, serialized);
+      return selected;
     },
     write: (record) => {
       const serialized = serializeHunterSignupResume(record);
+      clearTier(options.sessionStorage);
+      clearTier(options.localStorage);
       safeWrite(options.sessionStorage, key, serialized);
       safeWrite(options.localStorage, key, serialized);
     },
     clear: () => {
-      safeRemove(options.sessionStorage, key);
-      safeRemove(options.localStorage, key);
+      clearTier(options.sessionStorage);
+      clearTier(options.localStorage);
     },
   };
 }
@@ -224,7 +245,13 @@ export function reconcileHunterSignupResume(
     return { state: "complete", resume, createdSessionId: attempt.createdSessionId };
   }
   if (attempt.status !== "missing_requirements") return { state: "lost_attempt", resume };
-  if (attempt.unverifiedFields?.includes("email_address")) {
+  const verification = attempt.verifications?.emailAddress;
+  const hasOnlyCompatibleMissingFields = (attempt.missingFields ?? [])
+    .every((field) => field === "email_address");
+  const hasOnlyExpectedUnverifiedField = attempt.unverifiedFields?.length === 1 &&
+    attempt.unverifiedFields[0] === "email_address";
+  if (hasOnlyExpectedUnverifiedField && hasOnlyCompatibleMissingFields &&
+      verification?.status === "unverified" && verification.strategy === "email_code") {
     return { state: "verification", resume };
   }
   return { state: "unsupported", resume };

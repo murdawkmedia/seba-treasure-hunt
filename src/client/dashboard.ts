@@ -18,7 +18,7 @@ export interface HunterAuthHook {
   getToken: () => Promise<string | null>;
 }
 
-interface PublicConfig {
+export interface PublicConfig {
   hunterPublishableKey: string | null;
   deploymentEnvironment: string | null;
   privacyMedia: LegalDocumentIdentity | null;
@@ -192,6 +192,14 @@ export function validateHunterSignupDraft(draft: HunterSignupDraft): HunterSignu
     errors.waiver = "The current Participation Waiver is unavailable. Refresh and try again.";
   }
   return errors;
+}
+
+export function signupLegalAcceptanceAfterIdentityLoad(
+  previous: LegalDocumentIdentity | null,
+  next: LegalDocumentIdentity,
+  accepted: boolean,
+): boolean {
+  return accepted && legalDocumentIdentitiesMatch(previous, next);
 }
 
 export function hunterSignupDraftFromResume(resume: HunterSignupResumeRecord): HunterSignupDraft {
@@ -1911,6 +1919,16 @@ function storeSignupLegalIdentity(
 ): void {
   if (!identity) return;
   const prefix = kind === "privacy-media" ? "privacyMedia" : "waiver";
+  const previousValue = {
+    version: form.dataset[`${prefix}Version`],
+    hash: form.dataset[`${prefix}Hash`],
+  };
+  const previous = isLegalDocumentIdentity(previousValue) ? previousValue : null;
+  const acceptanceName = kind === "privacy-media" ? "privacyMediaAccepted" : "waiverAccepted";
+  const acceptance = form.querySelector<HTMLInputElement>(`[name="${acceptanceName}"]`);
+  if (acceptance) {
+    acceptance.checked = signupLegalAcceptanceAfterIdentityLoad(previous, identity, acceptance.checked);
+  }
   form.dataset[`${prefix}Version`] = identity.version;
   form.dataset[`${prefix}Hash`] = identity.hash;
 }
@@ -2069,11 +2087,21 @@ async function finalizeVerifiedSignup(auth: HunterAuthHook, draft: HunterSignupD
 
 type SignupRecoveryPresentation = "none" | "verification" | "lost_attempt" | "unsupported" | "complete";
 
+interface SignupAccountFormDependencies {
+  activateSignupSession?: (sessionId: string) => Promise<boolean>;
+  finalizeSignup?: (draft: HunterSignupDraft) => Promise<void>;
+  resendCooldownMs?: number;
+}
+
 function setupAccountForms(
   auth: HunterAuthHook,
   config: PublicConfig,
   resumeStore: HunterSignupResumeStore,
+  dependencies: SignupAccountFormDependencies = {},
 ): SignupRecoveryPresentation {
+  const activateSignupSession = dependencies.activateSignupSession ?? activateSession;
+  const finalizeSignup = dependencies.finalizeSignup ?? ((draft) => finalizeVerifiedSignup(auth, draft));
+  const resendCooldownMs = dependencies.resendCooldownMs ?? 30_000;
   const clearSignupResume = (): void => {
     resumeStore.clear();
     signUpAttempt = null;
@@ -2132,7 +2160,7 @@ function setupAccountForms(
   const startSignupResendCooldown = (): void => {
     const button = document.querySelector<HTMLButtonElement>("[data-signup-resend]");
     if (!button) return;
-    const availableAt = Date.now() + 30_000;
+    const availableAt = Date.now() + resendCooldownMs;
     const update = (): void => {
       const remaining = Math.max(0, Math.ceil((availableAt - Date.now()) / 1_000));
       button.disabled = remaining > 0;
@@ -2160,20 +2188,19 @@ function setupAccountForms(
       signUpAttempt = null;
       signUpAttempt = await hunterClerk.client.signUp.create({ emailAddress: draft.emailAddress, password: draft.password });
       signUpAttempt = await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
+      if (reconcileHunterSignupResume(resume, signUpAttempt).state !== "verification") {
+        throw new Error("Email-code verification could not be prepared.");
+      }
       showSignupVerification(resume, "Enter the code from your email. You can safely return to this page.");
       startSignupResendCooldown();
       authMessage("Check your email for one verification code.", "success");
     } catch (error) {
-      const resume = resumeStore.read();
-      const recovery = resume && signUpAttempt
-        ? reconcileHunterSignupResume(resume, signUpAttempt)
-        : null;
-      const copy = identityError(error, "Your account could not be created.");
-      if (resume && recovery?.state === "verification") {
-        showSignupVerification(resume, copy);
-      } else {
-        clearSignupResume();
-      }
+      const copy = identityError(
+        error,
+        error instanceof Error ? error.message : "Your account could not be created.",
+      );
+      clearSignupResume();
+      showLostSignupAttempt(`${copy} Restart account setup or sign in to an existing account.`);
       authMessage(copy, "error");
     } finally {
       if (submit) { submit.disabled = false; submit.textContent = label; }
@@ -2203,8 +2230,8 @@ function setupAccountForms(
           signUpAttempt = await signUpAttempt.attemptEmailAddressVerification({ code: verificationCode });
           return signUpAttempt;
         },
-        activateSession,
-        finalize: (draft) => finalizeVerifiedSignup(auth, draft),
+        activateSession: activateSignupSession,
+        finalize: finalizeSignup,
         clearResume: resumeStore.clear,
       });
       signUpAttempt = null;
@@ -2249,9 +2276,21 @@ function setupAccountForms(
     setSignupVerificationStatus("Requesting another code…");
     try {
       signUpAttempt = await signUpAttempt.prepareEmailAddressVerification({ strategy: "email_code" });
+      if (reconcileHunterSignupResume(resume, signUpAttempt).state !== "verification") {
+        throw new Error("A new email-code verification attempt could not be prepared.");
+      }
       startSignupResendCooldown();
       setSignupVerificationStatus(`A new code was sent to ${resume.maskedEmail}.`, "success");
     } catch (error) {
+      const recovery = reconcileHunterSignupResume(resume, signUpAttempt);
+      if (recovery.state !== "verification") {
+        showLostSignupAttempt(
+          error instanceof Error
+            ? `${error.message} Restart account setup or sign in to an existing account.`
+            : "Email verification cannot continue. Restart account setup or sign in to an existing account.",
+        );
+        return;
+      }
       startSignupResendCooldown();
       setSignupVerificationStatus(
         identityError(error, "Another code could not be sent yet. Wait for the resend timer, then try again."),
@@ -2360,10 +2399,10 @@ function setupAccountForms(
   showSignupVerification(resume, "Email verification finished. Completing your account…");
   void (async () => {
     try {
-      if (!await activateSession(reconciliation.createdSessionId)) {
+      if (!await activateSignupSession(reconciliation.createdSessionId)) {
         throw new Error("The verified account session is not available yet.");
       }
-      await finalizeVerifiedSignup(auth, hunterSignupDraftFromResume(resume));
+      await finalizeSignup(hunterSignupDraftFromResume(resume));
       clearSignupResume();
     } catch (error) {
       if (error instanceof SignupLegalDocumentsChangedError) {
@@ -2406,7 +2445,29 @@ async function initializeDashboard(): Promise<void> {
   }
 }
 
-if (typeof document !== "undefined") {
+export function setupAccountFormsForTest(options: {
+  clerk: unknown;
+  config: PublicConfig;
+  auth: HunterAuthHook;
+  activateSession: (sessionId: string) => Promise<boolean>;
+  finalizeSignup: (draft: HunterSignupDraft) => Promise<void>;
+  resendCooldownMs?: number;
+}): SignupRecoveryPresentation {
+  hunterClerk = options.clerk as Clerk;
+  return setupAccountForms(
+    options.auth,
+    options.config,
+    browserSignupResumeStore(options.config),
+    {
+      activateSignupSession: options.activateSession,
+      finalizeSignup: options.finalizeSignup,
+      resendCooldownMs: options.resendCooldownMs ?? 30_000,
+    },
+  );
+}
+
+if (typeof document !== "undefined" &&
+    (window as unknown as { __timLostDisableAutoInitialize?: boolean }).__timLostDisableAutoInitialize !== true) {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => void initializeDashboard(), { once: true });
   } else {

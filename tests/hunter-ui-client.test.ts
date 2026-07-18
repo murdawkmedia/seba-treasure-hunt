@@ -504,6 +504,7 @@ test("signup verification recovery keeps provider state authoritative and clears
 
 test("rapid legal viewer close and reopen prevents a stale timeout from replacing newer ready state", () => {
   interface LoadLease {
+    generation: number;
     signal: AbortSignal;
   }
   interface LoadCoordinator {
