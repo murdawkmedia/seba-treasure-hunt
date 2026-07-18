@@ -578,6 +578,74 @@ test("real verification exits clear both tiers and route to the selected form", 
   }
 });
 
+test("password recovery activation stays in verified finishing through transient provisioning and manual retry", async () => {
+  const page = await signupPage();
+  try {
+    const source = String.raw`
+      const completed = {
+        status: "complete",
+        createdSessionId: "session-recovered",
+      };
+      const needsPassword = {
+        status: "needs_new_password",
+        createdSessionId: null,
+        resetPassword: async function () { return completed; },
+      };
+      const recoveryAttempt = {
+        supportedFirstFactors: [{ strategy: "reset_password_email_code", emailAddressId: "email-1" }],
+        prepareFirstFactor: async function () { return recoveryAttempt; },
+        attemptFirstFactor: async function () { return needsPassword; },
+      };
+      window.__recoveryDashboardFailures = 1;
+      return window.DashboardTestModule.setupAccountFormsForTest({
+        clerk: {
+          client: { signUp: null, signIn: { create: async function () { return recoveryAttempt; } } },
+          user: null,
+          session: null,
+          setActive: async function () {},
+          signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local",
+          deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "recovered-token"; } },
+        activateSession: async function () { return true; },
+        finalizeSignup: async function () {},
+        loadSignedInAccount: async function () {
+          window.__recoveryDashboardLoads = Number(window.__recoveryDashboardLoads || 0) + 1;
+          if (Number(window.__recoveryDashboardFailures || 0) > 0) {
+            window.__recoveryDashboardFailures = Number(window.__recoveryDashboardFailures) - 1;
+            throw new window.DashboardTestModule.PlayerBootstrapError("retryable", true);
+          }
+          document.querySelector("[data-dashboard-state]").hidden = true;
+          document.querySelector("[data-dashboard-content]").hidden = false;
+        },
+      });
+    `;
+    await page.evaluate((body) => new Function(body)(), source);
+    await page.locator('[data-show-auth="hunter-recovery-form"]').click();
+    await page.locator('#hunter-recovery-form [name="email"]').fill("alex@example.test");
+    await page.locator("#hunter-recovery-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-reset-form")?.hidden);
+    await page.locator('#hunter-reset-form [name="code"]').fill("123456");
+    await page.locator('#hunter-reset-form [name="newPassword"]').fill("new-secure-password");
+    await page.locator('#hunter-reset-form [name="confirmPassword"]').fill("new-secure-password");
+    await page.locator('#hunter-reset-form button[type="submit"]').click();
+    await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-finishing-state")?.hidden);
+    assert.match(await page.locator("[data-signup-finishing-status]").textContent() ?? "", /verified.*sync|email is verified/is);
+    assert.doesNotMatch(await page.locator("[data-auth-message]").textContent() ?? "", /Password recovery failed/i);
+    assert.equal(await page.locator("#hunter-reset-form").isVisible(), false);
+    await page.locator("[data-signup-finishing-retry]").click();
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__recoveryDashboardLoads || 0) === 2);
+    assert.equal(await page.locator("[data-dashboard-content]").isVisible(), true);
+  } finally {
+    await page.close();
+  }
+});
+
 test("real recovered verification keeps the active-tab session draft authoritative", async () => {
   const page = await signupPage();
   try {
@@ -694,6 +762,164 @@ for (const changedKind of ["privacy-media", "waiver"] as const) {
     }
   });
 }
+
+for (const completedStep of ["privacy", "waiver"] as const) {
+  test(`actual finalization trusts authoritative ${completedStep} completion and writes only the missing step`, async () => {
+    const page = await signupPage();
+    let profileWrites = 0;
+    let reviewWrites = 0;
+    let acceptanceWrites = 0;
+    try {
+      const currentPrivacy = { version: "2026.4", hash: "c".repeat(64) };
+      const currentWaiverIdentity = { version: "2026.3", hash: "d".repeat(64) };
+      const currentWaiver = { ...currentWaiverIdentity, type: "participation_waiver", title: "Current waiver", sections: [] };
+      let profileComplete = completedStep === "privacy";
+      let acceptance: Record<string, unknown> | null = completedStep === "waiver" ? {
+        id: "acceptance-current",
+        documentVersion: currentWaiver.version,
+        documentHash: currentWaiver.hash,
+        acceptedAt: "2026-07-18T12:00:00.000Z",
+        referenceCode: "TLS-CURRENT",
+        receipt: { status: "sent" },
+        participants: [],
+      } : null;
+      (page as Page & { setLegal: (nextPrivacy: typeof privacy, nextWaiver: typeof waiver) => void }).setLegal(currentPrivacy, currentWaiverIdentity);
+      await page.route(`${origin}/api/v1/me/**`, async (route) => {
+        const url = new URL(route.request().url());
+        const method = route.request().method();
+        if (url.pathname === "/api/v1/me/bootstrap") {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+          return;
+        }
+        if (url.pathname === "/api/v1/me/dashboard" && method === "GET") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {
+              profile: profileComplete ? { fullName: "Alex Hunter", participationBasis: "adult" } : null,
+              privacyMediaRequired: !profileComplete,
+              waypoints: [], progress: [], reports: [], fieldNotes: [],
+            } }),
+          });
+          return;
+        }
+        if (url.pathname === "/api/v1/me/profile" && method === "PATCH") {
+          profileWrites += 1;
+          profileComplete = true;
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { fullName: "Alex Hunter", participationBasis: "adult", privacyMediaRequired: false } }) });
+          return;
+        }
+        if (url.pathname === "/api/v1/me/waiver" && method === "GET") {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { acceptance, document: currentWaiver } }) });
+          return;
+        }
+        if (url.pathname === "/api/v1/me/waiver/review") {
+          reviewWrites += 1;
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { review: { reviewEventId: "review-current" } } }) });
+          return;
+        }
+        if (url.pathname === "/api/v1/me/waiver/accept") {
+          acceptanceWrites += 1;
+          acceptance = {
+            documentVersion: currentWaiver.version,
+            documentHash: currentWaiver.hash,
+            acceptedAt: "2026-07-18T12:00:00.000Z",
+            referenceCode: "TLS-NEW",
+            receipt: { status: "sent" },
+            participants: [],
+          };
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { acceptance } }) });
+          return;
+        }
+        await route.fallback();
+      });
+      await installResume(page, "session", resumeRecord({
+        privacyMediaDocument: completedStep === "privacy" ? privacy : currentPrivacy,
+        waiverDocument: completedStep === "waiver" ? waiver : currentWaiverIdentity,
+      }));
+      const source = String.raw`
+        return window.DashboardTestModule.setupAccountFormsForTest({
+          clerk: {
+            client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+            user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+            session: { id: "session-complete" },
+            setActive: async function () {}, signOut: async function () {},
+          },
+          config: {
+            hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+            privacyMedia: currentPrivacy, waiver: currentWaiver,
+          },
+          auth: { getToken: async function () { return "valid-token"; } },
+          activateSession: async function () { return true; },
+        });
+      `;
+      const presentation = await page.evaluate(({ attempt, currentPrivacy, currentWaiver, body }) => (
+        new Function("attempt", "currentPrivacy", "currentWaiver", body)(attempt, currentPrivacy, currentWaiver)
+      ), {
+        attempt: preparedAttempt({ status: "complete", createdSessionId: "session-complete", unverifiedFields: [], verifications: { emailAddress: { status: "verified", strategy: "email_code" } } }),
+        currentPrivacy,
+        currentWaiver: currentWaiverIdentity,
+        body: source,
+      });
+      assert.equal(presentation, "finishing");
+      await page.waitForFunction(() => !document.querySelector<HTMLElement>("[data-dashboard-content]")?.hidden);
+      assert.deepEqual(
+        { profileWrites, reviewWrites, acceptanceWrites },
+        completedStep === "privacy"
+          ? { profileWrites: 0, reviewWrites: 1, acceptanceWrites: 1 }
+          : { profileWrites: 1, reviewWrites: 0, acceptanceWrites: 0 },
+      );
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+test("actual selective legal validation clears only the missing changed waiver acceptance", async () => {
+  const page = await signupPage();
+  let profileWrites = 0;
+  let legalWrites = 0;
+  try {
+    const currentPrivacy = { version: "2026.4", hash: "c".repeat(64) };
+    const currentWaiver = { version: "2026.3", hash: "d".repeat(64) };
+    (page as Page & { setLegal: (nextPrivacy: typeof privacy, nextWaiver: typeof waiver) => void }).setLegal(currentPrivacy, currentWaiver);
+    await page.route(`${origin}/api/v1/me/**`, async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/v1/me/bootstrap") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+      if (url.pathname === "/api/v1/me/dashboard") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { profile: { fullName: "Alex Hunter" }, privacyMediaRequired: false } }) });
+      if (url.pathname === "/api/v1/me/waiver" && route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { acceptance: null, document: { ...currentWaiver, type: "participation_waiver", title: "Current waiver", sections: [] } } }) });
+      if (url.pathname === "/api/v1/me/profile") profileWrites += 1;
+      if (url.pathname === "/api/v1/me/waiver/review" || url.pathname === "/api/v1/me/waiver/accept") legalWrites += 1;
+      await route.fallback();
+    });
+    await installResume(page, "session", resumeRecord({ privacyMediaDocument: privacy, waiverDocument: waiver }));
+    const source = String.raw`
+      return window.DashboardTestModule.setupAccountFormsForTest({
+        clerk: {
+          client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+          session: { id: "session-complete" }, setActive: async function () {}, signOut: async function () {},
+        },
+        config: { hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation", privacyMedia: currentPrivacy, waiver: currentWaiver },
+        auth: { getToken: async function () { return "valid-token"; } },
+        activateSession: async function () { return true; },
+      });
+    `;
+    await page.evaluate(({ attempt, currentPrivacy, currentWaiver, body }) => (
+      new Function("attempt", "currentPrivacy", "currentWaiver", body)(attempt, currentPrivacy, currentWaiver)
+    ), {
+      attempt: preparedAttempt({ status: "complete", createdSessionId: "session-complete", unverifiedFields: [], verifications: { emailAddress: { status: "verified", strategy: "email_code" } } }),
+      currentPrivacy, currentWaiver, body: source,
+    });
+    await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-signup-finish-form")?.hidden);
+    assert.equal(await page.locator("[data-signup-finish-privacy]").isVisible(), false);
+    assert.equal(await page.locator("[data-signup-finish-waiver]").isVisible(), true);
+    assert.equal(await page.locator("[data-signup-finish-waiver] input").isChecked(), false);
+    assert.deepEqual({ profileWrites, legalWrites }, { profileWrites: 0, legalWrites: 0 });
+  } finally {
+    await page.close();
+  }
+});
 
 test("a second legal identity change clears only its affected finishing acceptance", async () => {
   const page = await signupPage();
@@ -931,6 +1157,57 @@ test("a valid Clerk user stays in finishing while dashboard provisioning is unav
   }
 });
 
+for (const classification of ["retryable", "terminal"] as const) {
+  test(`authoritative signup preflight preserves ${classification} provisioning presentation`, async () => {
+    const page = await signupPage();
+    try {
+      await installResume(page, "session", resumeRecord());
+      const source = String.raw`
+        return window.DashboardTestModule.initializeAccountStateForTest({
+          clerk: {
+            client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+            user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+            session: { id: "session-active" },
+            setActive: async function () {},
+            signOut: async function () {},
+          },
+          config: {
+            hunterPublishableKey: "pk_test_local",
+            deploymentEnvironment: "validation",
+            privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+            waiver: { version: "2026.2", hash: "b".repeat(64) },
+          },
+          auth: { getToken: async function () { return "valid-session-token"; } },
+          signupNeedsFinishing: async function () {
+            throw new window.DashboardTestModule.PlayerBootstrapError(classification, classification === "retryable");
+          },
+          loadDashboard: async function () { throw new Error("Dashboard fallback must not run."); },
+        });
+      `;
+      const presentation = await page.evaluate(({ attempt, classification, body }) => (
+        new Function("attempt", "classification", body)(attempt, classification)
+      ), {
+        attempt: preparedAttempt({
+          status: "complete",
+          createdSessionId: "session-complete",
+          unverifiedFields: [],
+          verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
+        }),
+        classification,
+        body: source,
+      });
+      assert.equal(presentation, "finishing");
+      assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), true);
+      assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), classification === "retryable");
+      const copy = await page.locator("[data-signup-finishing-status]").textContent() ?? "";
+      assert.match(copy, classification === "retryable" ? /sync|try again/i : /sign out.*sign in again/is);
+      assert.doesNotMatch(copy, /password|invalid credentials|database|webhook|Clerk/i);
+    } finally {
+      await page.close();
+    }
+  });
+}
+
 test("active user trusts authoritative current waiver completion over stale resume legal identity", async () => {
   const page = await signupPage();
   let acceptanceWrites = 0;
@@ -1127,6 +1404,93 @@ test("indeterminate active signup finishing preserves both resume tiers until ex
       ],
       writes: 0,
     });
+  } finally {
+    await page.close();
+  }
+});
+
+test("sign out cancels a pending finishing delay before profile or legal mutation and clears resume only after provider success", async () => {
+  const page = await signupPage();
+  try {
+    const resume = resumeRecord();
+    await installResume(page, "session", resume);
+    await installResume(page, "local", resume);
+    const source = String.raw`
+      let releaseDelay;
+      let releaseSignOut;
+      window.__finishingDelayGate = new Promise(function (resolve) { releaseDelay = resolve; });
+      window.__providerSignOutGate = new Promise(function (resolve) { releaseSignOut = resolve; });
+      window.__releaseFinishingDelay = releaseDelay;
+      window.__releaseProviderSignOut = releaseSignOut;
+      return window.DashboardTestModule.setupAccountFormsForTest({
+        clerk: {
+          client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+          session: { id: "session-complete" },
+          setActive: async function () {},
+          signOut: async function () {
+            window.__providerSignOutStarted = true;
+            await window.__providerSignOutGate;
+          },
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+        activateSession: async function () { return true; },
+        finalizeSignup: async function (_draft, signal) {
+          await window.DashboardTestModule.retryPlayerBootstrap(
+            async function () {
+              window.__cancelBootstrapAttempts = Number(window.__cancelBootstrapAttempts || 0) + 1;
+              return { ok: false, status: 409 };
+            },
+            async function () {
+              window.__finishingDelayStarted = true;
+              await window.__finishingDelayGate;
+            },
+            undefined,
+            signal,
+          );
+          window.__cancelProfileWrites = Number(window.__cancelProfileWrites || 0) + 1;
+          window.__cancelPrivacyWrites = Number(window.__cancelPrivacyWrites || 0) + 1;
+          window.__cancelWaiverWrites = Number(window.__cancelWaiverWrites || 0) + 1;
+        },
+      });
+    `;
+    assert.equal(await page.evaluate(({ attempt, body }) => new Function("attempt", body)(attempt), {
+      attempt: preparedAttempt({ status: "complete", createdSessionId: "session-complete", unverifiedFields: [], verifications: { emailAddress: { status: "verified", strategy: "email_code" } } }),
+      body: source,
+    }), "finishing");
+    await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__finishingDelayStarted === true);
+    await page.locator('#hunter-signup-finishing-state [data-hunter-sign-out]').click();
+    await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__providerSignOutStarted === true);
+    assert.deepEqual(await page.evaluate((key) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+      retryVisible: !document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]")?.hidden,
+    }), storageKey), {
+      session: JSON.stringify(resume),
+      local: JSON.stringify(resume),
+      retryVisible: false,
+    });
+    await page.evaluate(() => (window as unknown as { __releaseFinishingDelay: () => void }).__releaseFinishingDelay());
+    await page.waitForTimeout(50);
+    assert.deepEqual(await page.evaluate(() => ({
+      attempts: Number((window as unknown as Record<string, unknown>).__cancelBootstrapAttempts || 0),
+      profile: Number((window as unknown as Record<string, unknown>).__cancelProfileWrites || 0),
+      privacy: Number((window as unknown as Record<string, unknown>).__cancelPrivacyWrites || 0),
+      waiver: Number((window as unknown as Record<string, unknown>).__cancelWaiverWrites || 0),
+    })), { attempts: 1, profile: 0, privacy: 0, waiver: 0 });
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+      page.evaluate(() => (window as unknown as { __releaseProviderSignOut: () => void }).__releaseProviderSignOut()),
+    ]);
+    assert.deepEqual(await page.evaluate((key) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), storageKey), { session: null, local: null });
   } finally {
     await page.close();
   }

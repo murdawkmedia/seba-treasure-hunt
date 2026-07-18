@@ -45,7 +45,9 @@ test("verified-account provisioning guidance never presents a password or bad-lo
   const terminal = provisioningFailureMessage("terminal");
   for (const copy of [transient, terminal]) {
     assert.match(copy, /email (?:is )?verified/i);
-    assert.match(copy, /try again|refresh/i);
     assert.doesNotMatch(copy, /password|bad login|invalid credentials|database|webhook|Clerk/i);
   }
+  assert.match(transient, /sync/i);
+  assert.match(transient, /try again|refresh/i);
+  assert.match(terminal, /sign in again/i);
 });

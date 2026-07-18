@@ -86,6 +86,27 @@ test("player bootstrap stops its bounded automatic retry window and can succeed 
   assert.equal(attempts, PLAYER_BOOTSTRAP_RETRY_DELAYS_MS.length + 2);
 });
 
+test("player bootstrap cancellation interrupts a pending retry delay before another request", async () => {
+  const controller = new AbortController();
+  let attempts = 0;
+  let releaseDelay!: () => void;
+  const pending = retryPlayerBootstrap(
+    async () => {
+      attempts += 1;
+      return { ok: false, status: 409 };
+    },
+    async () => new Promise<void>((resolve) => { releaseDelay = resolve; }),
+    undefined,
+    controller.signal,
+  );
+  await Promise.resolve();
+  controller.abort();
+  await assert.rejects(pending, (error: unknown) => error instanceof DOMException && error.name === "AbortError");
+  releaseDelay();
+  await Promise.resolve();
+  assert.equal(attempts, 1);
+});
+
 test("player bootstrap classifies synchronization and service delays separately from invalid sessions", () => {
   for (const status of [408, 409, 425, 429, 500, 502, 503, 504]) {
     assert.equal(classifyPlayerBootstrapFailure(status), "retryable");

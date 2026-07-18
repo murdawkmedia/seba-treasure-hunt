@@ -170,6 +170,31 @@ export class SignupLegalDocumentsChangedError extends Error {
   }
 }
 
+interface HunterRegistrationState {
+  profileAndPrivacyComplete: boolean;
+  waiverAcceptance: Record<string, unknown> | null;
+}
+
+export function assertMissingSignupDocumentsCurrent(
+  draft: HunterSignupDraft,
+  current: { privacyMedia: LegalDocumentIdentity | null; waiver: LegalDocumentIdentity | null },
+  state: HunterRegistrationState,
+): void {
+  const changed: SignupLegalDocumentKind[] = [];
+  if (!state.profileAndPrivacyComplete && !legalDocumentIdentitiesMatch(draft.privacyMediaDocument, current.privacyMedia)) {
+    changed.push("privacy-media");
+  }
+  const waiverMissing = !current.waiver || !state.waiverAcceptance ||
+    !waiverDocumentMatchesAcceptance(
+      { version: current.waiver.version, hash: current.waiver.hash },
+      state.waiverAcceptance,
+    );
+  if (waiverMissing && !legalDocumentIdentitiesMatch(draft.waiverDocument, current.waiver)) {
+    changed.push("waiver");
+  }
+  if (changed.length) throw new SignupLegalDocumentsChangedError(changed);
+}
+
 type HunterSignupErrors = Partial<Record<"fullName" | "emailAddress" | "password" | "participationBasis" | "guardianPermission" | "privacyMedia" | "waiver", string>>;
 
 export function validateHunterSignupDraft(draft: HunterSignupDraft): HunterSignupErrors {
@@ -228,7 +253,8 @@ interface SignupEmailVerificationWorkflow {
   resume: HunterSignupResumeRecord;
   attemptVerification: (code: string) => Promise<{ status: string | null; createdSessionId: string | null }>;
   activateSession: (sessionId: string) => Promise<boolean>;
-  finalize: (draft: HunterSignupDraft) => Promise<void>;
+  finalize: (draft: HunterSignupDraft, signal?: AbortSignal) => Promise<void>;
+  signal?: AbortSignal;
   clearResume: () => void;
 }
 
@@ -242,27 +268,33 @@ export async function completeSignupEmailVerification(
   if (!await workflow.activateSession(verified.createdSessionId)) {
     throw new Error("Email verification succeeded, but the new session is still starting. Try again shortly.");
   }
-  await workflow.finalize(hunterSignupDraftFromResume(workflow.resume));
+  throwIfAborted(workflow.signal);
+  await workflow.finalize(hunterSignupDraftFromResume(workflow.resume), workflow.signal);
   workflow.clearResume();
 }
 
 interface HunterRegistrationWorkflow {
   bootstrap: () => Promise<void>;
-  loadState: () => Promise<{
-    profileAndPrivacyComplete: boolean;
-    waiverAcceptance: Record<string, unknown> | null;
-  }>;
+  loadState: () => Promise<HunterRegistrationState>;
   saveProfileAndPrivacy: () => Promise<void>;
   fetchWaiverDocument: () => Promise<Record<string, unknown>>;
+  validateMissingDocuments?: (
+    state: HunterRegistrationState,
+    waiverDocument: Record<string, unknown>,
+  ) => void | Promise<void>;
   recordWaiverReview: (documentValue: Record<string, unknown>) => Promise<string>;
   acceptWaiver: (documentValue: Record<string, unknown>, reviewEventId: string) => Promise<void>;
   refreshDashboard: () => Promise<void>;
+  ensureActive?: () => void;
 }
 
 export async function completeHunterRegistration(workflow: HunterRegistrationWorkflow): Promise<void> {
   await workflow.bootstrap();
   let state = await workflow.loadState();
+  const documentValue = await workflow.fetchWaiverDocument();
+  await workflow.validateMissingDocuments?.(state, documentValue);
   if (!state.profileAndPrivacyComplete) {
+    workflow.ensureActive?.();
     try {
       await workflow.saveProfileAndPrivacy();
     } catch (error) {
@@ -270,11 +302,12 @@ export async function completeHunterRegistration(workflow: HunterRegistrationWor
       if (!state.profileAndPrivacyComplete) throw error;
     }
   }
-  const documentValue = await workflow.fetchWaiverDocument();
   state = await workflow.loadState();
   if (!state.waiverAcceptance || !waiverDocumentMatchesAcceptance(documentValue, state.waiverAcceptance)) {
+    workflow.ensureActive?.();
     const reviewEventId = await workflow.recordWaiverReview(documentValue);
     if (!reviewEventId.trim()) throw new Error("The current waiver review could not be recorded.");
+    workflow.ensureActive?.();
     try {
       await workflow.acceptWaiver(documentValue, reviewEventId);
     } catch (error) {
@@ -284,6 +317,7 @@ export async function completeHunterRegistration(workflow: HunterRegistrationWor
       }
     }
   }
+  workflow.ensureActive?.();
   await workflow.refreshDashboard();
 }
 
@@ -572,13 +606,13 @@ export function waiverMinorsForParticipationBasis(
   return participationBasis === "minor_guardian_permission" ? [] : minors;
 }
 
-async function loadPublicConfig(): Promise<PublicConfig> {
+async function loadPublicConfig(signal?: AbortSignal): Promise<PublicConfig> {
   try {
     const response = await fetch("/api/v1/config", {
       headers: { Accept: "application/json" },
       cache: "no-store",
       credentials: "same-origin",
-      signal: AbortSignal.timeout(8_000),
+      signal: requestSignal(8_000, signal),
     });
     if (!response.ok) {
       return unavailableConfig();
@@ -609,6 +643,7 @@ async function loadPublicConfig(): Promise<PublicConfig> {
       waiver: isLegalDocumentIdentity(waiver) ? waiver : null,
     };
   } catch {
+    throwIfAborted(signal);
     return unavailableConfig();
   }
 }
@@ -980,12 +1015,12 @@ function profileErrorMessage(payload: unknown, fallback: string): string {
   return typeof error.message === "string" && error.message.trim() ? error.message : fallback;
 }
 
-async function fetchDashboard(auth: HunterAuthHook | null): Promise<Response> {
+async function fetchDashboard(auth: HunterAuthHook | null, signal?: AbortSignal): Promise<Response> {
   return await fetch("/api/v1/me/dashboard", {
     headers: await authHeaders(auth),
     cache: "no-store",
     credentials: "same-origin",
-    signal: AbortSignal.timeout(10_000),
+    signal: requestSignal(10_000, signal),
   });
 }
 
@@ -1075,8 +1110,8 @@ async function initializeProfileForm(
   });
 }
 
-async function fetchDashboardData(auth: HunterAuthHook | null): Promise<Record<string, unknown>> {
-  const response = await fetchDashboard(auth);
+async function fetchDashboardData(auth: HunterAuthHook | null, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const response = await fetchDashboard(auth, signal);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok || !isRecord(payload) || !isRecord(payload.data)) {
     throw new Error(profileErrorMessage(payload, "Your dashboard could not be refreshed."));
@@ -1199,12 +1234,12 @@ function renderWaiverDocument(documentValue: Record<string, unknown>): void {
   root.replaceChildren(fragment);
 }
 
-async function fetchCurrentWaiverDocument(): Promise<Record<string, unknown>> {
+async function fetchCurrentWaiverDocument(signal?: AbortSignal): Promise<Record<string, unknown>> {
   const response = await fetch("/api/v1/legal/waiver", {
     headers: { Accept: "application/json" },
     cache: "no-store",
     credentials: "same-origin",
-    signal: AbortSignal.timeout(10_000),
+    signal: requestSignal(10_000, signal),
   });
   const payload: unknown = await response.json().catch(() => null);
   const documentValue = waiverDocumentFrom(payload);
@@ -1235,6 +1270,7 @@ export async function waiverWrite(
   route: string,
   body?: Record<string, unknown>,
   idempotencyKey?: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const headers = await authHeaders(auth);
   headers.set("Content-Type", "application/json");
@@ -1244,7 +1280,7 @@ export async function waiverWrite(
     headers,
     credentials: "same-origin",
     body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(12_000),
+    signal: requestSignal(12_000, signal),
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
@@ -1529,12 +1565,13 @@ function renderWaiverAcceptanceProjection(projection: WaiverAcceptanceProjection
 
 async function fetchWaiverAcceptanceProjection(
   auth: HunterAuthHook | null,
+  signal?: AbortSignal,
 ): Promise<WaiverAcceptanceProjection | null> {
   const response = await fetch("/api/v1/me/waiver", {
     headers: await authHeaders(auth),
     cache: "no-store",
     credentials: "same-origin",
-    signal: AbortSignal.timeout(10_000),
+    signal: requestSignal(10_000, signal),
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new Error(profileErrorMessage(payload, "Your waiver status could not be loaded."));
@@ -1868,7 +1905,7 @@ export function classifyPlayerBootstrapFailure(status: number): PlayerBootstrapF
 export function provisioningFailureMessage(classification: PlayerBootstrapFailureClassification): string {
   return classification === "retryable"
     ? "Your email is verified. Account setup is still syncing, so automatic checks have paused. Try again now or refresh later."
-    : "Your email is verified, but account setup could not continue. Try again or refresh later; sign out and contact support if this continues.";
+    : "Your email is verified, but this session cannot continue account setup. Sign out, then sign in again. Contact support if this continues.";
 }
 
 export class PlayerBootstrapError extends Error {
@@ -1894,32 +1931,64 @@ interface PlayerBootstrapResponse {
   status: number;
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("The account operation was cancelled.", "AbortError");
+}
+
+function requestSignal(timeoutMilliseconds: number, signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMilliseconds);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+async function waitForAbortableDelay(
+  pending: Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!signal) return pending;
+  throwIfAborted(signal);
+  let removeAbortListener = (): void => {};
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    const abort = (): void => reject(new DOMException("The account operation was cancelled.", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    removeAbortListener = () => signal.removeEventListener("abort", abort);
+  });
+  try {
+    await Promise.race([pending, cancelled]);
+  } finally {
+    removeAbortListener();
+  }
+}
+
 export async function retryPlayerBootstrap(
   attemptBootstrap: () => Promise<PlayerBootstrapResponse>,
-  delay: (milliseconds: number) => Promise<void>,
+  delay: (milliseconds: number, signal?: AbortSignal) => Promise<void>,
   onProgress?: (elapsedMilliseconds: number, nextAttempt: number, totalAttempts: number) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   let elapsedMilliseconds = 0;
   const totalAttempts = PLAYER_BOOTSTRAP_RETRY_DELAYS_MS.length + 1;
   for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+    throwIfAborted(signal);
     let response: PlayerBootstrapResponse;
     try {
       response = await attemptBootstrap();
     } catch {
+      throwIfAborted(signal);
       if (attempt === totalAttempts - 1) throw new PlayerBootstrapError("retryable", true);
       const wait = PLAYER_BOOTSTRAP_RETRY_DELAYS_MS[attempt] ?? 0;
       onProgress?.(elapsedMilliseconds, attempt + 2, totalAttempts);
-      await delay(wait);
+      await waitForAbortableDelay(delay(wait, signal), signal);
       elapsedMilliseconds += wait;
       continue;
     }
+    throwIfAborted(signal);
     if (response.ok) return;
     const classification = classifyPlayerBootstrapFailure(response.status);
     if (classification === "terminal") throw new PlayerBootstrapError(classification, false);
     if (attempt === totalAttempts - 1) throw new PlayerBootstrapError(classification, true);
     const wait = PLAYER_BOOTSTRAP_RETRY_DELAYS_MS[attempt] ?? 0;
     onProgress?.(elapsedMilliseconds, attempt + 2, totalAttempts);
-    await delay(wait);
+    await waitForAbortableDelay(delay(wait, signal), signal);
     elapsedMilliseconds += wait;
   }
 }
@@ -1927,6 +1996,7 @@ export async function retryPlayerBootstrap(
 async function bootstrapPlayer(
   auth: HunterAuthHook,
   onProgress?: (elapsedMilliseconds: number, nextAttempt: number, totalAttempts: number) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   await retryPlayerBootstrap(async () => {
     const headers = await authHeaders(auth);
@@ -1936,14 +2006,14 @@ async function bootstrapPlayer(
       headers,
       credentials: "same-origin",
       body: "{}",
-      signal: AbortSignal.timeout(8_000),
+      signal: requestSignal(8_000, signal),
     });
-  }, (milliseconds) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)), onProgress);
+  }, (milliseconds) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)), onProgress, signal);
 }
 
-async function loadSignedInDashboard(auth: HunterAuthHook): Promise<void> {
-  await bootstrapPlayer(auth, showProvisioningProgress);
-  const response = await fetchDashboard(auth);
+async function loadSignedInDashboard(auth: HunterAuthHook, signal?: AbortSignal): Promise<void> {
+  await bootstrapPlayer(auth, showProvisioningProgress, signal);
+  const response = await fetchDashboard(auth, signal);
   if (!response.ok) throw new Error("Your dashboard could not be loaded.");
   const envelope: unknown = await response.json();
   if (!isRecord(envelope) || !isRecord(envelope.data)) throw new Error("Your dashboard could not be loaded.");
@@ -2142,7 +2212,12 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
   }
 }
 
-async function saveSignupProfileAndPrivacy(auth: HunterAuthHook, draft: HunterSignupDraft): Promise<void> {
+async function saveSignupProfileAndPrivacy(
+  auth: HunterAuthHook,
+  draft: HunterSignupDraft,
+  signal?: AbortSignal,
+): Promise<void> {
+  throwIfAborted(signal);
   const headers = await authHeaders(auth);
   headers.set("Content-Type", "application/json");
   const response = await fetch("/api/v1/me/profile", {
@@ -2164,46 +2239,65 @@ async function saveSignupProfileAndPrivacy(auth: HunterAuthHook, draft: HunterSi
       }),
       privacyMediaVersion: draft.privacyMediaDocument?.version,
     }),
-    signal: AbortSignal.timeout(12_000),
+    signal: requestSignal(12_000, signal),
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new Error(profileErrorMessage(payload, "Your legal profile could not be stored."));
 }
 
-async function finalizeVerifiedSignup(auth: HunterAuthHook, draft: HunterSignupDraft): Promise<void> {
-  const [config, currentWaiverDocument] = await Promise.all([
-    loadPublicConfig(),
-    fetchCurrentWaiverDocument(),
-  ]);
-  const currentWaiverIdentity = isLegalDocumentIdentity(currentWaiverDocument)
-    ? currentWaiverDocument
-    : null;
-  assertReviewedSignupDocumentsCurrent(draft, {
-    privacyMedia: config.privacyMedia,
-    waiver: currentWaiverIdentity,
-  });
+async function finalizeVerifiedSignup(
+  auth: HunterAuthHook,
+  draft: HunterSignupDraft,
+  signal?: AbortSignal,
+): Promise<void> {
+  let currentDocuments: Promise<{
+    privacyMedia: LegalDocumentIdentity | null;
+    waiver: Record<string, unknown>;
+    waiverIdentity: LegalDocumentIdentity | null;
+  }> | null = null;
+  const loadCurrentDocuments = (): Promise<{
+    privacyMedia: LegalDocumentIdentity | null;
+    waiver: Record<string, unknown>;
+    waiverIdentity: LegalDocumentIdentity | null;
+  }> => {
+    currentDocuments ??= Promise.all([loadPublicConfig(signal), fetchCurrentWaiverDocument(signal)]).then(([config, waiver]) => ({
+      privacyMedia: config.privacyMedia,
+      waiver,
+      waiverIdentity: isLegalDocumentIdentity(waiver) ? waiver : null,
+    }));
+    return currentDocuments;
+  };
   await completeHunterRegistration({
-    bootstrap: () => bootstrapPlayer(auth, showProvisioningProgress),
+    bootstrap: () => bootstrapPlayer(auth, showProvisioningProgress, signal),
     loadState: async () => {
       const [dashboard, waiverAcceptance] = await Promise.all([
-        fetchDashboardData(auth),
-        fetchWaiverAcceptanceProjection(auth),
+        fetchDashboardData(auth, signal),
+        fetchWaiverAcceptanceProjection(auth, signal),
       ]);
       return {
         profileAndPrivacyComplete: isRecord(dashboard.profile) && dashboard.privacyMediaRequired !== true,
         waiverAcceptance: waiverAcceptance?.acceptance ?? null,
       };
     },
-    saveProfileAndPrivacy: () => saveSignupProfileAndPrivacy(auth, draft),
-    fetchWaiverDocument: async () => currentWaiverDocument,
+    saveProfileAndPrivacy: () => saveSignupProfileAndPrivacy(auth, draft, signal),
+    fetchWaiverDocument: async () => (await loadCurrentDocuments()).waiver,
+    validateMissingDocuments: async (state) => {
+      const current = await loadCurrentDocuments();
+      assertMissingSignupDocumentsCurrent(draft, {
+        privacyMedia: current.privacyMedia,
+        waiver: current.waiverIdentity,
+      }, state);
+    },
     recordWaiverReview: async (documentValue) => {
+      throwIfAborted(signal);
       const payload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
         version: documentValue.version,
         hash: documentValue.hash,
-      });
+      }, undefined, signal);
       return reviewIdFrom(payload);
     },
     acceptWaiver: async (documentValue, reviewEventId) => {
+      throwIfAborted(signal);
       await waiverWrite(
         auth,
         "/api/v1/me/waiver/accept",
@@ -2216,9 +2310,11 @@ async function finalizeVerifiedSignup(auth: HunterAuthHook, draft: HunterSignupD
           minors: [],
         }),
         draft.finalizationIdempotencyKey ?? crypto.randomUUID(),
+        signal,
       );
     },
-    refreshDashboard: () => loadSignedInDashboard(auth),
+    refreshDashboard: () => loadSignedInDashboard(auth, signal),
+    ensureActive: () => throwIfAborted(signal),
   });
 }
 
@@ -2226,10 +2322,11 @@ type SignupRecoveryPresentation = "none" | "verification" | "lost_attempt" | "un
 
 interface SignupAccountFormDependencies {
   activateSignupSession?: (sessionId: string) => Promise<boolean>;
-  finalizeSignup?: (draft: HunterSignupDraft) => Promise<void>;
-  loadSignedInAccount?: () => Promise<void>;
+  finalizeSignup?: (draft: HunterSignupDraft, signal?: AbortSignal) => Promise<void>;
+  loadSignedInAccount?: (signal?: AbortSignal) => Promise<void>;
   resendCooldownMs?: number;
   completedFinishingMessage?: string;
+  completedFinishingClassification?: PlayerBootstrapFailureClassification;
 }
 
 function setupAccountForms(
@@ -2239,13 +2336,20 @@ function setupAccountForms(
   dependencies: SignupAccountFormDependencies = {},
 ): SignupRecoveryPresentation {
   const activateSignupSession = dependencies.activateSignupSession ?? activateSession;
-  const finalizeSignup = dependencies.finalizeSignup ?? ((draft) => finalizeVerifiedSignup(auth, draft));
-  const loadSignedInAccount = dependencies.loadSignedInAccount ?? (() => loadSignedInDashboard(auth));
+  const finalizeSignup = dependencies.finalizeSignup ?? ((draft, signal) => finalizeVerifiedSignup(auth, draft, signal));
+  const loadSignedInAccount = dependencies.loadSignedInAccount ?? ((signal) => loadSignedInDashboard(auth, signal));
   const resendCooldownMs = dependencies.resendCooldownMs ?? 30_000;
   let resendCooldownTimer: number | null = null;
   let currentSignupResume = resumeStore.read();
   let signupOperationGeneration = 0;
-  const beginSignupOperation = (): number => ++signupOperationGeneration;
+  let signupOperationController: AbortController | null = null;
+  const beginSignupOperation = (): number => {
+    signupOperationController?.abort();
+    signupOperationController = new AbortController();
+    return ++signupOperationGeneration;
+  };
+  const signupOperationSignal = (generation: number): AbortSignal | undefined =>
+    generation === signupOperationGeneration ? signupOperationController?.signal : undefined;
   const signupOperationIsCurrent = (generation: number): boolean =>
     generation === signupOperationGeneration;
   const resetSignupOperationControls = (): void => {
@@ -2260,6 +2364,8 @@ function setupAccountForms(
     setSignupVerificationStatus("Enter the code from your email.");
   };
   const invalidateSignupOperations = (): void => {
+    signupOperationController?.abort();
+    signupOperationController = null;
     signupOperationGeneration += 1;
     if (resendCooldownTimer !== null) window.clearInterval(resendCooldownTimer);
     resendCooldownTimer = null;
@@ -2272,6 +2378,8 @@ function setupAccountForms(
     signUpAttempt = null;
   };
   const runSignedInAccountLoad = createSerializedSubmission(async () => {
+    const operationGeneration = beginSignupOperation();
+    const signal = signupOperationSignal(operationGeneration);
     const retry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
     if (retry) {
       retry.disabled = true;
@@ -2279,16 +2387,18 @@ function setupAccountForms(
     }
     showSignupFinishing("Your email is verified. Checking the remaining account setup now…");
     try {
-      await loadSignedInAccount();
+      await loadSignedInAccount(signal);
+      if (!signupOperationIsCurrent(operationGeneration)) return;
       clearSignupResume();
     } catch (error) {
+      if (!signupOperationIsCurrent(operationGeneration)) return;
       const classification = error instanceof PlayerBootstrapError ? error.classification : "retryable";
       showSignupFinishing(provisioningFailureMessage(classification), {
-        retryAvailable: true,
+        retryAvailable: classification === "retryable",
         kind: classification === "terminal" ? "error" : "info",
       });
     } finally {
-      if (retry) retry.disabled = false;
+      if (signupOperationIsCurrent(operationGeneration) && retry) retry.disabled = false;
     }
   });
 
@@ -2333,7 +2443,8 @@ function setupAccountForms(
     }
     try {
       signInAttempt = await hunterClerk.client.signIn.create({ strategy: "password", identifier, password });
-      if (signInAttempt.status !== "complete" || !await activateSession(signInAttempt.createdSessionId)) {
+      const createdSessionId = signInAttempt.createdSessionId;
+      if (signInAttempt.status !== "complete" || !createdSessionId || !await activateSignupSession(createdSessionId)) {
         throw new Error("Additional account verification is required.");
       }
       clearSignupResume();
@@ -2419,6 +2530,7 @@ function setupAccountForms(
       return;
     }
     const operationGeneration = beginSignupOperation();
+    const signal = signupOperationSignal(operationGeneration);
     const retry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
     signUpAttempt = providerAttempt;
     if (retry) {
@@ -2432,7 +2544,7 @@ function setupAccountForms(
       if (!activated) {
         throw new Error("Your verified session is still starting.");
       }
-      await finalizeSignup(hunterSignupDraftFromResume(resume));
+      await finalizeSignup(hunterSignupDraftFromResume(resume), signal);
       if (!signupOperationIsCurrent(operationGeneration)) return;
       clearSignupResume();
     } catch (error) {
@@ -2445,7 +2557,7 @@ function setupAccountForms(
         ? provisioningFailureMessage(error.classification)
         : `${error instanceof Error ? error.message : "Account setup could not be finished."} Your verified progress is retained. Try again or refresh later.`;
       showSignupFinishing(copy, {
-        retryAvailable: true,
+        retryAvailable: !(error instanceof PlayerBootstrapError) || error.classification === "retryable",
         kind: error instanceof PlayerBootstrapError && error.classification === "retryable" ? "info" : "error",
       });
     } finally {
@@ -2619,6 +2731,8 @@ function setupAccountForms(
       return;
     }
     const verificationActions = [...verify.querySelectorAll<HTMLButtonElement>("button")];
+    const operationGeneration = beginSignupOperation();
+    const signal = signupOperationSignal(operationGeneration);
     verificationActions.forEach((button) => { button.disabled = true; });
     setSignupVerificationStatus("Checking that code…");
     try {
@@ -2636,6 +2750,7 @@ function setupAccountForms(
         },
         activateSession: activateSignupSession,
         finalize: finalizeSignup,
+        ...(signal ? { signal } : {}),
         clearResume: clearSignupResume,
       });
       signUpAttempt = null;
@@ -2662,7 +2777,7 @@ function setupAccountForms(
           ? provisioningFailureMessage(error.classification)
           : `${error instanceof Error ? error.message : "Account setup could not be finished."} Your verified progress is retained. Try again or refresh later.`;
         showSignupFinishing(copy, {
-          retryAvailable: true,
+          retryAvailable: !(error instanceof PlayerBootstrapError) || error.classification === "retryable",
           kind: error instanceof PlayerBootstrapError && error.classification === "retryable" ? "info" : "error",
         });
         return;
@@ -2676,7 +2791,9 @@ function setupAccountForms(
       setSignupVerificationStatus(copy, "error");
       authMessage(copy, "error");
     } finally {
-      verificationActions.forEach((button) => { button.disabled = false; });
+      if (signupOperationIsCurrent(operationGeneration)) {
+        verificationActions.forEach((button) => { button.disabled = false; });
+      }
       if (currentSignupResume?.resendAvailableAt && currentSignupResume.resendAvailableAt > Date.now()) {
         startSignupResendCooldown(currentSignupResume.resendAvailableAt);
       }
@@ -2699,6 +2816,8 @@ function setupAccountForms(
       return;
     }
     const submit = finish.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const operationGeneration = beginSignupOperation();
+    const signal = signupOperationSignal(operationGeneration);
     if (submit) submit.disabled = true;
     try {
       currentSignupResume = updateHunterSignupResume(resume, {
@@ -2708,7 +2827,7 @@ function setupAccountForms(
           ? pendingLegalRefresh.waiver : resume.waiverDocument,
       });
       persistSignupResume(currentSignupResume);
-      await finalizeSignup(hunterSignupDraftFromResume(currentSignupResume));
+      await finalizeSignup(hunterSignupDraftFromResume(currentSignupResume), signal);
       clearSignupResume();
       const status = finish.querySelector<HTMLElement>("[data-signup-finish-status]");
       if (status) status.textContent = "Account setup complete.";
@@ -2720,7 +2839,7 @@ function setupAccountForms(
       const status = finish.querySelector<HTMLElement>("[data-signup-finish-status]");
       if (status) status.textContent = error instanceof Error ? error.message : "Account setup could not be completed.";
     } finally {
-      if (submit) submit.disabled = pendingLegalRefresh === null;
+      if (signupOperationIsCurrent(operationGeneration) && submit) submit.disabled = pendingLegalRefresh === null;
     }
   }) : null;
   finish?.addEventListener("submit", (event) => {
@@ -2837,11 +2956,12 @@ function setupAccountForms(
       if (signInAttempt.status === "needs_new_password") {
         signInAttempt = await signInAttempt.resetPassword({ password, signOutOfOtherSessions: true });
       }
-      if (signInAttempt.status !== "complete" || !await activateSession(signInAttempt.createdSessionId)) {
+      const createdSessionId = signInAttempt.createdSessionId;
+      if (signInAttempt.status !== "complete" || !createdSessionId || !await activateSignupSession(createdSessionId)) {
         throw new Error("Password recovery is not complete.");
       }
       clearSignupResume();
-      await loadSignedInDashboard(auth);
+      await runSignedInAccountLoad();
     } catch (error) {
       authMessage(identityError(error, "Password recovery failed."), "error");
     }
@@ -2873,6 +2993,7 @@ function setupAccountForms(
     signOut.dataset.accountSignOutBound = "true";
     signOut.addEventListener("click", async () => {
       signOut.disabled = true;
+      invalidateSignupOperations();
       try {
         await signOutVerifiedAccount(
           async () => { await hunterClerk?.signOut(); },
@@ -2882,7 +3003,7 @@ function setupAccountForms(
       } catch {
         showSignupFinishing(
           "Your verified session is still active because sign out could not finish. Try again, refresh later, or contact support.",
-          { retryAvailable: true, kind: "error" },
+          { retryAvailable: false, kind: "error" },
         );
         signOut.disabled = false;
       }
@@ -2912,7 +3033,10 @@ function setupAccountForms(
 
   signUpAttempt = providerAttempt;
   if (dependencies.completedFinishingMessage) {
-    showSignupFinishing(dependencies.completedFinishingMessage, { retryAvailable: true });
+    showSignupFinishing(dependencies.completedFinishingMessage, {
+      retryAvailable: dependencies.completedFinishingClassification !== "terminal",
+      kind: dependencies.completedFinishingClassification === "terminal" ? "error" : "info",
+    });
     return "finishing";
   }
   void runSignupFinishing();
@@ -2959,9 +3083,16 @@ async function initializeAccountState(
       : null;
     let needsFinishing = false;
     if (reconciliation?.state === "complete" && activeEmail === resume?.emailAddress) {
-      const deferIndeterminateFinishing = (): SignupRecoveryPresentation => setupAccountForms(auth, config, resumeStore, {
+      const deferIndeterminateFinishing = (
+        error?: unknown,
+      ): SignupRecoveryPresentation => setupAccountForms(auth, config, resumeStore, {
         ...dependencies,
-        completedFinishingMessage: "We could not confirm whether the remaining account steps are complete. Your verified progress is retained. Try again.",
+        completedFinishingMessage: error instanceof PlayerBootstrapError
+          ? provisioningFailureMessage(error.classification)
+          : "We could not confirm whether the remaining account steps are complete. Your verified progress is retained. Try again.",
+        ...(error instanceof PlayerBootstrapError
+          ? { completedFinishingClassification: error.classification }
+          : {}),
       });
       try {
         const decision = await (
@@ -2969,8 +3100,8 @@ async function initializeAccountState(
         )(resume);
         if (typeof decision !== "boolean") return deferIndeterminateFinishing();
         needsFinishing = decision;
-      } catch {
-        return deferIndeterminateFinishing();
+      } catch (error) {
+        return deferIndeterminateFinishing(error);
       }
     }
     if (needsFinishing) {
@@ -2984,7 +3115,7 @@ async function initializeAccountState(
     } catch (error) {
       const classification = error instanceof PlayerBootstrapError ? error.classification : "retryable";
       showSignupFinishing(provisioningFailureMessage(classification), {
-        retryAvailable: true,
+        retryAvailable: classification === "retryable",
         kind: classification === "terminal" ? "error" : "info",
       });
       return "finishing";
@@ -3020,7 +3151,8 @@ export function setupAccountFormsForTest(options: {
   config: PublicConfig;
   auth: HunterAuthHook;
   activateSession: (sessionId: string) => Promise<boolean>;
-  finalizeSignup: (draft: HunterSignupDraft) => Promise<void>;
+  finalizeSignup?: (draft: HunterSignupDraft, signal?: AbortSignal) => Promise<void>;
+  loadSignedInAccount?: (signal?: AbortSignal) => Promise<void>;
   resendCooldownMs?: number;
 }): SignupRecoveryPresentation {
   hunterClerk = options.clerk as Clerk;
@@ -3030,7 +3162,8 @@ export function setupAccountFormsForTest(options: {
     browserSignupResumeStore(options.config),
     {
       activateSignupSession: options.activateSession,
-      finalizeSignup: options.finalizeSignup,
+      ...(options.finalizeSignup ? { finalizeSignup: options.finalizeSignup } : {}),
+      ...(options.loadSignedInAccount ? { loadSignedInAccount: options.loadSignedInAccount } : {}),
       resendCooldownMs: options.resendCooldownMs ?? 30_000,
     },
   );

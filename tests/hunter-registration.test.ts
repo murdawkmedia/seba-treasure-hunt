@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   assertReviewedSignupDocumentsCurrent,
+  assertMissingSignupDocumentsCurrent,
   completeSignupEmailVerification,
   completeHunterRegistration,
   hunterSignupDraftFromResume,
@@ -468,7 +469,7 @@ test("verified signup finalization writes profile and legal records before refre
     },
     refreshDashboard: async () => { calls.push("refresh"); },
   });
-  assert.deepEqual(calls, ["bootstrap", "profile", "fetch-waiver", "review", "accept", "refresh"]);
+  assert.deepEqual(calls, ["bootstrap", "fetch-waiver", "profile", "review", "accept", "refresh"]);
 });
 
 test("verified signup retry skips profile and waiver writes already accepted authoritatively", async () => {
@@ -519,7 +520,41 @@ test("verified signup with current legal acceptance but incomplete profile write
     acceptWaiver: async () => { calls.push("accept"); },
     refreshDashboard: async () => { calls.push("refresh"); },
   });
-  assert.deepEqual(calls, ["bootstrap", "profile", "fetch-waiver", "refresh"]);
+  assert.deepEqual(calls, ["bootstrap", "fetch-waiver", "profile", "refresh"]);
+});
+
+test("authoritative completion ignores stale local identity for an already-complete legal step", () => {
+  const currentPrivacy = { version: "2026.4", hash: "c".repeat(64) };
+  const currentWaiver = { version: "2026.5", hash: "d".repeat(64) };
+  const staleDraft = {
+    ...validDraft,
+    privacyMediaDocument,
+    waiverDocument,
+  };
+
+  assert.throws(() => assertMissingSignupDocumentsCurrent(staleDraft, {
+    privacyMedia: currentPrivacy,
+    waiver: currentWaiver,
+  }, {
+    profileAndPrivacyComplete: true,
+    waiverAcceptance: null,
+  }), (error: unknown) => (
+    error instanceof Error &&
+    "changed" in error &&
+    JSON.stringify(error.changed) === JSON.stringify(["waiver"])
+  ));
+
+  assert.throws(() => assertMissingSignupDocumentsCurrent(staleDraft, {
+    privacyMedia: currentPrivacy,
+    waiver: currentWaiver,
+  }, {
+    profileAndPrivacyComplete: false,
+    waiverAcceptance: { documentVersion: currentWaiver.version, documentHash: currentWaiver.hash },
+  }), (error: unknown) => (
+    error instanceof Error &&
+    "changed" in error &&
+    JSON.stringify(error.changed) === JSON.stringify(["privacy-media"])
+  ));
 });
 
 test("verified signup reconciles response loss before retrying profile or waiver acceptance", async () => {
