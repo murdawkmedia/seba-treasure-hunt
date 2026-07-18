@@ -1868,6 +1868,40 @@ export function reportPublicOutcomeGuidance(detail: OpsReportDetail, selected: s
   return "Case Notes remain a separate editorial decision. Verify the report before scheduling or publishing an Official Update.";
 }
 
+export function reportPublicationActions(status: string): {
+  canSaveDraft: boolean;
+  canPublish: boolean;
+  blocker: string | null;
+} {
+  if (status === "verified") {
+    return { canSaveDraft: true, canPublish: true, blocker: null };
+  }
+  if (["resolved", "rejected"].includes(status)) {
+    return {
+      canSaveDraft: false,
+      canPublish: false,
+      blocker: "Reopen this report for review before preparing or publishing an Official Update.",
+    };
+  }
+  if (["received", "reviewing", "contacted"].includes(status)) {
+    return {
+      canSaveDraft: true,
+      canPublish: false,
+      blocker: "Move this report to Verified before scheduling or publishing an Official Update.",
+    };
+  }
+  return {
+    canSaveDraft: false,
+    canPublish: false,
+    blocker: "Refresh this report before preparing or publishing an Official Update.",
+  };
+}
+
+export function reportSelectedMediaCount(mediaIds: readonly string[]): string {
+  const count = new Set(mediaIds.filter(Boolean)).size;
+  return `${count} of 3 images selected`;
+}
+
 export function renderReportState(
   detail: Pick<OpsReportDetail, "status" | "assignedTo">,
 ): string {
@@ -2571,6 +2605,11 @@ function reportSelectedMediaIds(): string[] {
     .map((input) => input.value);
 }
 
+function updateReportSelectedMediaCount(): void {
+  const count = document.querySelector<HTMLElement>("[data-report-selected-count]");
+  if (count) count.textContent = reportSelectedMediaCount(reportSelectedMediaIds());
+}
+
 function setReportWorkflowResult(message: string, kind: "normal" | "error" = "normal"): void {
   const result = document.querySelector<HTMLElement>("[data-report-workflow-result]");
   if (!result) return;
@@ -2704,6 +2743,7 @@ async function hydrateReportEvidence(
   }));
   if (!reportReviewIsLive(intent, dialog) || signal.aborted) return;
   updateReportPublicationPreview();
+  updateReportSelectedMediaCount();
 }
 
 function reportDraft(): {
@@ -2740,7 +2780,10 @@ function renderReportWorkflow(detail: OpsReportDetail, selected = ""): void {
   const history = dialog.querySelector<HTMLOListElement>("[data-report-history]");
   const publicGuidance = dialog.querySelector<HTMLElement>("[data-report-public-guidance]");
   const preparePublic = dialog.querySelector<HTMLButtonElement>("[data-report-prepare-public]");
+  const officialBlocker = dialog.querySelector<HTMLElement>("[data-report-official-blocker]");
+  const goToReview = dialog.querySelector<HTMLButtonElement>("[data-report-go-to-review]");
   const model = reportWorkflowControls(detail, selected);
+  const publicationActions = reportPublicationActions(detail.status);
   const selectedDestination = model.destinations.find((destination) => destination.value === selected) ?? null;
   const blockedReasons = [...new Set(model.destinations.flatMap((destination) => destination.blockedReason ? [destination.blockedReason] : []))];
 
@@ -2778,6 +2821,13 @@ function renderReportWorkflow(detail: OpsReportDetail, selected = ""): void {
   if (history) history.innerHTML = renderReportHistory(detail.history);
   if (publicGuidance) publicGuidance.textContent = reportPublicOutcomeGuidance(detail, selected);
   if (preparePublic) preparePublic.hidden = detail.status !== "verified";
+  if (officialBlocker) {
+    officialBlocker.textContent = !detail.publicationEligible
+      ? "Official Update publishing is blocked until this report has current legal and profile eligibility."
+      : publicationActions.blocker ?? "Verified: this Official Update may be scheduled or published after the exact preview is confirmed.";
+    officialBlocker.dataset.kind = detail.publicationEligible && publicationActions.canPublish ? "ready" : "blocked";
+  }
+  if (goToReview) goToReview.hidden = publicationActions.canPublish;
 }
 
 function renderActiveReportWorkflowSelection(): void {
@@ -2817,6 +2867,7 @@ function renderReportDialog(
   const scheduledFor = form.elements.namedItem("scheduledFor");
   const confirmation = form.elements.namedItem("confirmPublication");
   const publicOutcomeEditable = detail.publicationEligible && detail.status !== "resolved" && detail.status !== "rejected";
+  const publicationActions = reportPublicationActions(detail.status);
   if (title instanceof HTMLInputElement) {
     title.value = draft?.title ?? detail.publication.title ?? "";
     title.disabled = !publicOutcomeEditable;
@@ -2864,14 +2915,21 @@ function renderReportDialog(
         ? new Date(detail.publication.scheduledFor).toISOString().slice(0, 16)
         : ""
     );
-    scheduledFor.disabled = !publicOutcomeEditable;
+    scheduledFor.disabled = !detail.publicationEligible || !publicationActions.canPublish;
   }
   if (publish) {
-    publish.disabled = !detail.publicationEligible || detail.status !== "verified";
+    publish.disabled = !detail.publicationEligible || !publicationActions.canPublish;
     publish.textContent = detail.publication.published ? "Update live Official Update" : "Publish Official Update now";
+    publish.classList.toggle("ops-button--primary", detail.publicationEligible && publicationActions.canPublish);
+    publish.classList.toggle("ops-button--quiet", !detail.publicationEligible || !publicationActions.canPublish);
   }
-  if (saveDraft) saveDraft.disabled = !publicOutcomeEditable;
-  if (schedule) schedule.disabled = !detail.publicationEligible || detail.status !== "verified";
+  if (saveDraft) {
+    saveDraft.disabled = !detail.publicationEligible || !publicationActions.canSaveDraft;
+    const isCurrentPrimary = detail.publicationEligible && publicationActions.canSaveDraft && !publicationActions.canPublish;
+    saveDraft.classList.toggle("ops-button--primary", isCurrentPrimary);
+    saveDraft.classList.toggle("ops-button--quiet", !isCurrentPrimary);
+  }
+  if (schedule) schedule.disabled = !detail.publicationEligible || !publicationActions.canPublish;
   if (unpublish) unpublish.hidden = !controls.showUnpublish;
   const destinations = reportDestinationControls(detail);
   if (publishCaseNote) {
@@ -2879,6 +2937,7 @@ function renderReportDialog(
     publishCaseNote.disabled = !publicOutcomeEditable;
   }
   if (withdrawCaseNote) withdrawCaseNote.hidden = !destinations.showWithdrawCaseNote;
+  updateReportSelectedMediaCount();
   updateReportPublicationPreview();
   const eligibility = detail.status === "resolved"
     ? "This report is resolved. Reopen it to select ready images or prepare a public post."
@@ -4104,6 +4163,11 @@ function setupWorkspace(): void {
   reportDialog?.querySelector("[data-report-prepare-public]")?.addEventListener("click", () => {
     reportDialog.querySelector<HTMLElement>("#report-public-title")?.focus({ preventScroll: false });
   });
+  reportDialog?.querySelector("[data-report-go-to-review]")?.addEventListener("click", () => {
+    const workflow = reportDialog.querySelector<HTMLElement>("#report-workflow-title");
+    workflow?.scrollIntoView({ behavior: "smooth", block: "start" });
+    workflow?.focus({ preventScroll: true });
+  });
   reportDialog?.querySelector("[data-report-open-audit]")?.addEventListener("click", () => {
     reportReviewTrigger = null;
     reportDialog.close();
@@ -4117,10 +4181,11 @@ function setupWorkspace(): void {
       const selected = reportSelectedMediaIds();
       if (selected.length > 3) {
         target.checked = false;
-        setReportPublicationResult("Select no more than three evidence images.", "error");
+        setReportPublicationResult("Official Updates can include no more than three images.", "error");
       } else {
         setReportPublicationResult("");
       }
+      updateReportSelectedMediaCount();
       const item = target.closest<HTMLElement>(".ops-report-evidence__item");
       for (const field of item?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
         "[data-update-media-alt], [data-update-media-caption]"
@@ -4399,8 +4464,9 @@ function setupWorkspace(): void {
       setReportPublicationResult(error instanceof Error ? error.message : "The Official Update change was not saved.", "error");
     } finally {
       if (reportReviewIsLive(intent, reportDialog) && activeReportDetail?.id === reportId) {
+        const publicationActions = reportPublicationActions(activeReportDetail.status);
         button.disabled = !activeReportDetail.publicationEligible ||
-          (action !== "save_draft" && activeReportDetail.status !== "verified");
+          (action === "save_draft" ? !publicationActions.canSaveDraft : !publicationActions.canPublish);
       }
     }
   };

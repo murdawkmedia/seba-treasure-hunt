@@ -22,10 +22,12 @@ import {
   moderationAttentionCount,
   normalizeOpsReportDetail,
   reportDestinationControls,
+  reportPublicationActions,
   reportPublicOutcomeGuidance,
   reportReviewControls,
   reportWorkflowControls,
   reportPublicationConfirmationAfterInput,
+  reportSelectedMediaCount,
   normalizeReports,
   normalizeOpsSponsors,
   normalizeOpsSubscribers,
@@ -721,6 +723,22 @@ test("guided report workflow exposes truthful public-content blockers", () => {
   assert.equal(destinations.find((item) => item.value === "reviewing")?.blockedReason, "Withdraw the linked Official Update first.");
   assert.equal(destinations.find((item) => item.value === "resolved")?.blockedReason, "Withdraw the linked Official Update first.");
   assert.match(reportPublicOutcomeGuidance(base, "reviewing"), /Withdraw the linked Official Update/i);
+});
+
+test("report publication guidance separates private drafting from verified release", () => {
+  assert.deepEqual(reportPublicationActions("reviewing"), {
+    canSaveDraft: true,
+    canPublish: false,
+    blocker: "Move this report to Verified before scheduling or publishing an Official Update.",
+  });
+  assert.deepEqual(reportPublicationActions("verified"), {
+    canSaveDraft: true,
+    canPublish: true,
+    blocker: null,
+  });
+  assert.match(reportPublicationActions("received").blocker ?? "", /Verified/);
+  assert.equal(reportSelectedMediaCount(["evidence-1", "upload-1"]), "2 of 3 images selected");
+  assert.equal(reportSelectedMediaCount(["evidence-1", "evidence-1", "upload-1"]), "2 of 3 images selected");
 });
 
 test("direct Update uploads start unselected and require publication metadata", () => {

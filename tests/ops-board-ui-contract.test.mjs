@@ -142,9 +142,12 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(html, /data-report-publication-form/);
   assert.match(html, /data-report-public-preview/);
   assert.match(html, /Choose public destination/i);
-  assert.match(html, /Keep private/i);
-  assert.match(html, /Publish to Case Notes/i);
-  assert.match(html, /Official Update/i);
+  assert.match(html, /Keep private[\s\S]*No part of this report is published/i);
+  assert.match(html, /Publish to Case Notes[\s\S]*reviewed community observation/i);
+  assert.match(html, /Prepare an Official Update[\s\S]*official public source/i);
+  assert.match(html, /release requires Verified/i);
+  assert.match(html, /data-report-go-to-review/);
+  assert.match(html, /data-report-selected-count[^>]*aria-live="polite"/);
   assert.match(html, /data-report-publish-case-note/);
   assert.match(html, /data-report-withdraw-case-note/);
   assert.match(html, /data-report-save-draft/);
@@ -158,6 +161,8 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(client, /\/case-note`/);
   assert.match(client, /\/case-note\/withdraw`/);
   assert.match(client, /name="publishMedia"/);
+  assert.match(client, /Official Updates can include no more than three images\./);
+  assert.match(client, /scrollIntoView/);
   assert.match(client, /window\.confirm\([^)]*public/i);
   assert.match(client, /reportReviewTrigger\?\.isConnected/);
   assert.match(client, /data-report-review\]\[data-report-id/);

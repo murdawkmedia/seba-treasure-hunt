@@ -326,7 +326,7 @@
           <p class="ops-panel__note">Select each ready image you want to include in Case Notes or an Official Update. Nothing is selected automatically.</p>
           <div class="ops-report-evidence" data-report-evidence></div>
           <section class="ops-report-status" data-report-status-actions aria-labelledby="report-workflow-title">
-            <h4 id="report-workflow-title">Review workflow</h4>
+            <h4 id="report-workflow-title" tabindex="-1">Review workflow</h4>
             <p>Private review state and public publication are separate audited decisions.</p>
             <div class="ops-report-state-summary" data-report-state-summary>
               <strong>Status: Loading</strong><span>Assigned to: Loading</span>
@@ -358,19 +358,29 @@
           <h3 id="report-public-title" tabindex="-1">Choose public destination</h3>
           <p>Email, phone, private name and account identifiers are never included. Waypoint and submitted GPS are public game facts after approval.</p>
           <div class="ops-report-destinations" aria-label="Publication choices">
-            <article><strong>Keep private</strong><span>Continue the audited review without publishing anything.</span></article>
-            <article><strong>Case Notes</strong><span>Share a reviewed community observation. It is not an official clue.</span></article>
-            <article><strong>Official Update</strong><span>Reserve for meaningful verified evidence or a campaign announcement.</span></article>
+            <article><strong>Keep private</strong><span>No part of this report is published. Continue the audited review only.</span></article>
+            <article><strong>Publish to Case Notes</strong><span>Share a reviewed community observation. It is not an Official Update or official clue.</span></article>
+            <article><strong>Prepare an Official Update</strong><span>Create an official public source. You may save a private draft now; public release requires Verified.</span></article>
           </div>
           <p class="ops-report-public-guidance" data-report-public-guidance role="status"></p>
+          <button class="ops-button ops-button--quiet" type="button" data-report-go-to-review hidden>Go to Review workflow</button>
           <button class="ops-button ops-button--quiet" type="button" data-report-prepare-public hidden>Prepare public outcome</button>
           <form class="ops-form ops-form--compact" data-report-publication-form novalidate>
+            <div class="ops-publication-step">
+              <p class="ops-publication-step__label">Step 1 of 3</p>
+              <h4>Write the public version</h4>
+              <p>Use only information that can safely appear on the public website.</p>
+            </div>
             <label for="report-public-title-input">Public headline</label>
             <input id="report-public-title-input" name="title" maxlength="200" required disabled />
             <label for="report-public-body">Edited public story</label>
             <textarea id="report-public-body" name="body" rows="7" maxlength="10000" required disabled></textarea>
-            <label for="report-scheduled-for">Schedule time <span class="ops-optional">(only for Schedule)</span></label>
-            <input id="report-scheduled-for" name="scheduledFor" type="datetime-local" data-report-scheduled-for disabled />
+            <div class="ops-publication-step">
+              <p class="ops-publication-step__label">Step 2 of 3</p>
+              <h4>Choose public images</h4>
+              <p class="ops-selected-count" data-report-selected-count role="status" aria-live="polite">0 of 3 images selected</p>
+              <p>Submitted evidence and direct Update images share the same three-image limit. Nothing is selected automatically.</p>
+            </div>
             <fieldset class="ops-update-upload" data-report-update-upload>
               <legend>Direct Update images <span class="ops-optional">(optional, up to 3)</span></legend>
               <p>Save the Update draft first. Images are prepared in this browser, processed privately, and remain unpublished until checked below.</p>
@@ -379,15 +389,35 @@
               <p class="ops-inline-result" data-report-update-upload-result role="status" aria-live="polite"></p>
               <div class="ops-report-evidence" data-report-update-uploads></div>
             </fieldset>
+            <div class="ops-publication-step">
+              <p class="ops-publication-step__label">Step 3 of 3</p>
+              <h4>Review and choose one action</h4>
+              <p>Case Notes and Official Updates are separate public destinations. Saving an Update draft is always private.</p>
+            </div>
             <div data-report-public-preview></div>
             <label for="report-publication-confirm" class="ops-confirmation"><input id="report-publication-confirm" name="confirmPublication" type="checkbox" required disabled /><span>I reviewed this exact public preview. Contact details and children&rsquo;s identities are excluded, while the shown waypoint, GPS and checked images will be public.</span></label>
-            <div class="ops-action-row">
-              <button class="ops-button ops-button--primary" type="button" data-report-publish-case-note disabled>Publish to Case Notes</button>
-              <button class="ops-button ops-button--danger" type="button" data-report-withdraw-case-note hidden>Withdraw Case Note</button>
-              <button class="ops-button ops-button--quiet" type="button" data-report-save-draft disabled>Save Update draft</button>
-              <button class="ops-button ops-button--quiet" type="button" data-report-schedule disabled>Schedule Official Update</button>
-              <button class="ops-button ops-button--quiet" type="button" data-report-publish data-report-publish-now disabled>Publish Official Update now</button>
-              <button class="ops-button ops-button--danger" type="button" data-report-unpublish hidden>Withdraw Official Update</button>
+            <div class="ops-publication-paths">
+              <section class="ops-publication-path" aria-labelledby="case-note-path-title">
+                <h4 id="case-note-path-title">Community destination</h4>
+                <p>Publish the reviewed story as a Case Note. It will not be labelled as an Official Update.</p>
+                <div class="ops-action-row">
+                  <button class="ops-button ops-button--primary" type="button" data-report-publish-case-note disabled>Publish to Case Notes</button>
+                  <button class="ops-button ops-button--danger" type="button" data-report-withdraw-case-note hidden>Withdraw Case Note</button>
+                </div>
+              </section>
+              <section class="ops-publication-path" aria-labelledby="official-update-path-title">
+                <h4 id="official-update-path-title">Official destination</h4>
+                <p>Save privately at any review stage. Scheduling and publishing require Verified.</p>
+                <p class="ops-publication-blocker" id="report-official-blocker" data-report-official-blocker role="status"></p>
+                <label for="report-scheduled-for">Schedule time <span class="ops-optional">(only for Schedule)</span></label>
+                <input id="report-scheduled-for" name="scheduledFor" type="datetime-local" data-report-scheduled-for disabled />
+                <div class="ops-action-row">
+                  <button class="ops-button ops-button--quiet" type="button" data-report-save-draft disabled>Save private Update draft</button>
+                  <button class="ops-button ops-button--quiet" type="button" data-report-schedule aria-describedby="report-official-blocker" disabled>Schedule Official Update</button>
+                  <button class="ops-button ops-button--quiet" type="button" data-report-publish data-report-publish-now aria-describedby="report-official-blocker" disabled>Publish Official Update now</button>
+                  <button class="ops-button ops-button--danger" type="button" data-report-unpublish hidden>Withdraw Official Update</button>
+                </div>
+              </section>
             </div>
             <p class="ops-inline-result" id="report-publication-result" role="status" aria-live="polite" tabindex="-1"></p>
           </form>
