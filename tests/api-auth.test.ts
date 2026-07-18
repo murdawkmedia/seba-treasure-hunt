@@ -1073,6 +1073,134 @@ test("enforces explicit reversible private report workflow mutations", async () 
   assert.equal(store.audits.length, auditsBefore);
 });
 
+test("hunter report projection exposes only safe status and public destinations", async () => {
+  const { app, store } = makeApp();
+  store.profiles.set("hunter-1", {
+    subject: "hunter-1",
+    publicHandle: "Hunter Safe",
+    participationBasis: "adult",
+  });
+  await grantFakeCurrentPlayerAccess(store, "hunter-1");
+  const ownReport: Record<string, unknown> = {
+    id: "report-own",
+    type: "tip",
+    hunterSubject: "hunter-1",
+    status: "reviewing",
+    assignedTo: "operator-private",
+    privateReason: "private reason",
+    reporterEmail: "hunter-private@example.test",
+    evidenceKey: "private/evidence.jpg",
+    publicAttribution: "Hunter Safe",
+    attributionKind: "hunter_handle",
+    createdAt: "2026-07-18T10:00:00.000Z",
+    media: [],
+  };
+  store.reports.push(
+    ownReport,
+    {
+      id: "report-other",
+      type: "find",
+      hunterSubject: "other-hunter",
+      status: "verified",
+      createdAt: "2026-07-18T11:00:00.000Z",
+    },
+  );
+  await store.publishReportToCaseNotes(
+    "report-own",
+    { body: "A reviewed public observation.", mediaIds: [] },
+    "staff-publisher",
+  );
+  ownReport.status = "verified";
+  await store.publishReport(
+    "report-own",
+    { title: "Reviewed finding", body: "An edited public account.", mediaIds: [] },
+    "staff-publisher",
+  );
+  ownReport.status = "rejected";
+
+  const response = await app.request("https://www.timlostsomething.com/api/v1/me/dashboard", {
+    headers: hunterHeaders,
+  });
+  assert.equal(response.status, 200);
+  const dashboard = (await responseJson(response)).data;
+  assert.deepEqual(dashboard.reports, [{
+    id: "report-own",
+    type: "tip",
+    hunterStatus: "Closed",
+    createdAt: "2026-07-18T10:00:00.000Z",
+    publications: [
+      { kind: "case_note", label: "Published in Case Notes", href: "/clue-board" },
+      { kind: "official_update", label: "Used in an Official Update", href: "/updates" },
+    ],
+  }]);
+  assert.doesNotMatch(
+    JSON.stringify(dashboard.reports),
+    /rejected|operator-private|private reason|other-hunter|hunter-private|evidence/i,
+  );
+});
+
+test("recent report workflow history remains staff only", async () => {
+  const { app, store } = makeApp();
+  store.reports.push({
+    id: "report-history",
+    type: "tip",
+    status: "reviewing",
+    assignedTo: "staff-1",
+  });
+  store.reportEvents.push(
+    {
+      id: "event-ignored",
+      reportId: "report-history",
+      type: "case_note.published",
+      actor: "staff-private",
+      note: "Not workflow history.",
+      occurredAt: "2026-07-18T10:00:00.000Z",
+    },
+    {
+      id: "event-reviewing",
+      reportId: "report-history",
+      type: "status.reviewing",
+      actor: "staff-1",
+      note: "Initial assessment",
+      occurredAt: "2026-07-18T10:05:00.000Z",
+    },
+    {
+      id: "event-unassigned",
+      reportId: "report-history",
+      type: "assignment.unassigned",
+      actor: "staff-2",
+      note: null,
+      occurredAt: "2026-07-18T10:06:00.000Z",
+    },
+  );
+
+  const anonymous = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/reports/report-history",
+  );
+  assert.equal(anonymous.status, 401);
+  const response = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/reports/report-history",
+    { headers: { authorization: "Bearer staff-token" } },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((await responseJson(response)).data.history, [
+    {
+      id: "event-unassigned",
+      type: "assignment.unassigned",
+      actor: "staff-2",
+      note: null,
+      occurredAt: "2026-07-18T10:06:00.000Z",
+    },
+    {
+      id: "event-reviewing",
+      type: "status.reviewing",
+      actor: "staff-1",
+      note: "Initial assessment",
+      occurredAt: "2026-07-18T10:05:00.000Z",
+    },
+  ]);
+});
+
 test("lets active staff inspect a private report and only its scoped derivative evidence", async () => {
   const { app, store } = makeApp();
   store.profiles.set("hunter-minor-detail", {

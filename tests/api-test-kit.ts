@@ -23,6 +23,7 @@ import { ApiError } from "../src/server/errors";
 import { publicAttributionFromReportSnapshot } from "../src/shared/publication";
 import { publicHunterIdentity } from "../src/shared/public-identity";
 import {
+  hunterReportState,
   isReportReviewState,
   nextReportStates,
   reportTransitionRequiresConfirmation,
@@ -718,7 +719,45 @@ export class FakeStore {
       latestUpdate: this.updates[0] ?? null,
       waypoints: this.waypoints,
       progress: this.progress.filter((item) => item.subject === subject),
-      reports: this.reports.filter((item) => item.hunterSubject === subject),
+      reports: this.reports
+        .filter((item) => item.hunterSubject === subject)
+        .flatMap((item) => {
+          if (!isReportReviewState(item.status)) return [];
+          const publications: Array<{
+            kind: "case_note" | "official_update";
+            label: "Published in Case Notes" | "Used in an Official Update";
+            href: "/clue-board" | "/updates";
+          }> = [];
+          if (this.reportCaseNotes.get(String(item.id))?.status === "published") {
+            publications.push({
+              kind: "case_note",
+              label: "Published in Case Notes",
+              href: "/clue-board",
+            });
+          }
+          const publicationId = this.reportPublicationIds.get(String(item.id));
+          const update = publicationId
+            ? this.updates.find((candidate) => candidate.id === publicationId)
+            : null;
+          const scheduledFor = typeof update?.scheduledFor === "string" ? update.scheduledFor : null;
+          const updateIsPublic = update?.status === "published" ||
+            (update?.status === "scheduled" && scheduledFor !== null &&
+              new Date(scheduledFor).getTime() <= Date.now());
+          if (updateIsPublic) {
+            publications.push({
+              kind: "official_update",
+              label: "Used in an Official Update",
+              href: "/updates",
+            });
+          }
+          return [{
+            id: item.id,
+            type: item.type,
+            hunterStatus: hunterReportState(item.status),
+            createdAt: item.createdAt,
+            publications,
+          }];
+        }),
       notes: this.notes.filter((item) => item.authorSubject === subject)
     };
   }
@@ -1063,7 +1102,23 @@ export class FakeStore {
         published: caseNote?.status === "published",
         noteId: caseNote?.id ?? null,
         status: caseNote?.status ?? null
-      }
+      },
+      history: this.reportEvents
+        .filter((event) => event.reportId === id && (
+          String(event.type ?? "").startsWith("status.") || event.type === "assignment.unassigned"
+        ))
+        .sort((left, right) =>
+          String(right.occurredAt ?? "").localeCompare(String(left.occurredAt ?? "")) ||
+          String(right.id ?? "").localeCompare(String(left.id ?? ""))
+        )
+        .slice(0, 8)
+        .map((event) => ({
+          id: event.id,
+          type: event.type,
+          actor: event.actor ?? null,
+          note: event.note ?? null,
+          occurredAt: event.occurredAt,
+        }))
     };
   }
 

@@ -3,6 +3,7 @@ import { participationWaiverDocument, privacyMediaDocument } from "./legal-docum
 import { isAllowedStaffEmail, staffDisplayName } from "./staff-domains";
 import { publicAttributionFromReportSnapshot } from "../shared/publication";
 import {
+  hunterReportState,
   isReportReviewState,
   nextReportStates,
   reportTransitionRequiresConfirmation,
@@ -2088,6 +2089,7 @@ export class D1DataStore implements DataStore {
   }
 
   async getHunterDashboard(subject: string): Promise<Record<string, unknown>> {
+    const dashboardTimestamp = now();
     const [profile, access, status, updates, waypointResult, progressResult, reportResult, noteResult] = await Promise.all([
       this.getProfile(subject),
       this.getPlayerAccess(subject),
@@ -2113,7 +2115,17 @@ export class D1DataStore implements DataStore {
         .bind(subject)
         .all<Row>(),
       this.db
-        .prepare("SELECT id, report_type, status, created_at FROM private_reports WHERE hunter_subject = ? ORDER BY created_at DESC")
+        .prepare(
+          `SELECT r.id, r.report_type, r.status, r.created_at,
+                  note.id AS case_note_id, note.status AS case_note_status,
+                  published_update.id AS update_id, published_update.status AS update_status,
+                  published_update.scheduled_for AS update_scheduled_for
+           FROM private_reports r
+           LEFT JOIN operator_reviewed_case_notes note ON note.source_report_id = r.id
+           LEFT JOIN official_updates published_update ON published_update.source_report_id = r.id
+           WHERE r.hunter_subject = ?
+           ORDER BY r.created_at DESC`
+        )
         .bind(subject)
         .all<Row>(),
       this.db
@@ -2152,12 +2164,39 @@ export class D1DataStore implements DataStore {
         state: row.state,
         updatedAt: row.updated_at
       })),
-      reports: reportResult.results.map((row) => ({
-        id: row.id,
-        type: row.report_type,
-        status: row.status,
-        createdAt: row.created_at
-      })),
+      reports: reportResult.results.flatMap((row) => {
+        if (!isReportReviewState(row.status)) return [];
+        const publications: Array<{
+          kind: "case_note" | "official_update";
+          label: "Published in Case Notes" | "Used in an Official Update";
+          href: "/clue-board" | "/updates";
+        }> = [];
+        if (row.case_note_status === "published") {
+          publications.push({
+            kind: "case_note",
+            label: "Published in Case Notes",
+            href: "/clue-board"
+          });
+        }
+        const updateScheduledFor = nullable(row.update_scheduled_for);
+        const updateIsPublic = row.update_status === "published" ||
+          (row.update_status === "scheduled" && updateScheduledFor !== null &&
+            updateScheduledFor <= dashboardTimestamp);
+        if (updateIsPublic) {
+          publications.push({
+            kind: "official_update",
+            label: "Used in an Official Update",
+            href: "/updates"
+          });
+        }
+        return [{
+          id: row.id,
+          type: row.report_type,
+          hunterStatus: hunterReportState(row.status),
+          createdAt: row.created_at,
+          publications
+        }];
+      }),
       notes: noteResult.results.map((row) => ({
         id: row.id,
         waypointId: Number(row.waypoint_id),
@@ -3122,9 +3161,17 @@ export class D1DataStore implements DataStore {
   ): Promise<Record<string, unknown> | null> {
     const report = await this.reportById(reportId);
     if (!report) return null;
-    const [publication, caseNote] = await Promise.all([
+    const [publication, caseNote, history] = await Promise.all([
       this.reportPublicationPreview(reportId),
-      this.reportCaseNoteBySource(reportId)
+      this.reportCaseNoteBySource(reportId),
+      this.db.prepare(
+        `SELECT id, event_type, actor_subject, note, occurred_at
+         FROM report_events
+         WHERE report_id = ?
+           AND (event_type LIKE 'status.%' OR event_type = 'assignment.unassigned')
+         ORDER BY occurred_at DESC, id DESC
+         LIMIT 8`
+      ).bind(reportId).all<Row>()
     ]);
     await this.audit(actorSubject, "report.detail.viewed", "report", reportId, {});
     return {
@@ -3134,7 +3181,14 @@ export class D1DataStore implements DataStore {
         published: caseNote?.status === "published",
         noteId: caseNote?.id ?? null,
         status: caseNote?.status ?? null
-      }
+      },
+      history: history.results.map((row) => ({
+        id: value(row.id),
+        type: value(row.event_type),
+        actor: nullable(row.actor_subject),
+        note: nullable(row.note),
+        occurredAt: value(row.occurred_at)
+      }))
     };
   }
 

@@ -2772,6 +2772,161 @@ test("guided report workflow is atomic, reversible and audited", async (t) => {
   assert.deepEqual(await countHistory("report-guard-case-note"), { reportEvents: 0, audits: 0 });
 });
 
+test("hunter report projection and recent report workflow history stay private", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const store = new D1DataStore(db);
+  const timestamp = "2026-07-18T16:00:00.000Z";
+  await db.prepare(
+    `INSERT INTO case_status
+     (id, state, hours_open, hours_close, timezone, version, updated_at, updated_by)
+     VALUES (1, 'open', '09:00', '20:00', 'America/Edmonton', 1, ?, 'staff-seed')`
+  ).bind(timestamp).run();
+
+  const reportFixtures: Array<[string, ReportReviewState, string]> = [
+    ["report-state-received", "received", "2026-07-18T10:01:00.000Z"],
+    ["report-state-reviewing", "reviewing", "2026-07-18T10:02:00.000Z"],
+    ["report-state-contacted", "contacted", "2026-07-18T10:03:00.000Z"],
+    ["report-state-escalated", "escalated", "2026-07-18T10:04:00.000Z"],
+    ["report-state-verified", "verified", "2026-07-18T10:05:00.000Z"],
+    ["report-state-rejected", "rejected", "2026-07-18T10:06:00.000Z"],
+    ["report-state-resolved", "resolved", "2026-07-18T10:07:00.000Z"],
+    ["report-case-only", "reviewing", "2026-07-18T10:08:00.000Z"],
+    ["report-update-only", "verified", "2026-07-18T10:09:00.000Z"],
+    ["report-both", "rejected", "2026-07-18T10:10:00.000Z"],
+    ["report-withdrawn", "resolved", "2026-07-18T10:11:00.000Z"],
+    ["report-future-update", "verified", "2026-07-18T10:12:00.000Z"],
+    ["report-due-update", "verified", "2026-07-18T10:13:00.000Z"],
+  ];
+  for (const [reportId, status, createdAt] of reportFixtures) {
+    await db.prepare(
+      `INSERT INTO private_reports
+       (id, report_type, hunter_subject, reporter_name, reporter_email,
+        location_description, details, status, created_at, updated_at, assigned_to)
+       VALUES (?, 'tip', 'hunter-projection', 'Private Hunter', 'private@example.test',
+               'Private location', 'Private evidence details', ?, ?, ?, 'operator-private')`
+    ).bind(reportId, status, createdAt, createdAt).run();
+  }
+  await db.prepare(
+    `INSERT INTO private_reports
+     (id, report_type, hunter_subject, reporter_name, reporter_email,
+      location_description, details, status, created_at, updated_at)
+     VALUES ('report-other-hunter', 'find', 'other-hunter', 'Other Hunter',
+             'other-private@example.test', 'Other private location', 'Other evidence',
+             'verified', ?, ?)`
+  ).bind(timestamp, timestamp).run();
+
+  for (const [noteId, reportId, status] of [
+    ["case-note-only", "report-case-only", "published"],
+    ["case-note-both", "report-both", "published"],
+    ["case-note-withdrawn", "report-withdrawn", "withdrawn"],
+  ] as const) {
+    await db.prepare(
+      `INSERT INTO operator_reviewed_case_notes
+       (id, source_report_id, public_attribution, attribution_kind, body, status,
+        created_at, published_at, moderated_by, withdrawn_at, withdrawn_by)
+       VALUES (?, ?, 'Community Hunter', 'community', 'Edited public note.', ?,
+               ?, ?, 'staff-publisher', ?, ?)`
+    ).bind(
+      noteId,
+      reportId,
+      status,
+      timestamp,
+      timestamp,
+      status === "withdrawn" ? timestamp : null,
+      status === "withdrawn" ? "staff-publisher" : null,
+    ).run();
+  }
+
+  for (const [updateId, reportId, status, scheduledFor] of [
+    ["update-only", "report-update-only", "published", null],
+    ["update-both", "report-both", "published", null],
+    ["update-withdrawn", "report-withdrawn", "withdrawn", null],
+    ["update-future", "report-future-update", "scheduled", "2099-07-18T16:00:00.000Z"],
+    ["update-due", "report-due-update", "scheduled", "2000-07-18T16:00:00.000Z"],
+  ] as const) {
+    await db.prepare(
+      `INSERT INTO official_updates
+       (id, title, body, publisher_subject, published_at, scheduled_for, status,
+        source_report_id, created_at, updated_at)
+       VALUES (?, 'Edited update', 'Edited public account.', 'staff-publisher', ?, ?, ?, ?, ?, ?)`
+    ).bind(updateId, timestamp, scheduledFor, status, reportId, timestamp, timestamp).run();
+  }
+
+  for (let index = 0; index < 9; index += 1) {
+    const eventType = index === 7 ? "assignment.unassigned" :
+      `status.${REPORT_REVIEW_STATES[index % REPORT_REVIEW_STATES.length]}`;
+    await db.prepare(
+      `INSERT INTO report_events
+       (id, report_id, event_type, actor_subject, note, occurred_at)
+       VALUES (?, 'report-state-reviewing', ?, ?, ?, ?)`
+    ).bind(
+      `history-${index}`,
+      eventType,
+      `staff-${index}`,
+      `Private note ${index}`,
+      `2026-07-18T11:${String(index).padStart(2, "0")}:00.000Z`,
+    ).run();
+  }
+  await db.prepare(
+    `INSERT INTO report_events
+     (id, report_id, event_type, actor_subject, note, occurred_at)
+     VALUES ('history-ignored', 'report-state-reviewing', 'case_note.published',
+             'staff-private', 'Not workflow history.', '2026-07-18T12:00:00.000Z')`
+  ).run();
+
+  const dashboard = await store.getHunterDashboard("hunter-projection");
+  const reports = dashboard.reports as Array<Record<string, unknown>>;
+  assert.equal(reports.length, reportFixtures.length);
+  assert.equal(reports.some((report) => report.id === "report-other-hunter"), false);
+  const byId = new Map(reports.map((report) => [report.id, report]));
+  for (const [reportId, status, createdAt] of reportFixtures) {
+    assert.deepEqual(byId.get(reportId), {
+      id: reportId,
+      type: "tip",
+      hunterStatus: status === "received" ? "Received" :
+        status === "verified" ? "Verified" :
+          status === "rejected" || status === "resolved" ? "Closed" : "Under review",
+      createdAt,
+      publications: reportId === "report-case-only"
+        ? [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }]
+        : reportId === "report-update-only" || reportId === "report-due-update"
+          ? [{ kind: "official_update", label: "Used in an Official Update", href: "/updates" }]
+          : reportId === "report-both"
+            ? [
+                { kind: "case_note", label: "Published in Case Notes", href: "/clue-board" },
+                { kind: "official_update", label: "Used in an Official Update", href: "/updates" },
+              ]
+            : [],
+    });
+  }
+  assert.doesNotMatch(
+    JSON.stringify(reports),
+    /operator-private|Private Hunter|private@example|Private location|Private evidence|other-hunter|"status"/i,
+  );
+
+  const detail = await store.getReportDetail("report-state-reviewing", "staff-history");
+  const history = detail?.history as Array<Record<string, unknown>>;
+  assert.equal(history.length, 8);
+  assert.deepEqual(history.map((event) => event.id), [
+    "history-8",
+    "history-7",
+    "history-6",
+    "history-5",
+    "history-4",
+    "history-3",
+    "history-2",
+    "history-1",
+  ]);
+  assert.deepEqual(history[0], {
+    id: "history-8",
+    type: "status.reviewing",
+    actor: "staff-8",
+    note: "Private note 8",
+    occurredAt: "2026-07-18T11:08:00.000Z",
+  });
+  assert.equal(JSON.stringify(history).includes("history-ignored"), false);
+});
+
 test("real D1 publishes and withdraws a report-sourced Case Note independently from Updates", async (t) => {
   const db = await createOperatorAlertDatabase(t);
   await applyOperatorAlertMigration(db);
