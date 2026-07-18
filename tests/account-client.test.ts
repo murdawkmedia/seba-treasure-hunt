@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { campaignAccountModel } from "../src/client/account";
+import { campaignAccountModel, signOutCampaignHunterSession } from "../src/client/account";
 import { provisioningFailureMessage } from "../src/client/dashboard";
 import { getHunterAuthSessionCoordinator } from "../src/client/hunter-auth-session";
 
@@ -51,6 +51,25 @@ test("verified-account provisioning guidance never presents a password or bad-lo
   assert.match(transient, /sync/i);
   assert.match(transient, /try again|refresh/i);
   assert.match(terminal, /sign in again/i);
+});
+
+test("campaign sign out clears safe signup resume only after provider success", async () => {
+  const order: string[] = [];
+  await signOutCampaignHunterSession(
+    async () => { order.push("provider"); },
+    () => { order.push("resume"); },
+  );
+  assert.deepEqual(order, ["provider", "resume"]);
+
+  let clears = 0;
+  await assert.rejects(
+    signOutCampaignHunterSession(
+      async () => { throw new Error("provider unavailable"); },
+      () => { clears += 1; },
+    ),
+    /provider unavailable/,
+  );
+  assert.equal(clears, 0);
 });
 
 test("separately bundled clients share one Clerk instance and one provider listener", async () => {
@@ -116,4 +135,48 @@ test("separately bundled clients share one Clerk instance and one provider liste
   assert.equal(received.length, 3, "unsubscribed clients do not receive later changes");
   accountBundle.teardown();
   assert.equal(removeListeners, 1);
+});
+
+test("coordinator teardown replaces only its owned legacy token hook on reinitialization", async () => {
+  const browserGlobal: Record<string, unknown> = {};
+  let removed = 0;
+  const provider = (token: string) => ({
+    user: { id: `user_${token}` },
+    session: { id: `session_${token}`, getToken: async () => token },
+    client: null,
+    async load() {},
+    addListener() { return () => { removed += 1; }; },
+    async setActive() {},
+    async signOut() {},
+  });
+
+  const first = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => provider("old-token") as never,
+  });
+  await first.load("pk_test_reinit");
+  const firstHook = browserGlobal.timLostAuth as { getToken: () => Promise<string | null> };
+  assert.equal(await firstHook.getToken(), "old-token");
+  first.teardown();
+  assert.equal(browserGlobal.timLostAuth, undefined);
+  assert.equal(removed, 1);
+
+  const second = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => provider("new-token") as never,
+  });
+  await second.load("pk_test_reinit");
+  const secondHook = browserGlobal.timLostAuth as { getToken: () => Promise<string | null> };
+  assert.notEqual(secondHook, firstHook);
+  assert.equal(await secondHook.getToken(), "new-token");
+
+  const foreignHook = { getToken: async () => "foreign-token" };
+  const foreignGlobal: Record<string, unknown> = { timLostAuth: foreignHook };
+  const preserving = getHunterAuthSessionCoordinator({
+    browserGlobal: foreignGlobal,
+    createClerk: async () => provider("provider-token") as never,
+  });
+  await preserving.load("pk_test_foreign");
+  preserving.teardown();
+  assert.equal(foreignGlobal.timLostAuth, foreignHook);
 });

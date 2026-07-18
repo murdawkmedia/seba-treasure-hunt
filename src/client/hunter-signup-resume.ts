@@ -51,6 +51,12 @@ export interface SignupResumePersistence {
   persisted: boolean;
 }
 
+interface SignupResumeBrowserContext {
+  location: { origin: string };
+  readonly sessionStorage: SignupResumeStorage;
+  readonly localStorage: SignupResumeStorage;
+}
+
 export interface SignupProviderAttemptSnapshot {
   id?: string | undefined;
   status?: string | null;
@@ -339,6 +345,24 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
       clearTier(options.localStorage);
     },
   };
+}
+
+export function browserHunterSignupResumeStore(
+  deploymentEnvironment: string | null,
+  browser: SignupResumeBrowserContext = window,
+): HunterSignupResumeStore {
+  const storage = (kind: "sessionStorage" | "localStorage"): SignupResumeStorage | null => {
+    try {
+      return browser[kind];
+    } catch {
+      return null;
+    }
+  };
+  return createHunterSignupResumeStore({
+    sessionStorage: storage("sessionStorage"),
+    localStorage: storage("localStorage"),
+    namespace: `${browser.location.origin}:${deploymentEnvironment ?? "unknown"}`,
+  });
 }
 
 export function reconcileHunterSignupResume(

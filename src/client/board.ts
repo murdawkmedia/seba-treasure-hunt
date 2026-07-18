@@ -11,6 +11,10 @@ import {
   reportImageMegabytes,
 } from "../shared/report-image-limits";
 import { createTurnstileLifecycle } from "./turnstile-lifecycle";
+import {
+  getHunterAuthSessionCoordinator,
+  type HunterAuthSessionCoordinator,
+} from "./hunter-auth-session";
 
 export interface CommunityMedia {
   id: string;
@@ -45,10 +49,6 @@ export type BoardViewState =
   | { kind: "unavailable"; detail: string }
   | { kind: "ready"; notes: CommunityNote[]; canReply: boolean };
 
-interface TimLostAuthHook {
-  getToken(): Promise<string | null>;
-}
-
 interface TurnstileApi {
   render(container: HTMLElement, options: {
     sitekey: string;
@@ -61,13 +61,8 @@ interface TurnstileApi {
   reset(widgetId?: string): void;
 }
 
-declare global {
-  interface Window {
-    timLostAuth?: TimLostAuthHook;
-  }
-}
-
 const communityDisclaimer = "Community observation&mdash;not an official clue.";
+let hunterAuthSession: HunterAuthSessionCoordinator | null = null;
 let turnstileSiteKey: string | null = null;
 let turnstileApi: TurnstileApi | null = null;
 let noteTurnstileToken = "";
@@ -330,7 +325,7 @@ export function replyFailureMessage(response: Response, payload: unknown): strin
 
 async function authHeaders(base?: HeadersInit): Promise<Headers> {
   const headers = new Headers(base);
-  const token = await window.timLostAuth?.getToken().catch(() => null);
+  const token = await hunterAuthSession?.getToken().catch(() => null);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return headers;
 }
@@ -352,13 +347,9 @@ async function bootstrapRuntime(): Promise<void> {
     if (!isRecord(data)) return;
     turnstileSiteKey = asString(data.turnstileSiteKey) || null;
     const publishableKey = asString(data.hunterPublishableKey);
-    if (!publishableKey || window.timLostAuth) return;
-    const { Clerk } = await import("@clerk/clerk-js");
-    const clerk = new Clerk(publishableKey);
-    await clerk.load();
-    window.timLostAuth = {
-      getToken: async () => clerk.session?.getToken() ?? null,
-    };
+    if (!publishableKey) return;
+    hunterAuthSession = getHunterAuthSessionCoordinator();
+    await hunterAuthSession.load(publishableKey);
   } catch {
     // Reading is public. Authentication and human-checked writes fail closed below.
   }

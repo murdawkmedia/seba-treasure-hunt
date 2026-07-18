@@ -6,7 +6,7 @@ import {
 } from "./hunter-auth-session";
 import {
   createHunterSignupResume,
-  createHunterSignupResumeStore,
+  browserHunterSignupResumeStore,
   nextHunterSignupResendAvailableAt,
   reconcileHunterSignupResume,
   updateHunterSignupResume,
@@ -666,7 +666,6 @@ async function initializeManagedAuth(config: PublicConfig): Promise<HunterAuthHo
     const auth: HunterAuthHook = {
       getToken: hunterAuthSession.getToken,
     };
-    (window as unknown as { timLostAuth?: HunterAuthHook }).timLostAuth = auth;
     return auth;
   } catch (error) {
     console.error("Hunter identity initialization failed.", identityDiagnostic(error));
@@ -693,6 +692,7 @@ function showSignedOut(reason: "signed-out" | "unavailable"): void {
     content.hidden = true;
     content.style.display = "none";
   }
+  showAuthForm("hunter-sign-in-form");
 
   message(
     reason === "signed-out" ? "info" : "error",
@@ -868,6 +868,7 @@ function renderRecords(selector: string, values: unknown, empty: string): void {
 }
 
 function renderDashboard(data: Record<string, unknown>): void {
+  hunterAuthSession?.setProfile(data.profile);
   const gate = document.querySelector<HTMLElement>("[data-dashboard-state]");
   const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
   if (gate) gate.hidden = true;
@@ -1083,6 +1084,7 @@ async function initializeProfileForm(
           resetWaiverExperienceAfterProfileMutation();
         }
         currentProfile = saved;
+        hunterAuthSession?.setProfile(saved);
         renderProfile(saved);
         fillProfileForm(form, saved, saved.privacyMediaRequired === true);
       }
@@ -1133,6 +1135,7 @@ async function fetchDashboardData(auth: HunterAuthHook | null, signal?: AbortSig
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
   if (!isRecord(payload) || !isRecord(payload.data)) throw new Error("Your dashboard could not be refreshed.");
+  hunterAuthSession?.setProfile(payload.data.profile);
   return payload.data;
 }
 
@@ -1852,10 +1855,7 @@ function showSignupFinishing(
     gate.hidden = false;
     gate.dataset.dashboardState = "finishing";
   }
-  if (content) {
-    content.hidden = true;
-    content.style.display = "none";
-  }
+  if (content) content.hidden = true;
   showAuthForm("hunter-signup-finishing-state");
   const status = document.querySelector<HTMLElement>("[data-signup-finishing-status]");
   if (status) {
@@ -1874,18 +1874,7 @@ function showProvisioningProgress(_elapsedMilliseconds: number, nextAttempt: num
 }
 
 function browserSignupResumeStore(config: PublicConfig): HunterSignupResumeStore {
-  const storage = (kind: "sessionStorage" | "localStorage"): Storage | null => {
-    try {
-      return window[kind];
-    } catch {
-      return null;
-    }
-  };
-  return createHunterSignupResumeStore({
-    sessionStorage: storage("sessionStorage"),
-    localStorage: storage("localStorage"),
-    namespace: `${window.location.origin}:${config.deploymentEnvironment ?? "unknown"}`,
-  });
+  return browserHunterSignupResumeStore(config.deploymentEnvironment);
 }
 
 export async function waitForActiveSession(
@@ -2200,7 +2189,6 @@ async function loadSignedInDashboard(auth: HunterAuthHook, signal?: AbortSignal)
   const envelope: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(envelope));
   if (!isRecord(envelope) || !isRecord(envelope.data)) throw new Error("Your dashboard could not be loaded.");
-  hunterAuthSession?.setProfile(envelope.data.profile);
   renderDashboard(envelope.data);
   await initializeProfileForm(
     auth,
@@ -2428,6 +2416,7 @@ async function saveSignupProfileAndPrivacy(
   }, signal);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
+  if (isRecord(payload) && isRecord(payload.data)) hunterAuthSession?.setProfile(payload.data);
 }
 
 async function finalizeVerifiedSignup(

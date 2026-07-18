@@ -264,11 +264,15 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
   const requests: string[] = [];
   let authRequests = 0;
   let turnstileRenders = 0;
+  let coordinatorLoads = 0;
   const fetchMock = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     requests.push(url);
     if (url === "/api/v1/config") {
-      return jsonResponse({ data: { turnstileSiteKey: "test-site-key" } });
+      return jsonResponse({ data: {
+        turnstileSiteKey: "test-site-key",
+        hunterPublishableKey: "pk_test_shared_board",
+      } });
     }
     if (url === "/api/v1/me/dashboard") {
       if (outcome === "network-error") throw new Error("dashboard network unavailable");
@@ -301,7 +305,11 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
     querySelector: (selector: string) => documentElements.get(selector) ?? null,
   };
   const fakeWindow = {
-    timLostAuth: {
+    __timLostHunterAuthSessionV1: {
+      load: async () => {
+        coordinatorLoads += 1;
+        return { status: "ready" };
+      },
       getToken: async () => {
         authRequests += 1;
         return "test-token";
@@ -365,7 +373,7 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
   assert.equal(feed.attributes.get("aria-busy"), "false");
   assert.equal(boardStatus.textContent, "1 approved note");
 
-  return { authPrompt, authRequests, feed, noteForm, turnstileRenders };
+  return { authPrompt, authRequests, coordinatorLoads, feed, noteForm, turnstileRenders };
 }
 
 test("the real board initializer derives participation only from the dashboard session", async (t) => {
@@ -376,6 +384,7 @@ test("the real board initializer derives participation only from the dashboard s
     assert.match(fixture.feed.innerHTML, /class="reply-form"/);
     assert.equal(fixture.turnstileRenders, 1);
     assert.equal(fixture.authRequests, 2);
+    assert.equal(fixture.coordinatorLoads, 1);
   });
 
   await t.test("dashboard non-OK response fails closed while the public board settles", async () => {

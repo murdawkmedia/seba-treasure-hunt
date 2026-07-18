@@ -52,6 +52,7 @@ function createCoordinator(
   let publishableKey: string | null = null;
   let loadPromise: Promise<HunterAuthSessionSnapshot> | null = null;
   let removeProviderListener: (() => void) | null = null;
+  let ownedAuthHook: { getToken: () => Promise<string | null> } | null = null;
   let profile: Record<string, unknown> | null = null;
   let profileSessionId: string | null = null;
   let status: SessionStatus = "idle";
@@ -95,7 +96,10 @@ function createCoordinator(
           status = "ready";
           removeProviderListener = clerk.addListener(() => { publish(); });
           const auth = { getToken: coordinator.getToken };
-          if (!isRecord(browserGlobal.timLostAuth)) browserGlobal.timLostAuth = auth;
+          if (!isRecord(browserGlobal.timLostAuth)) {
+            browserGlobal.timLostAuth = auth;
+            ownedAuthHook = auth;
+          }
           return publish();
         } catch {
           status = "unavailable";
@@ -147,6 +151,10 @@ function createCoordinator(
       removeProviderListener?.();
       removeProviderListener = null;
       listeners.clear();
+      if (ownedAuthHook && browserGlobal.timLostAuth === ownedAuthHook) {
+        delete browserGlobal.timLostAuth;
+      }
+      ownedAuthHook = null;
       if (browserGlobal[GLOBAL_COORDINATOR_KEY] === coordinator) {
         delete browserGlobal[GLOBAL_COORDINATOR_KEY];
       }

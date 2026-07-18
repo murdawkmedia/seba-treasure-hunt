@@ -1484,10 +1484,8 @@ test("sign out cancels a pending finishing delay before profile or legal mutatio
       privacy: Number((window as unknown as Record<string, unknown>).__cancelPrivacyWrites || 0),
       waiver: Number((window as unknown as Record<string, unknown>).__cancelWaiverWrites || 0),
     })), { attempts: 1, profile: 0, privacy: 0, waiver: 0 });
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-      page.evaluate(() => (window as unknown as { __releaseProviderSignOut: () => void }).__releaseProviderSignOut()),
-    ]);
+    await page.evaluate(() => (window as unknown as { __releaseProviderSignOut: () => void }).__releaseProviderSignOut());
+    await page.locator("#hunter-sign-in-form").waitFor({ state: "visible" });
     assert.deepEqual(await page.evaluate((key) => ({
       session: sessionStorage.getItem(key),
       local: localStorage.getItem(key),
@@ -1563,10 +1561,8 @@ test("initial authoritative preflight binds Sign out before its retry window set
       session: JSON.stringify(resume), local: JSON.stringify(resume),
       mutations: 0, dashboardLoads: 0, retryVisible: false,
     });
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-      page.evaluate(() => (window as unknown as { __releaseEarlySignOut: () => void }).__releaseEarlySignOut()),
-    ]);
+    await page.evaluate(() => (window as unknown as { __releaseEarlySignOut: () => void }).__releaseEarlySignOut());
+    await page.locator("#hunter-sign-in-form").waitFor({ state: "visible" });
     assert.deepEqual(await page.evaluate((key) => ({ session: sessionStorage.getItem(key), local: localStorage.getItem(key) }), storageKey), { session: null, local: null });
   } finally {
     await page.close();
@@ -1636,10 +1632,8 @@ test("verification finalization cancellation cannot resurrect finishing retry wh
       finalizeCalls: 1,
       status: "Email verified. Checking the remaining account setup now…",
     });
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-      page.evaluate(() => (window as unknown as { __releaseVerificationSignOut: () => void }).__releaseVerificationSignOut()),
-    ]);
+    await page.evaluate(() => (window as unknown as { __releaseVerificationSignOut: () => void }).__releaseVerificationSignOut());
+    await page.locator("#hunter-sign-in-form").waitFor({ state: "visible" });
     assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), storageKey), null);
   } finally {
     await page.close();
@@ -2000,10 +1994,8 @@ test("sign out aborts the final signed-in waiver projection before it can render
       retryVisible: false,
     });
     assert.equal(presentation, "finishing");
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-      page.evaluate(() => (window as unknown as { __releaseWaiverSignOut: () => void }).__releaseWaiverSignOut()),
-    ]);
+    await page.evaluate(() => (window as unknown as { __releaseWaiverSignOut: () => void }).__releaseWaiverSignOut());
+    await page.locator("#hunter-sign-in-form").waitFor({ state: "visible" });
   } finally {
     await page.close();
   }
@@ -2122,10 +2114,8 @@ for (const pendingRequest of ["dashboard", "waiver"] as const) {
         projection: "unchanged after sign out",
         dashboardVisible: pendingRequest === "waiver",
       });
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-        page.evaluate(() => (window as unknown as { __releaseUnifiedSignOut: () => void }).__releaseUnifiedSignOut()),
-      ]);
+      await page.evaluate(() => (window as unknown as { __releaseUnifiedSignOut: () => void }).__releaseUnifiedSignOut());
+      await page.locator("#hunter-sign-in-form").waitFor({ state: "visible" });
       assert.equal(await page.locator("#hunter-sign-in-form").isVisible(), true);
       assert.equal(await page.locator("[data-dashboard-content]").isVisible(), false);
       assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), false);

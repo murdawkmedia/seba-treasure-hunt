@@ -5,6 +5,7 @@ import {
   type HunterAuthSessionCoordinator,
   type HunterAuthSessionSnapshot,
 } from "./hunter-auth-session";
+import { browserHunterSignupResumeStore } from "./hunter-signup-resume";
 
 type AccountUser = { imageUrl?: string | null };
 
@@ -19,6 +20,7 @@ export interface CampaignHunterSession {
   clerk: Clerk;
   getToken: () => Promise<string | null>;
   coordinator: HunterAuthSessionCoordinator;
+  deploymentEnvironment: string | null;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -61,6 +63,9 @@ async function loadCampaignHunterSession(): Promise<CampaignHunterSession | null
     const publishableKey = isRecord(data) && typeof data.hunterPublishableKey === "string"
       ? data.hunterPublishableKey.trim()
       : "";
+    const deploymentEnvironment = isRecord(data) && typeof data.deploymentEnvironment === "string" && data.deploymentEnvironment.trim()
+      ? data.deploymentEnvironment.trim().toLowerCase()
+      : null;
     if (!publishableKey) return null;
     const coordinator = getHunterAuthSessionCoordinator();
     const snapshot = await coordinator.load(publishableKey);
@@ -70,6 +75,7 @@ async function loadCampaignHunterSession(): Promise<CampaignHunterSession | null
       clerk,
       getToken: coordinator.getToken,
       coordinator,
+      deploymentEnvironment,
     };
     return session;
   } catch {
@@ -97,6 +103,14 @@ async function fetchPrivateProfile(session: CampaignHunterSession): Promise<unkn
 
 function navigateTo(destination: string): void {
   window.location.assign(destination);
+}
+
+export async function signOutCampaignHunterSession(
+  providerSignOut: () => Promise<void>,
+  clearSignupResume: () => void,
+): Promise<void> {
+  await providerSignOut();
+  clearSignupResume();
 }
 
 async function initializeCampaignAccount(): Promise<void> {
@@ -130,7 +144,15 @@ async function initializeCampaignAccount(): Promise<void> {
       return;
     }
     const activeSession = await campaignHunterSession();
-    await activeSession?.coordinator.signOut();
+    if (!activeSession) return;
+    try {
+      await signOutCampaignHunterSession(
+        activeSession.coordinator.signOut,
+        () => browserHunterSignupResumeStore(activeSession.deploymentEnvironment).clear(),
+      );
+    } catch {
+      // The provider session and recoverable signup state remain intact when sign-out fails.
+    }
   });
   document.addEventListener("click", (event) => {
     if (event.target instanceof Node && !root.contains(event.target)) close();

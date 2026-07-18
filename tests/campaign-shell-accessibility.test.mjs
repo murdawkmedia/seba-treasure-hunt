@@ -127,9 +127,9 @@ test("canonical campaign shell is accessible on every mobile route and represent
   }
 });
 
-test("separate account and Dashboard bundles share live sign-in and sign-out state", { timeout: 180_000 }, async () => {
+test("separate account, Dashboard, and board bundles share one live hunter session", { timeout: 180_000 }, async () => {
   const output = await buildSite({ temporary: true });
-  const identity = {
+  let identity = {
     fullName: "Private Participant Name",
     publicDisplayName: "Nancy & Ron",
     publicHandle: "Hunter 43BA",
@@ -143,8 +143,8 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
   const appServer = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://local.test");
-      const json = (body) => {
-        response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      const json = (body, status = 200) => {
+        response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(body));
       };
       if (url.pathname === "/api/v1/config") {
@@ -163,10 +163,24 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
         return;
       }
       if (url.pathname === "/api/v1/me/profile") {
+        if (request.method === "PATCH") {
+          let body = "";
+          for await (const chunk of request) body += chunk;
+          const update = JSON.parse(body);
+          identity = {
+            ...identity,
+            ...update,
+            publicDisplayName: typeof update.publicDisplayName === "string" ? update.publicDisplayName : "",
+          };
+        }
         json({ data: identity });
         return;
       }
       if (url.pathname === "/api/v1/me/dashboard") {
+        if (request.headers.authorization !== "Bearer browser-token") {
+          json({ error: { message: "Sign in required" } }, 401);
+          return;
+        }
         json({ data: {
           profile: identity,
           privacyMediaRequired: false,
@@ -176,6 +190,10 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
           notes: [],
           latestUpdate: null,
         } });
+        return;
+      }
+      if (url.pathname === "/api/v1/board") {
+        json({ data: { items: [] }, page: { nextCursor: null } });
         return;
       }
       if (url.pathname === "/api/v1/me/waiver") {
@@ -225,10 +243,11 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
     context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     await context.addInitScript(() => {
       const listeners = new Set();
-      const state = { publishes: 0, signOuts: 0, activations: 0 };
+      const startsSignedIn = localStorage.getItem("__authStartSignedIn") === "true";
+      const state = { publishes: 0, signOuts: 0, activations: 0, loadCalls: 0, failNextSignOut: false };
       const clerk = {
-        user: null,
-        session: null,
+        user: startsSignedIn ? { id: "user_browser", imageUrl: null } : null,
+        session: startsSignedIn ? { id: "session_browser", async getToken() { return "browser-token"; } } : null,
         client: {
           signUp: null,
           signIn: {
@@ -238,14 +257,14 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
           },
         },
       };
-      let snapshot = { status: "ready", clerk, user: null, session: null, profile: null };
+      let snapshot = { status: "ready", clerk, user: clerk.user, session: clerk.session, profile: null };
       let profileKey = "";
       const publish = () => {
         state.publishes += 1;
         for (const listener of [...listeners]) listener(snapshot);
       };
       const coordinator = {
-        async load() { return snapshot; },
+        async load() { state.loadCalls += 1; return snapshot; },
         snapshot() { return snapshot; },
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         refresh() { return snapshot; },
@@ -270,6 +289,10 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
           publish();
         },
         async signOut() {
+          if (state.failNextSignOut) {
+            state.failNextSignOut = false;
+            throw new Error("provider unavailable");
+          }
           state.signOuts += 1;
           clerk.user = null;
           clerk.session = null;
@@ -281,6 +304,10 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
       };
       globalThis.__timLostHunterAuthSessionV1 = coordinator;
       globalThis.__sharedAuthBrowserState = state;
+      globalThis.turnstile = {
+        render(_container, options) { options.callback("human-token"); return "widget_browser"; },
+        reset() {},
+      };
     });
     const page = await context.newPage();
     await page.goto(`${appOrigin}/dashboard.html`, { waitUntil: "domcontentloaded" });
@@ -297,17 +324,91 @@ test("separate account and Dashboard bundles share live sign-in and sign-out sta
     assert.equal(await page.locator("[data-campaign-account-handle]").textContent(), "Nancy & Ron");
     assert.equal(await page.locator("[data-dashboard-content]").isVisible(), true);
 
+    const displayName = page.locator('[data-profile-form] [name="publicDisplayName"]');
+    await displayName.fill("Trail Friends");
+    await page.locator("[data-profile-submit]").click();
+    await page.waitForFunction(() =>
+      document.querySelector("[data-campaign-account-handle]")?.textContent === "Trail Friends"
+    );
+    assert.equal(await page.locator("[data-campaign-account-handle]").textContent(), "Trail Friends");
+
+    await displayName.fill("");
+    await page.locator("[data-profile-submit]").click();
+    await page.waitForFunction(() =>
+      document.querySelector("[data-campaign-account-handle]")?.textContent === "Hunter 43BA"
+    );
+    assert.equal(await page.locator("[data-campaign-account-handle]").textContent(), "Hunter 43BA");
+
     await accountToggle.click();
     await page.locator("[data-campaign-sign-out]").click();
     await page.locator("[data-campaign-account-sign-in]").waitFor({ state: "visible" });
     await page.locator("[data-dashboard-content]").waitFor({ state: "hidden" });
     assert.equal(await page.locator("[data-dashboard-state]").isVisible(), true);
     assert.equal(await page.locator("[data-dashboard-content]").isVisible(), false);
+    assert.equal(await page.locator("#hunter-sign-in-form").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), false);
+    assert.equal(await page.locator("#hunter-verify-form").isVisible(), false);
+    assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), false);
+    assert.equal(
+      await page.locator('[data-dashboard-state] [data-hunter-sign-out]:visible').count(),
+      0,
+      "signed-out access never leaves a stale sign-out action in its gate",
+    );
     assert.deepEqual(await page.evaluate(() => globalThis.__sharedAuthBrowserState), {
-      publishes: 3,
+      publishes: 5,
       signOuts: 1,
       activations: 1,
+      loadCalls: 2,
+      failNextSignOut: false,
     });
+
+    const boardPage = await context.newPage();
+    await boardPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
+    await boardPage.evaluate(() => localStorage.setItem("__authStartSignedIn", "true"));
+    await boardPage.goto(`${appOrigin}/clue-board.html`, { waitUntil: "domcontentloaded" });
+    await boardPage.waitForFunction(() =>
+      document.querySelector("#board-status")?.textContent?.startsWith("0 approved")
+    );
+    assert.equal(await boardPage.locator("#field-note-form").isVisible(), true);
+    assert.equal(await boardPage.locator("#board-auth-prompt").isVisible(), false);
+    assert.equal(
+      await boardPage.evaluate(() => globalThis.__sharedAuthBrowserState.loadCalls),
+      2,
+      "account and board entries both join the one browser-global coordinator",
+    );
+
+    const resumeKey = `tim-lost:hunter-signup-resume:${encodeURIComponent(`${appOrigin}:test`)}`;
+    await boardPage.evaluate(({ key }) => {
+      sessionStorage.setItem(key, "safe-session-resume");
+      localStorage.setItem(key, "safe-local-resume");
+    }, { key: resumeKey });
+    const boardAccountToggle = boardPage.locator("[data-campaign-account-toggle]");
+    await boardAccountToggle.click();
+    await boardPage.locator("[data-campaign-sign-out]").click();
+    await boardPage.locator("[data-campaign-account-sign-in]").waitFor({ state: "visible" });
+    assert.deepEqual(await boardPage.evaluate(({ key }) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), { key: resumeKey }), { session: null, local: null });
+
+    await boardPage.evaluate(async ({ key }) => {
+      await globalThis.__timLostHunterAuthSessionV1.activate("session_browser_retry");
+      sessionStorage.setItem(key, "safe-session-resume");
+      localStorage.setItem(key, "safe-local-resume");
+      globalThis.__sharedAuthBrowserState.failNextSignOut = true;
+    }, { key: resumeKey });
+    await boardAccountToggle.waitFor({ state: "visible" });
+    await boardAccountToggle.click();
+    await boardPage.locator("[data-campaign-sign-out]").click();
+    await boardPage.waitForTimeout(50);
+    assert.deepEqual(await boardPage.evaluate(({ key }) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), { key: resumeKey }), {
+      session: "safe-session-resume",
+      local: "safe-local-resume",
+    });
+    assert.equal(await boardAccountToggle.isVisible(), true, "failed provider sign-out keeps the active header session");
   } finally {
     await context?.close();
     await browser.close();
