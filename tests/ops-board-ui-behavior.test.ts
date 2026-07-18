@@ -17,6 +17,8 @@ import {
   normalizeModerationReplies,
   normalizeContentFlags,
   normalizeOpsDashboard,
+  normalizeOpsUpdateDetail,
+  normalizeOpsUpdates,
   moderationAttentionCount,
   normalizeOpsReportDetail,
   reportDestinationControls,
@@ -29,6 +31,8 @@ import {
   normalizeOpsSubscribers,
   normalizeOpsWaiverDetail,
   renderOpsWaiverDetail,
+  renderOpsUpdateLedger,
+  renderStandaloneUpdateUploads,
   renderReportEvidence,
   renderReportHistory,
   renderReportUpdateUploads,
@@ -47,6 +51,8 @@ import {
   normalizeProductionSnapshotReports,
   renderProductionSnapshotReportRows,
   resolveOpsView,
+  reorderStandaloneUpdateSelection,
+  buildStandaloneUpdateMutation,
   waiverReceiptRetryIntent,
 } from "../src/client/ops";
 import { nextReportStates } from "../src/shared/publication";
@@ -1267,6 +1273,71 @@ test("official mutations use the versioned backend contract", async () => {
     (buildUpdate as (...args: unknown[]) => unknown)({ title: "Update", body: "Details", publishAt: "2026-07-12T09:00" }),
     { title: "Update", body: "Details", scheduledFor: "2026-07-12T09:00" },
   );
+});
+
+test("standalone Update records normalize into an actionable private ledger", () => {
+  const records = normalizeOpsUpdates({ data: [
+    {
+      id: "draft-1", title: "Trail note", body: "Private copy", publisherName: "A representative from SebaHub",
+      status: "draft", publishedAt: "2026-07-18T18:00:00.000Z", scheduledFor: null,
+      createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:05:00.000Z", uploadCount: 1,
+    },
+    {
+      id: "scheduled-1", title: "Later update", body: "Future copy", publisherName: "A representative from SebaHub",
+      status: "scheduled", publishedAt: "2099-07-18T18:00:00.000Z", scheduledFor: "2099-07-18T18:00:00.000Z",
+      createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:05:00.000Z", uploadCount: 0,
+    },
+  ] });
+  assert.equal(records.length, 2);
+  const html = renderOpsUpdateLedger(records);
+  assert.match(html, /Continue editing/);
+  assert.match(html, /Reschedule/);
+  assert.match(html, /Publish now/);
+  assert.match(html, /Withdraw/);
+  assert.doesNotMatch(html, /Private copy/);
+});
+
+test("standalone Update detail preserves ordered ready images and visible recovery states", () => {
+  const detail = normalizeOpsUpdateDetail({ data: {
+    id: "draft-1", title: "Trail note", body: "Private copy", publisherName: "A representative from SebaHub",
+    status: "draft", publishedAt: "2026-07-18T18:00:00.000Z", scheduledFor: null,
+    createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:05:00.000Z", uploadCount: 3,
+    uploads: [
+      { id: "ready-b", contentType: "image/webp", size: 1000, status: "ready", altText: "Second view", caption: null, position: 1 },
+      { id: "failed", contentType: "image/jpeg", size: 1000, status: "rejected", altText: null, caption: null, position: null },
+      { id: "ready-a", contentType: "image/webp", size: 1000, status: "ready", altText: "Lead view", caption: "Near the trail", position: 0 },
+    ],
+  } });
+  assert.ok(detail);
+  assert.deepEqual(detail?.uploads.filter((item) => item.position !== null).map((item) => item.id), ["ready-a", "ready-b"]);
+  const html = renderStandaloneUpdateUploads(detail?.uploads ?? []);
+  assert.match(html, /Lead image/);
+  assert.match(html, /Remove and retry/);
+  assert.match(html, /Move later/);
+  assert.equal(reorderStandaloneUpdateSelection(["ready-a", "ready-b"], "ready-b", "earlier").join(","), "ready-b,ready-a");
+});
+
+test("standalone Update mutations carry exact ordered media metadata", () => {
+  assert.deepEqual(buildStandaloneUpdateMutation({
+    title: "Trail note",
+    body: "Reviewed copy",
+    mediaSelections: [
+      { id: "image-2", altText: "Second angle", caption: null },
+      { id: "image-1", altText: "First angle", caption: "Near the path" },
+    ],
+    action: "schedule",
+    scheduledFor: "2099-07-18T18:00:00.000Z",
+  }), {
+    title: "Trail note",
+    body: "Reviewed copy",
+    mediaIds: ["image-2", "image-1"],
+    mediaSelections: [
+      { id: "image-2", altText: "Second angle", caption: null },
+      { id: "image-1", altText: "First angle", caption: "Near the path" },
+    ],
+    action: "schedule",
+    scheduledFor: "2099-07-18T18:00:00.000Z",
+  });
 });
 
 test("subscriber payloads preserve separate consents and reject invalid rows", async () => {

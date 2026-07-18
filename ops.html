@@ -179,17 +179,48 @@
         </section>
 
         <section class="ops-view" data-view-panel="updates" aria-labelledby="updates-title" hidden>
-          <header class="ops-view__header"><div><p class="ops-kicker">Official publishing</p><h1 id="updates-title">Official Updates</h1></div><p>Publisher and timestamp appear publicly</p></header>
-          <div class="ops-columns">
-            <form class="ops-panel" id="official-update-form" novalidate>
-              <header class="ops-panel__header"><div><p class="ops-kicker">New entry</p><h2>Draft an update</h2></div><span class="ops-chip">Official</span></header>
-              <label for="update-title">Headline</label><input id="update-title" name="title" maxlength="120" required />
-              <label for="update-body">Answer-first update</label><textarea id="update-body" name="body" rows="7" maxlength="2000" required></textarea>
-              <label for="update-publish-at">Publish at <span>(leave empty to publish now)</span></label><input id="update-publish-at" name="publishAt" type="datetime-local" />
-              <label class="ops-confirm"><input name="confirmed" type="checkbox" required /><span>I reviewed this for private contact details, raw GPS and unverified claims.</span></label>
-              <div class="ops-action-row"><button class="ops-button ops-button--primary" type="submit">Publish official update</button><span class="ops-inline-result" role="status" aria-live="polite"></span></div>
+          <header class="ops-view__header"><div><p class="ops-kicker">Official publishing</p><h1 id="updates-title">Official Updates</h1></div><p>Private draft first &middot; exact preview before release</p></header>
+          <div class="ops-update-workspace">
+            <form class="ops-panel ops-update-composer" id="official-update-form" novalidate>
+              <header class="ops-panel__header"><div><p class="ops-kicker">Guided publisher</p><h2>Prepare an Official Update</h2></div><span class="ops-chip">Nothing auto-publishes</span></header>
+              <div class="ops-workflow-guide" data-update-guide role="status" aria-live="polite"><strong data-update-guide-state>Start with a private draft</strong><span data-update-guide-next>Write the Update, then save it before adding images.</span></div>
+
+              <section class="ops-publish-stage" data-update-stage="write" aria-labelledby="update-write-title" aria-current="step">
+                <header><span>Step 1</span><h3 id="update-write-title">1. Write the Update</h3><p>Save the headline and story privately. This does not publish anything.</p></header>
+                <label for="update-title">Headline</label>
+                <input id="update-title" name="title" maxlength="200" required />
+                <label for="update-body">Answer-first Update</label>
+                <textarea id="update-body" name="body" rows="7" maxlength="10000" required></textarea>
+                <div class="ops-action-row"><button class="ops-button ops-button--primary" type="button" data-update-save-draft>Save draft &amp; continue</button><span class="ops-publish-stage__status" data-update-draft-status>Not saved yet</span></div>
+              </section>
+
+              <section class="ops-publish-stage" data-update-stage="media" aria-labelledby="update-media-title">
+                <header><span>Step 2</span><h3 id="update-media-title">2. Add images <small>(optional)</small></h3><p>Upload up to three images. Images stay private and unchecked until you choose them.</p></header>
+                <label for="update-files">Choose images</label>
+                <input id="update-files" data-update-files type="file" accept="image/jpeg,image/png,image/webp" multiple disabled aria-describedby="update-upload-blocker" />
+                <p class="ops-action-blocker" id="update-upload-blocker" data-update-upload-blocker>Save a private draft before adding images.</p>
+                <div class="ops-action-row"><button class="ops-button ops-button--quiet" type="button" data-update-upload disabled>Prepare &amp; upload images</button><button class="ops-button ops-button--quiet" type="button" data-update-refresh-media disabled>Refresh image status</button></div>
+                <p class="ops-publish-stage__status" data-update-selected-count role="status" aria-live="polite">0 of 3 images selected</p>
+                <div class="ops-update-media" data-update-uploads><p class="ops-report-evidence__empty">Save a draft to add optional images.</p></div>
+              </section>
+
+              <section class="ops-publish-stage" data-update-stage="preview" aria-labelledby="update-preview-title">
+                <header><span>Step 3</span><h3 id="update-preview-title">3. Review the exact public preview</h3><p>Only the copy and checked images shown here will be released.</p></header>
+                <div class="ops-update-public-preview" data-update-public-preview><article><p class="ops-kicker">Official Update preview</p><h4>Headline will appear here</h4><p>Update copy will appear here.</p></article></div>
+                <label class="ops-confirm"><input name="confirmPublication" type="checkbox" /><span>I reviewed this exact public preview, including every selected image and its description.</span></label>
+                <label for="update-scheduled-for">Schedule for <span>(Edmonton time)</span></label>
+                <input id="update-scheduled-for" name="scheduledFor" type="datetime-local" />
+                <p class="ops-action-blocker" id="update-publication-blocker" data-update-publication-blocker>Save and review the draft before publishing.</p>
+                <div class="ops-action-row"><button class="ops-button ops-button--quiet" type="button" data-update-schedule disabled aria-describedby="update-publication-blocker">Schedule Official Update</button><button class="ops-button ops-button--primary" type="button" data-update-publish-now disabled aria-describedby="update-publication-blocker">Publish Official Update now</button></div>
+              </section>
+              <p class="ops-inline-result" id="official-update-result" role="status" aria-live="polite" tabindex="-1"></p>
             </form>
-            <section class="ops-panel"><header class="ops-panel__header"><div><p class="ops-kicker">Published and scheduled</p><h2>Update ledger</h2></div></header><div class="ops-table-wrap"><table><thead><tr><th>State</th><th>Headline</th><th>When</th></tr></thead><tbody id="updates-table"><tr><td colspan="3"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+
+            <section class="ops-panel ops-update-ledger" aria-labelledby="update-ledger-title">
+              <header class="ops-panel__header"><div><p class="ops-kicker">Private and public records</p><h2 id="update-ledger-title">Update ledger</h2></div><button class="ops-button ops-button--quiet" type="button" data-update-ledger-retry>Refresh Updates</button></header>
+              <p class="ops-ledger-state" data-update-ledger-state role="status" aria-live="polite">Open this workspace to load Official Updates.</p>
+              <div class="ops-table-wrap"><table><thead><tr><th>State</th><th>Headline</th><th>When</th><th>Action</th></tr></thead><tbody id="updates-table"><tr><td colspan="4"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div>
+            </section>
           </div>
         </section>
 

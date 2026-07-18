@@ -13,6 +13,10 @@ import {
 } from "../shared/report-workflow";
 import { prepareReportImages, ReportImagePreparationError } from "./report-image-preparation";
 import { initializeApprovedMediaViewer } from "./approved-media-viewer";
+import {
+  officialUpdateGuidance,
+  type OfficialUpdateStatus,
+} from "../shared/official-update-workflow";
 
 type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
@@ -79,6 +83,20 @@ export interface OpsUpdateUpload extends OpsReportMedia {
   altText: string | null;
   caption: string | null;
   position: number | null;
+}
+
+export interface OpsStandaloneUpdate {
+  id: string;
+  title: string;
+  body: string;
+  publisherName: string;
+  status: OfficialUpdateStatus;
+  publishedAt: string | null;
+  scheduledFor: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  uploadCount: number;
+  uploads: OpsUpdateUpload[];
 }
 
 export interface OpsReportHistoryEvent {
@@ -297,6 +315,23 @@ let productionSnapshotAvailable = false;
 let productionSnapshotAbortController: AbortController | null = null;
 let productionSnapshotTrigger: HTMLButtonElement | null = null;
 let productionSnapshotObjectUrls: string[] = [];
+let updatesLoaded = false;
+let updatesLoading = false;
+let standaloneUpdateObjectUrls: string[] = [];
+interface StandaloneUpdateEditor {
+  updateId: string | null;
+  status: OfficialUpdateStatus | null;
+  uploads: OpsUpdateUpload[];
+  dirty: boolean;
+  busy: boolean;
+}
+const standaloneUpdateEditor: StandaloneUpdateEditor = {
+  updateId: null,
+  status: null,
+  uploads: [],
+  dirty: false,
+  busy: false,
+};
 let moderationRepliesController: ModerationPaginationController<OpsModerationReply> | null = null;
 let moderationFlagsController: ModerationPaginationController<OpsContentFlag> | null = null;
 
@@ -534,6 +569,77 @@ export function normalizeReports(payload: unknown): OpsReportRecord[] {
       status: asString(value.status) || "received",
     }];
   });
+}
+
+function normalizeUpdateUploads(value: unknown): OpsUpdateUpload[] {
+  return asArray(value).flatMap((candidate): OpsUpdateUpload[] => {
+    if (!isRecord(candidate)) return [];
+    const id = asString(candidate.id).trim();
+    const contentType = asString(candidate.contentType).trim();
+    const status = asString(candidate.status).trim();
+    const size = asNumber(candidate.size);
+    const position = candidate.position === null || candidate.position === undefined
+      ? null
+      : asNumber(candidate.position);
+    if (!id || !contentType || !status || size === null ||
+        (candidate.position !== null && candidate.position !== undefined && position === null)) return [];
+    return [{
+      id,
+      contentType,
+      size,
+      status,
+      altText: asString(candidate.altText).trim() || null,
+      caption: asString(candidate.caption).trim() || null,
+      position,
+    }];
+  }).sort((left, right) => {
+    if (left.position === null && right.position === null) return 0;
+    if (left.position === null) return 1;
+    if (right.position === null) return -1;
+    return left.position - right.position;
+  });
+}
+
+function normalizeOpsUpdate(value: unknown, requireUploads: boolean): OpsStandaloneUpdate | null {
+  if (!isRecord(value)) return null;
+  const id = asString(value.id).trim();
+  const title = asString(value.title).trim();
+  const body = asString(value.body).trim();
+  const publisherName = asString(value.publisherName).trim();
+  const status = asString(value.status) as OfficialUpdateStatus;
+  const uploadCount = asNumber(value.uploadCount);
+  const uploads = normalizeUpdateUploads(value.uploads);
+  if (
+    !id || !title || !body || !publisherName ||
+    !["draft", "scheduled", "published", "withdrawn"].includes(status) || uploadCount === null ||
+    (status === "scheduled" && !asString(value.scheduledFor)) ||
+    (status !== "scheduled" && value.scheduledFor !== null && value.scheduledFor !== undefined) ||
+    (requireUploads && uploads.length !== asArray(value.uploads).length)
+  ) return null;
+  return {
+    id,
+    title,
+    body,
+    publisherName,
+    status,
+    publishedAt: asString(value.publishedAt) || null,
+    scheduledFor: asString(value.scheduledFor) || null,
+    createdAt: asString(value.createdAt) || null,
+    updatedAt: asString(value.updatedAt) || null,
+    uploadCount,
+    uploads,
+  };
+}
+
+export function normalizeOpsUpdates(payload: unknown): OpsStandaloneUpdate[] {
+  return asArray(envelopeData(payload)).flatMap((value) => {
+    const update = normalizeOpsUpdate(value, false);
+    return update ? [update] : [];
+  });
+}
+
+export function normalizeOpsUpdateDetail(payload: unknown): OpsStandaloneUpdate | null {
+  return normalizeOpsUpdate(envelopeData(payload), true);
 }
 
 export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | null {
@@ -1522,6 +1628,99 @@ export function renderContentFlagRows(records: readonly OpsContentFlag[]): strin
   }).join("");
 }
 
+export function renderOpsUpdateLedger(records: readonly OpsStandaloneUpdate[]): string {
+  if (records.length === 0) {
+    return `<tr><td colspan="4"><span class="ops-table-empty">No Official Updates have been drafted yet.</span></td></tr>`;
+  }
+  return records.map((record) => {
+    const id = escapeOpsHtml(record.id);
+    const status = escapeOpsHtml(record.status);
+    const when = record.status === "scheduled" && record.scheduledFor
+      ? `Scheduled ${formatOpsTime(record.scheduledFor)}`
+      : record.status === "published" && record.publishedAt
+        ? `Published ${formatOpsTime(record.publishedAt)}`
+        : record.status === "withdrawn" && record.updatedAt
+          ? `Withdrawn ${formatOpsTime(record.updatedAt)}`
+          : record.updatedAt || record.createdAt
+            ? `Saved ${formatOpsTime(record.updatedAt ?? record.createdAt ?? "")}`
+            : "Time unavailable";
+    const actions = record.status === "draft"
+      ? `<button class="ops-button ops-button--quiet ops-update-ledger-action" type="button" data-update-ledger-action="edit" data-update-id="${id}">Continue editing</button>`
+      : record.status === "scheduled"
+        ? `<button class="ops-button ops-button--quiet ops-update-ledger-action" type="button" data-update-ledger-action="edit" data-update-id="${id}">Reschedule</button><button class="ops-button ops-button--quiet ops-update-ledger-action" type="button" data-update-ledger-action="publish" data-update-id="${id}">Publish now</button><button class="ops-button ops-button--danger ops-update-ledger-action" type="button" data-update-ledger-action="withdraw" data-update-id="${id}">Withdraw</button>`
+        : record.status === "published"
+          ? `<a class="ops-button ops-button--quiet ops-update-ledger-action" href="/updates" target="_blank" rel="noopener">Open public Update</a><button class="ops-button ops-button--danger ops-update-ledger-action" type="button" data-update-ledger-action="withdraw" data-update-id="${id}">Withdraw</button>`
+          : `<span class="ops-update-ledger-readonly">Read-only history</span>`;
+    return `<tr data-update-ledger-row="${id}"><td><span class="ops-chip" data-state="${status}">${status}</span></td><td><strong>${escapeOpsHtml(record.title)}</strong><br /><small>${escapeOpsHtml(record.uploadCount)} of 3 images uploaded</small></td><td>${escapeOpsHtml(when)}</td><td><div class="ops-row-actions">${actions}</div></td></tr>`;
+  }).join("");
+}
+
+export function reorderStandaloneUpdateSelection(
+  selectedIds: readonly string[],
+  mediaId: string,
+  direction: "earlier" | "later",
+): string[] {
+  const next = [...selectedIds];
+  const index = next.indexOf(mediaId);
+  if (index < 0) return next;
+  const destination = direction === "earlier" ? index - 1 : index + 1;
+  if (destination < 0 || destination >= next.length) return next;
+  [next[index], next[destination]] = [next[destination]!, next[index]!];
+  return next;
+}
+
+export function renderStandaloneUpdateUploads(uploads: readonly OpsUpdateUpload[]): string {
+  if (uploads.length === 0) {
+    return `<p class="ops-report-evidence__empty">No images uploaded. Images are optional.</p>`;
+  }
+  const selected = uploads.filter((upload) => upload.position !== null).sort(
+    (left, right) => Number(left.position) - Number(right.position)
+  );
+  const orderedUploads = [...uploads].sort((left, right) => {
+    if (left.position === null && right.position === null) return 0;
+    if (left.position === null) return 1;
+    if (right.position === null) return -1;
+    return left.position - right.position;
+  });
+  return orderedUploads.map((upload) => {
+    const ready = upload.status === "ready" && ["image/jpeg", "image/png", "image/webp"].includes(upload.contentType);
+    const selectedIndex = selected.findIndex((candidate) => candidate.id === upload.id);
+    const isSelected = selectedIndex >= 0;
+    const fieldId = escapeOpsHtml(upload.id);
+    const removeLabel = upload.status === "rejected" || upload.status === "quarantined"
+      ? "Remove and retry"
+      : "Remove image";
+    return `<article class="ops-update-media__item" data-update-upload-id="${fieldId}" data-update-upload-status="${escapeOpsHtml(upload.status)}">
+      ${ready ? `<img data-standalone-update-media-preview data-media-id="${fieldId}" alt="Private Update image preview" hidden /><div class="ops-report-evidence__placeholder" data-update-media-placeholder>Loading private preview&hellip;</div>` : `<div class="ops-report-evidence__placeholder" data-update-media-placeholder>${escapeOpsHtml(upload.status === "processing" ? "Image processing" : "Image unavailable")}</div>`}
+      <div class="ops-update-media__summary"><strong>${isSelected && selectedIndex === 0 ? "Lead image" : `Image ${escapeOpsHtml(selectedIndex >= 0 ? selectedIndex + 1 : "not selected")}`}</strong><span>${escapeOpsHtml(upload.contentType)} &middot; ${(upload.size / 1_000_000).toFixed(2)} MB &middot; ${escapeOpsHtml(upload.status)}</span></div>
+      ${ready ? `<label><input type="checkbox" name="standaloneUpdateMedia" value="${fieldId}" ${isSelected ? "checked" : ""} /> Include in this Update</label>
+        <label for="standalone-media-alt-${fieldId}">Alt text <span>required when selected</span></label>
+        <input id="standalone-media-alt-${fieldId}" data-standalone-media-alt="${fieldId}" maxlength="200" value="${escapeOpsHtml(upload.altText ?? "")}" ${isSelected ? "" : "disabled"} />
+        <label for="standalone-media-caption-${fieldId}">Caption <span>optional</span></label>
+        <textarea id="standalone-media-caption-${fieldId}" data-standalone-media-caption="${fieldId}" rows="2" maxlength="500" ${isSelected ? "" : "disabled"}>${escapeOpsHtml(upload.caption ?? "")}</textarea>
+        <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-update-move="earlier" data-media-id="${fieldId}" ${selectedIndex <= 0 ? "disabled" : ""}>Move earlier</button><button class="ops-button ops-button--quiet" type="button" data-update-move="later" data-media-id="${fieldId}" ${selectedIndex < 0 || selectedIndex === selected.length - 1 ? "disabled" : ""}>Move later</button><button class="ops-button ops-button--danger" type="button" data-update-remove-media="${fieldId}">${removeLabel}</button></div>`
+        : `<p class="ops-action-blocker">${escapeOpsHtml(upload.status === "processing" ? "Processing. Refresh shortly, or remove this image to choose another." : "This image cannot be published. Remove it and try another file.")}</p><button class="ops-button ops-button--danger" type="button" data-update-remove-media="${fieldId}">${removeLabel}</button>`}
+    </article>`;
+  }).join("");
+}
+
+export function buildStandaloneUpdateMutation(input: {
+  title: string;
+  body: string;
+  mediaSelections: Array<{ id: string; altText: string | null; caption: string | null }>;
+  action: "save_draft" | "schedule" | "publish_now";
+  scheduledFor: string | null;
+}): Record<string, unknown> {
+  return {
+    title: input.title,
+    body: input.body,
+    mediaIds: input.mediaSelections.map((selection) => selection.id),
+    mediaSelections: input.mediaSelections,
+    action: input.action,
+    scheduledFor: input.action === "schedule" ? input.scheduledFor : null,
+  };
+}
+
 function moderationWaypointLabel(record: Pick<OpsModerationReply | OpsContentFlag, "waypointRouteOrder" | "waypointName">): string {
   if (record.waypointRouteOrder !== null && record.waypointName) return `Stop ${String(record.waypointRouteOrder).padStart(2, "0")} · ${record.waypointName}`;
   return "Public Case Note";
@@ -1804,9 +2003,240 @@ function switchView(view: OpsView, focus = true): void {
   if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
   if (focus) document.querySelector<HTMLElement>("#ops-main")?.focus();
   if (view === "sponsors" && !sponsorsLoaded) void loadSponsors();
+  if (view === "updates" && !updatesLoaded && !updatesLoading) void loadOpsUpdates();
   if (view === "subscribers" && !subscribersLoaded && !subscribersLoading) void loadSubscribers();
   if (view === "production-snapshot" && !productionSnapshotLoaded && !productionSnapshotLoading) {
     void loadProductionSnapshot();
+  }
+}
+
+function setOfficialUpdateResult(message: string, kind: "normal" | "error" = "normal"): void {
+  const result = document.querySelector<HTMLElement>("#official-update-result");
+  if (!result) return;
+  result.textContent = message;
+  result.dataset.kind = kind;
+  if (kind === "error") result.focus({ preventScroll: true });
+}
+
+function setUpdateLedgerState(message: string, kind: "normal" | "error" = "normal"): void {
+  const state = document.querySelector<HTMLElement>("[data-update-ledger-state]");
+  if (!state) return;
+  state.textContent = message;
+  state.dataset.kind = kind;
+}
+
+function revokeStandaloneUpdateUrls(): void {
+  for (const url of standaloneUpdateObjectUrls) URL.revokeObjectURL(url);
+  standaloneUpdateObjectUrls = [];
+}
+
+function standaloneSelectedUploads(): OpsUpdateUpload[] {
+  return standaloneUpdateEditor.uploads
+    .filter((upload) => upload.position !== null)
+    .sort((left, right) => Number(left.position) - Number(right.position));
+}
+
+function captureStandaloneMediaFields(): void {
+  for (const upload of standaloneUpdateEditor.uploads) {
+    const altText = document.querySelector<HTMLInputElement>(
+      `[data-standalone-media-alt="${CSS.escape(upload.id)}"]`
+    );
+    const caption = document.querySelector<HTMLTextAreaElement>(
+      `[data-standalone-media-caption="${CSS.escape(upload.id)}"]`
+    );
+    if (altText) upload.altText = altText.value.trim() || null;
+    if (caption) upload.caption = caption.value.trim() || null;
+  }
+}
+
+function standaloneMediaSelections(): Array<{ id: string; altText: string | null; caption: string | null }> {
+  captureStandaloneMediaFields();
+  return standaloneSelectedUploads().map((upload) => ({
+    id: upload.id,
+    altText: upload.altText,
+    caption: upload.caption,
+  }));
+}
+
+function resetStandaloneConfirmation(): void {
+  const confirmation = document.querySelector<HTMLInputElement>(
+    '#official-update-form [name="confirmPublication"]'
+  );
+  if (confirmation) confirmation.checked = false;
+}
+
+function updateStandalonePublicPreview(): void {
+  const preview = document.querySelector<HTMLElement>("[data-update-public-preview]");
+  if (!preview) return;
+  const title = document.querySelector<HTMLInputElement>("#update-title")?.value.trim() || "Headline will appear here";
+  const body = document.querySelector<HTMLTextAreaElement>("#update-body")?.value.trim() || "Update copy will appear here.";
+  preview.innerHTML = `<article><p class="ops-kicker">Official Update preview</p><h4>${escapeOpsHtml(title)}</h4><p>${escapeOpsHtml(body)}</p><small>Published by A representative from SebaHub</small></article>`;
+  const selected = standaloneSelectedUploads();
+  if (selected.length === 0) return;
+  const gallery = document.createElement("div");
+  gallery.className = "ops-update-public-preview__media";
+  gallery.setAttribute("aria-label", `${selected.length} selected ${selected.length === 1 ? "image" : "images"}`);
+  for (const upload of selected) {
+    const source = document.querySelector<HTMLImageElement>(
+      `[data-standalone-update-media-preview][data-media-id="${CSS.escape(upload.id)}"]`
+    );
+    if (!source?.src || source.hidden) continue;
+    const image = document.createElement("img");
+    image.src = source.src;
+    image.alt = upload.altText || "Selected Official Update image";
+    gallery.append(image);
+  }
+  preview.append(gallery);
+}
+
+async function hydrateStandaloneUpdateMedia(updateId: string): Promise<void> {
+  const images = [...document.querySelectorAll<HTMLImageElement>("[data-standalone-update-media-preview]")];
+  await Promise.all(images.map(async (image) => {
+    const mediaId = image.dataset.mediaId;
+    const placeholder = image.parentElement?.querySelector<HTMLElement>("[data-update-media-placeholder]");
+    if (!mediaId) return;
+    try {
+      const response = await fetch(
+        `/api/v1/ops/updates/${encodeURIComponent(updateId)}/media/${encodeURIComponent(mediaId)}`,
+        { headers: await opsHeaders(), credentials: "same-origin", cache: "no-store" }
+      );
+      const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim() ?? "";
+      if (!response.ok || !["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
+        throw new Error("Private image preview unavailable.");
+      }
+      const objectUrl = URL.createObjectURL(await response.blob());
+      if (standaloneUpdateEditor.updateId !== updateId || !image.isConnected) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      standaloneUpdateObjectUrls.push(objectUrl);
+      image.src = objectUrl;
+      image.hidden = false;
+      if (placeholder) placeholder.hidden = true;
+    } catch {
+      image.hidden = true;
+      if (placeholder) placeholder.textContent = "Private image preview unavailable";
+    }
+  }));
+  updateStandalonePublicPreview();
+}
+
+function renderStandaloneEditorUploads(): void {
+  const output = document.querySelector<HTMLElement>("[data-update-uploads]");
+  if (!output) return;
+  revokeStandaloneUpdateUrls();
+  output.innerHTML = renderStandaloneUpdateUploads(standaloneUpdateEditor.uploads);
+  if (standaloneUpdateEditor.updateId) void hydrateStandaloneUpdateMedia(standaloneUpdateEditor.updateId);
+  updateStandalonePublicPreview();
+}
+
+function syncStandaloneUpdateGuidance(): void {
+  const form = document.querySelector<HTMLFormElement>("#official-update-form");
+  if (!form) return;
+  const selected = standaloneSelectedUploads();
+  const confirmed = form.querySelector<HTMLInputElement>('[name="confirmPublication"]')?.checked ?? false;
+  const model = officialUpdateGuidance({
+    hasDraft: standaloneUpdateEditor.updateId !== null,
+    status: standaloneUpdateEditor.status,
+    sourceReportStatus: null,
+    selectedCount: selected.length,
+    processingSelectedCount: selected.filter((upload) => upload.status === "processing").length,
+    confirmed,
+  });
+  const guideState = form.querySelector<HTMLElement>("[data-update-guide-state]");
+  const guideNext = form.querySelector<HTMLElement>("[data-update-guide-next]");
+  if (guideState) guideState.textContent = model.heading;
+  if (guideNext) guideNext.textContent = model.explanation;
+  const selectedCount = form.querySelector<HTMLElement>("[data-update-selected-count]");
+  if (selectedCount) selectedCount.textContent = model.selectedLabel;
+  const uploadBlocker = form.querySelector<HTMLElement>("[data-update-upload-blocker]");
+  if (uploadBlocker) uploadBlocker.textContent = model.uploadBlocker ?? "Images are optional. Up to three may be included.";
+  const publicationBlocker = form.querySelector<HTMLElement>("[data-update-publication-blocker]");
+  if (publicationBlocker) publicationBlocker.textContent = model.publishBlocker ?? model.scheduleBlocker ?? "The exact preview is confirmed and ready.";
+
+  const editable = standaloneUpdateEditor.status !== "published" && standaloneUpdateEditor.status !== "withdrawn";
+  const draftMediaEditable = standaloneUpdateEditor.status === "draft";
+  const activeCount = standaloneUpdateEditor.uploads.filter((upload) =>
+    upload.status !== "deleted" && upload.status !== "rejected"
+  ).length;
+  const fileInput = form.querySelector<HTMLInputElement>("[data-update-files]");
+  const upload = form.querySelector<HTMLButtonElement>("[data-update-upload]");
+  const refresh = form.querySelector<HTMLButtonElement>("[data-update-refresh-media]");
+  if (fileInput) fileInput.disabled = !draftMediaEditable || activeCount >= 3 || standaloneUpdateEditor.busy;
+  if (upload) upload.disabled = !draftMediaEditable || activeCount >= 3 || !fileInput?.files?.length || standaloneUpdateEditor.busy;
+  if (refresh) refresh.disabled = !standaloneUpdateEditor.updateId || standaloneUpdateEditor.busy;
+  const save = form.querySelector<HTMLButtonElement>("[data-update-save-draft]");
+  if (save) save.disabled = !editable || standaloneUpdateEditor.busy;
+  const title = form.querySelector<HTMLInputElement>("#update-title");
+  const body = form.querySelector<HTMLTextAreaElement>("#update-body");
+  if (title) title.readOnly = !editable;
+  if (body) body.readOnly = !editable;
+  const scheduleField = form.querySelector<HTMLInputElement>('[name="scheduledFor"]');
+  if (scheduleField) scheduleField.disabled = !editable || standaloneUpdateEditor.busy;
+  const schedule = form.querySelector<HTMLButtonElement>("[data-update-schedule]");
+  const publish = form.querySelector<HTMLButtonElement>("[data-update-publish-now]");
+  if (schedule) schedule.disabled = Boolean(model.scheduleBlocker) || !editable || standaloneUpdateEditor.busy;
+  if (publish) publish.disabled = Boolean(model.publishBlocker) || !editable || standaloneUpdateEditor.busy;
+  for (const stage of form.querySelectorAll<HTMLElement>("[data-update-stage]")) {
+    const active = (model.stage === "write" && stage.dataset.updateStage === "write") ||
+      ((model.stage === "processing") && stage.dataset.updateStage === "media") ||
+      (!["write", "processing"].includes(model.stage) && stage.dataset.updateStage === "preview");
+    if (active) stage.setAttribute("aria-current", "step");
+    else stage.removeAttribute("aria-current");
+  }
+  const draftStatus = form.querySelector<HTMLElement>("[data-update-draft-status]");
+  if (draftStatus) draftStatus.textContent = standaloneUpdateEditor.updateId
+    ? `${standaloneUpdateEditor.status ?? "draft"} · ${standaloneUpdateEditor.updateId.slice(0, 8)}`
+    : "Not saved yet";
+}
+
+function applyStandaloneUpdateDetail(detail: OpsStandaloneUpdate): void {
+  standaloneUpdateEditor.updateId = detail.id;
+  standaloneUpdateEditor.status = detail.status;
+  standaloneUpdateEditor.uploads = detail.uploads;
+  standaloneUpdateEditor.dirty = false;
+  const title = document.querySelector<HTMLInputElement>("#update-title");
+  const body = document.querySelector<HTMLTextAreaElement>("#update-body");
+  const scheduled = document.querySelector<HTMLInputElement>('[name="scheduledFor"]');
+  if (title) title.value = detail.title;
+  if (body) body.value = detail.body;
+  if (scheduled) scheduled.value = detail.scheduledFor
+    ? new Date(detail.scheduledFor).toISOString().slice(0, 16)
+    : "";
+  resetStandaloneConfirmation();
+  renderStandaloneEditorUploads();
+  syncStandaloneUpdateGuidance();
+}
+
+async function loadOpsUpdateDetail(updateId: string): Promise<OpsStandaloneUpdate> {
+  setOfficialUpdateResult("Loading the private Update draft...");
+  const { response, payload } = await opsRequest(`/api/v1/ops/updates/${encodeURIComponent(updateId)}`);
+  if (!response.ok) throw new Error(apiError(payload, "The Official Update could not be loaded."));
+  const detail = normalizeOpsUpdateDetail(payload);
+  if (!detail) throw new Error("The Official Update response was incomplete.");
+  applyStandaloneUpdateDetail(detail);
+  setOfficialUpdateResult(`${detail.status === "draft" ? "Private draft" : detail.status} loaded. Review each step before taking action.`);
+  return detail;
+}
+
+async function loadOpsUpdates(): Promise<void> {
+  if (updatesLoading) return;
+  updatesLoading = true;
+  setUpdateLedgerState(updatesLoaded ? "Refreshing Official Updates..." : "Loading Official Updates...");
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/updates?limit=50");
+    if (!response.ok) throw new Error(apiError(payload, "The Official Update ledger is unavailable."));
+    const records = normalizeOpsUpdates(payload);
+    setTable("#updates-table", renderOpsUpdateLedger(records));
+    updatesLoaded = true;
+    setUpdateLedgerState(records.length
+      ? `${records.length} Official Update ${records.length === 1 ? "record" : "records"} loaded. Choose the action beside the record you need.`
+      : "No Official Updates exist yet. Start with a private draft.");
+  } catch (error) {
+    setUpdateLedgerState(error instanceof Error ? `${error.message} Use Refresh Updates to try again.` : "The Official Update ledger is unavailable. Use Refresh Updates to try again.", "error");
+    if (!updatesLoaded) setTable("#updates-table", `<tr><td colspan="4"><span class="ops-table-empty">Update ledger unavailable. No publication action was taken.</span></td></tr>`);
+  } finally {
+    updatesLoading = false;
   }
 }
 
@@ -3334,28 +3764,307 @@ function setupWorkspace(): void {
   });
 
   const updateForm = document.querySelector<HTMLFormElement>("#official-update-form");
-  updateForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const formData = new FormData(updateForm);
-    const title = asString(formData.get("title")).trim();
-    const body = asString(formData.get("body")).trim();
-    const publishAt = asString(formData.get("publishAt"));
-    const confirmed = formData.get("confirmed") === "on";
-    const result = updateForm.querySelector<HTMLElement>(".ops-inline-result");
-    if (!title || !body || !confirmed) {
-      if (result) result.textContent = "Headline, update copy and privacy confirmation are required.";
+  updateForm?.addEventListener("submit", (event) => event.preventDefault());
+  const setStandaloneBusy = (busy: boolean) => {
+    standaloneUpdateEditor.busy = busy;
+    syncStandaloneUpdateGuidance();
+  };
+  const currentStandaloneCopy = () => ({
+    title: updateForm?.querySelector<HTMLInputElement>('[name="title"]')?.value.trim() ?? "",
+    body: updateForm?.querySelector<HTMLTextAreaElement>('[name="body"]')?.value.trim() ?? "",
+  });
+  const runStandaloneMutation = async (
+    action: "save_draft" | "schedule" | "publish_now"
+  ): Promise<void> => {
+    if (!updateForm || standaloneUpdateEditor.busy) return;
+    const copy = currentStandaloneCopy();
+    if (!copy.title || !copy.body) {
+      setOfficialUpdateResult("Enter the headline and Update copy first.", "error");
+      (!copy.title
+        ? updateForm.querySelector<HTMLInputElement>('[name="title"]')
+        : updateForm.querySelector<HTMLTextAreaElement>('[name="body"]'))?.focus();
       return;
     }
+    const selections = standaloneMediaSelections();
+    if (selections.length > 3 || selections.some((selection) => !selection.altText)) {
+      setOfficialUpdateResult("Select no more than three images and add concise alt text for every selected image.", "error");
+      return;
+    }
+    const confirmed = updateForm.querySelector<HTMLInputElement>('[name="confirmPublication"]')?.checked ?? false;
+    const scheduledLocal = updateForm.querySelector<HTMLInputElement>('[name="scheduledFor"]')?.value.trim() ?? "";
+    const scheduledFor = action === "schedule" && scheduledLocal
+      ? new Date(scheduledLocal).toISOString()
+      : null;
+    if (action !== "save_draft" && !confirmed) {
+      setOfficialUpdateResult("Review and confirm the exact public preview before release.", "error");
+      updateForm.querySelector<HTMLInputElement>('[name="confirmPublication"]')?.focus();
+      return;
+    }
+    if (action === "schedule" && (!scheduledFor || new Date(scheduledFor).getTime() <= Date.now())) {
+      setOfficialUpdateResult("Choose a future Edmonton date and time before scheduling.", "error");
+      updateForm.querySelector<HTMLInputElement>('[name="scheduledFor"]')?.focus();
+      return;
+    }
+    if (action !== "save_draft") {
+      const message = action === "schedule"
+        ? `Schedule this exact Official Update for ${formatOpsTime(scheduledFor!)}?`
+        : "Publish this exact Official Update now?";
+      if (!window.confirm(message)) return;
+    }
+    setStandaloneBusy(true);
+    setOfficialUpdateResult(action === "save_draft"
+      ? "Saving the private draft..."
+      : action === "schedule"
+        ? "Scheduling the exact Official Update..."
+        : "Publishing the exact Official Update...");
     try {
-      const mutation = buildUpdateMutation({ title, body, publishAt });
-      const { response, payload } = await opsRequest("/api/v1/ops/updates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mutation) });
-      if (!response.ok) throw new Error(apiError(payload, "The official update was not saved."));
-      if (result) result.textContent = publishAt ? "Official update scheduled and audited." : "Official update published and audited.";
-      updateForm.reset();
+      const mutation = buildStandaloneUpdateMutation({
+        ...copy,
+        mediaSelections: selections,
+        action,
+        scheduledFor,
+      });
+      const isNew = standaloneUpdateEditor.updateId === null;
+      const url = isNew
+        ? "/api/v1/ops/updates"
+        : `/api/v1/ops/updates/${encodeURIComponent(standaloneUpdateEditor.updateId!)}/publish`;
+      const body = isNew ? copy : mutation;
+      const { response, payload } = await opsRequest(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(apiError(payload, "The Official Update was not saved."));
+      const detail = normalizeOpsUpdateDetail(payload);
+      if (!detail) throw new Error("The saved Official Update response was incomplete.");
+      applyStandaloneUpdateDetail(detail);
+      updatesLoaded = false;
+      await loadOpsUpdates();
+      setOfficialUpdateResult(
+        isNew || action === "save_draft"
+          ? "Draft saved privately. Nothing was published."
+          : action === "schedule"
+            ? `Official Update scheduled for ${formatOpsTime(detail.scheduledFor ?? scheduledFor ?? "")}.`
+            : "Official Update published."
+      );
     } catch (error) {
-      if (result) result.textContent = error instanceof Error ? error.message : "The official update was not saved.";
+      setOfficialUpdateResult(error instanceof Error ? error.message : "The Official Update was not saved.", "error");
+    } finally {
+      setStandaloneBusy(false);
+    }
+  };
+
+  updateForm?.querySelector("[data-update-save-draft]")?.addEventListener("click", () => {
+    void runStandaloneMutation("save_draft");
+  });
+  updateForm?.querySelector("[data-update-schedule]")?.addEventListener("click", () => {
+    void runStandaloneMutation("schedule");
+  });
+  updateForm?.querySelector("[data-update-publish-now]")?.addEventListener("click", () => {
+    void runStandaloneMutation("publish_now");
+  });
+  updateForm?.querySelector("[data-update-files]")?.addEventListener("change", () => {
+    syncStandaloneUpdateGuidance();
+  });
+  updateForm?.querySelector("[data-update-upload]")?.addEventListener("click", async () => {
+    const input = updateForm.querySelector<HTMLInputElement>("[data-update-files]");
+    if (!standaloneUpdateEditor.updateId || standaloneUpdateEditor.status !== "draft" || !input?.files?.length) {
+      setOfficialUpdateResult("Save a private draft, then choose one to three images.", "error");
+      return;
+    }
+    const activeCount = standaloneUpdateEditor.uploads.filter((upload) =>
+      upload.status !== "deleted" && upload.status !== "rejected"
+    ).length;
+    if (activeCount + input.files.length > 3) {
+      setOfficialUpdateResult(`This draft has room for ${Math.max(0, 3 - activeCount)} more ${3 - activeCount === 1 ? "image" : "images"}. Remove an image or choose fewer files.`, "error");
+      return;
+    }
+    setStandaloneBusy(true);
+    setOfficialUpdateResult("Preparing images in this browser...");
+    try {
+      const prepared = await prepareReportImages([...input.files]);
+      const formData = new FormData();
+      for (const item of prepared) formData.append("images", item.upload, item.upload.name);
+      setOfficialUpdateResult("Uploading private prepared images...");
+      const { response, payload } = await opsRequest(
+        `/api/v1/ops/updates/${encodeURIComponent(standaloneUpdateEditor.updateId)}/media`,
+        { method: "POST", body: formData }
+      );
+      if (!response.ok) throw new Error(apiError(payload, "The Update images were not uploaded."));
+      const detail = normalizeOpsUpdateDetail(payload);
+      if (!detail) throw new Error("The uploaded image response was incomplete.");
+      applyStandaloneUpdateDetail(detail);
+      input.value = "";
+      updatesLoaded = false;
+      await loadOpsUpdates();
+      setOfficialUpdateResult("Images uploaded privately. Select the images to include.");
+    } catch (error) {
+      setOfficialUpdateResult(error instanceof ReportImagePreparationError || error instanceof Error
+        ? error.message
+        : "The Update images were not uploaded.", "error");
+    } finally {
+      setStandaloneBusy(false);
     }
   });
+  updateForm?.querySelector("[data-update-refresh-media]")?.addEventListener("click", async () => {
+    if (!standaloneUpdateEditor.updateId) return;
+    setStandaloneBusy(true);
+    try {
+      await loadOpsUpdateDetail(standaloneUpdateEditor.updateId);
+      setOfficialUpdateResult("Private image status refreshed.");
+    } catch (error) {
+      setOfficialUpdateResult(error instanceof Error ? error.message : "Image status could not be refreshed.", "error");
+    } finally {
+      setStandaloneBusy(false);
+    }
+  });
+  updateForm?.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+    if (target.name === "confirmPublication") {
+      syncStandaloneUpdateGuidance();
+      return;
+    }
+    if (target.name === "title" || target.name === "body" || target.name === "scheduledFor" ||
+        target.hasAttribute("data-standalone-media-alt") || target.hasAttribute("data-standalone-media-caption")) {
+      standaloneUpdateEditor.dirty = true;
+      captureStandaloneMediaFields();
+      resetStandaloneConfirmation();
+      updateStandalonePublicPreview();
+      syncStandaloneUpdateGuidance();
+    }
+  });
+  updateForm?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.name !== "standaloneUpdateMedia") return;
+    captureStandaloneMediaFields();
+    const upload = standaloneUpdateEditor.uploads.find((candidate) => candidate.id === target.value);
+    if (!upload) return;
+    const selected = standaloneSelectedUploads();
+    if (target.checked && selected.length >= 3) {
+      target.checked = false;
+      setOfficialUpdateResult("Official Updates can include no more than three images.", "error");
+      return;
+    }
+    upload.position = target.checked ? selected.length : null;
+    standaloneSelectedUploads().forEach((candidate, index) => { candidate.position = index; });
+    standaloneUpdateEditor.dirty = true;
+    resetStandaloneConfirmation();
+    renderStandaloneEditorUploads();
+    syncStandaloneUpdateGuidance();
+  });
+  updateForm?.querySelector("[data-update-uploads]")?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const move = target.closest<HTMLButtonElement>("[data-update-move][data-media-id]");
+    if (move?.dataset.mediaId && (move.dataset.updateMove === "earlier" || move.dataset.updateMove === "later")) {
+      captureStandaloneMediaFields();
+      const next = reorderStandaloneUpdateSelection(
+        standaloneSelectedUploads().map((upload) => upload.id),
+        move.dataset.mediaId,
+        move.dataset.updateMove
+      );
+      for (const upload of standaloneUpdateEditor.uploads) {
+        const position = next.indexOf(upload.id);
+        if (upload.position !== null) upload.position = position < 0 ? null : position;
+      }
+      standaloneUpdateEditor.dirty = true;
+      resetStandaloneConfirmation();
+      renderStandaloneEditorUploads();
+      syncStandaloneUpdateGuidance();
+      return;
+    }
+    const remove = target.closest<HTMLButtonElement>("[data-update-remove-media]");
+    const mediaId = remove?.dataset.updateRemoveMedia;
+    if (!remove || !mediaId || !standaloneUpdateEditor.updateId || standaloneUpdateEditor.status !== "draft") return;
+    if (!window.confirm("Remove this private image from the Update draft?")) return;
+    remove.disabled = true;
+    setOfficialUpdateResult("Removing the private image...");
+    try {
+      const { response, payload } = await opsRequest(
+        `/api/v1/ops/updates/${encodeURIComponent(standaloneUpdateEditor.updateId)}/media/${encodeURIComponent(mediaId)}`,
+        { method: "DELETE" }
+      );
+      if (!response.ok) throw new Error(apiError(payload, "The private image was not removed."));
+      await loadOpsUpdateDetail(standaloneUpdateEditor.updateId);
+      setOfficialUpdateResult("Private image removed. You may choose another image.");
+      updateForm.querySelector<HTMLInputElement>("[data-update-files]")?.focus();
+    } catch (error) {
+      setOfficialUpdateResult(error instanceof Error ? error.message : "The private image was not removed.", "error");
+      remove.disabled = false;
+    }
+  });
+  document.querySelector("[data-update-ledger-retry]")?.addEventListener("click", () => {
+    updatesLoaded = false;
+    void loadOpsUpdates();
+  });
+  document.querySelector("#updates-table")?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLButtonElement>("[data-update-ledger-action][data-update-id]");
+    const updateId = button?.dataset.updateId;
+    const action = button?.dataset.updateLedgerAction;
+    if (!button || !updateId || !action) return;
+    button.disabled = true;
+    try {
+      if (action === "edit") {
+        await loadOpsUpdateDetail(updateId);
+        updateForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+        updateForm?.querySelector<HTMLInputElement>("#update-title")?.focus({ preventScroll: true });
+        return;
+      }
+      if (action === "withdraw") {
+        if (!window.confirm("Withdraw this Official Update? It will no longer appear publicly.")) return;
+        const { response, payload } = await opsRequest(
+          `/api/v1/ops/updates/${encodeURIComponent(updateId)}/withdraw`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+        );
+        if (!response.ok) throw new Error(apiError(payload, "The Official Update was not withdrawn."));
+        if (standaloneUpdateEditor.updateId === updateId) {
+          const detail = normalizeOpsUpdateDetail(payload);
+          if (detail) applyStandaloneUpdateDetail(detail);
+        }
+        setOfficialUpdateResult("Official Update withdrawn. Its audit history remains available.");
+      } else if (action === "publish") {
+        const detail = await loadOpsUpdateDetail(updateId);
+        if (!window.confirm("Publish this exact scheduled Official Update now?")) return;
+        const mediaSelections = detail.uploads
+          .filter((upload) => upload.position !== null)
+          .sort((left, right) => Number(left.position) - Number(right.position))
+          .map((upload) => ({ id: upload.id, altText: upload.altText, caption: upload.caption }));
+        const { response, payload } = await opsRequest(
+          `/api/v1/ops/updates/${encodeURIComponent(updateId)}/publish`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildStandaloneUpdateMutation({
+              title: detail.title,
+              body: detail.body,
+              mediaSelections,
+              action: "publish_now",
+              scheduledFor: null,
+            })),
+          }
+        );
+        if (!response.ok) throw new Error(apiError(payload, "The Official Update was not published."));
+        const published = normalizeOpsUpdateDetail(payload);
+        if (published) applyStandaloneUpdateDetail(published);
+        setOfficialUpdateResult("Official Update published.");
+      }
+      updatesLoaded = false;
+      await loadOpsUpdates();
+    } catch (error) {
+      setOfficialUpdateResult(error instanceof Error ? error.message : "The Official Update action failed.", "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (!standaloneUpdateEditor.dirty) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+  syncStandaloneUpdateGuidance();
 
   document.querySelector("#reports-table")?.addEventListener("click", async (event) => {
     const target = event.target;
