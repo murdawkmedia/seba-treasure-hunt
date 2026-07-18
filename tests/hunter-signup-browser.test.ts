@@ -141,9 +141,10 @@ async function installResume(page: Page, tier: "session" | "local", record: Reco
   }, { key: storageKey, serialized: JSON.stringify(record), tierName: tier });
 }
 
-async function setup(page: Page, providerAttempt: Record<string, unknown>, cooldownMs = 200): Promise<string> {
+async function setup(page: Page, providerAttempt: Record<string, unknown> | null, cooldownMs = 200): Promise<string> {
   const source = String.raw`
-    let hydrated = { ...attempt };
+    let hydrated = attempt ? { ...attempt } : null;
+    if (hydrated) {
     hydrated.create = async function () {
       window.__createCalls = Number(window.__createCalls || 0) + 1;
       if (window.__createGate) await window.__createGate;
@@ -175,6 +176,7 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
       if (window.__verificationGate) await window.__verificationGate;
       return { ...hydrated, status: "complete", createdSessionId: "session-1", unverifiedFields: [] };
     };
+    }
     const clerk = {
       client: { signUp: hydrated, signIn: { create: async function () { return {}; } } },
       user: null,
@@ -309,6 +311,26 @@ test("real signup handlers restore prepared verification and show lost attempts 
     assert.match(await lost.locator("[data-signup-lost-detail]").textContent() ?? "", /no longer has the matching/i);
   } finally {
     await lost.close();
+  }
+});
+
+test("a retained safe resume without a provider attempt exposes explicit recovery choices", async () => {
+  const page = await signupPage();
+  try {
+    await installResume(page, "local", resumeRecord());
+    assert.equal(await setup(page, null), "lost_attempt");
+    assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-restart]").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-back-to-sign-in]").isVisible(), true);
+    assert.match(await page.locator("[data-signup-lost-detail]").textContent() ?? "", /no longer has the matching/i);
+    const stored = await page.evaluate((key) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), storageKey);
+    assert.ok(stored.session);
+    assert.ok(stored.local);
+  } finally {
+    await page.close();
   }
 });
 

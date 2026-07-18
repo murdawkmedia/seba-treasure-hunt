@@ -2618,6 +2618,7 @@ async function finalizeVerifiedSignup(
   auth: HunterAuthHook,
   draft: HunterSignupDraft,
   signal?: AbortSignal,
+  bootstrapRequired = true,
 ): Promise<void> {
   let currentDocuments: Promise<{
     privacyMedia: LegalDocumentIdentity | null;
@@ -2637,7 +2638,10 @@ async function finalizeVerifiedSignup(
     return currentDocuments;
   };
   await completeHunterRegistration({
-    bootstrap: () => bootstrapPlayer(auth, showProvisioningProgress, signal),
+    bootstrap: async () => {
+      throwIfAborted(signal);
+      if (bootstrapRequired) await bootstrapPlayer(auth, showProvisioningProgress, signal);
+    },
     loadState: async () => {
       const [dashboard, waiverAcceptance] = await Promise.all([
         fetchDashboardData(auth, signal),
@@ -3368,7 +3372,12 @@ function setupAccountForms(
 
   const resume = currentSignupResume;
   const providerAttempt = currentSignupAttempt();
-  if (!resume || !providerAttempt) return "none";
+  if (!resume) return "none";
+  if (!providerAttempt) {
+    showLostSignupAttempt("This browser kept your safe account details, but the identity provider no longer has the matching secure sign-up attempt.");
+    if (resume.resendAvailableAt) startSignupResendCooldown(resume.resendAvailableAt);
+    return "lost_attempt";
+  }
   const reconciliation = reconcileHunterSignupResume(resume, providerAttempt);
   if (reconciliation.state === "verification") {
     showSignupVerification(resume, "Verification is still waiting. Enter the code from your email or request a new one.");
@@ -3484,7 +3493,12 @@ async function initializeAccountState(
       }
     }
     if (needsFinishing) {
-      return setupAccountForms(auth, config, resumeStore, signedInAccountFormDependencies);
+      return setupAccountForms(auth, config, resumeStore, dependencies.finalizeSignup
+        ? signedInAccountFormDependencies
+        : {
+            ...signedInAccountFormDependencies,
+            finalizeSignup: (draft, signal) => finalizeVerifiedSignup(auth, draft, signal, false),
+          });
     }
     resumeStore.clear();
     setupAccountForms(auth, config, resumeStore, signedInAccountFormDependencies);
@@ -3538,7 +3552,6 @@ async function initializeDashboard(): Promise<void> {
       return;
     }
     if (principalChanged) {
-      resumeStore.clear();
       showSignupFinishing("Your active account changed. Loading its private Dashboard…");
     }
     try {

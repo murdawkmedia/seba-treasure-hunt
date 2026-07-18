@@ -176,6 +176,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
   let holdWaiverAccept = false;
   let heldWaiverAcceptAborts = 0;
   let verificationBootstrapCalls = 0;
+  let verificationBootstrapCompletions = 0;
   let verificationProfileWrites = 0;
   let verificationWaiverReviews = 0;
   let verificationWaiverAccepts = 0;
@@ -212,10 +213,14 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           verificationBootstrapCalls += 1;
           if (holdVerificationBootstrap) {
             releaseVerificationBootstraps.push(() => {
-              if (!response.destroyed) json({ data: { ready: true } });
+              if (!response.destroyed) {
+                verificationBootstrapCompletions += 1;
+                json({ data: { ready: true } });
+              }
             });
             return;
           }
+          verificationBootstrapCompletions += 1;
         }
         if (holdPreflightBootstrap) {
           request.once("aborted", () => { preflightBootstrapAborts += 1; });
@@ -700,15 +705,28 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       session: sessionStorage.getItem(key) !== null,
       local: localStorage.getItem(key) !== null,
     }), { key: activationResumeKey }), { session: true, local: true }, "owned activation retains resumable state until authoritative completion");
+    await verificationPage.evaluate(() => {
+      dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+      dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    });
+    for (let attempt = 0; attempt < 50 && verificationBootstrapCalls < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(verificationBootstrapCalls, 2, "BFCache restore retries the interrupted authoritative bootstrap once");
+    assert.deepEqual(await verificationPage.evaluate(({ key }) => ({
+      session: sessionStorage.getItem(key) !== null,
+      local: localStorage.getItem(key) !== null,
+    }), { key: activationResumeKey }), { session: true, local: true }, "BFCache restore retains the matching verified resume for reconciliation");
     holdVerificationBootstrap = false;
     for (const release of releaseVerificationBootstraps.splice(0)) release();
     await verificationPage.locator("[data-dashboard-profile]").getByText("Activation Finalizer Hunter").waitFor();
     assert.deepEqual({
       bootstrap: verificationBootstrapCalls,
+      completedBootstrap: verificationBootstrapCompletions,
       profile: verificationProfileWrites,
       review: verificationWaiverReviews,
       accept: verificationWaiverAccepts,
-    }, { bootstrap: 1, profile: 1, review: 1, accept: 1 });
+    }, { bootstrap: 2, completedBootstrap: 2, profile: 1, review: 1, accept: 1 });
     assert.deepEqual(await verificationPage.evaluate(({ key }) => ({
       session: sessionStorage.getItem(key),
       local: localStorage.getItem(key),
@@ -744,6 +762,26 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
     await switchPage.goto(`${appOrigin}/dashboard.html`, { waitUntil: "domcontentloaded" });
     await switchPage.locator("[data-dashboard-profile]").getByText("First Account Private Name").waitFor();
 
+    await switchPage.evaluate(({ key, hash }) => {
+      const mismatchedResume = JSON.stringify({
+        version: 2,
+        createdAt: Date.now(),
+        stage: "awaiting_email_verification",
+        emailAddress: "different-account@example.test",
+        maskedEmail: "d***@e***.test",
+        fullName: "Different Account Resume",
+        participationBasis: "adult",
+        guardianPermissionAttested: false,
+        privacyMediaDocument: { version: "privacy-test", hash },
+        waiverDocument: { version: "waiver-test", hash },
+        providerAttemptId: "signup_different_account",
+        resendAvailableAt: null,
+        finalizationIdempotencyKey: "33333333-3333-4333-8333-333333333333",
+      });
+      sessionStorage.setItem(key, mismatchedResume);
+      localStorage.setItem(key, mismatchedResume);
+    }, { key: activationResumeKey, hash: legalHash });
+
     holdDashboardResponse = true;
     identity = {
       ...identity,
@@ -773,6 +811,10 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
     holdDashboardResponse = false;
     for (const release of releaseHeldDashboards.splice(0)) release();
     await switchPage.locator("[data-dashboard-profile]").getByText("Second Account Private Name").waitFor();
+    assert.deepEqual(await switchPage.evaluate(({ key }) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), { key: activationResumeKey }), { session: null, local: null }, "an external principal clears a mismatched signup resume after reconciliation");
     assert.equal(
       await switchPage.locator("body").textContent().then((copy) => copy.includes("First Account Private Name")),
       false,
