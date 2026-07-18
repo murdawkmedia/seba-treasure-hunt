@@ -141,7 +141,12 @@ async function installResume(page: Page, tier: "session" | "local", record: Reco
   }, { key: storageKey, serialized: JSON.stringify(record), tierName: tier });
 }
 
-async function setup(page: Page, providerAttempt: Record<string, unknown> | null, cooldownMs = 200): Promise<string> {
+async function setup(
+  page: Page,
+  providerAttempt: Record<string, unknown> | null,
+  cooldownMs = 200,
+  providerOperationTimeoutMs?: number,
+): Promise<string> {
   const source = String.raw`
     let hydrated = attempt ? { ...attempt } : null;
     if (hydrated) {
@@ -177,8 +182,29 @@ async function setup(page: Page, providerAttempt: Record<string, unknown> | null
       return { ...hydrated, status: "complete", createdSessionId: "session-1", unverifiedFields: [] };
     };
     }
+    const fakeSignInAttempt = {
+      status: "needs_first_factor",
+      createdSessionId: null,
+      supportedFirstFactors: [{ strategy: "reset_password_email_code", emailAddressId: "email_a" }],
+      prepareFirstFactor: async function () { return fakeSignInAttempt; },
+      attemptFirstFactor: async function () {
+        if (window.__recoveryCompleteGate) await window.__recoveryCompleteGate;
+        return { ...fakeSignInAttempt, status: "needs_new_password" };
+      },
+      resetPassword: async function () {
+        if (window.__recoveryCompleteGate) await window.__recoveryCompleteGate;
+        return { ...fakeSignInAttempt, status: "complete", createdSessionId: "session-recovery" };
+      },
+    };
     const clerk = {
-      client: { signUp: hydrated, signIn: { create: async function () { return {}; } } },
+      client: { signUp: hydrated, signIn: { create: async function (input) {
+        if (input.strategy === "password" && window.__signInGate) await window.__signInGate;
+        if (input.strategy === "reset_password_email_code" && window.__recoveryGate) await window.__recoveryGate;
+        if (input.strategy === "password" && window.__signInComplete) {
+          return { status: "complete", createdSessionId: "session-sign-in" };
+        }
+        return fakeSignInAttempt;
+      } } },
       user: null,
       session: null,
       setActive: async function () {},
@@ -195,6 +221,7 @@ async function setup(page: Page, providerAttempt: Record<string, unknown> | null
       auth: { getToken: async function () { return null; } },
       activateSession: async function (sessionId) {
         window.__activationCalls = Number(window.__activationCalls || 0) + 1;
+        if (window.__activationGate) await window.__activationGate;
         if (Number(window.__activationFailuresRemaining || 0) > 0) {
           window.__activationFailuresRemaining = Number(window.__activationFailuresRemaining) - 1;
           return false;
@@ -219,11 +246,12 @@ async function setup(page: Page, providerAttempt: Record<string, unknown> | null
         window.__finalizedDraft = draft;
       },
       resendCooldownMs: cooldown,
+      providerOperationTimeoutMs: timeout,
     });
   `;
-  return page.evaluate(({ attempt, cooldown, body }) => (
-    new Function("attempt", "cooldown", body)(attempt, cooldown)
-  ), { attempt: providerAttempt, cooldown: cooldownMs, body: source });
+  return page.evaluate(({ attempt, cooldown, timeout, body }) => (
+    new Function("attempt", "cooldown", "timeout", body)(attempt, cooldown, timeout)
+  ), { attempt: providerAttempt, cooldown: cooldownMs, timeout: providerOperationTimeoutMs, body: source });
 }
 
 async function installOperationGate(page: Page, kind: "create" | "prepare"): Promise<void> {
@@ -366,6 +394,139 @@ test("failed initial provider preparation retains safe resume and exposes recove
   }
 });
 
+test("a stalled initial provider request returns signup to explicit recovery", async () => {
+  const page = await signupPage();
+  try {
+    await setup(page, preparedAttempt(), 200, 50);
+    await installOperationGate(page, "create");
+    await fillValidSignup(page);
+    await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-lost-state")?.hidden);
+    assert.match(
+      await page.locator("[data-signup-lost-detail]").textContent() ?? "",
+      /taking longer than expected/i,
+    );
+    assert.equal(await page.locator('#hunter-sign-up-form button[type="submit"]').isDisabled(), false);
+    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-retry]").isVisible(), false);
+    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-restart]").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-back-to-sign-in]").isVisible(), true);
+    await page.evaluate(() => {
+      const release = (window as unknown as Record<string, unknown>).__releaseCreate;
+      if (typeof release !== "function") throw new Error("Create gate release is unavailable.");
+      release();
+    });
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), true);
+  } finally {
+    await page.close();
+  }
+});
+
+test("stalled correlated Retry and Resend actions return to usable recovery", async () => {
+  const retryPage = await signupPage();
+  try {
+    await installResume(retryPage, "session", resumeRecord());
+    await setup(retryPage, preparedAttempt({ status: null, verifications: { emailAddress: { status: null, strategy: null } } }), 200, 50);
+    await installOperationGate(retryPage, "prepare");
+    await retryPage.locator("[data-signup-retry]").click();
+    await retryPage.waitForFunction(() => /taking longer than expected/i.test(
+      document.querySelector("[data-signup-lost-detail]")?.textContent ?? "",
+    ));
+    await retryPage.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-retry]")?.disabled === false);
+  } finally {
+    await retryPage.close();
+  }
+
+  const resendPage = await signupPage();
+  try {
+    await installResume(resendPage, "session", resumeRecord());
+    await setup(resendPage, preparedAttempt(), 200, 50);
+    await installOperationGate(resendPage, "prepare");
+    await resendPage.locator("[data-signup-resend]").click();
+    await resendPage.waitForFunction(() => /taking longer than expected/i.test(
+      document.querySelector("[data-signup-verification-status]")?.textContent ?? "",
+    ));
+    await resendPage.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-resend]")?.disabled === false);
+  } finally {
+    await resendPage.close();
+  }
+});
+
+test("stalled password sign-in and recovery requests return their forms to the user", async () => {
+  const signInPage = await signupPage();
+  try {
+    await setup(signInPage, null, 200, 50);
+    await signInPage.evaluate(() => {
+      (window as unknown as Record<string, unknown>).__signInGate = new Promise(() => {});
+    });
+    await signInPage.locator('#hunter-sign-in-form [name="email"]').fill("alex@example.test");
+    await signInPage.locator('#hunter-sign-in-form [name="password"]').fill("a-secure-password");
+    await signInPage.locator("#hunter-sign-in-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await signInPage.waitForFunction(() => /taking longer than expected/i.test(
+      document.querySelector("[data-auth-message]")?.textContent ?? "",
+    ));
+  } finally {
+    await signInPage.close();
+  }
+
+  const recoveryPage = await signupPage();
+  try {
+    await setup(recoveryPage, null, 200, 50);
+    await recoveryPage.locator('[data-show-auth="hunter-recovery-form"]').click();
+    await recoveryPage.evaluate(() => {
+      (window as unknown as Record<string, unknown>).__recoveryGate = new Promise(() => {});
+    });
+    await recoveryPage.locator('#hunter-recovery-form [name="email"]').fill("alex@example.test");
+    await recoveryPage.locator("#hunter-recovery-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await recoveryPage.waitForFunction(() => /taking longer than expected/i.test(
+      document.querySelector("[data-auth-message]")?.textContent ?? "",
+    ));
+    assert.equal(await recoveryPage.locator('#hunter-recovery-form button[type="submit"]').isDisabled(), false);
+  } finally {
+    await recoveryPage.close();
+  }
+});
+
+test("stalled session activation and password reset completion return control", async () => {
+  const activationPage = await signupPage();
+  try {
+    await setup(activationPage, null, 200, 50);
+    await activationPage.evaluate(() => {
+      const state = window as unknown as Record<string, unknown>;
+      state.__signInComplete = true;
+      state.__activationGate = new Promise(() => {});
+    });
+    await activationPage.locator('#hunter-sign-in-form [name="email"]').fill("alex@example.test");
+    await activationPage.locator('#hunter-sign-in-form [name="password"]').fill("a-secure-password");
+    await activationPage.locator("#hunter-sign-in-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await activationPage.waitForFunction(() => /taking longer than expected/i.test(
+      document.querySelector("[data-auth-message]")?.textContent ?? "",
+    ));
+  } finally {
+    await activationPage.close();
+  }
+
+  const resetPage = await signupPage();
+  try {
+    await setup(resetPage, null, 200, 50);
+    await resetPage.locator('[data-show-auth="hunter-recovery-form"]').click();
+    await resetPage.locator('#hunter-recovery-form [name="email"]').fill("alex@example.test");
+    await resetPage.locator("#hunter-recovery-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await resetPage.evaluate(() => {
+      (window as unknown as Record<string, unknown>).__recoveryCompleteGate = new Promise(() => {});
+    });
+    await resetPage.locator('#hunter-reset-form [name="code"]').fill("123456");
+    await resetPage.locator('#hunter-reset-form [name="newPassword"]').fill("a-secure-password");
+    await resetPage.locator('#hunter-reset-form [name="confirmPassword"]').fill("a-secure-password");
+    await resetPage.locator("#hunter-reset-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await resetPage.waitForFunction(() => /taking longer than expected/i.test(
+      document.querySelector("[data-auth-message]")?.textContent ?? "",
+    ));
+  } finally {
+    await resetPage.close();
+  }
+});
+
 test("resolved but unprepared initial provider state cannot masquerade as waiting for code", async () => {
   const page = await signupPage();
   try {
@@ -408,7 +569,8 @@ test("ambiguous initial create failure never adopts an uncorrelated same-email p
     await page.locator('#hunter-sign-up-form [name="waiverAccepted"]').check();
     await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
     await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-lost-state")?.hidden);
-    assert.match(await page.locator("[data-signup-lost-detail]").textContent() ?? "", /retained.*retry.*restart.*sign in/i);
+    assert.match(await page.locator("[data-signup-lost-detail]").textContent() ?? "", /retained.*restart.*sign in/i);
+    assert.equal(await page.locator("[data-signup-retry]").isVisible(), false);
     const record = JSON.parse((await page.evaluate((key) => sessionStorage.getItem(key), storageKey))!);
     assert.equal(record.providerAttemptId, null);
   } finally {
@@ -725,6 +887,27 @@ test("verification double-submit runs one provider attempt and disables conflict
     await page.evaluate(() => (window as unknown as { __releaseVerification: () => void }).__releaseVerification());
     await page.waitForFunction(() => Boolean((window as unknown as Record<string, unknown>).__finalizedDraft));
     assert.equal(await page.evaluate(() => (window as unknown as Record<string, number>).__verificationCalls), 1);
+  } finally {
+    await page.close();
+  }
+});
+
+test("a stalled verification attempt restores the code form for retry", async () => {
+  const page = await signupPage();
+  try {
+    await installResume(page, "session", resumeRecord());
+    await setup(page, preparedAttempt(), 200, 50);
+    await page.evaluate(() => {
+      (window as unknown as Record<string, unknown>).__verificationGate = new Promise(() => {});
+    });
+    await page.locator('#hunter-verify-form [name="code"]').fill("123456");
+    await page.locator("#hunter-verify-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => /taking longer than expected/i.test(
+      document.querySelector("[data-signup-verification-status]")?.textContent ?? "",
+    ));
+    for (const button of await page.locator("#hunter-verify-form button").all()) {
+      assert.equal(await button.isDisabled(), false);
+    }
   } finally {
     await page.close();
   }

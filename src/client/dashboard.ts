@@ -2039,8 +2039,10 @@ function showSignupVerification(resume: HunterSignupResumeRecord, status: string
   setSignupVerificationStatus(status);
 }
 
-function showLostSignupAttempt(copy: string): void {
+function showLostSignupAttempt(copy: string, options: { retryAvailable?: boolean } = {}): void {
   showAuthForm("hunter-signup-lost-state");
+  const retry = document.querySelector<HTMLButtonElement>("[data-signup-retry]");
+  if (retry) retry.hidden = options.retryAvailable === false;
   const detail = document.querySelector<HTMLElement>("[data-signup-lost-detail]");
   if (detail) detail.textContent = copy;
   const heading = document.querySelector<HTMLElement>("#hunter-signup-lost-state h3");
@@ -2727,6 +2729,7 @@ interface SignupAccountFormDependencies {
   loadSignedInAccount?: (signal?: AbortSignal) => Promise<void>;
   invalidateParentOperations?: () => void;
   resendCooldownMs?: number;
+  providerOperationTimeoutMs?: number;
   completedFinishingMessage?: string;
   completedFinishingClassification?: PlayerBootstrapFailureClassification;
 }
@@ -2742,6 +2745,23 @@ function setupAccountForms(
   const loadSignedInAccount = dependencies.loadSignedInAccount ?? ((signal) => loadSignedInDashboard(auth, signal));
   const invalidateParentOperations = dependencies.invalidateParentOperations;
   const resendCooldownMs = dependencies.resendCooldownMs ?? 30_000;
+  const providerOperationTimeoutMs = dependencies.providerOperationTimeoutMs ?? 20_000;
+  class ProviderOperationTimeoutError extends Error {}
+  const waitForProviderOperation = async <T>(operation: Promise<T>): Promise<T> => {
+    let timeout: number | null = null;
+    const stalled = new Promise<never>((_resolve, reject) => {
+      timeout = window.setTimeout(() => {
+        reject(new ProviderOperationTimeoutError("The secure account service is taking longer than expected."));
+      }, providerOperationTimeoutMs);
+    });
+    try {
+      return await Promise.race([operation, stalled]);
+    } finally {
+      if (timeout !== null) window.clearTimeout(timeout);
+    }
+  };
+  const activateProviderSession = (sessionId: string): Promise<boolean> =>
+    waitForProviderOperation(activateSignupSession(sessionId));
   let resendCooldownTimer: number | null = null;
   let currentSignupResume = resumeStore.read();
   let signupOperationGeneration = 0;
@@ -2848,9 +2868,9 @@ function setupAccountForms(
       return;
     }
     try {
-      const attempt = await providerPasswordSignIn(identifier, password);
+      const attempt = await waitForProviderOperation(providerPasswordSignIn(identifier, password));
       const createdSessionId = attempt.createdSessionId;
-      if (attempt.status !== "complete" || !createdSessionId || !await activateSignupSession(createdSessionId)) {
+      if (attempt.status !== "complete" || !createdSessionId || !await activateProviderSession(createdSessionId)) {
         const recovery = signInStatusRecovery(attempt.status);
         showAuthForm(recovery.destination);
         authMessage(recovery.message, "error");
@@ -2860,7 +2880,12 @@ function setupAccountForms(
       await runSignedInAccountLoad();
     } catch (error) {
       console.error("Hunter password sign-in failed.", identityDiagnostic(error));
-      authMessage(identityError(error, "Sign-in failed. Check your email and password."), "error");
+      authMessage(
+        error instanceof ProviderOperationTimeoutError
+          ? error.message
+          : identityError(error, "Sign-in failed. Check your email and password."),
+        "error",
+      );
     }
   });
 
@@ -2947,7 +2972,7 @@ function setupAccountForms(
     }
     showSignupFinishing("Connecting your verified session and finishing the remaining account steps…");
     try {
-      const activated = await activateSignupSession(reconciliation.createdSessionId);
+      const activated = await activateProviderSession(reconciliation.createdSessionId);
       if (!signupOperationIsCurrent(operationGeneration)) return;
       if (!activated) {
         throw new Error("Your verified session is still starting.");
@@ -3017,11 +3042,11 @@ function setupAccountForms(
       const resume = createHunterSignupResume(draft);
       let persisted = persistSignupResume(resume);
       signUpAttempt = null;
-      const createdAttempt = await createProviderSignup(draft.emailAddress, draft.password);
+      const createdAttempt = await waitForProviderOperation(createProviderSignup(draft.emailAddress, draft.password));
       if (!signupOperationIsCurrent(operationGeneration)) return;
       currentSignupResume = updateHunterSignupResume(resume, { providerAttemptId: createdAttempt.id ?? null });
       persisted = persistSignupResume(currentSignupResume) && persisted;
-      const preparedAttempt = await prepareProviderSignupVerification();
+      const preparedAttempt = await waitForProviderOperation(prepareProviderSignupVerification());
       if (!signupOperationIsCurrent(operationGeneration)) return;
       if (reconcileHunterSignupResume(currentSignupResume, preparedAttempt).state !== "verification") {
         throw new Error("Email-code verification could not be prepared.");
@@ -3051,7 +3076,15 @@ function setupAccountForms(
       if (currentSignupResume && recovery?.state === "verification") {
         showSignupVerification(currentSignupResume, `${copy} The prepared verification is still available; enter the emailed code or retry sending it.`);
       } else {
-        showLostSignupAttempt(`${copy} Your safe details are retained. Retry, restart account setup, or sign in to an existing account.`);
+        const retryAvailable = Boolean(
+          currentSignupResume?.providerAttemptId &&
+          recoveryAttempt?.id === currentSignupResume.providerAttemptId &&
+          recoveryAttempt.emailAddress?.trim().toLowerCase() === currentSignupResume.emailAddress
+        );
+        showLostSignupAttempt(
+          `${copy} Your safe details are retained. ${retryAvailable ? "Retry sending the code, restart account setup, or sign in to an existing account." : "Restart account setup or sign in to an existing account."}`,
+          { retryAvailable },
+        );
       }
       authMessage(copy, "error");
     } finally {
@@ -3088,7 +3121,7 @@ function setupAccountForms(
         throw new Error("This secure sign-up attempt cannot be retried safely. Restart account setup or sign in to an existing account.");
       }
       correlationValidated = true;
-      const preparedAttempt = await prepareProviderSignupVerification();
+      const preparedAttempt = await waitForProviderOperation(prepareProviderSignupVerification());
       if (!signupOperationIsCurrent(operationGeneration)) return;
       if (reconcileHunterSignupResume(currentSignupResume, preparedAttempt).state !== "verification") {
         throw new Error("Email-code verification could not be prepared.");
@@ -3148,7 +3181,7 @@ function setupAccountForms(
           if (currentAttempt.status === "complete" && currentAttempt.createdSessionId) {
             return { status: currentAttempt.status, createdSessionId: currentAttempt.createdSessionId };
           }
-          const verifiedAttempt = await attemptProviderSignupVerification(verificationCode);
+          const verifiedAttempt = await waitForProviderOperation(attemptProviderSignupVerification(verificationCode));
           if (verifiedAttempt.status === "complete" && verifiedAttempt.createdSessionId) {
             showSignupFinishing("Email verified. Checking the remaining account setup now…");
           }
@@ -3157,7 +3190,7 @@ function setupAccountForms(
             createdSessionId: verifiedAttempt.createdSessionId ?? null,
           };
         },
-        activateSession: activateSignupSession,
+        activateSession: activateProviderSession,
         finalize: finalizeSignup,
         ...(signal ? { signal } : {}),
         clearResume: clearSignupResume,
@@ -3289,7 +3322,7 @@ function setupAccountForms(
     button.disabled = true;
     setSignupVerificationStatus("Requesting another code…");
     try {
-      const preparedAttempt = await prepareProviderSignupVerification();
+      const preparedAttempt = await waitForProviderOperation(prepareProviderSignupVerification());
       if (!signupOperationIsCurrent(operationGeneration)) return;
       if (reconcileHunterSignupResume(resume, preparedAttempt).state !== "verification") {
         throw new Error("A new email-code verification attempt could not be prepared.");
@@ -3317,7 +3350,9 @@ function setupAccountForms(
         return;
       }
       setSignupVerificationStatus(
-        identityError(error, "Another code could not be sent yet. Wait for the resend timer, then try again."),
+        error instanceof ProviderOperationTimeoutError
+          ? error.message
+          : identityError(error, "Another code could not be sent yet. Wait for the resend timer, then try again."),
         "error",
       );
     }
@@ -3331,11 +3366,16 @@ function setupAccountForms(
     const label = submit?.textContent ?? "Email recovery code";
     if (submit) { submit.disabled = true; submit.textContent = "Sending code…"; }
     try {
-      await beginProviderPasswordRecovery(identifier);
+      await waitForProviderOperation(beginProviderPasswordRecovery(identifier));
       showAuthForm("hunter-reset-form");
       authMessage("If that account exists, a recovery code has been emailed.", "success");
     } catch (error) {
-      authMessage(identityError(error, "Password recovery could not be started."), "error");
+      authMessage(
+        error instanceof ProviderOperationTimeoutError
+          ? error.message
+          : identityError(error, "Password recovery could not be started."),
+        "error",
+      );
     } finally {
       if (submit) { submit.disabled = false; submit.textContent = label; }
     }
@@ -3357,15 +3397,20 @@ function setupAccountForms(
       return;
     }
     try {
-      const attempt = await completeProviderPasswordRecovery(code, password);
+      const attempt = await waitForProviderOperation(completeProviderPasswordRecovery(code, password));
       const createdSessionId = attempt.createdSessionId;
-      if (attempt.status !== "complete" || !createdSessionId || !await activateSignupSession(createdSessionId)) {
+      if (attempt.status !== "complete" || !createdSessionId || !await activateProviderSession(createdSessionId)) {
         throw new Error("Password recovery is not complete.");
       }
       clearSignupResume();
       await runSignedInAccountLoad();
     } catch (error) {
-      authMessage(identityError(error, "Password recovery failed."), "error");
+      authMessage(
+        error instanceof ProviderOperationTimeoutError
+          ? error.message
+          : identityError(error, "Password recovery failed."),
+        "error",
+      );
     }
   });
 
@@ -3637,6 +3682,7 @@ export function setupAccountFormsForTest(options: {
   finalizeSignup?: (draft: HunterSignupDraft, signal?: AbortSignal) => Promise<void>;
   loadSignedInAccount?: (signal?: AbortSignal) => Promise<void>;
   resendCooldownMs?: number;
+  providerOperationTimeoutMs?: number;
 }): SignupRecoveryPresentation {
   hunterClerk = options.clerk as Clerk;
   return setupAccountForms(
@@ -3648,6 +3694,7 @@ export function setupAccountFormsForTest(options: {
       ...(options.finalizeSignup ? { finalizeSignup: options.finalizeSignup } : {}),
       ...(options.loadSignedInAccount ? { loadSignedInAccount: options.loadSignedInAccount } : {}),
       resendCooldownMs: options.resendCooldownMs ?? 30_000,
+      providerOperationTimeoutMs: options.providerOperationTimeoutMs ?? 20_000,
     },
   );
 }
