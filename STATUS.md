@@ -40,9 +40,21 @@ validation accounts, submissions, or credentials into production.
   69 audit events, 22 report-media rows and 32 legal acceptances. The database
   sentinel was `production`; the read wrote zero rows and `changed_db` was
   false. No production record or publication was changed.
-- Next: commit the exact candidate, deploy it to the `codex-validation` Pages
-  branch, verify the immutable and stable validation URLs, and complete an
-  authenticated owner check before any separate production-promotion decision.
+- Committed the exact candidate as `16f1c23` and deployed it to the
+  `codex-validation` Pages branch. The immutable deployment is
+  `https://cc1f5835.seba-treasure-hunt.pages.dev`; the stable owner-review URL
+  is `https://codex-validation.seba-treasure-hunt.pages.dev/ops?release=16f1c23`.
+  Both return HTTP 200, report the `validation` runtime, and serve the image
+  selection instructions, resolved-report reopen control and resolved-state
+  guidance. The signed-out browser console contained only Clerk's expected
+  development-instance warning and no application error.
+- The post-deploy count-only production check exactly matched the baseline and
+  again wrote zero rows with `changed_db: false`. Production Pages, D1, R2,
+  queues and public content were not deployed or mutated.
+- Next: complete an authenticated owner check in validation. Confirm an older
+  eligible report exposes ready image checkboxes; reopen the resolved report,
+  select only the intended images, and verify the Case Note/Official Update
+  preview. Production promotion remains a separate explicit decision.
 
 ## Update 2026-07-18 — Production promotion
 
