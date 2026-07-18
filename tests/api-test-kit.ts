@@ -1053,7 +1053,7 @@ export class FakeStore {
       },
       caseNote: {
         published: caseNote?.status === "published",
-        noteId: caseNote?.status === "published" ? caseNote.id : null,
+        noteId: caseNote?.id ?? null,
         status: caseNote?.status ?? null
       }
     };
@@ -1228,7 +1228,23 @@ export class FakeStore {
     actorSubject: string
   ) {
     const existing = this.reportCaseNotes.get(reportId);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.status === "withdrawn") {
+        throw new ApiError(
+          409,
+          "report_case_note_withdrawn",
+          "This report's Case Note is withdrawn. Create a new editorial action before republishing it."
+        );
+      }
+      if (existing.status !== "published") {
+        throw new ApiError(
+          409,
+          "report_case_note_state_invalid",
+          "This report's Case Note cannot be published from its current moderation state."
+        );
+      }
+      return existing;
+    }
     const report = this.reports.find((item) => item.id === reportId);
     if (!report) return null;
     if (!["reviewing", "contacted", "escalated", "verified"].includes(String(report.status))) {
@@ -1274,7 +1290,24 @@ export class FakeStore {
   async withdrawReportCaseNote(reportId: string, actorSubject: string) {
     const note = this.reportCaseNotes.get(reportId);
     if (!note) return null;
+    if (note.status === "withdrawn") return note;
+    if (note.status !== "published") {
+      throw new ApiError(
+        409,
+        "report_case_note_state_invalid",
+        "This report's Case Note cannot be withdrawn from its current moderation state."
+      );
+    }
+    const timestamp = "2026-07-17T18:00:00.000Z";
     note.status = "withdrawn";
+    for (const flag of this.flags) {
+      if (flag.targetKind === "note" && flag.targetId === note.id &&
+        (flag.status === "received" || flag.status === "reviewing")) {
+        flag.status = "resolved";
+        flag.resolvedAt = timestamp;
+        flag.resolvedBy = actorSubject;
+      }
+    }
     this.board = this.board.filter((item) => item.id !== note.id);
     for (const mediaId of this.reportCaseNoteMedia.get(reportId) ?? []) this.publicMedia.delete(mediaId);
     this.audits.push({ action: "report.case-note.withdrawn", actorSubject, targetId: reportId });
@@ -1507,8 +1540,11 @@ export class FakeStore {
     if (kind === "note") {
       const note = this.board.find((candidate) => candidate.id === targetId);
       if (!note) return false;
-      if (note.noteKind === "operator_reviewed") return note.status === "published";
-      return note.status === "approved" && this.publicAuthorProfile(note) !== null;
+      const publicationIsCurrent = typeof note.publishedAt === "string" &&
+        Number.isFinite(new Date(note.publishedAt).getTime()) &&
+        new Date(note.publishedAt).getTime() <= Date.now();
+      if (note.noteKind === "operator_reviewed") return note.status === "published" && publicationIsCurrent;
+      return note.status === "approved" && publicationIsCurrent && this.publicAuthorProfile(note) !== null;
     }
     if (kind !== "reply") return false;
     const reply = this.replies.find(
@@ -1516,7 +1552,9 @@ export class FakeStore {
     );
     if (!reply || !this.publicAuthorProfile(reply)) return false;
     const parent = this.approvedModerationNote(reply.noteId ?? reply.fieldNoteId);
-    return parent !== null && this.publicAuthorProfile(parent) !== null;
+    if (!parent || !this.publicAuthorProfile(parent) || typeof parent.publishedAt !== "string") return false;
+    const publishedAt = new Date(parent.publishedAt).getTime();
+    return Number.isFinite(publishedAt) && publishedAt <= Date.now();
   }
 
   private moderationFlagContext(flag: Record<string, unknown>) {

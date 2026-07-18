@@ -242,6 +242,16 @@ test("pre-moderates field notes, constrains replies, and accepts private abuse f
   assert.equal(reply.status, 201);
   assert.equal((await responseJson(reply)).data.status, "published");
 
+  store.board[0]!.publishedAt = "2999-01-01T00:00:00.000Z";
+  const futureParentReplyFlag = await app.request(
+    `https://www.timlostsomething.com/api/v1/board/reply/${store.replies[0]!.id}/flags`,
+    { method: "POST", ...json({ reason: "unsafe" }, hunterHeaders) }
+  );
+  assert.equal(futureParentReplyFlag.status, 404);
+  assert.equal((await responseJson(futureParentReplyFlag)).error.code, "content_not_found");
+  assert.equal(store.flags.length, 0);
+  store.board[0]!.publishedAt = "2026-07-17T18:00:00.000Z";
+
   const flag = await app.request(
     `https://www.timlostsomething.com/api/v1/board/reply/${store.replies[0]!.id}/flags`,
     { method: "POST", ...json({ reason: "unsafe", details: "This could direct hunters off trail." }, hunterHeaders) }
@@ -262,6 +272,7 @@ test("pre-moderates field notes, constrains replies, and accepts private abuse f
     "field_note",
     "reply",
     "reply",
+    "flag",
     "flag",
     "flag"
   ]);
@@ -497,6 +508,16 @@ test("moderates publicly accepted flags for operator-reviewed Case Notes end to 
   assert.equal(missingFlagError.message, "Community content not found.");
   assert.equal(store.flags.length, 0);
 
+  const originalPublishedAt = note!.publishedAt;
+  note!.publishedAt = "2999-01-01T00:00:00.000Z";
+  const futureFlag = await createFlag("privacy");
+  assert.equal(futureFlag.status, 404);
+  const futureFlagError = (await responseJson(futureFlag)).error;
+  assert.equal(futureFlagError.code, "content_not_found");
+  assert.equal(futureFlagError.message, "Community content not found.");
+  assert.equal(store.flags.length, 0);
+  note!.publishedAt = originalPublishedAt;
+
   store.reports.push({
     id: "report-withdrawn-operator-note",
     status: "reviewing",
@@ -508,13 +529,27 @@ test("moderates publicly accepted flags for operator-reviewed Case Notes end to 
     { body: "A withdrawn reviewed observation.", mediaIds: [] },
     "staff-publisher"
   );
-  await store.withdrawReportCaseNote("report-withdrawn-operator-note", "staff-publisher");
+  const preWithdrawalFlag = await createFlag("privacy", undefined, String(withdrawnNote?.id));
+  assert.equal(preWithdrawalFlag.status, 201);
+  const preWithdrawalFlagId = (await responseJson(preWithdrawalFlag)).data.id;
+  const withdrawal = await store.withdrawReportCaseNote("report-withdrawn-operator-note", "staff-publisher");
+  const resolvedFlag = store.flags.find((flag) => flag.id === preWithdrawalFlagId);
+  assert.equal(resolvedFlag?.status, "resolved");
+  assert.equal(resolvedFlag?.resolvedBy, "staff-publisher");
+  assert.match(String(resolvedFlag?.resolvedAt), /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(store.board.some((item) => item.id === withdrawnNote?.id), false);
+  const auditCountAfterWithdrawal = store.audits.length;
+  const withdrawalReplay = await store.withdrawReportCaseNote(
+    "report-withdrawn-operator-note", "staff-publisher"
+  );
+  assert.equal(withdrawalReplay?.id, withdrawal?.id);
+  assert.equal(store.audits.length, auditCountAfterWithdrawal);
   const withdrawnFlag = await createFlag("privacy", undefined, String(withdrawnNote?.id));
   assert.equal(withdrawnFlag.status, 404);
   const withdrawnFlagError = (await responseJson(withdrawnFlag)).error;
   assert.equal(withdrawnFlagError.code, "content_not_found");
   assert.equal(withdrawnFlagError.message, "Community content not found.");
-  assert.equal(store.flags.length, 0);
+  assert.equal(store.flags.length, 1);
 
   const firstFlag = await createFlag("privacy", "Private reporter context.");
   assert.equal(firstFlag.status, 201);
@@ -1213,6 +1248,52 @@ test("publishes a reviewed report to Case Notes without creating an official Upd
     ...json({}, { authorization: "Bearer staff-token" })
   });
   assert.equal(withdrawn.status, 200);
+
+  store.reports.push({
+    id: "report-hidden-case-note",
+    hunterSubject: null,
+    publicAttribution: "Community Hunter",
+    attributionKind: "community",
+    status: "reviewing",
+    media: []
+  });
+  const hiddenEndpoint = "https://www.timlostsomething.com/api/v1/ops/reports/report-hidden-case-note/case-note";
+  const hiddenPublished = await responseJson(await app.request(hiddenEndpoint, {
+    method: "POST",
+    ...json({ body: "A note later hidden by moderation.", mediaIds: [] }, {
+      authorization: "Bearer staff-token"
+    })
+  }));
+  store.flags.push({
+    id: "hidden-case-note-flag",
+    targetKind: "note",
+    targetId: hiddenPublished.data.id,
+    reason: "privacy",
+    status: "received",
+    createdAt: "2026-07-17T18:10:00.000Z"
+  });
+  assert.equal((await store.moderateContentFlag(
+    "hidden-case-note-flag", "hide_target", "Private information", "staff-1"
+  ))?.status, "resolved");
+  const hiddenDetail = await responseJson(await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/reports/report-hidden-case-note",
+    { headers: { authorization: "Bearer staff-token" } }
+  ));
+  assert.deepEqual(hiddenDetail.data.caseNote, {
+    published: false,
+    noteId: hiddenPublished.data.id,
+    status: "hidden"
+  });
+  for (const path of [hiddenEndpoint, `${hiddenEndpoint}/withdraw`]) {
+    const response = await app.request(path, {
+      method: "POST",
+      ...json(path.endsWith("withdraw") ? {} : { body: "Do not republish.", mediaIds: [] }, {
+        authorization: "Bearer staff-token"
+      })
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await responseJson(response)).error.code, "report_case_note_state_invalid");
+  }
 });
 
 test("keeps report Update drafts and future schedules private until their due time", async () => {
@@ -1569,6 +1650,7 @@ test("a current waiver unlocks hunter tools without weakening reports, moderatio
     id: "public-waiver-flag-note",
     authorSubject: "hunter-1",
     status: "approved",
+    publishedAt: "2026-07-17T18:00:00.000Z",
     body: "A public note eligible for replies.",
     replies: []
   });

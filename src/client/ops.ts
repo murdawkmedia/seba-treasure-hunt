@@ -594,7 +594,12 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     (publicationStatus === null ? publicationUpdateId !== null : !publicationUpdateId) ||
     (publicationStatus === "scheduled" ? !publicationScheduledFor : publicationScheduledFor !== null) ||
     (published && publicationStatus !== "published" && publicationStatus !== "scheduled") ||
-    (caseNotePublished ? !caseNoteId || caseNoteStatus !== "published" : caseNoteId !== null) ||
+    ![null, "published", "withdrawn", "hidden"].includes(caseNoteStatus) ||
+    (caseNoteStatus === null
+      ? caseNotePublished || caseNoteId !== null
+      : caseNoteStatus === "published"
+        ? !caseNotePublished || !caseNoteId
+        : caseNotePublished || !caseNoteId) ||
     (publicationEligible && (!publicAttribution || publicationEligibilityReason !== "eligible"))
   ) return null;
   const media = asArray(value.media).flatMap((candidate): OpsReportMedia[] => {
@@ -1298,7 +1303,15 @@ export function renderReportPrivateDetail(detail: OpsReportDetail): string {
     <div><dt>Received</dt><dd>${escapeOpsHtml(formatOpsTime(detail.createdAt))}</dd></div>
     <div><dt>Updated</dt><dd>${escapeOpsHtml(detail.updatedAt ? formatOpsTime(detail.updatedAt) : "Not supplied")}</dd></div>
     <div><dt>Current state</dt><dd>${escapeOpsHtml(detail.status)}</dd></div>
-    <div><dt>Public Case Note</dt><dd>${escapeOpsHtml(detail.caseNote.published ? "Published" : "Not published")}</dd></div>
+    <div><dt>Public Case Note</dt><dd>${escapeOpsHtml(
+      detail.caseNote.status === "published"
+        ? "Published"
+        : detail.caseNote.status === "hidden"
+          ? "Hidden by moderation"
+          : detail.caseNote.status === "withdrawn"
+            ? "Withdrawn"
+            : "Not published"
+    )}</dd></div>
     <div><dt>Official Update</dt><dd>${escapeOpsHtml(
       detail.publication.status === "scheduled" && detail.publication.scheduledFor
         ? `${detail.publication.published ? "Live" : "Scheduled"} for ${formatOpsTime(detail.publication.scheduledFor)}`
@@ -1499,8 +1512,8 @@ export function reportDestinationControls(detail: OpsReportDetail): {
 } {
   return {
     caseNotePublished: detail.caseNote.published,
-    showPublishCaseNote: !detail.caseNote.published,
-    showWithdrawCaseNote: detail.caseNote.published,
+    showPublishCaseNote: detail.caseNote.status === null,
+    showWithdrawCaseNote: detail.caseNote.status === "published",
     updatePublished: detail.publication.published,
   };
 }
@@ -3169,6 +3182,10 @@ function setupWorkspace(): void {
     const body = form?.querySelector<HTMLTextAreaElement>('[name="body"]')?.value.trim() ?? "";
     const confirmed = form?.querySelector<HTMLInputElement>('[name="confirmPublication"]')?.checked ?? false;
     const mediaIds = reportSelectedReportMediaIds();
+    if (activeReportDetail.caseNote.status !== null) {
+      setReportPublicationResult("This report already has a Case Note record and cannot be republished here.", "error");
+      return;
+    }
     if (!activeReportDetail.publicationEligible) {
       setReportPublicationResult("Publication is blocked until the report has current legal and profile eligibility.", "error");
       return;
@@ -3215,7 +3232,7 @@ function setupWorkspace(): void {
       setReportPublicationResult(error instanceof Error ? error.message : "The reviewed Case Note was not published.", "error");
     } finally {
       if (reportReviewIsLive(intent, reportDialog) && activeReportDetail?.id === reportId) {
-        button.disabled = !activeReportDetail.publicationEligible || activeReportDetail.caseNote.published;
+        button.disabled = !activeReportDetail.publicationEligible || activeReportDetail.caseNote.status !== null;
       }
     }
   });
@@ -3226,6 +3243,7 @@ function setupWorkspace(): void {
     if (
       !intent || !signal || !activeReportDetail || activeReportDetail.id !== intent.reportId ||
       !reportReviewIsLive(intent, reportDialog) ||
+      activeReportDetail.caseNote.status !== "published" ||
       !window.confirm("Withdraw this reviewed observation from public Case Notes? The private report and audit history will remain.") ||
       !reportReviewIsLive(intent, reportDialog) || signal.aborted
     ) return;

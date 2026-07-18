@@ -555,6 +555,22 @@ test("report review controls follow the actual linked public post, not private v
     terminalTransitionsBlocked: false,
     guidance: "",
   });
+
+  const hidden = normalizeOpsReportDetail({
+    data: {
+      ...payload,
+      publication: { published: false, updateId: null },
+      caseNote: { published: false, noteId: "reviewed-note-1", status: "hidden" },
+    },
+  });
+  assert.ok(hidden);
+  assert.deepEqual(reportDestinationControls(hidden), {
+    caseNotePublished: false,
+    showPublishCaseNote: false,
+    showWithdrawCaseNote: false,
+    updatePublished: false,
+  });
+  assert.match(renderReportPrivateDetail(hidden), /Hidden by moderation/);
 });
 
 test("direct Update uploads start unselected and require publication metadata", () => {

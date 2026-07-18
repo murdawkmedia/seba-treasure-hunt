@@ -3129,7 +3129,7 @@ export class D1DataStore implements DataStore {
       ...publication,
       caseNote: {
         published: caseNote?.status === "published",
-        noteId: caseNote?.status === "published" ? caseNote.id : null,
+        noteId: caseNote?.id ?? null,
         status: caseNote?.status ?? null
       }
     };
@@ -3282,6 +3282,13 @@ export class D1DataStore implements DataStore {
           "This report's Case Note is withdrawn. Create a new editorial action before republishing it."
         );
       }
+      if (existing.status !== "published") {
+        throw new ApiError(
+          409,
+          "report_case_note_state_invalid",
+          "This report's Case Note cannot be published from its current moderation state."
+        );
+      }
       return existing;
     }
     const report = await this.db
@@ -3411,6 +3418,13 @@ export class D1DataStore implements DataStore {
     const existing = await this.reportCaseNoteBySource(reportId);
     if (!existing) return null;
     if (existing.status === "withdrawn") return existing;
+    if (existing.status !== "published") {
+      throw new ApiError(
+        409,
+        "report_case_note_state_invalid",
+        "This report's Case Note cannot be withdrawn from its current moderation state."
+      );
+    }
     const noteId = value(existing.id);
     const timestamp = now();
     const operationToken = `case-note-withdraw:${id()}`;
@@ -3422,6 +3436,16 @@ export class D1DataStore implements DataStore {
          SET status = 'withdrawn', withdrawn_at = ?, withdrawn_by = ?
          WHERE id = ? AND source_report_id = ? AND status = 'published'`
       ).bind(timestamp, operationToken, noteId, reportId),
+      this.db.prepare(
+        `UPDATE content_flags
+         SET status = 'resolved', resolved_at = ?, resolved_by = ?
+         WHERE target_kind = 'note' AND target_id = ?
+           AND status IN ('received', 'reviewing')
+           AND EXISTS (
+             SELECT 1 FROM operator_reviewed_case_notes
+             WHERE id = ? AND withdrawn_by = ?
+           )`
+      ).bind(timestamp, actorSubject, noteId, noteId, operationToken),
       this.db.prepare(
         `INSERT INTO report_events (id, report_id, event_type, actor_subject, note, occurred_at)
          SELECT ?, ?, 'case_note.withdrawn', ?, ?, ?
@@ -3462,7 +3486,9 @@ export class D1DataStore implements DataStore {
            AND EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`
       ).bind(actorSubject, noteId, operationToken, reportEventId, auditId)
     ]);
-    if (results.some((result) => Number(result.meta.changes) !== 1)) {
+    if ([results[0], results[2], results[3], results[4]].some(
+      (result) => Number(result?.meta.changes) !== 1
+    )) {
       throw new ConflictError("The Case Note changed. Refresh and try again.");
     }
     return this.reportCaseNoteBySource(reportId);

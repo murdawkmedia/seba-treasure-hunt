@@ -2575,7 +2575,38 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
     { body: "A reviewed note that is no longer public.", mediaIds: [] },
     "staff-publisher"
   );
-  await store.withdrawReportCaseNote("report-withdrawn-flag-target", "staff-publisher");
+  const preWithdrawalFlag = await store.createFlag({
+    reporterSubject: "private-flag-reporter",
+    targetKind: "note",
+    targetId: withdrawnNote?.id,
+    reason: "privacy"
+  });
+  const withdrawal = await store.withdrawReportCaseNote("report-withdrawn-flag-target", "staff-publisher");
+  const resolvedFlag = await db.prepare(
+    "SELECT status, resolved_at, resolved_by FROM content_flags WHERE id = ?"
+  ).bind(preWithdrawalFlag.id).first<Record<string, unknown>>();
+  assert.equal(resolvedFlag?.status, "resolved");
+  assert.match(String(resolvedFlag?.resolved_at), /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(resolvedFlag?.resolved_by, "staff-publisher");
+  assert.equal(
+    (await store.listBoard(null, { limit: 10 })).items.some((item) => item.id === withdrawnNote?.id),
+    false
+  );
+  const withdrawalReplay = await store.withdrawReportCaseNote(
+    "report-withdrawn-flag-target", "staff-publisher"
+  );
+  assert.equal(withdrawalReplay?.id, withdrawal?.id);
+  assert.equal(
+    (await db.prepare(
+      "SELECT COUNT(*) AS count FROM report_events WHERE report_id = ? AND event_type = 'case_note.withdrawn'"
+    ).bind("report-withdrawn-flag-target").first<{ count: number }>())?.count,
+    1
+  );
+  assert.equal((await store.listContentFlags()).items.length, 0);
+  assert.equal(
+    ((await store.getOpsDashboard()).counts as { receivedFlags: number }).receivedFlags,
+    0
+  );
   await assert.rejects(
     store.createFlag({
       reporterSubject: "private-flag-reporter",
@@ -2587,7 +2618,7 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
   );
   assert.equal(
     (await db.prepare("SELECT COUNT(*) AS count FROM content_flags").first<{ count: number }>())?.count,
-    0
+    1
   );
 
   const flag = await store.createFlag({
@@ -2725,6 +2756,27 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
       metadata_json: JSON.stringify({ reason: "The reviewed note discloses private information." })
     }
   );
+  assert.deepEqual((await store.getReportDetail(
+    "report-flagged-case-note", "staff-moderator"
+  ))?.caseNote, {
+    published: false,
+    noteId: note?.id,
+    status: "hidden"
+  });
+  const invalidHiddenCaseNoteState = (error: unknown) =>
+    error instanceof ApiError && error.status === 409 && error.code === "report_case_note_state_invalid";
+  await assert.rejects(
+    store.publishReportToCaseNotes(
+      "report-flagged-case-note",
+      { body: "Do not republish this hidden note.", mediaIds: [] },
+      "staff-moderator"
+    ),
+    invalidHiddenCaseNoteState
+  );
+  await assert.rejects(
+    store.withdrawReportCaseNote("report-flagged-case-note", "staff-moderator"),
+    invalidHiddenCaseNoteState
+  );
   await assert.rejects(
     store.createFlag({
       reporterSubject: "private-flag-reporter",
@@ -2736,7 +2788,7 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
   );
   assert.equal(
     (await db.prepare("SELECT COUNT(*) AS count FROM content_flags").first<{ count: number }>())?.count,
-    3
+    4
   );
 
   await db.batch([
@@ -2795,7 +2847,7 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
   }
   assert.equal(
     (await db.prepare("SELECT COUNT(*) AS count FROM content_flags").first<{ count: number }>())?.count,
-    5
+    6
   );
 });
 
