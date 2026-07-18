@@ -2454,6 +2454,7 @@ interface SignupAccountFormDependencies {
   activateSignupSession?: (sessionId: string) => Promise<boolean>;
   finalizeSignup?: (draft: HunterSignupDraft, signal?: AbortSignal) => Promise<void>;
   loadSignedInAccount?: (signal?: AbortSignal) => Promise<void>;
+  invalidateParentOperations?: () => void;
   resendCooldownMs?: number;
   completedFinishingMessage?: string;
   completedFinishingClassification?: PlayerBootstrapFailureClassification;
@@ -2468,6 +2469,7 @@ function setupAccountForms(
   const activateSignupSession = dependencies.activateSignupSession ?? activateSession;
   const finalizeSignup = dependencies.finalizeSignup ?? ((draft, signal) => finalizeVerifiedSignup(auth, draft, signal));
   const loadSignedInAccount = dependencies.loadSignedInAccount ?? ((signal) => loadSignedInDashboard(auth, signal));
+  const invalidateParentOperations = dependencies.invalidateParentOperations;
   const resendCooldownMs = dependencies.resendCooldownMs ?? 30_000;
   let resendCooldownTimer: number | null = null;
   let currentSignupResume = resumeStore.read();
@@ -2494,6 +2496,7 @@ function setupAccountForms(
     setSignupVerificationStatus("Enter the code from your email.");
   };
   const invalidateSignupOperations = (): void => {
+    invalidateParentOperations?.();
     signupOperationController?.abort();
     signupOperationController = null;
     signupOperationGeneration += 1;
@@ -3194,6 +3197,10 @@ async function initializeAccountState(
       preflightGeneration += 1;
       preflightController.abort();
     };
+    const signedInAccountFormDependencies: SignupAccountFormDependencies = {
+      ...accountFormDependencies,
+      invalidateParentOperations: invalidatePreflight,
+    };
     bindHunterSignOutControls(verifiedSignOutHandler(invalidatePreflight, () => resumeStore.clear()));
     showSignupFinishing("Your email is verified. Checking your secure account setup…");
     const activeEmail = hunterClerk.user.primaryEmailAddress?.emailAddress?.trim().toLowerCase() ?? "";
@@ -3206,7 +3213,7 @@ async function initializeAccountState(
       const deferIndeterminateFinishing = (error?: unknown): SignupRecoveryPresentation => {
         const classification = error === undefined ? null : provisioningRequestClassification(error);
         return setupAccountForms(auth, config, resumeStore, {
-          ...dependencies,
+          ...signedInAccountFormDependencies,
           completedFinishingMessage: classification
             ? provisioningFailureMessage(classification)
             : "We could not confirm whether the remaining account steps are complete. Your verified progress is retained. Try again.",
@@ -3227,11 +3234,10 @@ async function initializeAccountState(
       }
     }
     if (needsFinishing) {
-      return setupAccountForms(auth, config, resumeStore, accountFormDependencies);
+      return setupAccountForms(auth, config, resumeStore, signedInAccountFormDependencies);
     }
     resumeStore.clear();
-    setupAccountForms(auth, config, resumeStore, accountFormDependencies);
-    bindHunterSignOutControls(verifiedSignOutHandler(invalidatePreflight, () => resumeStore.clear()));
+    setupAccountForms(auth, config, resumeStore, signedInAccountFormDependencies);
     try {
       await (dependencies.loadDashboard ?? ((signal) => loadSignedInDashboard(auth, signal)))(preflightController.signal);
       if (!preflightIsCurrent()) return "finishing";

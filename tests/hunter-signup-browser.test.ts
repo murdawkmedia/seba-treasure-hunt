@@ -2008,3 +2008,129 @@ test("sign out aborts the final signed-in waiver projection before it can render
     await page.close();
   }
 });
+
+for (const pendingRequest of ["dashboard", "waiver"] as const) {
+  test(`sign out cancels manual Retry while its ${pendingRequest} request is pending`, async () => {
+    const page = await signupPage();
+    try {
+      page.setDefaultTimeout(1_000);
+      const source = String.raw`
+        let releaseSignOut;
+        window.__unifiedSignOutGate = new Promise(function (resolve) { releaseSignOut = resolve; });
+        window.__releaseUnifiedSignOut = releaseSignOut;
+        window.__retryDashboardCalls = 0;
+        window.__retryWaiverCalls = 0;
+        const pendingResponse = function (requestKind, init, responseBody) {
+          window.__retryPendingStarted = requestKind;
+          return new Promise(function (resolve, reject) {
+            let settled = false;
+            window.__releaseRetryPending = function () {
+              if (settled) return;
+              settled = true;
+              resolve(new Response(JSON.stringify(responseBody), { status: 200, headers: { "content-type": "application/json" } }));
+            };
+            const signal = init && init.signal;
+            if (!signal) {
+              window.__retryPendingMissingSignal = true;
+              return;
+            }
+            signal.addEventListener("abort", function () {
+              if (settled) return;
+              settled = true;
+              window.__retryPendingAborted = requestKind;
+              reject(new DOMException("cancelled", "AbortError"));
+            }, { once: true });
+          });
+        };
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = async function (input, init) {
+          const url = new URL(typeof input === "string" ? input : input.url, window.location.href);
+          if (url.pathname === "/api/v1/me/bootstrap") {
+            return new Response(JSON.stringify({ data: {} }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (url.pathname === "/api/v1/me/dashboard") {
+            window.__retryDashboardCalls = Number(window.__retryDashboardCalls || 0) + 1;
+            if (window.__retryDashboardCalls === 1) {
+              return new Response(JSON.stringify({ error: { code: "sync_pending" } }), { status: 503, headers: { "content-type": "application/json" } });
+            }
+            const responseBody = { data: { profile: { fullName: "Active Hunter" }, privacyMediaRequired: false } };
+            if (pendingKind === "dashboard") return await pendingResponse("dashboard", init, responseBody);
+            return new Response(JSON.stringify(responseBody), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (url.pathname === "/api/v1/me/waiver") {
+            window.__retryWaiverCalls = Number(window.__retryWaiverCalls || 0) + 1;
+            const responseBody = { data: { acceptance: null, document: null } };
+            if (pendingKind === "waiver") return await pendingResponse("waiver", init, responseBody);
+            return new Response(JSON.stringify(responseBody), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          return originalFetch(input, init);
+        };
+        return window.DashboardTestModule.initializeAccountStateForTest({
+          clerk: {
+            client: { signUp: null, signIn: { create: async function () { return {}; } } },
+            user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+            session: { id: "session-active" }, setActive: async function () {},
+            signOut: async function () {
+              window.__unifiedProviderSignOutCalls = Number(window.__unifiedProviderSignOutCalls || 0) + 1;
+              await window.__unifiedSignOutGate;
+            },
+          },
+          config: {
+            hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+            privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+            waiver: { version: "2026.2", hash: "b".repeat(64) },
+          },
+          auth: { getToken: async function () { return "valid-token"; } },
+        });
+      `;
+      assert.equal(await page.evaluate(({ pendingKind, body }) => new Function("pendingKind", body)(pendingKind), {
+        pendingKind: pendingRequest,
+        body: source,
+      }), "finishing");
+      const retry = page.locator("[data-signup-finishing-retry]");
+      assert.equal(await retry.isVisible(), true);
+      await retry.click();
+      await page.waitForFunction((requestKind) => (window as unknown as Record<string, unknown>).__retryPendingStarted === requestKind, pendingRequest);
+      await page.evaluate(() => {
+        const details = document.querySelector<HTMLElement>("[data-waiver-acceptance-details]");
+        if (details) details.textContent = "unchanged after sign out";
+      });
+      const signOut = pendingRequest === "dashboard"
+        ? page.locator('#hunter-signup-finishing-state [data-hunter-sign-out]')
+        : page.locator('[data-dashboard-content] [data-hunter-sign-out]');
+      await signOut.click();
+      await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__unifiedProviderSignOutCalls || 0) === 1);
+      await page.waitForFunction((requestKind) => (window as unknown as Record<string, unknown>).__retryPendingAborted === requestKind, pendingRequest);
+      await page.evaluate(() => (window as unknown as { __releaseRetryPending: () => void }).__releaseRetryPending());
+      await page.waitForTimeout(50);
+      assert.deepEqual(await page.evaluate(() => {
+        const retryControl = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
+        retryControl?.click();
+        return {
+          dashboardCalls: Number((window as unknown as Record<string, unknown>).__retryDashboardCalls || 0),
+          waiverCalls: Number((window as unknown as Record<string, unknown>).__retryWaiverCalls || 0),
+          retryHidden: retryControl?.hidden,
+          retryDisabled: retryControl?.disabled,
+          projection: document.querySelector("[data-waiver-acceptance-details]")?.textContent,
+          dashboardVisible: !document.querySelector<HTMLElement>("[data-dashboard-content]")?.hidden,
+        };
+      }), {
+        dashboardCalls: 2,
+        waiverCalls: pendingRequest === "waiver" ? 1 : 0,
+        retryHidden: true,
+        retryDisabled: true,
+        projection: "unchanged after sign out",
+        dashboardVisible: pendingRequest === "waiver",
+      });
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+        page.evaluate(() => (window as unknown as { __releaseUnifiedSignOut: () => void }).__releaseUnifiedSignOut()),
+      ]);
+      assert.equal(await page.locator("#hunter-sign-in-form").isVisible(), true);
+      assert.equal(await page.locator("[data-dashboard-content]").isVisible(), false);
+      assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), false);
+    } finally {
+      await page.close();
+    }
+  });
+}
