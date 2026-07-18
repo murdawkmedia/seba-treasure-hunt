@@ -140,6 +140,11 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
     consents: {},
   };
   const legalHash = "a".repeat(64);
+  let holdPreflightBootstrap = false;
+  let preflightBootstrapAborts = 0;
+  let profileMutations = 0;
+  let legalMutations = 0;
+  const releaseHeldBootstraps = [];
   const appServer = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://local.test");
@@ -159,11 +164,19 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         return;
       }
       if (url.pathname === "/api/v1/me/bootstrap") {
+        if (holdPreflightBootstrap) {
+          request.once("aborted", () => { preflightBootstrapAborts += 1; });
+          releaseHeldBootstraps.push(() => {
+            if (!response.destroyed) json({ data: { ready: true } });
+          });
+          return;
+        }
         json({ data: { ready: true } });
         return;
       }
       if (url.pathname === "/api/v1/me/profile") {
         if (request.method === "PATCH") {
+          profileMutations += 1;
           let body = "";
           for await (const chunk of request) body += chunk;
           const update = JSON.parse(body);
@@ -197,7 +210,13 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         return;
       }
       if (url.pathname === "/api/v1/me/waiver") {
+        if (request.method !== "GET") legalMutations += 1;
         json({ data: null });
+        return;
+      }
+      if (url.pathname.startsWith("/api/v1/me/waiver/")) {
+        legalMutations += 1;
+        json({ data: {} });
         return;
       }
       if (url.pathname === "/api/v1/status") {
@@ -244,12 +263,18 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
     await context.addInitScript(() => {
       const listeners = new Set();
       const startsSignedIn = localStorage.getItem("__authStartSignedIn") === "true";
+      const preflightFixture = localStorage.getItem("__authPreflightFixture") === "true";
       const state = { publishes: 0, signOuts: 0, activations: 0, loadCalls: 0, failNextSignOut: false };
       const clerk = {
         user: startsSignedIn ? { id: "user_browser", imageUrl: null } : null,
         session: startsSignedIn ? { id: "session_browser", async getToken() { return "browser-token"; } } : null,
         client: {
-          signUp: null,
+          signUp: preflightFixture ? {
+            id: "signup_preflight",
+            status: "complete",
+            createdSessionId: "session_browser",
+            emailAddress: "preflight@example.test",
+          } : null,
           signIn: {
             async create() {
               return { status: "complete", createdSessionId: "session_browser" };
@@ -257,6 +282,9 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           },
         },
       };
+      if (preflightFixture && clerk.user) {
+        clerk.user.primaryEmailAddress = { emailAddress: "preflight@example.test" };
+      }
       let snapshot = { status: "ready", clerk, user: clerk.user, session: clerk.session, profile: null };
       let profileKey = "";
       const publish = () => {
@@ -294,6 +322,13 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
             throw new Error("provider unavailable");
           }
           state.signOuts += 1;
+          clerk.user = null;
+          clerk.session = null;
+          snapshot = { status: "ready", clerk, user: null, session: null, profile: null };
+          profileKey = "";
+          publish();
+        },
+        emitAuthLoss() {
           clerk.user = null;
           clerk.session = null;
           snapshot = { status: "ready", clerk, user: null, session: null, profile: null };
@@ -409,6 +444,58 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       local: "safe-local-resume",
     });
     assert.equal(await boardAccountToggle.isVisible(), true, "failed provider sign-out keeps the active header session");
+
+    const preflightPage = await context.newPage();
+    await preflightPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
+    await preflightPage.evaluate(({ key, hash }) => {
+      localStorage.setItem("__authStartSignedIn", "true");
+      localStorage.setItem("__authPreflightFixture", "true");
+      const resume = JSON.stringify({
+        version: 2,
+        createdAt: Date.now(),
+        stage: "awaiting_email_verification",
+        emailAddress: "preflight@example.test",
+        maskedEmail: "p***@e***.test",
+        fullName: "Preflight Hunter",
+        participationBasis: "adult",
+        guardianPermissionAttested: false,
+        privacyMediaDocument: { version: "privacy-test", hash },
+        waiverDocument: { version: "waiver-test", hash },
+        providerAttemptId: "signup_preflight",
+        resendAvailableAt: null,
+        finalizationIdempotencyKey: "11111111-1111-4111-8111-111111111111",
+      });
+      sessionStorage.setItem(key, resume);
+      localStorage.setItem(key, resume);
+    }, { key: resumeKey, hash: legalHash });
+    const mutationBaseline = { profile: profileMutations, legal: legalMutations };
+    holdPreflightBootstrap = true;
+    await preflightPage.goto(`${appOrigin}/dashboard.html`, { waitUntil: "domcontentloaded" });
+    for (let attempt = 0; attempt < 50 && releaseHeldBootstraps.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(releaseHeldBootstraps.length, 1, "authoritative preflight reaches the held bootstrap");
+    assert.equal(await preflightPage.locator("#hunter-signup-finishing-state").isVisible(), true);
+    assert.notEqual(await preflightPage.evaluate(({ key }) => sessionStorage.getItem(key), { key: resumeKey }), null);
+
+    await preflightPage.evaluate(() => globalThis.__timLostHunterAuthSessionV1.emitAuthLoss());
+    assert.equal(await preflightPage.locator("#hunter-sign-in-form").isVisible(), true);
+    assert.equal(await preflightPage.locator("#hunter-signup-finishing-state").isVisible(), false);
+    assert.deepEqual(await preflightPage.evaluate(({ key }) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), { key: resumeKey }), { session: null, local: null });
+    for (let attempt = 0; attempt < 50 && preflightBootstrapAborts === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(preflightBootstrapAborts, 1, "provider auth loss aborts the held preflight request");
+
+    holdPreflightBootstrap = false;
+    for (const release of releaseHeldBootstraps.splice(0)) release();
+    await preflightPage.waitForTimeout(100);
+    assert.equal(await preflightPage.locator("#hunter-sign-in-form").isVisible(), true);
+    assert.equal(await preflightPage.locator("#hunter-signup-finishing-state").isVisible(), false);
+    assert.deepEqual({ profile: profileMutations, legal: legalMutations }, mutationBaseline);
   } finally {
     await context?.close();
     await browser.close();

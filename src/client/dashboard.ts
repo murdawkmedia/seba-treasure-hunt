@@ -564,8 +564,17 @@ const unavailableConfig = (): PublicConfig => ({
 let hunterClerk: Clerk | null = null;
 let hunterAuthSession: HunterAuthSessionCoordinator | null = null;
 let invalidateAccountOperations: (() => void) | null = null;
+let explicitHunterSignOutPending = false;
 let signInAttempt: SignInResource | null = null;
 let signUpAttempt: SignUpResource | null = null;
+
+function registerAccountOperationsInvalidator(invalidator: () => void): void {
+  invalidateAccountOperations = invalidator;
+}
+
+function invalidateActiveAccountOperations(): void {
+  invalidateAccountOperations?.();
+}
 
 async function authHeaders(auth: HunterAuthHook | null): Promise<Headers> {
   const headers = new Headers({ Accept: "application/json" });
@@ -2023,6 +2032,7 @@ function verifiedSignOutHandler(
     button.disabled = true;
     invalidateOperations();
     disableFinishingRetry();
+    explicitHunterSignOutPending = true;
     try {
       await signOutVerifiedAccount(
         async () => {
@@ -2039,6 +2049,8 @@ function verifiedSignOutHandler(
       );
       disableFinishingRetry();
       button.disabled = false;
+    } finally {
+      explicitHunterSignOutPending = false;
     }
   };
 }
@@ -2548,7 +2560,7 @@ function setupAccountForms(
     resendCooldownTimer = null;
     resetSignupOperationControls();
   };
-  invalidateAccountOperations = invalidateSignupOperations;
+  registerAccountOperationsInvalidator(invalidateSignupOperations);
   const clearSignupResume = (): void => {
     invalidateSignupOperations();
     resumeStore.clear();
@@ -3245,6 +3257,7 @@ async function initializeAccountState(
       preflightGeneration += 1;
       preflightController.abort();
     };
+    registerAccountOperationsInvalidator(invalidatePreflight);
     const signedInAccountFormDependencies: SignupAccountFormDependencies = {
       ...accountFormDependencies,
       invalidateParentOperations: invalidatePreflight,
@@ -3312,13 +3325,14 @@ async function initializeDashboard(): Promise<void> {
     authMessage("Hunter identity is not configured in this build. No password is accepted locally.", "error");
     return;
   }
+  const resumeStore = browserSignupResumeStore(config);
   const unsubscribe = hunterAuthSession?.subscribe((snapshot) => {
     if (snapshot.status !== "ready" || snapshot.user) return;
-    invalidateAccountOperations?.();
+    invalidateActiveAccountOperations();
+    if (!explicitHunterSignOutPending) resumeStore.clear();
     showSignedOut("signed-out");
   });
   if (unsubscribe) window.addEventListener("pagehide", unsubscribe, { once: true });
-  const resumeStore = browserSignupResumeStore(config);
   try {
     const presentation = await initializeAccountState(auth, config, resumeStore);
     if (presentation === "none") authMessage("Secure account access is ready.");
