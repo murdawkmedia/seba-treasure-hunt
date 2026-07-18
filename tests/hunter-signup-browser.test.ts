@@ -1495,3 +1495,152 @@ test("sign out cancels a pending finishing delay before profile or legal mutatio
     await page.close();
   }
 });
+
+test("initial authoritative preflight binds Sign out before its retry window settles", async () => {
+  const page = await signupPage();
+  try {
+    const resume = resumeRecord();
+    await installResume(page, "session", resume);
+    await installResume(page, "local", resume);
+    const source = String.raw`
+      let releaseSignOut;
+      window.__earlySignOutGate = new Promise(function (resolve) { releaseSignOut = resolve; });
+      window.__releaseEarlySignOut = releaseSignOut;
+      window.__earlyInitialization = window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+          session: { id: "session-active" }, setActive: async function () {},
+          signOut: async function () {
+            window.__earlyProviderSignOutCalls = Number(window.__earlyProviderSignOutCalls || 0) + 1;
+            await window.__earlySignOutGate;
+          },
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+        signupNeedsFinishing: async function (_resume, signal) {
+          window.__earlyPreflightStarted = true;
+          if (!signal) {
+            window.__earlyPreflightMissingSignal = true;
+            return await new Promise(function () {});
+          }
+          return await new Promise(function (resolve, reject) {
+            window.__releaseEarlyPreflight = function () { resolve(true); };
+            signal.addEventListener("abort", function () {
+              window.__earlyPreflightAborted = true;
+              reject(new DOMException("cancelled", "AbortError"));
+            }, { once: true });
+          });
+        },
+        finalizeSignup: async function () { window.__earlyMutationCalls = Number(window.__earlyMutationCalls || 0) + 1; },
+        loadDashboard: async function () { window.__earlyDashboardLoads = Number(window.__earlyDashboardLoads || 0) + 1; },
+      });
+      return "started";
+    `;
+    assert.equal(await page.evaluate(({ attempt, body }) => new Function("attempt", body)(attempt), {
+      attempt: preparedAttempt({ status: "complete", createdSessionId: "session-complete", unverifiedFields: [], verifications: { emailAddress: { status: "verified", strategy: "email_code" } } }),
+      body: source,
+    }), "started");
+    await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__earlyPreflightStarted === true);
+    assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), true);
+    await page.locator('#hunter-signup-finishing-state [data-hunter-sign-out]').click();
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__earlyProviderSignOutCalls || 0) === 1, null, { timeout: 1_000 });
+    await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__earlyPreflightAborted === true);
+    await page.evaluate(() => (window as unknown as { __releaseEarlyPreflight: () => void }).__releaseEarlyPreflight());
+    await page.waitForTimeout(50);
+    assert.deepEqual(await page.evaluate((key) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+      mutations: Number((window as unknown as Record<string, unknown>).__earlyMutationCalls || 0),
+      dashboardLoads: Number((window as unknown as Record<string, unknown>).__earlyDashboardLoads || 0),
+      retryVisible: !document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]")?.hidden,
+    }), storageKey), {
+      session: JSON.stringify(resume), local: JSON.stringify(resume),
+      mutations: 0, dashboardLoads: 0, retryVisible: false,
+    });
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+      page.evaluate(() => (window as unknown as { __releaseEarlySignOut: () => void }).__releaseEarlySignOut()),
+    ]);
+    assert.deepEqual(await page.evaluate((key) => ({ session: sessionStorage.getItem(key), local: localStorage.getItem(key) }), storageKey), { session: null, local: null });
+  } finally {
+    await page.close();
+  }
+});
+
+test("verification finalization cancellation cannot resurrect finishing retry while sign out is pending", async () => {
+  const page = await signupPage();
+  try {
+    const resume = resumeRecord();
+    await installResume(page, "session", resume);
+    const source = String.raw`
+      let releaseSignOut;
+      window.__verificationSignOutGate = new Promise(function (resolve) { releaseSignOut = resolve; });
+      window.__releaseVerificationSignOut = releaseSignOut;
+      const hydrated = { ...attempt };
+      hydrated.attemptEmailAddressVerification = async function () {
+        return { ...hydrated, status: "complete", createdSessionId: "session-complete", unverifiedFields: [] };
+      };
+      return window.DashboardTestModule.setupAccountFormsForTest({
+        clerk: {
+          client: { signUp: hydrated, signIn: { create: async function () { return {}; } } },
+          user: null, session: null, setActive: async function () {},
+          signOut: async function () {
+            window.__verificationProviderSignOutCalls = Number(window.__verificationProviderSignOutCalls || 0) + 1;
+            await window.__verificationSignOutGate;
+          },
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+        activateSession: async function () { return true; },
+        finalizeSignup: async function (_draft, signal) {
+          window.__verificationFinalizeCalls = Number(window.__verificationFinalizeCalls || 0) + 1;
+          await new Promise(function (_resolve, reject) {
+            signal.addEventListener("abort", function () {
+              window.__verificationFinalizeAborted = true;
+              reject(new DOMException("cancelled", "AbortError"));
+            }, { once: true });
+          });
+        },
+      });
+    `;
+    await page.evaluate(({ attempt, body }) => new Function("attempt", body)(attempt), { attempt: preparedAttempt(), body: source });
+    await page.locator("#hunter-verification-code").fill("123456");
+    await page.locator("#hunter-verify-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__verificationFinalizeCalls || 0) === 1);
+    await page.locator('#hunter-signup-finishing-state [data-hunter-sign-out]').click();
+    await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__verificationFinalizeAborted === true);
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__verificationProviderSignOutCalls || 0) === 1);
+    await page.waitForTimeout(50);
+    assert.deepEqual(await page.evaluate(() => {
+      const retry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
+      retry?.click();
+      return {
+        retryHidden: retry?.hidden,
+        retryDisabled: retry?.disabled,
+        finalizeCalls: Number((window as unknown as Record<string, unknown>).__verificationFinalizeCalls || 0),
+        status: document.querySelector("[data-signup-finishing-status]")?.textContent,
+      };
+    }), {
+      retryHidden: true,
+      retryDisabled: true,
+      finalizeCalls: 1,
+      status: "Email verified. Checking the remaining account setup now…",
+    });
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+      page.evaluate(() => (window as unknown as { __releaseVerificationSignOut: () => void }).__releaseVerificationSignOut()),
+    ]);
+    assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), storageKey), null);
+  } finally {
+    await page.close();
+  }
+});

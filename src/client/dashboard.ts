@@ -1926,6 +1926,54 @@ export async function signOutVerifiedAccount(
   clearLocalResume();
 }
 
+type HunterSignOutHandler = (button: HTMLButtonElement) => Promise<void>;
+
+const hunterSignOutHandlers = new WeakMap<HTMLButtonElement, HunterSignOutHandler>();
+
+function bindHunterSignOutControls(handler: HunterSignOutHandler): void {
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-hunter-sign-out]")) {
+    hunterSignOutHandlers.set(button, handler);
+    if (button.dataset.accountSignOutBound === "true") continue;
+    button.dataset.accountSignOutBound = "true";
+    button.addEventListener("click", () => {
+      const current = hunterSignOutHandlers.get(button);
+      if (current) void current(button);
+    });
+  }
+}
+
+function disableFinishingRetry(): void {
+  const retry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
+  if (!retry) return;
+  retry.hidden = true;
+  retry.disabled = true;
+}
+
+function verifiedSignOutHandler(
+  invalidateOperations: () => void,
+  clearLocalResume: () => void,
+): HunterSignOutHandler {
+  return async (button) => {
+    button.disabled = true;
+    invalidateOperations();
+    disableFinishingRetry();
+    try {
+      await signOutVerifiedAccount(
+        async () => { await hunterClerk?.signOut(); },
+        clearLocalResume,
+      );
+      window.location.reload();
+    } catch {
+      showSignupFinishing(
+        "Your verified session is still active because sign out could not finish. Try again, refresh later, or contact support.",
+        { retryAvailable: false, kind: "error" },
+      );
+      disableFinishingRetry();
+      button.disabled = false;
+    }
+  };
+}
+
 interface PlayerBootstrapResponse {
   ok: boolean;
   status: number;
@@ -2756,6 +2804,7 @@ function setupAccountForms(
       signUpAttempt = null;
       setSignupVerificationStatus("Email verified. Your Hunter Dashboard is ready.", "success");
     } catch (error) {
+      if (!signupOperationIsCurrent(operationGeneration)) return;
       if (error instanceof SignupLegalDocumentsChangedError) {
         await showSignupLegalRefresh(error);
         return;
@@ -2791,9 +2840,8 @@ function setupAccountForms(
       setSignupVerificationStatus(copy, "error");
       authMessage(copy, "error");
     } finally {
-      if (signupOperationIsCurrent(operationGeneration)) {
-        verificationActions.forEach((button) => { button.disabled = false; });
-      }
+      if (!signupOperationIsCurrent(operationGeneration)) return;
+      verificationActions.forEach((button) => { button.disabled = false; });
       if (currentSignupResume?.resendAvailableAt && currentSignupResume.resendAvailableAt > Date.now()) {
         startSignupResendCooldown(currentSignupResume.resendAvailableAt);
       }
@@ -2988,27 +3036,7 @@ function setupAccountForms(
     }
   });
 
-  for (const signOut of document.querySelectorAll<HTMLButtonElement>("[data-hunter-sign-out]")) {
-    if (signOut.dataset.accountSignOutBound === "true") continue;
-    signOut.dataset.accountSignOutBound = "true";
-    signOut.addEventListener("click", async () => {
-      signOut.disabled = true;
-      invalidateSignupOperations();
-      try {
-        await signOutVerifiedAccount(
-          async () => { await hunterClerk?.signOut(); },
-          clearSignupResume,
-        );
-        window.location.reload();
-      } catch {
-        showSignupFinishing(
-          "Your verified session is still active because sign out could not finish. Try again, refresh later, or contact support.",
-          { retryAvailable: false, kind: "error" },
-        );
-        signOut.disabled = false;
-      }
-    });
-  }
+  bindHunterSignOutControls(verifiedSignOutHandler(invalidateSignupOperations, clearSignupResume));
 
   const resume = currentSignupResume;
   if (!resume || !hunterClerk?.client) return "none";
@@ -3047,17 +3075,21 @@ type AccountStatePresentation = SignupRecoveryPresentation | "dashboard";
 
 interface AccountStateDependencies extends SignupAccountFormDependencies {
   loadDashboard?: () => Promise<void>;
-  signupNeedsFinishing?: (resume: HunterSignupResumeRecord) => Promise<boolean | null | undefined>;
+  signupNeedsFinishing?: (
+    resume: HunterSignupResumeRecord,
+    signal?: AbortSignal,
+  ) => Promise<boolean | null | undefined>;
 }
 
 async function signupNeedsAuthoritativeFinishing(
   auth: HunterAuthHook,
   _resume: HunterSignupResumeRecord,
+  signal?: AbortSignal,
 ): Promise<boolean> {
-  await bootstrapPlayer(auth, showProvisioningProgress);
+  await bootstrapPlayer(auth, showProvisioningProgress, signal);
   const [dashboard, waiverAcceptance] = await Promise.all([
-    fetchDashboardData(auth),
-    fetchWaiverAcceptanceProjection(auth),
+    fetchDashboardData(auth, signal),
+    fetchWaiverAcceptanceProjection(auth, signal),
   ]);
   const profileAndPrivacyComplete = isRecord(dashboard.profile) && dashboard.privacyMediaRequired !== true;
   return !profileAndPrivacyComplete || !waiverAcceptance?.acceptance;
@@ -3075,6 +3107,16 @@ async function initializeAccountState(
     ...(dependencies.loadDashboard ? { loadSignedInAccount: dependencies.loadDashboard } : {}),
   };
   if (hunterClerk?.user) {
+    const preflightController = new AbortController();
+    let preflightGeneration = 1;
+    const activePreflightGeneration = preflightGeneration;
+    const preflightIsCurrent = (): boolean =>
+      preflightGeneration === activePreflightGeneration && !preflightController.signal.aborted;
+    const invalidatePreflight = (): void => {
+      preflightGeneration += 1;
+      preflightController.abort();
+    };
+    bindHunterSignOutControls(verifiedSignOutHandler(invalidatePreflight, () => resumeStore.clear()));
     showSignupFinishing("Your email is verified. Checking your secure account setup…");
     const activeEmail = hunterClerk.user.primaryEmailAddress?.emailAddress?.trim().toLowerCase() ?? "";
     const providerAttempt = hunterClerk.client?.signUp;
@@ -3096,11 +3138,14 @@ async function initializeAccountState(
       });
       try {
         const decision = await (
-          dependencies.signupNeedsFinishing ?? ((record) => signupNeedsAuthoritativeFinishing(auth, record))
-        )(resume);
+          dependencies.signupNeedsFinishing
+          ?? ((record, signal) => signupNeedsAuthoritativeFinishing(auth, record, signal))
+        )(resume, preflightController.signal);
+        if (!preflightIsCurrent()) return "finishing";
         if (typeof decision !== "boolean") return deferIndeterminateFinishing();
         needsFinishing = decision;
       } catch (error) {
+        if (!preflightIsCurrent()) return "finishing";
         return deferIndeterminateFinishing(error);
       }
     }
@@ -3176,7 +3221,10 @@ export async function initializeAccountStateForTest(options: {
   loadDashboard: () => Promise<void>;
   activateSession?: (sessionId: string) => Promise<boolean>;
   finalizeSignup?: (draft: HunterSignupDraft) => Promise<void>;
-  signupNeedsFinishing?: (resume: HunterSignupResumeRecord) => Promise<boolean | null | undefined>;
+  signupNeedsFinishing?: (
+    resume: HunterSignupResumeRecord,
+    signal?: AbortSignal,
+  ) => Promise<boolean | null | undefined>;
 }): Promise<AccountStatePresentation> {
   hunterClerk = options.clerk as Clerk;
   return initializeAccountState(
