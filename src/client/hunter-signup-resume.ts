@@ -1,4 +1,4 @@
-export const SIGNUP_RESUME_VERSION = 1 as const;
+export const SIGNUP_RESUME_VERSION = 2 as const;
 export const SIGNUP_RESUME_TTL_MS = 30 * 60 * 1_000;
 
 type ParticipationBasis = "adult" | "minor_guardian_permission";
@@ -19,6 +19,9 @@ export interface HunterSignupResumeRecord {
   guardianPermissionAttested: boolean;
   privacyMediaDocument: SignupResumeLegalDocument;
   waiverDocument: SignupResumeLegalDocument;
+  providerAttemptId: string | null;
+  resendAvailableAt: number | null;
+  finalizationIdempotencyKey: string;
 }
 
 export interface SignupResumeStorage {
@@ -37,11 +40,18 @@ interface SignupResumeStoreOptions {
 export interface HunterSignupResumeStore {
   key: string;
   read: () => HunterSignupResumeRecord | null;
-  write: (record: HunterSignupResumeRecord) => void;
+  write: (record: HunterSignupResumeRecord) => SignupResumePersistence;
   clear: () => void;
 }
 
+export interface SignupResumePersistence {
+  session: boolean;
+  local: boolean;
+  persisted: boolean;
+}
+
 export interface SignupProviderAttemptSnapshot {
+  id?: string | undefined;
   status?: string | null;
   emailAddress?: string | null;
   createdSessionId?: string | null;
@@ -69,6 +79,13 @@ const normalizedEmail = (value: unknown): string =>
 
 const isEmail = (value: string): boolean =>
   value.length <= 254 && /^\S+@\S+\.\S+$/.test(value);
+
+const providerAttemptId = (value: unknown): string | null =>
+  value === null || value === undefined ? null :
+    typeof value === "string" && /^[a-z0-9_-]{1,128}$/i.test(value) ? value : "";
+
+const idempotencyKey = (value: unknown): string =>
+  typeof value === "string" && /^[a-z0-9_-]{16,128}$/i.test(value) ? value : "";
 
 const legalDocument = (value: unknown): SignupResumeLegalDocument | null => {
   if (!isRecord(value) || typeof value.version !== "string" || !value.version.trim() ||
@@ -98,13 +115,21 @@ function normalizeResume(value: unknown): HunterSignupResumeRecord | null {
   const guardianPermissionAttested = value.guardianPermissionAttested;
   const privacyMediaDocument = legalDocument(value.privacyMediaDocument);
   const waiverDocument = legalDocument(value.waiverDocument);
+  const attemptId = providerAttemptId(value.providerAttemptId);
+  const finalizationId = idempotencyKey(value.finalizationIdempotencyKey);
+  const resendAvailableAt = value.resendAvailableAt === null || value.resendAvailableAt === undefined
+    ? null
+    : typeof value.resendAvailableAt === "number" && Number.isSafeInteger(value.resendAvailableAt) &&
+      value.resendAvailableAt >= value.createdAt && value.resendAvailableAt <= value.createdAt + SIGNUP_RESUME_TTL_MS
+      ? value.resendAvailableAt
+      : -1;
   if (!isEmail(emailAddress) || typeof value.maskedEmail !== "string" ||
       value.maskedEmail !== maskSignupEmail(emailAddress) || !fullName || fullName.length > 100 ||
       (participationBasis !== "adult" && participationBasis !== "minor_guardian_permission") ||
       typeof guardianPermissionAttested !== "boolean" ||
       (participationBasis === "adult" && guardianPermissionAttested) ||
       (participationBasis === "minor_guardian_permission" && !guardianPermissionAttested) ||
-      !privacyMediaDocument || !waiverDocument) return null;
+      !privacyMediaDocument || !waiverDocument || attemptId === "" || !finalizationId || resendAvailableAt === -1) return null;
 
   return {
     version: SIGNUP_RESUME_VERSION,
@@ -117,10 +142,17 @@ function normalizeResume(value: unknown): HunterSignupResumeRecord | null {
     guardianPermissionAttested,
     privacyMediaDocument,
     waiverDocument,
+    providerAttemptId: attemptId,
+    resendAvailableAt,
+    finalizationIdempotencyKey: finalizationId,
   };
 }
 
-export function createHunterSignupResume(value: unknown, createdAt = Date.now()): HunterSignupResumeRecord {
+export function createHunterSignupResume(
+  value: unknown,
+  createdAt = Date.now(),
+  finalizationIdempotencyKey = crypto.randomUUID(),
+): HunterSignupResumeRecord {
   if (!isRecord(value)) throw new Error("The account setup details cannot be resumed.");
   const candidate = normalizeResume({
     version: SIGNUP_RESUME_VERSION,
@@ -133,9 +165,22 @@ export function createHunterSignupResume(value: unknown, createdAt = Date.now())
     guardianPermissionAttested: value.guardianPermissionAttested,
     privacyMediaDocument: value.privacyMediaDocument,
     waiverDocument: value.waiverDocument,
+    providerAttemptId: null,
+    resendAvailableAt: null,
+    finalizationIdempotencyKey,
   });
   if (!candidate) throw new Error("The account setup details cannot be resumed.");
   return candidate;
+}
+
+export function updateHunterSignupResume(
+  record: HunterSignupResumeRecord,
+  update: Partial<Pick<HunterSignupResumeRecord, "providerAttemptId" | "resendAvailableAt" |
+    "privacyMediaDocument" | "waiverDocument">>,
+): HunterSignupResumeRecord {
+  const updated = normalizeResume({ ...record, ...update });
+  if (!updated) throw new Error("The account setup details cannot be resumed.");
+  return updated;
 }
 
 export function serializeHunterSignupResume(value: unknown): string {
@@ -166,11 +211,14 @@ const safeRemove = (storage: SignupResumeStorage | null, key: string): void => {
   }
 };
 
-const safeWrite = (storage: SignupResumeStorage | null, key: string, value: string): void => {
+const safeWrite = (storage: SignupResumeStorage | null, key: string, value: string): boolean => {
   try {
-    storage?.setItem(key, value);
+    if (!storage) return false;
+    storage.setItem(key, value);
+    return storage.getItem(key) === value;
   } catch {
     // The other bounded storage tier may still be available.
+    return false;
   }
 };
 
@@ -209,9 +257,7 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
     read: () => {
       const sessionRecord = readTier(options.sessionStorage);
       const localRecord = readTier(options.localStorage);
-      const selected = localRecord && (!sessionRecord || localRecord.createdAt > sessionRecord.createdAt)
-        ? localRecord
-        : sessionRecord;
+      const selected = sessionRecord ?? localRecord;
       if (!selected) return null;
       const serialized = serializeHunterSignupResume(selected);
       clearTier(options.sessionStorage);
@@ -224,8 +270,9 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
       const serialized = serializeHunterSignupResume(record);
       clearTier(options.sessionStorage);
       clearTier(options.localStorage);
-      safeWrite(options.sessionStorage, key, serialized);
-      safeWrite(options.localStorage, key, serialized);
+      const session = safeWrite(options.sessionStorage, key, serialized);
+      const local = safeWrite(options.localStorage, key, serialized);
+      return { session, local, persisted: session || local };
     },
     clear: () => {
       clearTier(options.sessionStorage);
@@ -238,7 +285,8 @@ export function reconcileHunterSignupResume(
   resume: HunterSignupResumeRecord,
   attempt: SignupProviderAttemptSnapshot | null | undefined,
 ): HunterSignupResumeReconciliation {
-  if (!attempt || normalizedEmail(attempt.emailAddress) !== resume.emailAddress) {
+  if (!attempt || !resume.providerAttemptId || attempt.id !== resume.providerAttemptId ||
+      normalizedEmail(attempt.emailAddress) !== resume.emailAddress) {
     return { state: "lost_attempt", resume };
   }
   if (attempt.status === "complete" && typeof attempt.createdSessionId === "string" && attempt.createdSessionId) {

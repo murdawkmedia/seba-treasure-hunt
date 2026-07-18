@@ -84,17 +84,28 @@
         <form id="hunter-verify-form" class="auth-form" novalidate hidden>
           <div class="signup-verification">
             <p class="field-label">Verify your email</p>
-            <p>We sent one code to <strong data-signup-masked-email>your email</strong>. You can leave this page and return while the secure sign-up attempt remains available.</p>
+            <p>We sent one code to <strong data-signup-masked-email>your email</strong>. This page will say whether recovery after leaving is available.</p>
             <p class="signup-verification__status" data-signup-verification-status role="status" aria-live="polite" aria-atomic="true">Enter the code from your email.</p>
           </div>
           <div class="form-field"><label for="hunter-verification-code">Email verification code</label><input id="hunter-verification-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required /></div>
           <div class="action-row"><button class="hunter-button" type="submit">Verify email</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-resend>Resend code</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-restart>Use a different email</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-back-to-sign-in>Back to sign in</button></div>
         </form>
+        <form id="hunter-signup-finish-form" class="auth-form" novalidate hidden>
+          <div class="signup-verification">
+            <p class="field-label">Finish your verified account</p>
+            <h3 tabindex="-1">Review updated legal documents</h3>
+            <p>Your email is verified. Only the documents changed during verification need a fresh acceptance.</p>
+            <p data-signup-finish-status role="status" aria-live="polite"></p>
+          </div>
+          <label class="check-row" data-signup-finish-privacy><input name="privacyMediaAccepted" type="checkbox" /><span>I have read and agree to the current <a href="/privacy#media-notice" target="_blank" rel="noopener">Privacy Policy &amp; Media Notice</a>.</span></label>
+          <label class="check-row" data-signup-finish-waiver><input name="waiverAccepted" type="checkbox" /><span>I have read and accept the current <a href="/waiver" target="_blank" rel="noopener">Participation Waiver</a>.</span></label>
+          <div class="action-row"><button class="hunter-button" type="submit">Accept updates and finish</button></div>
+        </form>
         <section id="hunter-signup-lost-state" class="auth-form signup-verification" aria-labelledby="hunter-signup-lost-title" hidden>
           <p class="field-label">Account setup paused</p>
           <h3 id="hunter-signup-lost-title">The secure verification attempt is no longer connected</h3>
           <p data-signup-lost-detail role="status" aria-live="polite">Your safe account details remain on this device, but verification cannot continue without the matching identity-provider attempt.</p>
-          <div class="action-row"><button class="hunter-button" type="button" data-signup-restart>Restart account setup</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-back-to-sign-in>Back to sign in</button></div>
+          <div class="action-row"><button class="hunter-button" type="button" data-signup-retry>Retry sending the code</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-restart>Restart account setup</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-back-to-sign-in>Back to sign in</button></div>
         </section>
         <form id="hunter-recovery-form" class="auth-form" novalidate hidden>
           <div class="form-field"><label for="hunter-recovery-email">Account email</label><input id="hunter-recovery-email" name="email" type="email" autocomplete="email" required /></div>

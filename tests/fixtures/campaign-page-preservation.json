@@ -46,7 +46,7 @@
     "dashboard.html": {
       "headSha256": "f4bb78659b71dea3026cab4cf77f39dcda4c40b3d9436e7e890788ef16a5acdc",
       "scriptsSha256": "e05ab979782e680caf291b2f77e492f28d3ecbfadaff5abc4e2e1f18ed5bef2d",
-      "bodySha256": "d978d1efecb60158f91c0ce359b66f2912a800f28b824482a5e4ba9d991f37dc"
+      "bodySha256": "fe33dbaf549c9102e1266968171607b58f05a5a83ddbfd537f0b02e3ee9b6707"
     },
     "privacy.html": {
       "headSha256": "4a5cb1cd4f2d89b79ddeec49975ac17a0611d52b1391579cd4979edc418cfa0e",

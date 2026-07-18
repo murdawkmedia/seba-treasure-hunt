@@ -33,7 +33,7 @@ after(async () => {
 
 function resumeRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    version: 1,
+    version: 2,
     createdAt: Date.now() - 1_000,
     stage: "awaiting_email_verification",
     emailAddress: "alex@example.test",
@@ -43,6 +43,9 @@ function resumeRecord(overrides: Record<string, unknown> = {}): Record<string, u
     guardianPermissionAttested: false,
     privacyMediaDocument: privacy,
     waiverDocument: waiver,
+    providerAttemptId: "sua_attempt_a",
+    resendAvailableAt: null,
+    finalizationIdempotencyKey: "11111111-1111-4111-8111-111111111111",
     ...overrides,
   };
 }
@@ -92,6 +95,14 @@ async function signupPage(): Promise<Page> {
       });
       return;
     }
+    if (url.pathname === "/api/v1/legal/waiver") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { document: { ...liveWaiver, title: "Participation Waiver", sections: [] } } }),
+      });
+      return;
+    }
     await route.fulfill({ status: 204, body: "" });
   });
   await page.goto(`${origin}/dashboard`);
@@ -121,7 +132,10 @@ async function installResume(page: Page, tier: "session" | "local", record: Reco
 async function setup(page: Page, providerAttempt: Record<string, unknown>, cooldownMs = 200): Promise<string> {
   const source = String.raw`
     let hydrated = { ...attempt };
-    hydrated.create = async function () { return hydrated; };
+    hydrated.create = async function () {
+      if (window.__createFailure === true) throw new Error("Account provider response was interrupted.");
+      return hydrated;
+    };
     hydrated.prepareEmailAddressVerification = async function () {
       window.__resendCalls = Number(window.__resendCalls || 0) + 1;
       if (window.__resendFailure === true) {
@@ -136,7 +150,9 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
       return hydrated;
     };
     hydrated.attemptEmailAddressVerification = async function (input) {
+      window.__verificationCalls = Number(window.__verificationCalls || 0) + 1;
       window.__attemptedCode = input.code;
+      if (window.__verificationGate) await window.__verificationGate;
       return { ...hydrated, status: "complete", createdSessionId: "session-1", unverifiedFields: [] };
     };
     const clerk = {
@@ -159,7 +175,13 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
         window.__activatedSession = sessionId;
         return true;
       },
-      finalizeSignup: async function (draft) { window.__finalizedDraft = draft; },
+      finalizeSignup: async function (draft) {
+        window.__finalizeCalls = Number(window.__finalizeCalls || 0) + 1;
+        if (Array.isArray(window.__legalChanged)) {
+          throw new window.DashboardTestModule.SignupLegalDocumentsChangedError(window.__legalChanged);
+        }
+        window.__finalizedDraft = draft;
+      },
       resendCooldownMs: cooldown,
     });
   `;
@@ -169,6 +191,7 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
 }
 
 const preparedAttempt = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: "sua_attempt_a",
   status: "missing_requirements",
   emailAddress: "alex@example.test",
   createdSessionId: null,
@@ -234,7 +257,7 @@ test("real signup handlers restore prepared verification and show lost attempts 
   }
 });
 
-test("failed initial provider preparation clears resume and exposes restart and sign-in", async () => {
+test("failed initial provider preparation retains safe resume and exposes recovery choices", async () => {
   const page = await signupPage();
   try {
     await setup(page, preparedAttempt({
@@ -253,11 +276,14 @@ test("failed initial provider preparation clears resume and exposes restart and 
     await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-lost-state")?.hidden);
     assert.match(await page.locator("[data-signup-lost-detail]").textContent() ?? "", /Please wait before requesting another code/);
     assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-restart]").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-retry]").isVisible(), true);
     assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-back-to-sign-in]").isVisible(), true);
-    assert.deepEqual(await page.evaluate((key) => ({
+    const stored = await page.evaluate((key) => ({
       session: sessionStorage.getItem(key),
       local: localStorage.getItem(key),
-    }), storageKey), { session: null, local: null });
+    }), storageKey);
+    assert.ok(stored.session);
+    assert.ok(stored.local);
   } finally {
     await page.close();
   }
@@ -279,10 +305,35 @@ test("resolved but unprepared initial provider state cannot masquerade as waitin
     await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
     await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-lost-state")?.hidden);
     assert.match(await page.locator("[data-signup-lost-detail]").textContent() ?? "", /could not be prepared/i);
-    assert.deepEqual(await page.evaluate((key) => ({
+    const stored = await page.evaluate((key) => ({
       session: sessionStorage.getItem(key),
       local: localStorage.getItem(key),
-    }), storageKey), { session: null, local: null });
+    }), storageKey);
+    assert.ok(stored.session);
+    assert.ok(stored.local);
+  } finally {
+    await page.close();
+  }
+});
+
+test("ambiguous initial create failure reconciles a prepared provider attempt without clearing the draft", async () => {
+  const page = await signupPage();
+  try {
+    await setup(page, preparedAttempt());
+    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__createFailure = true; });
+    await page.locator('#hunter-sign-in-form [data-show-auth="hunter-sign-up-form"]').click();
+    await page.locator('#hunter-sign-up-form [name="fullName"]').fill("Alex Hunter");
+    await page.locator('#hunter-sign-up-form [name="email"]').fill("alex@example.test");
+    await page.locator('#hunter-sign-up-form [name="password"]').fill("a-secure-password");
+    await page.locator('#hunter-sign-up-form [name="confirmPassword"]').fill("a-secure-password");
+    await page.locator('#hunter-sign-up-form [name="participationBasis"][value="adult"]').check();
+    await page.locator('#hunter-sign-up-form [name="privacyMediaAccepted"]').check();
+    await page.locator('#hunter-sign-up-form [name="waiverAccepted"]').check();
+    await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-verify-form")?.hidden);
+    assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /prepared verification is still available/i);
+    const record = JSON.parse((await page.evaluate((key) => sessionStorage.getItem(key), storageKey))!);
+    assert.equal(record.providerAttemptId, "sua_attempt_a");
   } finally {
     await page.close();
   }
@@ -304,6 +355,27 @@ test("real resend handler exposes success, cooldown, and provider error", async 
     assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /Please wait before requesting another code/);
   } finally {
     await page.close();
+  }
+});
+
+test("resend cooldown survives reload and lost state announces after focus moves to its heading", async () => {
+  const cooldown = await signupPage();
+  try {
+    await installResume(cooldown, "local", resumeRecord({ resendAvailableAt: Date.now() + 5_000 }));
+    await setup(cooldown, preparedAttempt(), 200);
+    assert.equal(await cooldown.locator("[data-signup-resend]").isDisabled(), true);
+    assert.match(await cooldown.locator("[data-signup-resend]").textContent() ?? "", /Resend code in/);
+  } finally {
+    await cooldown.close();
+  }
+  const lost = await signupPage();
+  try {
+    await installResume(lost, "local", resumeRecord());
+    await setup(lost, { id: "sua_different", status: null, emailAddress: "alex@example.test" });
+    assert.equal(await lost.evaluate(() => document.activeElement?.id), "hunter-signup-lost-title");
+    assert.match(await lost.locator("[data-signup-lost-detail]").textContent() ?? "", /safe account details/i);
+  } finally {
+    await lost.close();
   }
 });
 
@@ -329,7 +401,7 @@ test("real verification exits clear both tiers and route to the selected form", 
   }
 });
 
-test("real recovered verification finalizes only the newest synchronized safe draft", async () => {
+test("real recovered verification keeps the active-tab session draft authoritative", async () => {
   const page = await signupPage();
   try {
     await installResume(page, "session", resumeRecord({
@@ -356,11 +428,114 @@ test("real recovered verification finalizes only the newest synchronized safe dr
     }), storageKey) as { draft: Record<string, unknown>; [key: string]: unknown };
     assert.equal(result.attemptedCode, "123456");
     assert.equal(result.activatedSession, "session-1");
-    assert.equal(result.draft.fullName, "Newest Local Participant");
-    assert.deepEqual(result.draft.privacyMediaDocument, newestPrivacy);
+    assert.equal(result.draft.fullName, "Stale Session Participant");
+    assert.deepEqual(result.draft.privacyMediaDocument, privacy);
     assert.equal(result.session, null);
     assert.equal(result.local, null);
     assert.match(String(result.status), /Email verified/i);
+  } finally {
+    await page.close();
+  }
+});
+
+test("verification double-submit runs one provider attempt and disables conflicting actions", async () => {
+  const page = await signupPage();
+  try {
+    await installResume(page, "session", resumeRecord());
+    await setup(page, preparedAttempt());
+    await page.evaluate(() => {
+      let release!: () => void;
+      (window as unknown as Record<string, unknown>).__verificationGate = new Promise<void>((resolve) => { release = resolve; });
+      (window as unknown as Record<string, unknown>).__releaseVerification = release;
+    });
+    await page.locator("#hunter-verification-code").fill("123456");
+    await page.locator("#hunter-verify-form").evaluate((form: HTMLFormElement) => {
+      form.requestSubmit();
+      form.requestSubmit();
+    });
+    await page.waitForFunction(() => (window as unknown as Record<string, number>).__verificationCalls === 1);
+    assert.equal(await page.locator("#hunter-verify-form button:enabled").count(), 0);
+    await page.evaluate(() => (window as unknown as { __releaseVerification: () => void }).__releaseVerification());
+    await page.waitForFunction(() => Boolean((window as unknown as Record<string, unknown>).__finalizedDraft));
+    assert.equal(await page.evaluate(() => (window as unknown as Record<string, number>).__verificationCalls), 1);
+  } finally {
+    await page.close();
+  }
+});
+
+test("blocked browser storage warns that leaving cannot be recovered while live verification remains usable", async () => {
+  const page = await signupPage();
+  try {
+    await setup(page, preparedAttempt());
+    await page.evaluate(() => {
+      Storage.prototype.setItem = function () { throw new DOMException("denied", "SecurityError"); };
+    });
+    await page.locator('#hunter-sign-in-form [data-show-auth="hunter-sign-up-form"]').click();
+    await page.locator('#hunter-sign-up-form [name="fullName"]').fill("Alex Hunter");
+    await page.locator('#hunter-sign-up-form [name="email"]').fill("alex@example.test");
+    await page.locator('#hunter-sign-up-form [name="password"]').fill("a-secure-password");
+    await page.locator('#hunter-sign-up-form [name="confirmPassword"]').fill("a-secure-password");
+    await page.locator('#hunter-sign-up-form [name="participationBasis"][value="adult"]').check();
+    await page.locator('#hunter-sign-up-form [name="privacyMediaAccepted"]').check();
+    await page.locator('#hunter-sign-up-form [name="waiverAccepted"]').check();
+    await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-verify-form")?.hidden);
+    assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /keep this page open.*leaving or reloading cannot recover/i);
+  } finally {
+    await page.close();
+  }
+});
+
+for (const changedKind of ["privacy-media", "waiver"] as const) {
+  test(`post-verification ${changedKind} change keeps the session and asks only for changed acceptance`, async () => {
+    const page = await signupPage();
+    try {
+      await installResume(page, "session", resumeRecord());
+      const changedPrivacy = { version: "2026.4", hash: "c".repeat(64) };
+      const changedWaiver = { version: "2026.3", hash: "d".repeat(64) };
+      (page as Page & { setLegal: (nextPrivacy: typeof privacy, nextWaiver: typeof waiver) => void }).setLegal(
+        changedKind === "privacy-media" ? changedPrivacy : privacy,
+        changedKind === "waiver" ? changedWaiver : waiver,
+      );
+      await setup(page, preparedAttempt());
+      await page.evaluate((kind) => { (window as unknown as Record<string, unknown>).__legalChanged = [kind]; }, changedKind);
+      await page.locator("#hunter-verification-code").fill("123456");
+      await page.locator("#hunter-verify-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-signup-finish-form")?.hidden);
+      assert.equal(await page.locator("[data-signup-finish-privacy]").isVisible(), changedKind === "privacy-media");
+      assert.equal(await page.locator("[data-signup-finish-waiver]").isVisible(), changedKind === "waiver");
+      await page.locator(`[data-signup-finish-${changedKind === "privacy-media" ? "privacy" : "waiver"}] input`).check();
+      await page.evaluate(() => { delete (window as unknown as Record<string, unknown>).__legalChanged; });
+      await page.locator("#hunter-signup-finish-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await page.waitForFunction(() => Boolean((window as unknown as Record<string, unknown>).__finalizedDraft));
+      const draft = await page.evaluate(() => (window as unknown as { __finalizedDraft: Record<string, unknown> }).__finalizedDraft);
+      assert.deepEqual(draft.privacyMediaDocument, changedKind === "privacy-media" ? changedPrivacy : privacy);
+      assert.deepEqual(draft.waiverDocument, changedKind === "waiver" ? changedWaiver : waiver);
+      assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), storageKey), null);
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+test("already-complete provider resume enters the same acceptance-only finishing state", async () => {
+  const page = await signupPage();
+  try {
+    await installResume(page, "local", resumeRecord());
+    const changedWaiver = { version: "2026.3", hash: "e".repeat(64) };
+    (page as Page & { setLegal: (nextPrivacy: typeof privacy, nextWaiver: typeof waiver) => void }).setLegal(privacy, changedWaiver);
+    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__legalChanged = ["waiver"]; });
+    assert.equal(await setup(page, preparedAttempt({
+      status: "complete",
+      createdSessionId: "session-complete",
+      unverifiedFields: [],
+      verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
+    })), "complete");
+    await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-signup-finish-form")?.hidden);
+    assert.equal(await page.locator("[data-signup-finish-privacy]").isVisible(), false);
+    assert.equal(await page.locator("[data-signup-finish-waiver]").isVisible(), true);
+    assert.ok(await page.evaluate((key) => localStorage.getItem(key), storageKey));
+    assert.equal(await page.evaluate(() => document.querySelector("[data-auth-message]")?.textContent ?? ""), "");
   } finally {
     await page.close();
   }

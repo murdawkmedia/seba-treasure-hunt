@@ -15,6 +15,7 @@ import {
   SIGNUP_RESUME_TTL_MS,
   createHunterSignupResume,
   createHunterSignupResumeStore,
+  updateHunterSignupResume,
   parseHunterSignupResume,
   reconcileHunterSignupResume,
   serializeHunterSignupResume,
@@ -79,7 +80,7 @@ test("signup resume records whitelist only non-secret normalized onboarding fiel
   });
 
   assert.deepEqual(JSON.parse(serialized), {
-    version: 1,
+    version: 2,
     createdAt: 1_000,
     stage: "awaiting_email_verification",
     emailAddress: "alex.hunter@example.test",
@@ -89,6 +90,9 @@ test("signup resume records whitelist only non-secret normalized onboarding fiel
     guardianPermissionAttested: false,
     privacyMediaDocument,
     waiverDocument,
+    providerAttemptId: null,
+    resendAvailableAt: null,
+    finalizationIdempotencyKey: record.finalizationIdempotencyKey,
   });
   for (const secret of ["a-secure-password", "123456", "654321", "sess_secret", "provider-secret", "unknown-value"]) {
     assert.doesNotMatch(serialized, new RegExp(secret));
@@ -99,7 +103,7 @@ test("signup resume parsing discards corrupt, invalid, expired, and version-mism
   const record = createHunterSignupResume(validDraft, 10_000);
   assert.deepEqual(parseHunterSignupResume(serializeHunterSignupResume(record), 10_001), record);
   assert.equal(parseHunterSignupResume("not-json", 10_001), null);
-  assert.equal(parseHunterSignupResume(JSON.stringify({ ...record, version: 2 }), 10_001), null);
+  assert.equal(parseHunterSignupResume(JSON.stringify({ ...record, version: 1 }), 10_001), null);
   assert.equal(parseHunterSignupResume(JSON.stringify({ ...record, emailAddress: "not-an-email" }), 10_001), null);
   assert.equal(parseHunterSignupResume(JSON.stringify({ ...record, stage: "password_collected" }), 10_001), null);
   assert.equal(parseHunterSignupResume(serializeHunterSignupResume(record), 10_000 + SIGNUP_RESUME_TTL_MS), null);
@@ -129,7 +133,7 @@ test("signup resume survives a fresh tab session through the bounded local fallb
   assert.equal(local.values.size, 0);
 });
 
-test("signup resume selects and synchronizes the newest valid cross-tab record", () => {
+test("signup resume keeps the active tab session authoritative over a same-email local draft", () => {
   const session = new MemoryStorage();
   const local = new MemoryStorage();
   const namespace = "https://validation.example.test:validation";
@@ -139,18 +143,24 @@ test("signup resume selects and synchronizes the newest valid cross-tab record",
     namespace,
     now: () => 20_000,
   });
-  const oldSession = createHunterSignupResume(validDraft, 10_000);
-  const newLocal = createHunterSignupResume({
+  const oldSession = updateHunterSignupResume(createHunterSignupResume(validDraft, 10_000), { providerAttemptId: "sua_tab_a" });
+  const newLocal = updateHunterSignupResume(createHunterSignupResume({
     ...validDraft,
     fullName: "New Local Participant",
     privacyMediaDocument: { version: "2026.4", hash: "c".repeat(64) },
-  }, 15_000);
+  }, 15_000), { providerAttemptId: "sua_tab_b" });
   session.setItem(store.key, serializeHunterSignupResume(oldSession));
   local.setItem(store.key, serializeHunterSignupResume(newLocal));
 
-  assert.deepEqual(store.read(), newLocal);
-  assert.deepEqual(parseHunterSignupResume(session.getItem(store.key), 20_000), newLocal);
-  assert.deepEqual(parseHunterSignupResume(local.getItem(store.key), 20_000), newLocal);
+  assert.deepEqual(store.read(), oldSession);
+  assert.deepEqual(parseHunterSignupResume(session.getItem(store.key), 20_000), oldSession);
+  assert.deepEqual(parseHunterSignupResume(local.getItem(store.key), 20_000), oldSession);
+  const providerB = {
+    id: "sua_tab_b", status: "missing_requirements", emailAddress: oldSession.emailAddress,
+    unverifiedFields: ["email_address"], missingFields: [],
+    verifications: { emailAddress: { status: "unverified", strategy: "email_code" } },
+  };
+  assert.equal(reconcileHunterSignupResume(store.read()!, providerB).state, "lost_attempt");
 
   const newerSession = createHunterSignupResume({
     ...validDraft,
@@ -190,8 +200,9 @@ test("signup resume uses a stable key and sweeps prior-version records from both
 });
 
 test("signup resume reconnects only to the matching provider-managed pending attempt", () => {
-  const resume = createHunterSignupResume(validDraft, 1_000);
+  const resume = updateHunterSignupResume(createHunterSignupResume(validDraft, 1_000), { providerAttemptId: "sua_attempt_a" });
   const pending = {
+    id: "sua_attempt_a",
     status: "missing_requirements",
     emailAddress: "alex@example.test",
     createdSessionId: null,
@@ -201,6 +212,7 @@ test("signup resume reconnects only to the matching provider-managed pending att
   };
   assert.equal(reconcileHunterSignupResume(resume, pending).state, "verification");
   assert.equal(reconcileHunterSignupResume(resume, null).state, "lost_attempt");
+  assert.equal(reconcileHunterSignupResume(resume, { ...pending, id: "sua_attempt_b" }).state, "lost_attempt");
   assert.equal(reconcileHunterSignupResume(resume, { ...pending, emailAddress: "other@example.test" }).state, "lost_attempt");
   assert.equal(reconcileHunterSignupResume(resume, {
     ...pending,
@@ -211,8 +223,9 @@ test("signup resume reconnects only to the matching provider-managed pending att
 });
 
 test("signup resume accepts only a prepared pending email-code provider attempt", () => {
-  const resume = createHunterSignupResume(validDraft, 1_000);
+  const resume = updateHunterSignupResume(createHunterSignupResume(validDraft, 1_000), { providerAttemptId: "sua_attempt_a" });
   const prepared = {
+    id: "sua_attempt_a",
     status: "missing_requirements",
     emailAddress: "alex@example.test",
     createdSessionId: null,
@@ -233,6 +246,36 @@ test("signup resume accepts only a prepared pending email-code provider attempt"
   ]) {
     assert.notEqual(reconcileHunterSignupResume(resume, attempt).state, "verification");
   }
+});
+
+test("signup resume reports verified persistence per storage tier", () => {
+  class DeniedStorage extends MemoryStorage {
+    override setItem(): void { throw new Error("denied"); }
+  }
+  const session = new MemoryStorage();
+  const local = new DeniedStorage();
+  const store = createHunterSignupResumeStore({ sessionStorage: session, localStorage: local, namespace: "durability" });
+  assert.deepEqual(store.write(createHunterSignupResume(validDraft, Date.now())), {
+    session: true,
+    local: false,
+    persisted: true,
+  });
+  const denied = createHunterSignupResumeStore({
+    sessionStorage: new DeniedStorage(), localStorage: new DeniedStorage(), namespace: "denied",
+  });
+  assert.deepEqual(denied.write(createHunterSignupResume(validDraft, Date.now())), {
+    session: false,
+    local: false,
+    persisted: false,
+  });
+  const onlyLocal = createHunterSignupResumeStore({
+    sessionStorage: new DeniedStorage(), localStorage: new MemoryStorage(), namespace: "session-denied",
+  });
+  assert.deepEqual(onlyLocal.write(createHunterSignupResume(validDraft, Date.now())), {
+    session: false,
+    local: true,
+    persisted: true,
+  });
 });
 
 test("successful verification after reload finalizes from the recovered safe draft and clears it", async () => {
@@ -288,6 +331,7 @@ test("verified signup finalization writes profile and legal records before refre
   const document = { version: "2026.2", hash: "a".repeat(64) };
   await completeHunterRegistration({
     bootstrap: async () => { calls.push("bootstrap"); },
+    loadState: async () => ({ profileAndPrivacyComplete: false, waiverAcceptance: null }),
     saveProfileAndPrivacy: async () => { calls.push("profile"); },
     fetchWaiverDocument: async () => { calls.push("fetch-waiver"); return document; },
     recordWaiverReview: async (value) => { assert.equal(value, document); calls.push("review"); return "review-1"; },
@@ -299,6 +343,51 @@ test("verified signup finalization writes profile and legal records before refre
     refreshDashboard: async () => { calls.push("refresh"); },
   });
   assert.deepEqual(calls, ["bootstrap", "profile", "fetch-waiver", "review", "accept", "refresh"]);
+});
+
+test("verified signup retry skips profile and waiver writes already accepted authoritatively", async () => {
+  const calls: string[] = [];
+  const document = { version: "2026.2", hash: "a".repeat(64) };
+  await completeHunterRegistration({
+    bootstrap: async () => { calls.push("bootstrap"); },
+    loadState: async () => ({
+      profileAndPrivacyComplete: true,
+      waiverAcceptance: { documentVersion: document.version, documentHash: document.hash },
+    }),
+    saveProfileAndPrivacy: async () => { calls.push("profile"); },
+    fetchWaiverDocument: async () => { calls.push("fetch-waiver"); return document; },
+    recordWaiverReview: async () => { calls.push("review"); return "review-1"; },
+    acceptWaiver: async () => { calls.push("accept"); },
+    refreshDashboard: async () => { calls.push("refresh"); },
+  });
+  assert.deepEqual(calls, ["bootstrap", "fetch-waiver", "refresh"]);
+});
+
+test("verified signup reconciles response loss before retrying profile or waiver acceptance", async () => {
+  const document = { version: "2026.2", hash: "a".repeat(64) };
+  let profileComplete = false;
+  let acceptance: Record<string, unknown> | null = null;
+  let profileWrites = 0;
+  let accepts = 0;
+  await completeHunterRegistration({
+    bootstrap: async () => {},
+    loadState: async () => ({ profileAndPrivacyComplete: profileComplete, waiverAcceptance: acceptance }),
+    saveProfileAndPrivacy: async () => {
+      profileWrites += 1;
+      profileComplete = true;
+      throw new Error("profile response lost");
+    },
+    fetchWaiverDocument: async () => document,
+    recordWaiverReview: async () => "review-1",
+    acceptWaiver: async () => {
+      accepts += 1;
+      acceptance = { documentVersion: document.version, documentHash: document.hash };
+      throw new Error("accept response lost");
+    },
+    refreshDashboard: async () => {},
+  });
+  assert.equal(profileWrites, 1);
+  assert.equal(accepts, 1);
 });
 
 test("verified signup rejects legal documents that changed during email verification", () => {
@@ -314,6 +403,14 @@ test("verified signup rejects legal documents that changed during email verifica
     }),
     /changed while your email was being verified/i,
   );
+  try {
+    assertReviewedSignupDocumentsCurrent(validDraft, {
+      privacyMedia: { ...privacyMediaDocument, version: "2026.4", hash: "c".repeat(64) },
+      waiver: waiverDocument,
+    });
+  } catch (error) {
+    assert.deepEqual((error as { changed: unknown }).changed, ["privacy-media"]);
+  }
   assert.throws(
     () => assertReviewedSignupDocumentsCurrent(validDraft, {
       privacyMedia: privacyMediaDocument,
@@ -321,6 +418,14 @@ test("verified signup rejects legal documents that changed during email verifica
     }),
     /changed while your email was being verified/i,
   );
+  try {
+    assertReviewedSignupDocumentsCurrent(validDraft, {
+      privacyMedia: privacyMediaDocument,
+      waiver: { ...waiverDocument, hash: "d".repeat(64) },
+    });
+  } catch (error) {
+    assert.deepEqual((error as { changed: unknown }).changed, ["waiver"]);
+  }
 });
 
 test("legal signup review requires exact document versions and hashes", () => {
