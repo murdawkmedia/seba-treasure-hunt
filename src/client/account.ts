@@ -1,5 +1,10 @@
 import type { Clerk } from "@clerk/clerk-js";
 import { privateAccountIdentity } from "../shared/public-identity";
+import {
+  getHunterAuthSessionCoordinator,
+  type HunterAuthSessionCoordinator,
+  type HunterAuthSessionSnapshot,
+} from "./hunter-auth-session";
 
 type AccountUser = { imageUrl?: string | null };
 
@@ -13,6 +18,7 @@ export interface CampaignAccountModel {
 export interface CampaignHunterSession {
   clerk: Clerk;
   getToken: () => Promise<string | null>;
+  coordinator: HunterAuthSessionCoordinator;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -56,15 +62,15 @@ async function loadCampaignHunterSession(): Promise<CampaignHunterSession | null
       ? data.hunterPublishableKey.trim()
       : "";
     if (!publishableKey) return null;
-    const { Clerk: ClerkConstructor } = await import("@clerk/clerk-js");
-    const clerk = new ClerkConstructor(publishableKey);
-    await clerk.load();
+    const coordinator = getHunterAuthSessionCoordinator();
+    const snapshot = await coordinator.load(publishableKey);
+    const clerk = snapshot.clerk;
+    if (!clerk || snapshot.status !== "ready") return null;
     const session: CampaignHunterSession = {
       clerk,
-      getToken: async () => clerk.session?.getToken() ?? null,
+      getToken: coordinator.getToken,
+      coordinator,
     };
-    const target = window as unknown as { timLostAuth?: { getToken: () => Promise<string | null> } };
-    target.timLostAuth ??= { getToken: session.getToken };
     return session;
   } catch {
     return null;
@@ -95,32 +101,15 @@ function navigateTo(destination: string): void {
 
 async function initializeCampaignAccount(): Promise<void> {
   const root = document.querySelector<HTMLElement>("[data-campaign-account]");
-  if (!root) return;
+  if (!root || root.dataset.campaignAccountBound === "true") return;
+  root.dataset.campaignAccountBound = "true";
   const signIn = root.querySelector<HTMLButtonElement>("[data-campaign-account-sign-in]");
   signIn?.addEventListener("click", () => navigateTo("/dashboard?intent=signin"));
-
-  const session = await campaignHunterSession();
-  const profile = session?.clerk.user ? await fetchPrivateProfile(session) : null;
-  const model = campaignAccountModel(session?.clerk.user ?? null, profile);
-  if (!model.signedIn || !session) return;
 
   const toggle = root.querySelector<HTMLButtonElement>("[data-campaign-account-toggle]");
   const menu = root.querySelector<HTMLElement>("[data-campaign-account-menu]");
   const avatar = root.querySelector<HTMLElement>("[data-campaign-account-avatar]");
   const handle = root.querySelector<HTMLElement>("[data-campaign-account-handle]");
-  if (signIn) signIn.hidden = true;
-  if (toggle) toggle.hidden = false;
-  if (handle) handle.textContent = model.handle;
-  if (avatar) {
-    avatar.textContent = model.initial;
-    if (model.avatarUrl) {
-      const image = document.createElement("img");
-      image.src = model.avatarUrl;
-      image.alt = "";
-      image.referrerPolicy = "no-referrer";
-      avatar.replaceChildren(image);
-    }
-  }
 
   const close = (): void => {
     if (menu) menu.hidden = true;
@@ -135,8 +124,13 @@ async function initializeCampaignAccount(): Promise<void> {
     button.addEventListener("click", () => navigateTo(button.dataset.campaignAccountDestination ?? "/dashboard"));
   }
   root.querySelector<HTMLButtonElement>("[data-campaign-sign-out]")?.addEventListener("click", async () => {
-    await session.clerk.signOut();
-    window.location.reload();
+    const dashboardSignOut = document.querySelector<HTMLButtonElement>("[data-hunter-sign-out]");
+    if (dashboardSignOut) {
+      dashboardSignOut.click();
+      return;
+    }
+    const activeSession = await campaignHunterSession();
+    await activeSession?.coordinator.signOut();
   });
   document.addEventListener("click", (event) => {
     if (event.target instanceof Node && !root.contains(event.target)) close();
@@ -147,6 +141,49 @@ async function initializeCampaignAccount(): Promise<void> {
       toggle?.focus();
     }
   });
+
+  let profileRequestSessionId: string | null = null;
+  const render = (snapshot: HunterAuthSessionSnapshot): void => {
+    const model = campaignAccountModel(snapshot.user, snapshot.profile);
+    if (signIn) signIn.hidden = model.signedIn;
+    if (toggle) toggle.hidden = !model.signedIn;
+    if (handle) handle.textContent = model.handle;
+    if (avatar) {
+      avatar.textContent = model.initial;
+      if (model.avatarUrl) {
+        const image = document.createElement("img");
+        image.src = model.avatarUrl;
+        image.alt = "";
+        image.referrerPolicy = "no-referrer";
+        avatar.replaceChildren(image);
+      }
+    }
+    if (!model.signedIn) close();
+  };
+
+  const session = await campaignHunterSession();
+  if (!session) return;
+  const refreshProfile = (snapshot: HunterAuthSessionSnapshot): void => {
+    render(snapshot);
+    const sessionId = snapshot.session?.id ?? null;
+    if (!snapshot.user || snapshot.profile || !sessionId || profileRequestSessionId === sessionId) return;
+    profileRequestSessionId = sessionId;
+    void fetchPrivateProfile(session)
+      .then((profile) => {
+        if (session.coordinator.snapshot().session?.id === sessionId) {
+          session.coordinator.setProfile(profile);
+        }
+      })
+      .catch(() => {
+        // The privacy-safe provider fallback remains available while profile data is unavailable.
+      })
+      .finally(() => {
+        if (profileRequestSessionId === sessionId) profileRequestSessionId = null;
+      });
+  };
+  const unsubscribe = session.coordinator.subscribe(refreshProfile);
+  window.addEventListener("pagehide", unsubscribe, { once: true });
+  refreshProfile(session.coordinator.snapshot());
 }
 
 if (typeof document !== "undefined") {

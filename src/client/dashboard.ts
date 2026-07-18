@@ -1,6 +1,10 @@
 import { routeOrder, waypointId } from "../shared/waypoints";
 import { publicDisplayNameError } from "../shared/publication";
 import {
+  getHunterAuthSessionCoordinator,
+  type HunterAuthSessionCoordinator,
+} from "./hunter-auth-session";
+import {
   createHunterSignupResume,
   createHunterSignupResumeStore,
   nextHunterSignupResendAvailableAt,
@@ -558,6 +562,8 @@ const unavailableConfig = (): PublicConfig => ({
 });
 
 let hunterClerk: Clerk | null = null;
+let hunterAuthSession: HunterAuthSessionCoordinator | null = null;
+let invalidateAccountOperations: (() => void) | null = null;
 let signInAttempt: SignInResource | null = null;
 let signUpAttempt: SignUpResource | null = null;
 
@@ -653,11 +659,12 @@ async function loadPublicConfig(signal?: AbortSignal): Promise<PublicConfig> {
 async function initializeManagedAuth(config: PublicConfig): Promise<HunterAuthHook | null> {
   if (!config.hunterPublishableKey) return null;
   try {
-    const { Clerk } = await import("@clerk/clerk-js");
-    hunterClerk = new Clerk(config.hunterPublishableKey);
-    await hunterClerk.load();
+    hunterAuthSession = getHunterAuthSessionCoordinator();
+    const snapshot = await hunterAuthSession.load(config.hunterPublishableKey);
+    hunterClerk = snapshot.clerk;
+    if (!hunterClerk || snapshot.status !== "ready") return null;
     const auth: HunterAuthHook = {
-      getToken: async () => hunterClerk?.session?.getToken() ?? null,
+      getToken: hunterAuthSession.getToken,
     };
     (window as unknown as { timLostAuth?: HunterAuthHook }).timLostAuth = auth;
     return auth;
@@ -682,7 +689,10 @@ function showSignedOut(reason: "signed-out" | "unavailable"): void {
     gate.hidden = false;
     gate.dataset.dashboardState = reason;
   }
-  if (content) content.hidden = true;
+  if (content) {
+    content.hidden = true;
+    content.style.display = "none";
+  }
 
   message(
     reason === "signed-out" ? "info" : "error",
@@ -861,7 +871,10 @@ function renderDashboard(data: Record<string, unknown>): void {
   const gate = document.querySelector<HTMLElement>("[data-dashboard-state]");
   const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
   if (gate) gate.hidden = true;
-  if (content) content.hidden = false;
+  if (content) {
+    content.hidden = false;
+    content.style.removeProperty("display");
+  }
   renderProfile(data.profile);
   renderLatestUpdate(data.latestUpdate);
   renderWaypoints(data.waypoints, data.status);
@@ -1839,7 +1852,10 @@ function showSignupFinishing(
     gate.hidden = false;
     gate.dataset.dashboardState = "finishing";
   }
-  if (content) content.hidden = true;
+  if (content) {
+    content.hidden = true;
+    content.style.display = "none";
+  }
   showAuthForm("hunter-signup-finishing-state");
   const status = document.querySelector<HTMLElement>("[data-signup-finishing-status]");
   if (status) {
@@ -1894,7 +1910,8 @@ export async function waitForActiveSession(
 
 async function activateSession(sessionId: string | null | undefined): Promise<boolean> {
   if (!hunterClerk || !sessionId) return false;
-  await hunterClerk.setActive({ session: sessionId });
+  if (hunterAuthSession) await hunterAuthSession.activate(sessionId);
+  else await hunterClerk.setActive({ session: sessionId });
   return waitForActiveSession(
     sessionId,
     () => hunterClerk?.session,
@@ -1916,6 +1933,40 @@ export function provisioningFailureMessage(classification: PlayerBootstrapFailur
   return classification === "retryable"
     ? "Your email is verified. Account setup is still syncing, so automatic checks have paused. Try again now or refresh later."
     : "Your email is verified, but this session cannot continue account setup. Sign out, then sign in again. Contact support if this continues.";
+}
+
+export function signInStatusRecovery(status: string | null): {
+  destination: "hunter-sign-in-form" | "hunter-recovery-form";
+  message: string;
+} {
+  if (status === "needs_identifier") {
+    return {
+      destination: "hunter-sign-in-form",
+      message: "Enter your account email and password again to continue.",
+    };
+  }
+  if (status === "needs_first_factor") {
+    return {
+      destination: "hunter-sign-in-form",
+      message: "Password verification is still required. Check your details and try again.",
+    };
+  }
+  if (status === "needs_new_password") {
+    return {
+      destination: "hunter-recovery-form",
+      message: "This account needs a new password. Use password recovery to continue securely.",
+    };
+  }
+  if (status === "needs_second_factor" || status === "needs_client_trust" || status === "needs_protect_check") {
+    return {
+      destination: "hunter-recovery-form",
+      message: "This account requires additional security verification that this page cannot complete. Use password recovery or contact support.",
+    };
+  }
+  return {
+    destination: "hunter-recovery-form",
+    message: "We could not confirm the next secure sign-in step. Use password recovery or contact support.",
+  };
 }
 
 export class PlayerBootstrapError extends Error {
@@ -1985,10 +2036,13 @@ function verifiedSignOutHandler(
     disableFinishingRetry();
     try {
       await signOutVerifiedAccount(
-        async () => { await hunterClerk?.signOut(); },
+        async () => {
+          if (hunterAuthSession) await hunterAuthSession.signOut();
+          else await hunterClerk?.signOut();
+        },
         clearLocalResume,
       );
-      window.location.reload();
+      showSignedOut("signed-out");
     } catch {
       showSignupFinishing(
         "Your verified session is still active because sign out could not finish. Try again, refresh later, or contact support.",
@@ -2146,6 +2200,7 @@ async function loadSignedInDashboard(auth: HunterAuthHook, signal?: AbortSignal)
   const envelope: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(envelope));
   if (!isRecord(envelope) || !isRecord(envelope.data)) throw new Error("Your dashboard could not be loaded.");
+  hunterAuthSession?.setProfile(envelope.data.profile);
   renderDashboard(envelope.data);
   await initializeProfileForm(
     auth,
@@ -2504,6 +2559,7 @@ function setupAccountForms(
     resendCooldownTimer = null;
     resetSignupOperationControls();
   };
+  invalidateAccountOperations = invalidateSignupOperations;
   const clearSignupResume = (): void => {
     invalidateSignupOperations();
     resumeStore.clear();
@@ -2578,7 +2634,10 @@ function setupAccountForms(
       signInAttempt = await hunterClerk.client.signIn.create({ strategy: "password", identifier, password });
       const createdSessionId = signInAttempt.createdSessionId;
       if (signInAttempt.status !== "complete" || !createdSessionId || !await activateSignupSession(createdSessionId)) {
-        throw new Error("Additional account verification is required.");
+        const recovery = signInStatusRecovery(signInAttempt.status);
+        showAuthForm(recovery.destination);
+        authMessage(recovery.message, "error");
+        return;
       }
       clearSignupResume();
       await runSignedInAccountLoad();
@@ -3264,6 +3323,12 @@ async function initializeDashboard(): Promise<void> {
     authMessage("Hunter identity is not configured in this build. No password is accepted locally.", "error");
     return;
   }
+  const unsubscribe = hunterAuthSession?.subscribe((snapshot) => {
+    if (snapshot.status !== "ready" || snapshot.user) return;
+    invalidateAccountOperations?.();
+    showSignedOut("signed-out");
+  });
+  if (unsubscribe) window.addEventListener("pagehide", unsubscribe, { once: true });
   const resumeStore = browserSignupResumeStore(config);
   try {
     const presentation = await initializeAccountState(auth, config, resumeStore);

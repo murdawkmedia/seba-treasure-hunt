@@ -30,6 +30,7 @@ import {
   PLAYER_BOOTSTRAP_RETRY_DELAYS_MS,
   profileMutationInvalidatesWaiver,
   retryPlayerBootstrap,
+  signInStatusRecovery,
   signOutVerifiedAccount,
   supervisedDependantsState,
   validateProfileDraft,
@@ -37,6 +38,27 @@ import {
   waitForActiveSession,
   type HunterProfileDraft,
 } from "../src/client/dashboard";
+
+test("non-complete Clerk sign-in statuses route to a supported retry or explicit recovery", () => {
+  assert.deepEqual(signInStatusRecovery("needs_identifier"), {
+    destination: "hunter-sign-in-form",
+    message: "Enter your account email and password again to continue.",
+  });
+  assert.deepEqual(signInStatusRecovery("needs_first_factor"), {
+    destination: "hunter-sign-in-form",
+    message: "Password verification is still required. Check your details and try again.",
+  });
+  assert.deepEqual(signInStatusRecovery("needs_new_password"), {
+    destination: "hunter-recovery-form",
+    message: "This account needs a new password. Use password recovery to continue securely.",
+  });
+  for (const status of ["needs_second_factor", "needs_client_trust", "needs_protect_check", null]) {
+    const recovery = signInStatusRecovery(status);
+    assert.equal(recovery.destination, "hunter-recovery-form");
+    assert.match(recovery.message, /additional security|could not confirm/i);
+    assert.match(recovery.message, /recovery|support/i);
+  }
+});
 
 test("abortable provisioning delay clears its timer and cannot fire after cancellation", async () => {
   const scheduled = new Map<number, () => void>();
