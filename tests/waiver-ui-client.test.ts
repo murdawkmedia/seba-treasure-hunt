@@ -204,7 +204,7 @@ test("waiver writes preserve API status and error code for stale recovery", asyn
       (error: unknown) => error instanceof WaiverRequestError &&
         error.status === 409 &&
         error.code === "waiver_document_outdated" &&
-        error.message === "Review the new waiver.",
+        error.message === "The waiver changed. Review the current document before accepting it.",
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -245,7 +245,7 @@ test("stale acceptance resets review state and does not refresh unlocked dashboa
         events.push("reset-stale");
       },
     }),
-    /Review the new waiver/,
+    /waiver changed.*review the current document/i,
   );
   assert.deepEqual(events, ["accept", "reset-stale"]);
   assert.deepEqual(state, {

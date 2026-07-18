@@ -23,6 +23,7 @@ import {
   type ReportDraft,
 } from "../src/client/report";
 import {
+  abortableDelay,
   buildProfilePayload,
   classifyPlayerBootstrapFailure,
   createSignupLegalViewerLoadCoordinator,
@@ -36,6 +37,33 @@ import {
   waitForActiveSession,
   type HunterProfileDraft,
 } from "../src/client/dashboard";
+
+test("abortable provisioning delay clears its timer and cannot fire after cancellation", async () => {
+  const scheduled = new Map<number, () => void>();
+  const cleared: number[] = [];
+  let nextHandle = 1;
+  let callbacks = 0;
+  const controller = new AbortController();
+  const pending = abortableDelay(1_000, controller.signal, {
+    setTimeout(callback) {
+      const handle = nextHandle++;
+      scheduled.set(handle, () => { callbacks += 1; callback(); });
+      return handle;
+    },
+    clearTimeout(handle) {
+      cleared.push(handle);
+      scheduled.delete(handle);
+    },
+  });
+
+  assert.equal(scheduled.size, 1);
+  controller.abort();
+  await assert.rejects(pending, (error: unknown) => error instanceof DOMException && error.name === "AbortError");
+  assert.deepEqual(cleared, [1]);
+  assert.equal(scheduled.size, 0);
+  for (const callback of scheduled.values()) callback();
+  assert.equal(callbacks, 0);
+});
 
 for (const availableAfterMs of [0, 5_000, 30_000]) {
   test(`player bootstrap keeps a verified identity finishing through ${availableAfterMs / 1_000} seconds of provisioning delay`, async () => {
@@ -107,8 +135,8 @@ test("player bootstrap cancellation interrupts a pending retry delay before anot
   assert.equal(attempts, 1);
 });
 
-test("player bootstrap classifies synchronization and service delays separately from invalid sessions", () => {
-  for (const status of [408, 409, 425, 429, 500, 502, 503, 504]) {
+test("player bootstrap classifies network, synchronization, and service delays separately from invalid sessions", () => {
+  for (const status of [0, 408, 409, 425, 429, 500, 502, 503, 504]) {
     assert.equal(classifyPlayerBootstrapFailure(status), "retryable");
   }
   for (const status of [400, 401, 403, 404, 422]) {

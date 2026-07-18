@@ -1382,7 +1382,8 @@ test("indeterminate active signup finishing preserves both resume tiers until ex
     const retry = page.locator("[data-signup-finishing-retry]");
     await retry.click();
     await page.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]")?.disabled === false &&
-      /Dashboard refresh failed/i.test(document.querySelector("[data-signup-finishing-status]")?.textContent ?? ""));
+      /sync|try again/i.test(document.querySelector("[data-signup-finishing-status]")?.textContent ?? ""));
+    assert.doesNotMatch(await page.locator("[data-signup-finishing-status]").textContent() ?? "", /Dashboard refresh failed/i);
     assert.deepEqual(await page.evaluate((key) => ({
       session: sessionStorage.getItem(key),
       local: localStorage.getItem(key),
@@ -1640,6 +1641,369 @@ test("verification finalization cancellation cannot resurrect finishing retry wh
       page.evaluate(() => (window as unknown as { __releaseVerificationSignOut: () => void }).__releaseVerificationSignOut()),
     ]);
     assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), storageKey), null);
+  } finally {
+    await page.close();
+  }
+});
+
+test("downstream dashboard authorization failure stops verified provisioning with re-auth guidance", async () => {
+  const page = await signupPage();
+  try {
+    let dashboardCalls = 0;
+    await page.route(`${origin}/api/v1/me/**`, async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/v1/me/bootstrap") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/dashboard") {
+        dashboardCalls += 1;
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { code: "session_invalid", message: "internal auth detail must stay private" } }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    const source = String.raw`
+      return window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: null, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+          session: { id: "session-active" }, setActive: async function () {}, signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+      });
+    `;
+    const presentation = await page.evaluate((body) => new Function(body)(), source);
+
+    assert.equal(presentation, "finishing");
+    assert.equal(dashboardCalls, 1);
+    assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), false);
+    const status = await page.locator("[data-signup-finishing-status]").textContent() ?? "";
+    assert.match(status, /sign out.*sign in again/is);
+    assert.doesNotMatch(status, /internal auth detail|session_invalid/i);
+  } finally {
+    await page.close();
+  }
+});
+
+test("downstream dashboard service failure remains a bounded manual retry", async () => {
+  const page = await signupPage();
+  try {
+    let dashboardCalls = 0;
+    await page.route(`${origin}/api/v1/me/**`, async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/v1/me/bootstrap") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/dashboard") {
+        dashboardCalls += 1;
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { code: "internal_sync_unavailable", message: "private service topology" } }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    const source = String.raw`
+      return window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: null, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+          session: { id: "session-active" }, setActive: async function () {}, signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+      });
+    `;
+    assert.equal(await page.evaluate((body) => new Function(body)(), source), "finishing");
+    assert.equal(dashboardCalls, 1);
+    assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), true);
+    const status = await page.locator("[data-signup-finishing-status]").textContent() ?? "";
+    assert.match(status, /sync|try again/i);
+    assert.doesNotMatch(status, /private service topology|internal_sync_unavailable/i);
+  } finally {
+    await page.close();
+  }
+});
+
+test("downstream waiver authorization failure stops verified provisioning with re-auth guidance", async () => {
+  const page = await signupPage();
+  try {
+    let waiverCalls = 0;
+    await page.route(`${origin}/api/v1/me/**`, async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/v1/me/bootstrap") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/dashboard") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: { profile: { fullName: "Active Hunter" }, privacyMediaRequired: false } }),
+        });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver" && route.request().method() === "GET") {
+        waiverCalls += 1;
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { code: "session_forbidden", message: "private authorization implementation" } }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    const source = String.raw`
+      return window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: null, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+          session: { id: "session-active" }, setActive: async function () {}, signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+      });
+    `;
+    const presentation = await page.evaluate((body) => new Function(body)(), source);
+
+    assert.equal(presentation, "finishing");
+    assert.equal(waiverCalls, 1);
+    assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), false);
+    const status = await page.locator("[data-signup-finishing-status]").textContent() ?? "";
+    assert.match(status, /sign out.*sign in again/is);
+    assert.doesNotMatch(status, /private authorization implementation|session_forbidden/i);
+  } finally {
+    await page.close();
+  }
+});
+
+test("terminal profile finalization failure disables retry and hides backend detail", async () => {
+  const page = await signupPage();
+  try {
+    let profileCalls = 0;
+    await page.route(`${origin}/api/v1/me/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const method = route.request().method();
+      if (url.pathname === "/api/v1/me/bootstrap") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/dashboard" && method === "GET") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { profile: null, privacyMediaRequired: true } }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver" && method === "GET") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { acceptance: null, document: null } }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/profile" && method === "PATCH") {
+        profileCalls += 1;
+        await route.fulfill({
+          status: 422,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { code: "profile_policy_rejected", message: "private profile rule detail" } }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await installResume(page, "session", resumeRecord());
+    const source = String.raw`
+      return window.DashboardTestModule.setupAccountFormsForTest({
+        clerk: {
+          client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+          session: { id: "session-complete" }, setActive: async function () {}, signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+        activateSession: async function () { return true; },
+      });
+    `;
+    assert.equal(await page.evaluate(({ attempt, body }) => new Function("attempt", body)(attempt), {
+      attempt: preparedAttempt({
+        status: "complete", createdSessionId: "session-complete", unverifiedFields: [],
+        verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
+      }),
+      body: source,
+    }), "finishing");
+    for (let turn = 0; turn < 20 && profileCalls === 0; turn += 1) await page.waitForTimeout(25);
+    assert.equal(profileCalls, 1);
+    assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), false);
+    const status = await page.locator("[data-signup-finishing-status]").textContent() ?? "";
+    assert.match(status, /sign out.*sign in again/is);
+    assert.doesNotMatch(status, /private profile rule detail|profile_policy_rejected/i);
+  } finally {
+    await page.close();
+  }
+});
+
+test("terminal legal finalization failure disables retry and hides backend detail", async () => {
+  const page = await signupPage();
+  try {
+    let reviewCalls = 0;
+    await page.route(`${origin}/api/v1/me/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const method = route.request().method();
+      if (url.pathname === "/api/v1/me/bootstrap") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/dashboard" && method === "GET") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { profile: { fullName: "Alex Hunter" }, privacyMediaRequired: false } }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver" && method === "GET") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { acceptance: null, document: null } }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver/review") {
+        reviewCalls += 1;
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { code: "waiver_policy_forbidden", message: "private waiver authorization detail" } }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await installResume(page, "session", resumeRecord());
+    const source = String.raw`
+      return window.DashboardTestModule.setupAccountFormsForTest({
+        clerk: {
+          client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+          session: { id: "session-complete" }, setActive: async function () {}, signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+        activateSession: async function () { return true; },
+      });
+    `;
+    assert.equal(await page.evaluate(({ attempt, body }) => new Function("attempt", body)(attempt), {
+      attempt: preparedAttempt({
+        status: "complete", createdSessionId: "session-complete", unverifiedFields: [],
+        verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
+      }),
+      body: source,
+    }), "finishing");
+    for (let turn = 0; turn < 20 && reviewCalls === 0; turn += 1) await page.waitForTimeout(25);
+    assert.equal(reviewCalls, 1);
+    assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), false);
+    const status = await page.locator("[data-signup-finishing-status]").textContent() ?? "";
+    assert.match(status, /sign out.*sign in again/is);
+    assert.doesNotMatch(status, /private waiver authorization detail|waiver_policy_forbidden/i);
+  } finally {
+    await page.close();
+  }
+});
+
+test("sign out aborts the final signed-in waiver projection before it can render", async () => {
+  const page = await signupPage();
+  try {
+    page.setDefaultTimeout(1_000);
+    const source = String.raw`
+      let releaseSignOut;
+      window.__waiverSignOutGate = new Promise(function (resolve) { releaseSignOut = resolve; });
+      window.__releaseWaiverSignOut = releaseSignOut;
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const url = new URL(typeof input === "string" ? input : input.url, window.location.href);
+        if (url.pathname === "/api/v1/me/bootstrap") {
+          return new Response(JSON.stringify({ data: {} }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (url.pathname === "/api/v1/me/dashboard") {
+          return new Response(JSON.stringify({ data: { profile: { fullName: "Active Hunter" }, privacyMediaRequired: false } }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (url.pathname === "/api/v1/me/waiver") {
+          window.__pendingWaiverStarted = true;
+          return await new Promise(function (_resolve, reject) {
+            const signal = init && init.signal;
+            if (!signal) {
+              window.__pendingWaiverMissingSignal = true;
+              return;
+            }
+            signal.addEventListener("abort", function () {
+              window.__pendingWaiverAborted = true;
+              reject(new DOMException("cancelled", "AbortError"));
+            }, { once: true });
+          });
+        }
+        return originalFetch(input, init);
+      };
+      window.__pendingWaiverInitialization = window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: null, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+          session: { id: "session-active" }, setActive: async function () {},
+          signOut: async function () {
+            window.__pendingWaiverProviderCalls = Number(window.__pendingWaiverProviderCalls || 0) + 1;
+            await window.__waiverSignOutGate;
+          },
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+      });
+      return "started";
+    `;
+    assert.equal(await page.evaluate((body) => new Function(body)(), source), "started");
+    await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__pendingWaiverStarted === true);
+    await page.evaluate(() => {
+      const details = document.querySelector<HTMLElement>("[data-waiver-acceptance-details]");
+      if (details) details.textContent = "unchanged waiver projection";
+    });
+    await page.locator('[data-dashboard-content] [data-hunter-sign-out]').click();
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__pendingWaiverProviderCalls || 0) === 1);
+    await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__pendingWaiverAborted === true, null, { timeout: 1_000 });
+    const presentation = await page.evaluate(() => (window as unknown as { __pendingWaiverInitialization: Promise<string> }).__pendingWaiverInitialization);
+    assert.deepEqual(await page.evaluate(() => ({
+      projection: document.querySelector("[data-waiver-acceptance-details]")?.textContent,
+      retryVisible: !document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]")?.hidden,
+    })), {
+      projection: "unchanged waiver projection",
+      retryVisible: false,
+    });
+    assert.equal(presentation, "finishing");
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+      page.evaluate(() => (window as unknown as { __releaseWaiverSignOut: () => void }).__releaseWaiverSignOut()),
+    ]);
   } finally {
     await page.close();
   }

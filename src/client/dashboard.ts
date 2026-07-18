@@ -444,9 +444,11 @@ export class WaiverRequestError extends Error {
   constructor(
     readonly status: number,
     readonly code: string | null,
-    message: string,
+    _message: string,
   ) {
-    super(message);
+    super(code === "waiver_document_outdated"
+      ? "The waiver changed. Review the current document before accepting it."
+      : provisioningFailureMessage(classifyPlayerBootstrapFailure(status)));
     this.name = "WaiverRequestError";
   }
 }
@@ -1016,12 +1018,12 @@ function profileErrorMessage(payload: unknown, fallback: string): string {
 }
 
 async function fetchDashboard(auth: HunterAuthHook | null, signal?: AbortSignal): Promise<Response> {
-  return await fetch("/api/v1/me/dashboard", {
+  return await protectedFetch("/api/v1/me/dashboard", {
     headers: await authHeaders(auth),
     cache: "no-store",
     credentials: "same-origin",
     signal: requestSignal(10_000, signal),
-  });
+  }, signal);
 }
 
 async function initializeProfileForm(
@@ -1053,7 +1055,7 @@ async function initializeProfileForm(
     try {
       const headers = await authHeaders(auth);
       headers.set("Content-Type", "application/json");
-      const response = await fetch("/api/v1/me/profile", {
+      const response = await protectedFetch("/api/v1/me/profile", {
         method: "PATCH",
         headers,
         credentials: "same-origin",
@@ -1061,7 +1063,7 @@ async function initializeProfileForm(
         signal: AbortSignal.timeout(12_000),
       });
       const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(profileErrorMessage(payload, "Your profile could not be saved."));
+      if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
       const saved = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
       if (saved) {
         if (profileMutationInvalidatesWaiver(currentProfile, saved)) {
@@ -1073,8 +1075,11 @@ async function initializeProfileForm(
       }
 
       const dashboardResponse = await fetchDashboard(auth);
+      const dashboardPayload: unknown = await dashboardResponse.json().catch(() => null);
+      if (!dashboardResponse.ok) {
+        throw new ProtectedAccountRequestError(dashboardResponse.status, waiverErrorCode(dashboardPayload));
+      }
       if (dashboardResponse.ok) {
-        const dashboardPayload: unknown = await dashboardResponse.json();
         if (isRecord(dashboardPayload) && isRecord(dashboardPayload.data)) {
           const refreshedProfile = isRecord(dashboardPayload.data.profile)
             ? dashboardPayload.data.profile
@@ -1113,9 +1118,8 @@ async function initializeProfileForm(
 async function fetchDashboardData(auth: HunterAuthHook | null, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const response = await fetchDashboard(auth, signal);
   const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok || !isRecord(payload) || !isRecord(payload.data)) {
-    throw new Error(profileErrorMessage(payload, "Your dashboard could not be refreshed."));
-  }
+  if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
+  if (!isRecord(payload) || !isRecord(payload.data)) throw new Error("Your dashboard could not be refreshed.");
   return payload.data;
 }
 
@@ -1275,13 +1279,13 @@ export async function waiverWrite(
   const headers = await authHeaders(auth);
   headers.set("Content-Type", "application/json");
   if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
-  const response = await fetch(route, {
+  const response = await protectedFetch(route, {
     method: "POST",
     headers,
     credentials: "same-origin",
     body: JSON.stringify(body ?? {}),
     signal: requestSignal(12_000, signal),
-  });
+  }, signal);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     throw new WaiverRequestError(
@@ -1567,21 +1571,23 @@ async function fetchWaiverAcceptanceProjection(
   auth: HunterAuthHook | null,
   signal?: AbortSignal,
 ): Promise<WaiverAcceptanceProjection | null> {
-  const response = await fetch("/api/v1/me/waiver", {
+  const response = await protectedFetch("/api/v1/me/waiver", {
     headers: await authHeaders(auth),
     cache: "no-store",
     credentials: "same-origin",
     signal: requestSignal(10_000, signal),
-  });
+  }, signal);
   const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(profileErrorMessage(payload, "Your waiver status could not be loaded."));
+  if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
   return parseWaiverAcceptanceProjection(payload);
 }
 
 async function loadCurrentWaiverAcceptance(
   auth: HunterAuthHook | null,
+  signal?: AbortSignal,
 ): Promise<WaiverAcceptanceProjection | null> {
-  const projection = await fetchWaiverAcceptanceProjection(auth);
+  const projection = await fetchWaiverAcceptanceProjection(auth, signal);
+  throwIfAborted(signal);
   if (projection) renderWaiverAcceptanceProjection(projection);
   return projection;
 }
@@ -1604,6 +1610,7 @@ function resetOutdatedWaiverState(): void {
 async function initializeWaiverExperience(
   auth: HunterAuthHook | null,
   profileComplete: boolean,
+  signal?: AbortSignal,
 ): Promise<void> {
   const panel = document.querySelector<HTMLElement>("[data-waiver-panel]");
   if (!panel) return;
@@ -1754,10 +1761,13 @@ async function initializeWaiverExperience(
   }
 
   if (profileComplete && !currentWaiverAcceptance) {
-    await loadCurrentWaiverAcceptance(auth).catch((error: unknown) => {
+    try {
+      await loadCurrentWaiverAcceptance(auth, signal);
+    } catch (error) {
+      if (signal?.aborted) throw error;
       setWaiverResult(error instanceof Error ? error.message : "Your waiver status could not be loaded.", "error");
-      return null;
-    });
+      throw error;
+    }
   }
 }
 
@@ -1897,7 +1907,7 @@ export const PLAYER_BOOTSTRAP_RETRY_DELAYS_MS = [1_000, 4_000, 10_000, 15_000] a
 export type PlayerBootstrapFailureClassification = "retryable" | "terminal";
 
 export function classifyPlayerBootstrapFailure(status: number): PlayerBootstrapFailureClassification {
-  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500
+  return status === 0 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500
     ? "retryable"
     : "terminal";
 }
@@ -1916,6 +1926,22 @@ export class PlayerBootstrapError extends Error {
     super(provisioningFailureMessage(classification));
     this.name = "PlayerBootstrapError";
   }
+}
+
+export class ProtectedAccountRequestError extends PlayerBootstrapError {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+  ) {
+    super(classifyPlayerBootstrapFailure(status), false);
+    this.name = "ProtectedAccountRequestError";
+  }
+}
+
+function provisioningRequestClassification(error: unknown): PlayerBootstrapFailureClassification {
+  if (error instanceof PlayerBootstrapError) return error.classification;
+  if (error instanceof WaiverRequestError) return classifyPlayerBootstrapFailure(error.status);
+  return "retryable";
 }
 
 export async function signOutVerifiedAccount(
@@ -1988,6 +2014,61 @@ function requestSignal(timeoutMilliseconds: number, signal?: AbortSignal): Abort
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
+async function protectedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  operationSignal?: AbortSignal,
+): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch {
+    throwIfAborted(operationSignal);
+    throw new ProtectedAccountRequestError(0, null);
+  }
+}
+
+export interface AbortableDelayTimers {
+  setTimeout: (callback: () => void, milliseconds: number) => number;
+  clearTimeout: (handle: number) => void;
+}
+
+export function abortableDelay(
+  milliseconds: number,
+  signal?: AbortSignal,
+  timers?: AbortableDelayTimers,
+): Promise<void> {
+  const schedule = timers?.setTimeout ?? ((callback, delay) => window.setTimeout(callback, delay));
+  const clear = timers?.clearTimeout ?? ((handle) => window.clearTimeout(handle));
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("The account operation was cancelled.", "AbortError"));
+      return;
+    }
+    let settled = false;
+    let timer: number | null = null;
+    const cleanup = (): void => {
+      if (timer !== null) {
+        clear(timer);
+        timer = null;
+      }
+      signal?.removeEventListener("abort", abort);
+    };
+    const abort = (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new DOMException("The account operation was cancelled.", "AbortError"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    timer = schedule(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    }, milliseconds);
+  });
+}
+
 async function waitForAbortableDelay(
   pending: Promise<void>,
   signal?: AbortSignal,
@@ -2056,14 +2137,14 @@ async function bootstrapPlayer(
       body: "{}",
       signal: requestSignal(8_000, signal),
     });
-  }, (milliseconds) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)), onProgress, signal);
+  }, abortableDelay, onProgress, signal);
 }
 
 async function loadSignedInDashboard(auth: HunterAuthHook, signal?: AbortSignal): Promise<void> {
   await bootstrapPlayer(auth, showProvisioningProgress, signal);
   const response = await fetchDashboard(auth, signal);
-  if (!response.ok) throw new Error("Your dashboard could not be loaded.");
-  const envelope: unknown = await response.json();
+  const envelope: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(envelope));
   if (!isRecord(envelope) || !isRecord(envelope.data)) throw new Error("Your dashboard could not be loaded.");
   renderDashboard(envelope.data);
   await initializeProfileForm(
@@ -2074,6 +2155,7 @@ async function loadSignedInDashboard(auth: HunterAuthHook, signal?: AbortSignal)
   await initializeWaiverExperience(
     auth,
     isRecord(envelope.data.profile) && envelope.data.privacyMediaRequired !== true,
+    signal,
   );
 }
 
@@ -2268,7 +2350,7 @@ async function saveSignupProfileAndPrivacy(
   throwIfAborted(signal);
   const headers = await authHeaders(auth);
   headers.set("Content-Type", "application/json");
-  const response = await fetch("/api/v1/me/profile", {
+  const response = await protectedFetch("/api/v1/me/profile", {
     method: "PATCH",
     headers,
     credentials: "same-origin",
@@ -2288,9 +2370,9 @@ async function saveSignupProfileAndPrivacy(
       privacyMediaVersion: draft.privacyMediaDocument?.version,
     }),
     signal: requestSignal(12_000, signal),
-  });
+  }, signal);
   const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(profileErrorMessage(payload, "Your legal profile could not be stored."));
+  if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
 }
 
 async function finalizeVerifiedSignup(
@@ -2440,7 +2522,7 @@ function setupAccountForms(
       clearSignupResume();
     } catch (error) {
       if (!signupOperationIsCurrent(operationGeneration)) return;
-      const classification = error instanceof PlayerBootstrapError ? error.classification : "retryable";
+      const classification = provisioningRequestClassification(error);
       showSignupFinishing(provisioningFailureMessage(classification), {
         retryAvailable: classification === "retryable",
         kind: classification === "terminal" ? "error" : "info",
@@ -2601,12 +2683,10 @@ function setupAccountForms(
         await showSignupLegalRefresh(error);
         return;
       }
-      const copy = error instanceof PlayerBootstrapError
-        ? provisioningFailureMessage(error.classification)
-        : `${error instanceof Error ? error.message : "Account setup could not be finished."} Your verified progress is retained. Try again or refresh later.`;
-      showSignupFinishing(copy, {
-        retryAvailable: !(error instanceof PlayerBootstrapError) || error.classification === "retryable",
-        kind: error instanceof PlayerBootstrapError && error.classification === "retryable" ? "info" : "error",
+      const classification = provisioningRequestClassification(error);
+      showSignupFinishing(provisioningFailureMessage(classification), {
+        retryAvailable: classification === "retryable",
+        kind: classification === "retryable" ? "info" : "error",
       });
     } finally {
       if (signupOperationIsCurrent(operationGeneration) && currentSignupResume && retry) {
@@ -2822,12 +2902,10 @@ function setupAccountForms(
         return;
       }
       if (currentResume && recovery?.state === "complete") {
-        const copy = error instanceof PlayerBootstrapError
-          ? provisioningFailureMessage(error.classification)
-          : `${error instanceof Error ? error.message : "Account setup could not be finished."} Your verified progress is retained. Try again or refresh later.`;
-        showSignupFinishing(copy, {
-          retryAvailable: !(error instanceof PlayerBootstrapError) || error.classification === "retryable",
-          kind: error instanceof PlayerBootstrapError && error.classification === "retryable" ? "info" : "error",
+        const classification = provisioningRequestClassification(error);
+        showSignupFinishing(provisioningFailureMessage(classification), {
+          retryAvailable: classification === "retryable",
+          kind: classification === "retryable" ? "info" : "error",
         });
         return;
       }
@@ -3074,7 +3152,7 @@ function setupAccountForms(
 type AccountStatePresentation = SignupRecoveryPresentation | "dashboard";
 
 interface AccountStateDependencies extends SignupAccountFormDependencies {
-  loadDashboard?: () => Promise<void>;
+  loadDashboard?: (signal?: AbortSignal) => Promise<void>;
   signupNeedsFinishing?: (
     resume: HunterSignupResumeRecord,
     signal?: AbortSignal,
@@ -3125,17 +3203,16 @@ async function initializeAccountState(
       : null;
     let needsFinishing = false;
     if (reconciliation?.state === "complete" && activeEmail === resume?.emailAddress) {
-      const deferIndeterminateFinishing = (
-        error?: unknown,
-      ): SignupRecoveryPresentation => setupAccountForms(auth, config, resumeStore, {
-        ...dependencies,
-        completedFinishingMessage: error instanceof PlayerBootstrapError
-          ? provisioningFailureMessage(error.classification)
-          : "We could not confirm whether the remaining account steps are complete. Your verified progress is retained. Try again.",
-        ...(error instanceof PlayerBootstrapError
-          ? { completedFinishingClassification: error.classification }
-          : {}),
-      });
+      const deferIndeterminateFinishing = (error?: unknown): SignupRecoveryPresentation => {
+        const classification = error === undefined ? null : provisioningRequestClassification(error);
+        return setupAccountForms(auth, config, resumeStore, {
+          ...dependencies,
+          completedFinishingMessage: classification
+            ? provisioningFailureMessage(classification)
+            : "We could not confirm whether the remaining account steps are complete. Your verified progress is retained. Try again.",
+          ...(classification ? { completedFinishingClassification: classification } : {}),
+        });
+      };
       try {
         const decision = await (
           dependencies.signupNeedsFinishing
@@ -3154,11 +3231,14 @@ async function initializeAccountState(
     }
     resumeStore.clear();
     setupAccountForms(auth, config, resumeStore, accountFormDependencies);
+    bindHunterSignOutControls(verifiedSignOutHandler(invalidatePreflight, () => resumeStore.clear()));
     try {
-      await (dependencies.loadDashboard ?? (() => loadSignedInDashboard(auth)))();
+      await (dependencies.loadDashboard ?? ((signal) => loadSignedInDashboard(auth, signal)))(preflightController.signal);
+      if (!preflightIsCurrent()) return "finishing";
       return "dashboard";
     } catch (error) {
-      const classification = error instanceof PlayerBootstrapError ? error.classification : "retryable";
+      if (!preflightIsCurrent()) return "finishing";
+      const classification = provisioningRequestClassification(error);
       showSignupFinishing(provisioningFailureMessage(classification), {
         retryAvailable: classification === "retryable",
         kind: classification === "terminal" ? "error" : "info",
@@ -3218,7 +3298,7 @@ export async function initializeAccountStateForTest(options: {
   clerk: unknown;
   config: PublicConfig;
   auth: HunterAuthHook;
-  loadDashboard: () => Promise<void>;
+  loadDashboard?: (signal?: AbortSignal) => Promise<void>;
   activateSession?: (sessionId: string) => Promise<boolean>;
   finalizeSignup?: (draft: HunterSignupDraft) => Promise<void>;
   signupNeedsFinishing?: (
@@ -3232,7 +3312,7 @@ export async function initializeAccountStateForTest(options: {
     options.config,
     browserSignupResumeStore(options.config),
     {
-      loadDashboard: options.loadDashboard,
+      ...(options.loadDashboard ? { loadDashboard: options.loadDashboard } : {}),
       ...(options.activateSession ? { activateSignupSession: options.activateSession } : {}),
       ...(options.finalizeSignup ? { finalizeSignup: options.finalizeSignup } : {}),
       ...(options.signupNeedsFinishing ? { signupNeedsFinishing: options.signupNeedsFinishing } : {}),
