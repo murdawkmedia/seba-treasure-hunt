@@ -13,6 +13,46 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-18 — Validation mobile signup recovery
+
+- Deployed the validation-only mobile onboarding candidate through source
+  commit `3705958`. The stable owner-review URL is
+  `https://codex-validation.seba-treasure-hunt.pages.dev/dashboard?release=3705958`;
+  the final immutable deployment is
+  `https://48f49e54.seba-treasure-hunt.pages.dev`.
+- The signup legal viewers now provide both a labelled top close control and a
+  bottom `Done — back to account setup` action. Opening either document remains
+  optional; the separate Privacy/Media and Waiver checkboxes remain required.
+- Identity-provider create, verification preparation, correlated retry,
+  resend, verification-code, password sign-in, password recovery, reset and
+  session-activation operations now return to an explicit recovery state after
+  a bounded wait instead of leaving a disabled spinner indefinitely. Retry is
+  shown only when the saved resume and provider attempt are safely correlated;
+  stale or missing attempts offer Restart account setup and Back to sign in.
+- Real Chrome validation reproduced the Clerk development-instance stall and
+  confirmed the deployed 20-second recovery. The provider did not progress to
+  a retained email-code attempt, so real email-code completion remains an owner
+  acceptance check after the validation Clerk instance is corrected or
+  confirmed. The recovery screen itself was verified in the final deployment.
+- Fresh verification reports 52/52 signup-browser tests passing, the complete
+  legacy/static suite passing, 515 TypeScript tests outside the Miniflare store
+  integration file passing, all TypeScript projects passing, exact legal
+  artifacts, a clean production build and `git diff --check`. Independent code
+  review found no remaining Critical, Important, Minor, privacy or security
+  issue in the provider-timeout change.
+- `tests/api-store-integration.test.ts` produced no output and did not terminate
+  in two isolated local attempts; only its exact test-runner processes were
+  stopped. This is the previously observed local Miniflare runner issue. The
+  current change is confined to browser identity UI and tests and does not
+  change the worker, datastore, schema or migrations.
+- Read-only production D1 checks before and after the validation deployments
+  were identical: 15 player accounts, 4 private reports, 5 Case Notes, 2
+  Official Updates, 1 staff principal, 30 audit events, 18 media rows, 13
+  published waypoints and 28 legal acceptances. Both reads wrote zero rows and
+  reported `changed_db: false`; foreign-key checks returned no rows.
+- Production was not deployed, migrated, routed or mutated. Production
+  promotion still requires Murphy's explicit approval after owner validation.
+
 ## Update 2026-07-18 — Resilient mobile onboarding verification
 
 - Completed the local verification gate for the mobile signup and recovery
