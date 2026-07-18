@@ -17,6 +17,12 @@ validation accounts, submissions, or credentials into production.
 
 - Approved and documented the next Private Reports refinement in
   `docs/superpowers/specs/2026-07-18-private-report-guided-reversible-workflow-design.md`.
+- Converted the approved design into the test-first implementation sequence in
+  `docs/superpowers/plans/2026-07-18-private-report-guided-reversible-workflow.md`.
+  The plan fixes the shared state graph and copy, explicit transition/unassign
+  API, atomic D1 audit behavior, recent Ops history, hunter-safe status and
+  publication projections, guided responsive controls, full regression gate
+  and validation-only owner checklist. It requires no schema migration.
 - The opened report will replace `Begin review` with one explained status
   dropdown plus an explicit apply action. Any authorized operator may correct
   a non-terminal stage or reopen a rejected/resolved report to `reviewing`,
@@ -26,9 +32,9 @@ validation accounts, submissions, or credentials into production.
   outcome labels; their submissions never auto-publish or become an "official
   report" directly.
 - The working Moderation Queue, legal text, intake fields and existing privacy
-  defaults remain out of scope. Implementation has not started. Next: owner
-  review of the written specification, followed by a separate implementation
-  plan after approval.
+  defaults remain out of scope. Application implementation has not started.
+  Next: execute the approved plan inline or with explicitly requested delegated
+  workers, then deploy only to validation and stop for owner approval.
 
 ## Update 2026-07-18 — Private Report media-publication repair
 
