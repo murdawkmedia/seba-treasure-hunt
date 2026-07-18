@@ -13,6 +13,23 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-18 — Approved guided report-workflow design
+
+- Approved and documented the next Private Reports refinement in
+  `docs/superpowers/specs/2026-07-18-private-report-guided-reversible-workflow-design.md`.
+- The opened report will replace `Begin review` with one explained status
+  dropdown plus an explicit apply action. Any authorized operator may correct
+  a non-terminal stage or reopen a rejected/resolved report to `reviewing`,
+  with reasons, confirmations, assignment and append-only audit history.
+- Private review status remains separate from Case Note and Official Update
+  publication. Hunters receive simplified private statuses and distinct public
+  outcome labels; their submissions never auto-publish or become an "official
+  report" directly.
+- The working Moderation Queue, legal text, intake fields and existing privacy
+  defaults remain out of scope. Implementation has not started. Next: owner
+  review of the written specification, followed by a separate implementation
+  plan after approval.
+
 ## Update 2026-07-18 — Private Report media-publication repair
 
 - Prepared a validation-first repair for the Ops Private Reports workflow.
