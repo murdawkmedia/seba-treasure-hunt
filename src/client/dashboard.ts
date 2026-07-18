@@ -4,6 +4,7 @@ import {
   getHunterAuthSessionCoordinator,
   type HunterAuthSessionCoordinator,
 } from "./hunter-auth-session";
+import { managePageLifecycleSubscription } from "./page-lifecycle-subscription";
 import {
   createHunterSignupResume,
   browserHunterSignupResumeStore,
@@ -690,17 +691,21 @@ function message(kind: "info" | "error" | "success", copy: string): void {
   element.hidden = false;
 }
 
+function setDashboardContentVisible(visible: boolean): void {
+  const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
+  if (!content) return;
+  content.hidden = !visible;
+  if (visible) content.style.removeProperty("display");
+  else content.style.display = "none";
+}
+
 function showSignedOut(reason: "signed-out" | "unavailable"): void {
   const gate = document.querySelector<HTMLElement>("[data-dashboard-state]");
-  const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
   if (gate) {
     gate.hidden = false;
     gate.dataset.dashboardState = reason;
   }
-  if (content) {
-    content.hidden = true;
-    content.style.display = "none";
-  }
+  setDashboardContentVisible(false);
   showAuthForm("hunter-sign-in-form");
 
   message(
@@ -879,12 +884,8 @@ function renderRecords(selector: string, values: unknown, empty: string): void {
 function renderDashboard(data: Record<string, unknown>): void {
   hunterAuthSession?.setProfile(data.profile);
   const gate = document.querySelector<HTMLElement>("[data-dashboard-state]");
-  const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
   if (gate) gate.hidden = true;
-  if (content) {
-    content.hidden = false;
-    content.style.removeProperty("display");
-  }
+  setDashboardContentVisible(true);
   renderProfile(data.profile);
   renderLatestUpdate(data.latestUpdate);
   renderWaypoints(data.waypoints, data.status);
@@ -1859,12 +1860,11 @@ function showSignupFinishing(
   const finishing = document.querySelector<HTMLElement>("#hunter-signup-finishing-state");
   const shouldFocusHeading = finishing?.hidden !== false;
   const gate = document.querySelector<HTMLElement>("[data-dashboard-state]");
-  const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
   if (gate) {
     gate.hidden = false;
     gate.dataset.dashboardState = "finishing";
   }
-  if (content) content.hidden = true;
+  setDashboardContentVisible(false);
   showAuthForm("hunter-signup-finishing-state");
   const status = document.querySelector<HTMLElement>("[data-signup-finishing-status]");
   if (status) {
@@ -2579,6 +2579,7 @@ function setupAccountForms(
     try {
       await loadSignedInAccount(signal);
       if (!signupOperationIsCurrent(operationGeneration)) return;
+      setDashboardContentVisible(true);
       clearSignupResume();
     } catch (error) {
       if (!signupOperationIsCurrent(operationGeneration)) return;
@@ -3302,6 +3303,7 @@ async function initializeAccountState(
     try {
       await (dependencies.loadDashboard ?? ((signal) => loadSignedInDashboard(auth, signal)))(preflightController.signal);
       if (!preflightIsCurrent()) return "finishing";
+      setDashboardContentVisible(true);
       return "dashboard";
     } catch (error) {
       if (!preflightIsCurrent()) return "finishing";
@@ -3326,13 +3328,21 @@ async function initializeDashboard(): Promise<void> {
     return;
   }
   const resumeStore = browserSignupResumeStore(config);
-  const unsubscribe = hunterAuthSession?.subscribe((snapshot) => {
+  const handleAuthSnapshot = (snapshot: ReturnType<HunterAuthSessionCoordinator["snapshot"]>): void => {
     if (snapshot.status !== "ready" || snapshot.user) return;
     invalidateActiveAccountOperations();
     if (!explicitHunterSignOutPending) resumeStore.clear();
     showSignedOut("signed-out");
-  });
-  if (unsubscribe) window.addEventListener("pagehide", unsubscribe, { once: true });
+  };
+  if (hunterAuthSession) {
+    managePageLifecycleSubscription(
+      () => hunterAuthSession?.subscribe(handleAuthSnapshot) ?? (() => {}),
+      () => {
+        if (hunterAuthSession) handleAuthSnapshot(hunterAuthSession.refresh());
+      },
+      { refreshOnStart: false },
+    );
+  }
   try {
     const presentation = await initializeAccountState(auth, config, resumeStore);
     if (presentation === "none") authMessage("Secure account access is ready.");

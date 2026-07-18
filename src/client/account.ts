@@ -6,6 +6,7 @@ import {
   type HunterAuthSessionSnapshot,
 } from "./hunter-auth-session";
 import { browserHunterSignupResumeStore } from "./hunter-signup-resume";
+import { managePageLifecycleSubscription } from "./page-lifecycle-subscription";
 
 type AccountUser = { imageUrl?: string | null };
 
@@ -203,9 +204,10 @@ async function initializeCampaignAccount(): Promise<void> {
         if (profileRequestSessionId === sessionId) profileRequestSessionId = null;
       });
   };
-  const unsubscribe = session.coordinator.subscribe(refreshProfile);
-  window.addEventListener("pagehide", unsubscribe, { once: true });
-  refreshProfile(session.coordinator.snapshot());
+  managePageLifecycleSubscription(
+    () => session.coordinator.subscribe(refreshProfile),
+    () => refreshProfile(session.coordinator.refresh()),
+  );
 }
 
 if (typeof document !== "undefined") {

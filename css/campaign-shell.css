@@ -296,6 +296,10 @@ html {
   gap: 7px;
 }
 
+.campaign-account__toggle[hidden] {
+  display: none;
+}
+
 .campaign-account__avatar {
   display: inline-grid;
   place-items: center;

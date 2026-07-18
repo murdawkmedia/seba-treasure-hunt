@@ -5,12 +5,17 @@ const GLOBAL_COORDINATOR_KEY = "__timLostHunterAuthSessionV1";
 type BrowserGlobal = Record<string, unknown>;
 type SessionStatus = "idle" | "ready" | "unavailable";
 
+export interface HunterAuthPublicIdentity {
+  publicDisplayName?: string;
+  publicHandle?: string;
+}
+
 export interface HunterAuthSessionSnapshot {
   status: SessionStatus;
   clerk: Clerk | null;
   user: NonNullable<Clerk["user"]> | null;
   session: NonNullable<Clerk["session"]> | null;
-  profile: Record<string, unknown> | null;
+  profile: HunterAuthPublicIdentity | null;
 }
 
 export interface HunterAuthSessionCoordinator {
@@ -33,10 +38,21 @@ interface CoordinatorOptions {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const profileIdentityKey = (value: Record<string, unknown> | null): string => JSON.stringify([
+const projectPublicIdentity = (value: unknown): HunterAuthPublicIdentity | null => {
+  if (!isRecord(value)) return null;
+  const projected: HunterAuthPublicIdentity = {};
+  if (typeof value.publicDisplayName === "string" && value.publicDisplayName.trim()) {
+    projected.publicDisplayName = value.publicDisplayName.trim();
+  }
+  if (typeof value.publicHandle === "string" && value.publicHandle.trim()) {
+    projected.publicHandle = value.publicHandle.trim();
+  }
+  return Object.freeze(projected);
+};
+
+const profileIdentityKey = (value: HunterAuthPublicIdentity | null): string => JSON.stringify([
   typeof value?.publicDisplayName === "string" ? value.publicDisplayName.trim() : "",
   typeof value?.publicHandle === "string" ? value.publicHandle.trim() : "",
-  typeof value?.participationBasis === "string" ? value.participationBasis : "",
 ]);
 
 const defaultCreateClerk = async (publishableKey: string): Promise<Clerk> => {
@@ -53,9 +69,11 @@ function createCoordinator(
   let loadPromise: Promise<HunterAuthSessionSnapshot> | null = null;
   let removeProviderListener: (() => void) | null = null;
   let ownedAuthHook: { getToken: () => Promise<string | null> } | null = null;
-  let profile: Record<string, unknown> | null = null;
+  let profile: HunterAuthPublicIdentity | null = null;
   let profileSessionId: string | null = null;
   let status: SessionStatus = "idle";
+  let lifecycleGeneration = 0;
+  let disposed = false;
   const listeners = new Set<(snapshot: HunterAuthSessionSnapshot) => void>();
   let current: HunterAuthSessionSnapshot = Object.freeze({
     status,
@@ -83,18 +101,32 @@ function createCoordinator(
 
   const coordinator: HunterAuthSessionCoordinator = {
     load(key) {
+      if (disposed) return Promise.resolve(current);
       const normalizedKey = key.trim();
       if (!normalizedKey) return Promise.resolve(current);
       if (publishableKey && publishableKey !== normalizedKey) {
         return Promise.reject(new Error("Hunter identity was initialized with a different publishable key."));
       }
       publishableKey = normalizedKey;
+      const activeLifecycleGeneration = lifecycleGeneration;
+      const loadIsCurrent = (): boolean =>
+        !disposed && lifecycleGeneration === activeLifecycleGeneration;
       loadPromise ??= (async () => {
         try {
-          clerk = await createClerk(normalizedKey);
-          await clerk.load();
+          const loadedClerk = await createClerk(normalizedKey);
+          if (!loadIsCurrent()) return current;
+          clerk = loadedClerk;
+          await loadedClerk.load();
+          if (!loadIsCurrent()) return current;
           status = "ready";
-          removeProviderListener = clerk.addListener(() => { publish(); });
+          const installedProviderListener = loadedClerk.addListener(() => {
+            if (loadIsCurrent()) publish();
+          });
+          if (!loadIsCurrent()) {
+            installedProviderListener();
+            return current;
+          }
+          removeProviderListener = installedProviderListener;
           const auth = { getToken: coordinator.getToken };
           if (!isRecord(browserGlobal.timLostAuth)) {
             browserGlobal.timLostAuth = auth;
@@ -102,6 +134,7 @@ function createCoordinator(
           }
           return publish();
         } catch {
+          if (!loadIsCurrent()) return current;
           status = "unavailable";
           clerk = null;
           return publish();
@@ -116,7 +149,7 @@ function createCoordinator(
     },
     refresh: publish,
     setProfile(nextProfile) {
-      const normalizedProfile = isRecord(nextProfile) ? nextProfile : null;
+      const normalizedProfile = projectPublicIdentity(nextProfile);
       const nextProfileSessionId = clerk?.session?.id ?? null;
       if (
         profileSessionId === nextProfileSessionId &&
@@ -148,6 +181,9 @@ function createCoordinator(
       publish();
     },
     teardown() {
+      if (disposed) return;
+      disposed = true;
+      lifecycleGeneration += 1;
       removeProviderListener?.();
       removeProviderListener = null;
       listeners.clear();
@@ -158,6 +194,11 @@ function createCoordinator(
       if (browserGlobal[GLOBAL_COORDINATOR_KEY] === coordinator) {
         delete browserGlobal[GLOBAL_COORDINATOR_KEY];
       }
+      clerk = null;
+      profile = null;
+      profileSessionId = null;
+      status = "idle";
+      current = Object.freeze({ status, clerk, user: null, session: null, profile });
     },
   };
   return coordinator;

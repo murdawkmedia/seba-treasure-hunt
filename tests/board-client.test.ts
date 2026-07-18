@@ -265,6 +265,7 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
   let authRequests = 0;
   let turnstileRenders = 0;
   let coordinatorLoads = 0;
+  const coordinatorSnapshot = { status: "ready", user: null, session: null };
   const fetchMock = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     requests.push(url);
@@ -308,8 +309,11 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
     __timLostHunterAuthSessionV1: {
       load: async () => {
         coordinatorLoads += 1;
-        return { status: "ready" };
+        return coordinatorSnapshot;
       },
+      snapshot: () => coordinatorSnapshot,
+      subscribe: () => () => {},
+      refresh: () => coordinatorSnapshot,
       getToken: async () => {
         authRequests += 1;
         return "test-token";
@@ -323,6 +327,8 @@ async function runBoardInitialization(outcome: DashboardOutcome) {
       reset: () => {},
     },
     location: { assign: () => {} },
+    addEventListener: () => {},
+    removeEventListener: () => {},
     setTimeout: (callback: () => void) => {
       callback();
       return 0;

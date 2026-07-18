@@ -2001,6 +2001,51 @@ test("sign out aborts the final signed-in waiver projection before it can render
   }
 });
 
+test("failed provider sign out hides the rendered private Dashboard behind finishing", async () => {
+  const page = await signupPage();
+  try {
+    const source = String.raw`
+      return window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: null, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+          session: { id: "session-active" },
+          setActive: async function () {},
+          signOut: async function () { throw new Error("provider unavailable"); },
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local", deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-token"; } },
+        loadDashboard: async function () {
+          const gate = document.querySelector("[data-dashboard-state]");
+          const content = document.querySelector("[data-dashboard-content]");
+          if (gate) gate.hidden = true;
+          if (content) {
+            content.hidden = false;
+            content.style.display = "grid";
+          }
+        },
+      });
+    `;
+    const presentation = await page.evaluate((body) => new Function(body)(), source);
+    assert.equal(presentation, "dashboard");
+    assert.equal(await page.locator("[data-dashboard-content]").isVisible(), true);
+
+    await page.locator('[data-dashboard-content] [data-hunter-sign-out]').click();
+    await page.locator("#hunter-signup-finishing-state").waitFor({ state: "visible" });
+    assert.deepEqual(await page.evaluate(() => {
+      const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
+      return { hidden: content?.hidden, display: content?.style.display };
+    }), { hidden: true, display: "none" });
+    assert.equal(await page.locator("[data-dashboard-content]").isVisible(), false);
+  } finally {
+    await page.close();
+  }
+});
+
 for (const pendingRequest of ["dashboard", "waiver"] as const) {
   test(`sign out cancels manual Retry while its ${pendingRequest} request is pending`, async () => {
     const page = await signupPage();

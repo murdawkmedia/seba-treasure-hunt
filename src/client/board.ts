@@ -14,7 +14,9 @@ import { createTurnstileLifecycle } from "./turnstile-lifecycle";
 import {
   getHunterAuthSessionCoordinator,
   type HunterAuthSessionCoordinator,
+  type HunterAuthSessionSnapshot,
 } from "./hunter-auth-session";
+import { managePageLifecycleSubscription } from "./page-lifecycle-subscription";
 
 export interface CommunityMedia {
   id: string;
@@ -387,6 +389,8 @@ export async function initialiseBoard(): Promise<void> {
   let notes: CommunityNote[] = [];
   let cursor: string | null = null;
   let signedIn = false;
+  let observedAuthUser: HunterAuthSessionSnapshot["user"] = null;
+  let observedAuthSession: HunterAuthSessionSnapshot["session"] = null;
   let pendingFlag: { kind: string; id: string; button: HTMLButtonElement } | null = null;
   let preparedNoteImages: PreparedReportImage[] = [];
   let notePreparationController: AbortController | null = null;
@@ -535,6 +539,8 @@ export async function initialiseBoard(): Promise<void> {
   };
 
   await bootstrapRuntime();
+  observedAuthUser = hunterAuthSession?.snapshot().user ?? null;
+  observedAuthSession = hunterAuthSession?.snapshot().session ?? null;
 
   try {
     const session = await requestJson("/api/v1/me/dashboard");
@@ -592,6 +598,76 @@ export async function initialiseBoard(): Promise<void> {
     if (imageInput instanceof HTMLInputElement) imageInput.removeAttribute("aria-invalid");
     renderNoteImageMessages([]);
     updateNoteSubmitState();
+  };
+
+  let authTransitionGeneration = 0;
+  const resetAuthenticatedBoardState = (): void => {
+    authTransitionGeneration += 1;
+    noteTurnstileToken = "";
+    pendingNoteIdempotencyKey = undefined;
+    resetNoteImagePreparation(true);
+    if (turnstileApi && noteTurnstileWidget) turnstileApi.reset(noteTurnstileWidget);
+    for (const widget of replyTurnstileWidgets.values()) turnstileApi?.reset(widget);
+    replyTurnstileTokens.clear();
+    replyTurnstileWidgets.clear();
+    flagTurnstileToken = "";
+    if (turnstileApi && flagTurnstileWidget) turnstileApi.reset(flagTurnstileWidget);
+    pendingFlag = null;
+    if (flagDialog.open) flagDialog.close();
+    noteForm.reset();
+    noteForm.hidden = true;
+    authPrompt.hidden = false;
+    if (noteReceipt) noteReceipt.hidden = true;
+    if (noteReference) noteReference.textContent = "";
+    const noteResult = noteForm.querySelector<HTMLElement>("#note-form-result");
+    const noteSummary = noteForm.querySelector<HTMLElement>("#note-error-summary");
+    const flagResult = flagForm.querySelector<HTMLElement>("[data-flag-result]");
+    if (noteResult) noteResult.textContent = "";
+    if (noteSummary) {
+      noteSummary.hidden = true;
+      noteSummary.replaceChildren();
+    }
+    if (flagResult) flagResult.textContent = "";
+    render({ kind: "ready", notes, canReply: false });
+  };
+  const restoreAuthenticatedBoardState = (): void => {
+    const activeAuthTransition = ++authTransitionGeneration;
+    noteForm.hidden = false;
+    authPrompt.hidden = true;
+    render({ kind: "ready", notes, canReply: true });
+    void (async () => {
+      turnstileApi ??= await waitForTurnstile();
+      if (!signedIn || authTransitionGeneration !== activeAuthTransition) return;
+      if (turnstileApi && noteTurnstileWidget) turnstileApi.reset(noteTurnstileWidget);
+      else initialiseNoteTurnstile();
+      hydrateReplyTurnstiles();
+    })();
+  };
+  const applyAuthSnapshot = (snapshot: HunterAuthSessionSnapshot): void => {
+    const nextAuthUser = snapshot.status === "ready" ? snapshot.user : null;
+    const nextAuthSession = snapshot.status === "ready" ? snapshot.session : null;
+    if (nextAuthUser === observedAuthUser && nextAuthSession === observedAuthSession) return;
+    observedAuthUser = nextAuthUser;
+    observedAuthSession = nextAuthSession;
+    const nextSignedIn = Boolean(nextAuthUser && nextAuthSession);
+    signedIn = false;
+    resetAuthenticatedBoardState();
+    if (!nextSignedIn) return;
+    const pendingAuthTransition = authTransitionGeneration;
+    void requestJson("/api/v1/me/dashboard")
+      .then(({ response }) => {
+        if (
+          !response.ok ||
+          authTransitionGeneration !== pendingAuthTransition ||
+          observedAuthUser !== nextAuthUser ||
+          observedAuthSession !== nextAuthSession
+        ) return;
+        signedIn = true;
+        restoreAuthenticatedBoardState();
+      })
+      .catch(() => {
+        // The board remains public and authenticated controls stay unavailable.
+      });
   };
 
   if (imageInput instanceof HTMLInputElement && fileList) {
@@ -659,6 +735,11 @@ export async function initialiseBoard(): Promise<void> {
     const submit = noteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
     const summary = document.querySelector<HTMLElement>("#note-error-summary");
     const result = document.querySelector<HTMLElement>("#note-form-result");
+    if (!signedIn) {
+      if (submit) submit.disabled = true;
+      if (result) result.textContent = "Sign in before sending a Case Note.";
+      return;
+    }
     while (notePreparationPromise) await notePreparationPromise;
     const formData = buildCaseNoteFormData(noteForm, preparedNoteImages);
     const files = imageInput instanceof HTMLInputElement ? [...(imageInput.files ?? [])] : [];
@@ -717,6 +798,7 @@ export async function initialiseBoard(): Promise<void> {
   });
 
   anotherNote?.addEventListener("click", () => {
+    if (!signedIn) return;
     noteForm.reset();
     noteForm.hidden = false;
     if (noteReceipt) noteReceipt.hidden = true;
@@ -736,6 +818,7 @@ export async function initialiseBoard(): Promise<void> {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || !form.matches(".reply-form")) return;
     event.preventDefault();
+    if (!signedIn) return;
     const noteId = form.dataset.noteId ?? "";
     const field = form.elements.namedItem("body");
     const result = form.querySelector<HTMLElement>(".form-result");
@@ -802,7 +885,7 @@ export async function initialiseBoard(): Promise<void> {
     event.preventDefault();
     const result = flagForm.querySelector<HTMLElement>("[data-flag-result]");
     const submit = flagForm.querySelector<HTMLButtonElement>('button[type="submit"]');
-    if (!pendingFlag || !flagTurnstileToken) {
+    if (!signedIn || !pendingFlag || !flagTurnstileToken) {
       if (result) result.textContent = "Complete the human check before sending this report.";
       return;
     }
@@ -829,6 +912,15 @@ export async function initialiseBoard(): Promise<void> {
       if (turnstileApi && flagTurnstileWidget && flagDialog.open) turnstileApi.reset(flagTurnstileWidget);
     }
   });
+
+  if (hunterAuthSession) {
+    managePageLifecycleSubscription(
+      () => hunterAuthSession?.subscribe(applyAuthSnapshot) ?? (() => {}),
+      () => {
+        if (hunterAuthSession) applyAuthSnapshot(hunterAuthSession.refresh());
+      },
+    );
+  }
 }
 
 if (typeof document !== "undefined") {

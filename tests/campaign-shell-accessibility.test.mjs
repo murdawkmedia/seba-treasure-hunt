@@ -144,6 +144,8 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
   let preflightBootstrapAborts = 0;
   let profileMutations = 0;
   let legalMutations = 0;
+  let boardWriteMutations = 0;
+  let dashboardRequests = 0;
   const releaseHeldBootstraps = [];
   const appServer = createServer(async (request, response) => {
     try {
@@ -155,6 +157,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       if (url.pathname === "/api/v1/config") {
         json({ data: {
           hunterPublishableKey: "pk_test_shared_browser",
+          turnstileSiteKey: "turnstile-test",
           deploymentEnvironment: "test",
           privacyMediaVersion: "privacy-test",
           privacyMediaHash: legalHash,
@@ -190,6 +193,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         return;
       }
       if (url.pathname === "/api/v1/me/dashboard") {
+        dashboardRequests += 1;
         if (request.headers.authorization !== "Bearer browser-token") {
           json({ error: { message: "Sign in required" } }, 401);
           return;
@@ -205,8 +209,29 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         } });
         return;
       }
+      if (url.pathname.startsWith("/api/v1/board/") && request.method !== "GET") {
+        boardWriteMutations += 1;
+        json({ data: { id: "unexpected-board-write" } }, 201);
+        return;
+      }
       if (url.pathname === "/api/v1/board") {
-        json({ data: { items: [] }, page: { nextCursor: null } });
+        json({ data: { items: [{
+          id: "note-browser-1",
+          noteKind: "community",
+          waypointId: "1",
+          waypointRouteOrder: 1,
+          waypointName: "The Creek Property",
+          body: "A public-safe board observation.",
+          authorHandle: "Hunter A1B2",
+          createdAt: "2026-07-18T12:00:00.000Z",
+          media: [],
+          replies: [{
+            id: "reply-browser-1",
+            body: "A public-safe reply.",
+            authorHandle: "Hunter C3D4",
+            createdAt: "2026-07-18T12:05:00.000Z",
+          }],
+        }] }, page: { nextCursor: null } });
         return;
       }
       if (url.pathname === "/api/v1/me/waiver") {
@@ -397,15 +422,31 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       failNextSignOut: false,
     });
 
+    const bfcachePage = await context.newPage();
+    await bfcachePage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
+    await bfcachePage.evaluate(() => localStorage.setItem("__authStartSignedIn", "true"));
+    await bfcachePage.goto(`${appOrigin}/dashboard.html`, { waitUntil: "domcontentloaded" });
+    await bfcachePage.locator("[data-dashboard-content]").waitFor({ state: "visible" });
+    await bfcachePage.evaluate(() => {
+      dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+      dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+      globalThis.__timLostHunterAuthSessionV1.emitAuthLoss();
+    });
+    await bfcachePage.locator("[data-campaign-account-sign-in]").waitFor({ state: "visible" });
+    await bfcachePage.locator("#hunter-sign-in-form").waitFor({ state: "visible" });
+    assert.equal(await bfcachePage.locator("[data-campaign-account-toggle]").isVisible(), false);
+    assert.equal(await bfcachePage.locator("[data-dashboard-content]").isVisible(), false);
+
     const boardPage = await context.newPage();
     await boardPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
     await boardPage.evaluate(() => localStorage.setItem("__authStartSignedIn", "true"));
     await boardPage.goto(`${appOrigin}/clue-board.html`, { waitUntil: "domcontentloaded" });
     await boardPage.waitForFunction(() =>
-      document.querySelector("#board-status")?.textContent?.startsWith("0 approved")
+      document.querySelector("#board-status")?.textContent?.startsWith("1 approved")
     );
     assert.equal(await boardPage.locator("#field-note-form").isVisible(), true);
     assert.equal(await boardPage.locator("#board-auth-prompt").isVisible(), false);
+    assert.equal(await boardPage.locator(".reply-form").count(), 1);
     assert.equal(
       await boardPage.evaluate(() => globalThis.__sharedAuthBrowserState.loadCalls),
       2,
@@ -444,6 +485,27 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       local: "safe-local-resume",
     });
     assert.equal(await boardAccountToggle.isVisible(), true, "failed provider sign-out keeps the active header session");
+
+    const boardWriteBaseline = boardWriteMutations;
+    await boardPage.locator('[name="waypointId"]').selectOption("1");
+    await boardPage.locator("#note-body").fill("This must not send after provider auth loss.");
+    await boardPage.evaluate(() => globalThis.__timLostHunterAuthSessionV1.emitAuthLoss());
+    await boardPage.locator("[data-campaign-account-sign-in]").waitFor({ state: "visible" });
+    assert.equal(await boardPage.locator("#field-note-form").isVisible(), false);
+    assert.equal(await boardPage.locator("#board-auth-prompt").isVisible(), true);
+    assert.equal(await boardPage.locator(".reply-form").count(), 0);
+    await boardPage.locator("#field-note-form").evaluate((form) => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await boardPage.waitForTimeout(100);
+    assert.equal(boardWriteMutations, boardWriteBaseline, "auth loss blocks hidden Case Note submission");
+
+    const restoreDashboardBaseline = dashboardRequests;
+    await boardPage.evaluate(() => globalThis.__timLostHunterAuthSessionV1.activate("session_browser_restored"));
+    await boardPage.locator("#field-note-form").waitFor({ state: "visible" });
+    assert.equal(dashboardRequests, restoreDashboardBaseline + 1, "reactive sign-in revalidates Dashboard authorization");
+    assert.equal(await boardPage.locator("#board-auth-prompt").isVisible(), false);
+    assert.equal(await boardPage.locator(".reply-form").count(), 1);
 
     const preflightPage = await context.newPage();
     await preflightPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });

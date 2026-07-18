@@ -4,6 +4,7 @@ import test from "node:test";
 import { campaignAccountModel, signOutCampaignHunterSession } from "../src/client/account";
 import { provisioningFailureMessage } from "../src/client/dashboard";
 import { getHunterAuthSessionCoordinator } from "../src/client/hunter-auth-session";
+import { managePageLifecycleSubscription } from "../src/client/page-lifecycle-subscription";
 
 test("campaign account presentation uses the privacy-safe handle and never derives identity from email", () => {
   assert.deepEqual(campaignAccountModel(null, null), {
@@ -39,6 +40,101 @@ test("campaign account presentation uses the custom public display name", () => 
       initial: "N",
     },
   );
+});
+
+test("page lifecycle subscriptions can defer refresh until a persisted restore", () => {
+  const browserWindow = new EventTarget();
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: browserWindow });
+  let subscriptions = 0;
+  let unsubscriptions = 0;
+  let refreshes = 0;
+  try {
+    const stop = managePageLifecycleSubscription(
+      () => {
+        subscriptions += 1;
+        return () => { unsubscriptions += 1; };
+      },
+      () => { refreshes += 1; },
+      { refreshOnStart: false },
+    );
+    assert.deepEqual({ subscriptions, unsubscriptions, refreshes }, {
+      subscriptions: 1,
+      unsubscriptions: 0,
+      refreshes: 0,
+    });
+
+    const pagehide = new Event("pagehide") as PageTransitionEvent;
+    Object.defineProperty(pagehide, "persisted", { value: true });
+    browserWindow.dispatchEvent(pagehide);
+    const pageshow = new Event("pageshow") as PageTransitionEvent;
+    Object.defineProperty(pageshow, "persisted", { value: true });
+    browserWindow.dispatchEvent(pageshow);
+    assert.deepEqual({ subscriptions, unsubscriptions, refreshes }, {
+      subscriptions: 2,
+      unsubscriptions: 1,
+      refreshes: 1,
+    });
+    stop();
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else delete (globalThis as Record<string, unknown>).window;
+  }
+});
+
+test("shared coordinator snapshots project raw profiles to display-safe identity only", async () => {
+  const browserGlobal: Record<string, unknown> = {};
+  const provider = {
+    user: { id: "user_private" },
+    session: { id: "session_private", getToken: async () => "private-token" },
+    client: null,
+    async load() {},
+    addListener() { return () => {}; },
+    async setActive() {},
+    async signOut() {},
+  };
+  const coordinator = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => provider as never,
+  });
+  await coordinator.load("pk_test_privacy_projection");
+
+  coordinator.setProfile({
+    publicDisplayName: "Nancy & Ron",
+    publicHandle: "Hunter 43BA",
+    fullName: "Private Legal Name",
+    email: "private@example.test",
+    townArea: "Private Town",
+    interests: ["private interest"],
+    consents: { marketing: true },
+    participationBasis: "adult",
+  });
+
+  assert.deepEqual(coordinator.snapshot().profile, {
+    publicDisplayName: "Nancy & Ron",
+    publicHandle: "Hunter 43BA",
+  });
+  assert.equal(
+    campaignAccountModel(coordinator.snapshot().user, coordinator.snapshot().profile).handle,
+    "Nancy & Ron",
+  );
+  const windowCoordinator = browserGlobal.__timLostHunterAuthSessionV1 as typeof coordinator;
+  assert.equal(windowCoordinator, coordinator);
+  const serializedGlobal = JSON.stringify(windowCoordinator.snapshot());
+  for (const privateValue of [
+    "Private Legal Name",
+    "private@example.test",
+    "Private Town",
+    "private interest",
+    "marketing",
+    "participationBasis",
+  ]) {
+    assert.doesNotMatch(serializedGlobal, new RegExp(privateValue, "i"));
+  }
+
+  coordinator.setProfile({ fullName: "Another Private Name", email: "another@example.test" });
+  assert.deepEqual(coordinator.snapshot().profile, {});
+  assert.equal(campaignAccountModel(coordinator.snapshot().user, coordinator.snapshot().profile).handle, "Hunter");
 });
 
 test("verified-account provisioning guidance never presents a password or bad-login failure", () => {
@@ -179,4 +275,62 @@ test("coordinator teardown replaces only its owned legacy token hook on reinitia
   await preserving.load("pk_test_foreign");
   preserving.teardown();
   assert.equal(foreignGlobal.timLostAuth, foreignHook);
+});
+
+test("coordinator teardown invalidates a pending provider load before it can publish globals", async () => {
+  const browserGlobal: Record<string, unknown> = {};
+  let releaseLoad: (() => void) | null = null;
+  let providerListeners = 0;
+  let removedListeners = 0;
+  const loadGate = new Promise<void>((resolve) => { releaseLoad = resolve; });
+  const staleProvider = {
+    user: { id: "user_stale" },
+    session: { id: "session_stale", getToken: async () => "stale-token" },
+    client: null,
+    async load() { await loadGate; },
+    addListener() {
+      providerListeners += 1;
+      return () => { removedListeners += 1; };
+    },
+    async setActive() {},
+    async signOut() {},
+  };
+  const stale = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => staleProvider as never,
+  });
+  const pending = stale.load("pk_test_teardown_race");
+  await Promise.resolve();
+  stale.teardown();
+  releaseLoad?.();
+  const staleSnapshot = await pending;
+
+  assert.equal(providerListeners, 0);
+  assert.equal(removedListeners, 0);
+  assert.equal(browserGlobal.timLostAuth, undefined);
+  assert.equal(browserGlobal.__timLostHunterAuthSessionV1, undefined);
+  assert.deepEqual({
+    status: staleSnapshot.status,
+    clerk: staleSnapshot.clerk,
+    user: staleSnapshot.user,
+    session: staleSnapshot.session,
+  }, { status: "idle", clerk: null, user: null, session: null });
+
+  const activeProvider = {
+    user: { id: "user_active" },
+    session: { id: "session_active", getToken: async () => "active-token" },
+    client: null,
+    async load() {},
+    addListener() { providerListeners += 1; return () => { removedListeners += 1; }; },
+    async setActive() {},
+    async signOut() {},
+  };
+  const active = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => activeProvider as never,
+  });
+  const activeSnapshot = await active.load("pk_test_teardown_race");
+  assert.equal(activeSnapshot.status, "ready");
+  assert.equal(providerListeners, 1);
+  assert.equal(await (browserGlobal.timLostAuth as { getToken: () => Promise<string | null> }).getToken(), "active-token");
 });
