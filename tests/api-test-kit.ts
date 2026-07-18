@@ -264,7 +264,7 @@ export class FakeStore {
         const uploads = Array.isArray(storedUploads)
           ? storedUploads as Array<Record<string, unknown>>
           : [];
-        const media = uploads
+        const directMedia = uploads
           .filter((upload) => typeof upload.position === "number" && upload.status === "ready")
           .sort((left, right) => Number(left.position) - Number(right.position))
           .map((upload) => ({
@@ -274,6 +274,12 @@ export class FakeStore {
             ...(upload.altText ? { alt: upload.altText } : {}),
             ...(upload.caption ? { caption: upload.caption } : {})
           }));
+        const reportMedia = Array.isArray(publicUpdate.media)
+          ? publicUpdate.media as Array<Record<string, unknown>>
+          : [];
+        const media = [...reportMedia, ...directMedia].filter((item, index, all) =>
+          all.findIndex((candidate) => candidate.id === item.id) === index
+        );
         const projected: Record<string, unknown> = { ...publicUpdate, media };
         return typeof projected.publisherName === "string" &&
           /^(?:campaign ops|campaign operator)$/i.test(projected.publisherName.trim())

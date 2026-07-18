@@ -260,7 +260,7 @@ const publicationInput = (body: Record<string, unknown>) => {
     throw new ApiError(
       422,
       "publication_field_forbidden",
-      "Report publication fields are derived from the private report.",
+      "Official Update fields are invalid for this action.",
       { field: forbidden }
     );
   }
@@ -1621,6 +1621,14 @@ export const createApi = (deps: ApiDependencies) => {
     );
   });
 
+  app.get("/api/v1/ops/updates", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    const result = await deps.store.listOpsUpdates({
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
   app.post("/api/v1/ops/updates", async (c) => {
     sameOrigin(c.req.raw);
     const staff = await requireStaff(deps, c.req.raw);
@@ -1636,6 +1644,102 @@ export const createApi = (deps: ApiDependencies) => {
       ),
       201
     );
+  });
+  app.get("/api/v1/ops/updates/:id", async (c) => {
+    const staff = await requireStaff(deps, c.req.raw);
+    const update = await deps.store.getOpsUpdateDetail(c.req.param("id"), staff.subject);
+    if (!update) throw new ApiError(404, "update_not_found", "Official Update not found.");
+    return success(c, update);
+  });
+  app.post("/api/v1/ops/updates/:id/media", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const updateId = c.req.param("id");
+    const detail = await deps.store.getOpsUpdateDetail(updateId, staff.subject);
+    if (!detail) throw new ApiError(404, "update_not_found", "Official Update draft not found.");
+    const { files } = await requestBody(c.req.raw);
+    await validateImages(files);
+    if (files.length < 1 || files.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three Update images.");
+    }
+    const uploads = Array.isArray(detail.uploads)
+      ? detail.uploads as Array<Record<string, unknown>>
+      : [];
+    const activeUploadCount = uploads.filter((upload) =>
+      upload.status !== "deleted" && upload.status !== "rejected"
+    ).length;
+    if (activeUploadCount + files.length > 3) {
+      throw new ApiError(422, "validation_failed", "An Official Update can have no more than three direct uploads.");
+    }
+    const media = await deps.uploads.save(files, { kind: "official_update", subject: staff.subject });
+    const update = await deps.store.addUpdateUploads(updateId, media, staff.subject);
+    if (!update) throw new ApiError(404, "update_not_found", "Official Update draft not found.");
+    return success(c, update, 201);
+  });
+  app.get("/api/v1/ops/updates/:id/media/:mediaId", async (c) => {
+    const staff = await requireStaff(deps, c.req.raw);
+    const authorized = await deps.store.getUpdateMedia(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!authorized) throw new ApiError(404, "update_media_not_found", "Update image not found.");
+    const object = await deps.uploads.read(authorized.key);
+    if (
+      !object ||
+      !validImageTypes.has(authorized.contentType) ||
+      !validImageTypes.has(object.contentType)
+    ) {
+      throw new ApiError(404, "update_media_not_found", "Update image not found.");
+    }
+    return new Response(object.body, {
+      headers: {
+        "content-type": object.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "cross-origin-resource-policy": "same-origin"
+      }
+    });
+  });
+  app.delete("/api/v1/ops/updates/:id/media/:mediaId", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const removed = await deps.store.removeUpdateUpload(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!removed) throw new ApiError(404, "update_media_not_found", "Update image not found.");
+    return success(c, removed);
+  });
+  app.post("/api/v1/ops/updates/:id/publish", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw, "Update publication accepts application/json only.");
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length) {
+      throw new ApiError(415, "unsupported_media_type", "Update publication accepts JSON only.");
+    }
+    const update = await deps.store.mutateUpdate(
+      c.req.param("id"),
+      publicationInput(body),
+      staff.subject
+    );
+    if (!update) throw new ApiError(404, "update_not_found", "Official Update not found.");
+    return success(c, update);
+  });
+  app.post("/api/v1/ops/updates/:id/withdraw", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw, "Update withdrawal accepts application/json only.");
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length || Object.keys(body).length > 0) {
+      throw new ApiError(422, "validation_failed", "Update withdrawal does not accept fields.");
+    }
+    const update = await deps.store.withdrawUpdate(c.req.param("id"), staff.subject);
+    if (!update) throw new ApiError(404, "update_not_found", "Official Update not found.");
+    return success(c, update);
   });
 
   app.get("/api/v1/ops/reports", async (c) => {

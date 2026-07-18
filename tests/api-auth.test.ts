@@ -1610,6 +1610,114 @@ test("keeps report Update drafts and future schedules private until their due ti
   assert.equal(store.updates.filter((item) => item.id === store.updates[0]?.id).length, 1);
 });
 
+test("standalone Official Update APIs are staff-only, draft-first, and media-scoped", async () => {
+  const { app, store, uploads } = makeApp();
+  const origin = "https://www.timlostsomething.com";
+  const endpoint = `${origin}/api/v1/ops/updates`;
+  const headers = { authorization: "Bearer staff-token", origin };
+
+  assert.equal((await app.request(endpoint)).status, 401);
+  const rejectedOrigin = await app.request(endpoint, {
+    method: "POST",
+    ...json({ title: "Trail note", body: "Private draft" }, {
+      authorization: "Bearer staff-token",
+      origin: "https://attacker.example"
+    })
+  });
+  assert.equal(rejectedOrigin.status, 403);
+
+  const created = await app.request(endpoint, {
+    method: "POST",
+    ...json({ title: "Trail note", body: "Private draft" }, headers)
+  });
+  assert.equal(created.status, 201);
+  const draft = (await responseJson(created)).data;
+  assert.equal(draft.status, "draft");
+
+  const ledger = await app.request(endpoint, { headers });
+  assert.equal(ledger.status, 200);
+  assert.equal((await responseJson(ledger)).data[0].id, draft.id);
+  assert.equal((await responseJson(await app.request(`${endpoint}/${draft.id}`, { headers }))).data.id, draft.id);
+  assert.equal((await responseJson(await app.request(`${origin}/api/v1/updates`))).data.some(
+    (item: Record<string, unknown>) => item.id === draft.id
+  ), false);
+
+  const threeImages = new FormData();
+  for (const name of ["one.jpg", "two.jpg", "three.jpg"]) {
+    threeImages.append("images", new File([new Uint8Array([0xff, 0xd8, 0xff])], name, { type: "image/jpeg" }));
+  }
+  const uploaded = await app.request(`${endpoint}/${draft.id}/media`, {
+    method: "POST",
+    headers,
+    body: threeImages
+  });
+  assert.equal(uploaded.status, 201);
+  assert.equal(uploads.saved.length, 3);
+  const storedUploads = store.updates.find((item) => item.id === draft.id)?.uploads as Array<Record<string, unknown>>;
+  storedUploads[0]!.status = "ready";
+  storedUploads[0]!.key = "derivatives/media-ready.webp";
+  storedUploads[0]!.contentType = "image/webp";
+
+  const fourthImage = new FormData();
+  fourthImage.append("images", new File([new Uint8Array([0xff, 0xd8, 0xff])], "four.jpg", { type: "image/jpeg" }));
+  assert.equal((await app.request(`${endpoint}/${draft.id}/media`, {
+    method: "POST",
+    headers,
+    body: fourthImage
+  })).status, 422);
+
+  const second = await responseJson(await app.request(endpoint, {
+    method: "POST",
+    ...json({ title: "Second", body: "Another private draft" }, headers)
+  }));
+  const mediaId = String(storedUploads[0]!.id);
+  assert.equal((await app.request(`${endpoint}/${second.data.id}/media/${mediaId}`, { headers })).status, 404);
+  assert.equal((await app.request(`${endpoint}/${second.data.id}/media/${mediaId}`, {
+    method: "DELETE",
+    headers
+  })).status, 404);
+  const privateMedia = await app.request(`${endpoint}/${draft.id}/media/${mediaId}`, { headers });
+  assert.equal(privateMedia.status, 200);
+  assert.equal(privateMedia.headers.get("cache-control"), "private, no-store");
+  assert.equal((await app.request(`${origin}/api/v1/media/${mediaId}`)).status, 404);
+
+  const removed = await app.request(`${endpoint}/${draft.id}/media/${mediaId}`, {
+    method: "DELETE",
+    headers
+  });
+  assert.equal(removed.status, 200);
+  assert.equal((await responseJson(removed)).data.status, "deleted");
+
+  const invalidSchedule = await app.request(`${endpoint}/${draft.id}/publish`, {
+    method: "POST",
+    ...json({
+      title: "Trail note",
+      body: "Reviewed public copy",
+      mediaIds: [],
+      action: "schedule",
+      scheduledFor: "2020-01-01T00:00:00.000Z"
+    }, headers)
+  });
+  assert.equal(invalidSchedule.status, 422);
+
+  const published = await app.request(`${endpoint}/${draft.id}/publish`, {
+    method: "POST",
+    ...json({
+      title: "Trail note",
+      body: "Reviewed public copy",
+      mediaIds: [],
+      action: "publish_now",
+      scheduledFor: null
+    }, headers)
+  });
+  assert.equal(published.status, 200);
+  assert.equal((await responseJson(published)).data.status, "published");
+  assert.equal((await app.request(`${endpoint}/${draft.id}/withdraw`, {
+    method: "POST",
+    ...json({}, headers)
+  })).status, 200);
+});
+
 test("stores direct Official Update uploads privately only after a draft exists", async () => {
   const { app, store, uploads } = makeApp();
   store.reports.push({ id: "report-update-upload", status: "verified", media: [] });
