@@ -104,6 +104,15 @@ async function auditRoutes(browser, viewport, files) {
       await page.addScriptTag({ content: axeSource });
       await runAxe(`${file} collapsed menu`);
 
+      if (file === "dashboard.html" && viewport.width === 390) {
+        await page.locator('[data-signup-dialog="privacy-media"]').evaluate((dialog) => dialog.showModal());
+        const fallback = page.locator('[data-signup-dialog="privacy-media"] [data-signup-dialog-fallback]');
+        const box = await fallback.boundingBox();
+        assert.ok(box && box.height >= 44, `mobile legal fallback target is at least 44px high (actual ${box?.height ?? 0}px)`);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "mobile legal dialog does not create horizontal overflow");
+        await page.locator('[data-signup-dialog="privacy-media"]').evaluate((dialog) => dialog.close());
+      }
+
       if (viewport.width <= 760) {
         const toggle = page.locator(".campaign-menu-toggle");
         const nav = page.locator("#campaign-nav");

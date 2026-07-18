@@ -705,6 +705,14 @@ button.hunter-button {
   border-top: 1px solid var(--hunter-paper-deep);
 }
 
+[data-signup-dialog-fallback] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-block: 8px;
+  box-sizing: border-box;
+}
+
 .legal-embed--signup .skip-link,
 .legal-embed--signup .case-strip,
 .legal-embed--signup .campaign-header,
