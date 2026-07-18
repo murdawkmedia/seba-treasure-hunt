@@ -378,7 +378,10 @@ test("report summaries preserve numeric waypoint identifiers and offer deliberat
 test("report review states expose only guided next steps and a persistent assignment summary", () => {
   assert.deepEqual(nextReportStates("received"), ["reviewing", "rejected"]);
   assert.deepEqual(nextReportStates("reviewing"), ["contacted", "escalated", "verified", "rejected"]);
-  assert.deepEqual(nextReportStates("verified"), ["resolved"]);
+  assert.deepEqual(nextReportStates("contacted"), ["reviewing", "escalated", "verified", "rejected"]);
+  assert.deepEqual(nextReportStates("escalated"), ["reviewing", "contacted", "verified", "rejected"]);
+  assert.deepEqual(nextReportStates("verified"), ["reviewing", "resolved"]);
+  assert.deepEqual(nextReportStates("rejected"), ["reviewing"]);
   assert.deepEqual(nextReportStates("resolved"), ["reviewing"]);
   const html = renderReportState({ status: "reviewing", assignedTo: "staff-1" });
   assert.match(html, /Status: Reviewing/);
