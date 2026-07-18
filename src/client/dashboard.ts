@@ -2137,6 +2137,7 @@ interface SignupAccountFormDependencies {
   activateSignupSession?: (sessionId: string) => Promise<boolean>;
   finalizeSignup?: (draft: HunterSignupDraft) => Promise<void>;
   resendCooldownMs?: number;
+  completedFinishingMessage?: string;
 }
 
 function setupAccountForms(
@@ -2756,6 +2757,10 @@ function setupAccountForms(
   }
 
   signUpAttempt = providerAttempt;
+  if (dependencies.completedFinishingMessage) {
+    showSignupFinishing(dependencies.completedFinishingMessage);
+    return "finishing";
+  }
   void runSignupFinishing();
   return "finishing";
 }
@@ -2764,7 +2769,7 @@ type AccountStatePresentation = SignupRecoveryPresentation | "dashboard";
 
 interface AccountStateDependencies extends SignupAccountFormDependencies {
   loadDashboard?: () => Promise<void>;
-  signupNeedsFinishing?: (resume: HunterSignupResumeRecord) => Promise<boolean>;
+  signupNeedsFinishing?: (resume: HunterSignupResumeRecord) => Promise<boolean | null | undefined>;
 }
 
 async function signupNeedsAuthoritativeFinishing(
@@ -2796,12 +2801,18 @@ async function initializeAccountState(
       : null;
     let needsFinishing = false;
     if (reconciliation?.state === "complete" && activeEmail === resume?.emailAddress) {
+      const deferIndeterminateFinishing = (): SignupRecoveryPresentation => setupAccountForms(auth, config, resumeStore, {
+        ...dependencies,
+        completedFinishingMessage: "We could not confirm whether the remaining account steps are complete. Your verified progress is retained. Try again.",
+      });
       try {
-        needsFinishing = await (
+        const decision = await (
           dependencies.signupNeedsFinishing ?? ((record) => signupNeedsAuthoritativeFinishing(auth, record))
         )(resume);
+        if (typeof decision !== "boolean") return deferIndeterminateFinishing();
+        needsFinishing = decision;
       } catch {
-        // An active account remains authoritative when finishing need cannot be established safely.
+        return deferIndeterminateFinishing();
       }
     }
     if (needsFinishing) {
@@ -2859,7 +2870,7 @@ export async function initializeAccountStateForTest(options: {
   loadDashboard: () => Promise<void>;
   activateSession?: (sessionId: string) => Promise<boolean>;
   finalizeSignup?: (draft: HunterSignupDraft) => Promise<void>;
-  signupNeedsFinishing?: (resume: HunterSignupResumeRecord) => Promise<boolean>;
+  signupNeedsFinishing?: (resume: HunterSignupResumeRecord) => Promise<boolean | null | undefined>;
 }): Promise<AccountStatePresentation> {
   hunterClerk = options.clerk as Clerk;
   return initializeAccountState(

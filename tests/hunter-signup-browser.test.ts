@@ -973,3 +973,99 @@ test("active user trusts authoritative current waiver completion over stale resu
     await page.close();
   }
 });
+
+test("indeterminate active signup finishing preserves both resume tiers until explicit retry proves completion", async () => {
+  const page = await signupPage();
+  try {
+    const stale = resumeRecord();
+    await installResume(page, "session", stale);
+    await installResume(page, "local", stale);
+    const source = String.raw`
+      window.__finishingFailuresRemaining = 1;
+      return window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+          session: { id: "session-active" },
+          setActive: async function () {},
+          signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local",
+          deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return null; } },
+        signupNeedsFinishing: async function () { throw new Error("Authoritative account state is temporarily unavailable."); },
+        activateSession: async function () {
+          window.__finishingActivationCalls = Number(window.__finishingActivationCalls || 0) + 1;
+          return true;
+        },
+        finalizeSignup: async function (draft) {
+          window.__indeterminateFinalizationKeys = [...(window.__indeterminateFinalizationKeys || []), draft.finalizationIdempotencyKey];
+          if (Number(window.__finishingFailuresRemaining || 0) > 0) {
+            window.__finishingFailuresRemaining = Number(window.__finishingFailuresRemaining) - 1;
+            throw new Error("The authoritative Dashboard refresh failed.");
+          }
+          window.__indeterminateDashboardLoads = Number(window.__indeterminateDashboardLoads || 0) + 1;
+          document.querySelector("[data-dashboard-state]").hidden = true;
+          document.querySelector("[data-dashboard-content]").hidden = false;
+        },
+        loadDashboard: async function () { throw new Error("Dashboard fallback must not run."); },
+      });
+    `;
+    const presentation = await page.evaluate(({ attempt, body }) => (
+      new Function("attempt", body)(attempt)
+    ), {
+      attempt: preparedAttempt({
+        status: "complete",
+        createdSessionId: "session-complete",
+        unverifiedFields: [],
+        verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
+      }),
+      body: source,
+    });
+    assert.equal(presentation, "finishing");
+    assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), true);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "hunter-signup-finishing-title");
+    assert.match(await page.locator("[data-signup-finishing-status]").textContent() ?? "", /could not confirm|try again/i);
+    assert.deepEqual(await page.evaluate((key) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+      activationCalls: Number((window as unknown as Record<string, unknown>).__finishingActivationCalls || 0),
+    }), storageKey), {
+      session: JSON.stringify(stale),
+      local: JSON.stringify(stale),
+      activationCalls: 0,
+    });
+
+    const retry = page.locator("[data-signup-finishing-retry]");
+    await retry.click();
+    await page.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]")?.disabled === false &&
+      /Dashboard refresh failed/i.test(document.querySelector("[data-signup-finishing-status]")?.textContent ?? ""));
+    assert.deepEqual(await page.evaluate((key) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), storageKey), { session: JSON.stringify(stale), local: JSON.stringify(stale) });
+
+    await retry.click();
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__indeterminateDashboardLoads || 0) === 1);
+    assert.deepEqual(await page.evaluate((key) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+      keys: (window as unknown as Record<string, unknown>).__indeterminateFinalizationKeys,
+      writes: Number((window as unknown as Record<string, unknown>).__indeterminateAcceptanceWrites || 0),
+    }), storageKey), {
+      session: null,
+      local: null,
+      keys: [
+        "11111111-1111-4111-8111-111111111111",
+        "11111111-1111-4111-8111-111111111111",
+      ],
+      writes: 0,
+    });
+  } finally {
+    await page.close();
+  }
+});
