@@ -2769,7 +2769,7 @@ interface AccountStateDependencies extends SignupAccountFormDependencies {
 
 async function signupNeedsAuthoritativeFinishing(
   auth: HunterAuthHook,
-  resume: HunterSignupResumeRecord,
+  _resume: HunterSignupResumeRecord,
 ): Promise<boolean> {
   await bootstrapPlayer(auth);
   const [dashboard, waiverAcceptance] = await Promise.all([
@@ -2777,8 +2777,7 @@ async function signupNeedsAuthoritativeFinishing(
     fetchWaiverAcceptanceProjection(auth),
   ]);
   const profileAndPrivacyComplete = isRecord(dashboard.profile) && dashboard.privacyMediaRequired !== true;
-  return !profileAndPrivacyComplete || !waiverAcceptance?.acceptance ||
-    !waiverDocumentMatchesAcceptance({ ...resume.waiverDocument }, waiverAcceptance.acceptance);
+  return !profileAndPrivacyComplete || !waiverAcceptance?.acceptance;
 }
 
 async function initializeAccountState(

@@ -868,3 +868,108 @@ test("active user wins over stale signup resumes shared across tabs", async () =
     await context.close();
   }
 });
+
+test("active user trusts authoritative current waiver completion over stale resume legal identity", async () => {
+  const page = await signupPage();
+  let acceptanceWrites = 0;
+  try {
+    const currentWaiver = { type: "participation_waiver", version: "2026.7", hash: "f".repeat(64), title: "Current waiver", sections: [] };
+    const currentAcceptance = {
+      id: "acceptance-current",
+      documentVersion: currentWaiver.version,
+      documentHash: currentWaiver.hash,
+      acceptedAt: "2026-07-17T12:00:00.000Z",
+      referenceCode: "TLS-CURRENT",
+      participants: [],
+      receipt: { status: "sent" },
+    };
+    await page.route(`${origin}/api/v1/me/**`, async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/v1/me/bootstrap") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/dashboard") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: { profile: { fullName: "Active Hunter" }, privacyMediaRequired: false } }),
+        });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver" && route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: { acceptance: currentAcceptance, document: currentWaiver } }),
+        });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver/review" || url.pathname === "/api/v1/me/waiver/accept") {
+        acceptanceWrites += 1;
+      }
+      await route.fulfill({ status: 204, body: "" });
+    });
+    await installResume(page, "session", resumeRecord({
+      privacyMediaDocument: { version: "2025.1", hash: "c".repeat(64) },
+      waiverDocument: { version: "2025.1", hash: "d".repeat(64) },
+    }));
+    const source = String.raw`
+      return window.DashboardTestModule.initializeAccountStateForTest({
+        clerk: {
+          client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "alex@example.test" } },
+          session: { id: "session-active" },
+          setActive: async function () {},
+          signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local",
+          deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.7", hash: "e".repeat(64) },
+          waiver: { version: "2026.7", hash: "f".repeat(64) },
+        },
+        auth: { getToken: async function () { return null; } },
+        activateSession: async function () { return false; },
+        finalizeSignup: async function () { window.__acceptanceFinalizeCalls = Number(window.__acceptanceFinalizeCalls || 0) + 1; },
+        loadDashboard: async function () {
+          window.__dashboardLoads = Number(window.__dashboardLoads || 0) + 1;
+          document.querySelector("[data-dashboard-state]").hidden = true;
+          document.querySelector("[data-dashboard-content]").hidden = false;
+        },
+      }).then(function (presentation) {
+        return {
+          presentation,
+          session: sessionStorage.getItem(key),
+          local: localStorage.getItem(key),
+          dashboardLoads: Number(window.__dashboardLoads || 0),
+          finalizeCalls: Number(window.__acceptanceFinalizeCalls || 0),
+        };
+      });
+    `;
+    const result = await page.evaluate(({ key, attempt, body }) => (
+      new Function("key", "attempt", body)(key, attempt)
+    ), {
+      key: storageKey,
+      attempt: preparedAttempt({
+        status: "complete",
+        createdSessionId: "session-complete",
+        unverifiedFields: [],
+        verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
+      }),
+      body: source,
+    });
+    assert.deepEqual(result, {
+      presentation: "dashboard",
+      session: null,
+      local: null,
+      dashboardLoads: 1,
+      finalizeCalls: 0,
+    });
+    assert.equal(acceptanceWrites, 0);
+    assert.equal(await page.locator("[data-dashboard-content]").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), false);
+  } finally {
+    await page.close();
+  }
+});
