@@ -121,3 +121,29 @@ test("artifact reporting distinguishes preserved evidence from completed cleanup
     "preserved output is emitted only by the preserve branch",
   );
 });
+
+test("unified-shell QA exercises the isolated reversible private-report workflow", async () => {
+  const script = await readRunner();
+
+  assert.match(script, /const reportWorkflowEndpoint = ["']\/api\/v1\/ops\/reports\/report-workflow-qa-001["']/);
+  assert.match(script, /workflowMutationLedger/);
+  for (const scenario of [
+    "received-to-reviewing assignment",
+    "contacted-to-reviewing reason confirmation",
+    "rejected\/resolved reopen",
+    "unassign without status change",
+    "stale response recovery",
+    "active-publication guards",
+    "hunter-safe Dashboard projection",
+    "zero Moderation Queue mutation",
+  ]) assert.match(script, new RegExp(scenario));
+
+  assert.match(script, /operation/);
+  assert.match(script, /expectedStatus/);
+  assert.match(script, /report_transition_stale/);
+  assert.match(script, /assertNoHorizontalViewportOverflow/);
+  assert.match(script, /assertMinimumHitTargets/);
+  assert.match(script, /PATCH/);
+  assert.match(script, /moderation.*unchanged/i);
+  assert.match(script, /Review workflow.*Public outcome/is);
+});

@@ -14,6 +14,9 @@ const logPath = path.join(artifactRoot, "qa-log.json");
 const preserveArtifacts = process.env.UNIFIED_SHELL_QA_PRESERVE_ARTIFACTS !== "0";
 const executionStartedAt = new Date().toISOString();
 const fixedNow = "2026-07-14T18:00:00.000Z";
+const qaTrace = (message) => {
+  if (process.env.UNIFIED_SHELL_QA_TRACE === "1") console.error(`[unified-shell-qa] ${message}`);
+};
 const campaignFiles = Object.keys(CAMPAIGN_PAGES);
 assert.ok(campaignFiles.includes("updates.html"), "the public approved-report destination must remain in the canonical shell matrix");
 const representativeFiles = [
@@ -71,6 +74,179 @@ const statusEnvelope = {
     version: 1,
   },
 };
+const reportWorkflowEndpoint = "/api/v1/ops/reports/report-workflow-qa-001";
+const reportWorkflowScenarioNames = [
+  "received-to-reviewing assignment",
+  "contacted-to-reviewing reason confirmation",
+  "rejected/resolved reopen",
+  "unassign without status change",
+  "stale response recovery",
+  "active-publication guards",
+  "hunter-safe Dashboard projection",
+  "zero Moderation Queue mutation",
+];
+const reportWorkflowTransitions = {
+  received: ["reviewing", "rejected"],
+  reviewing: ["contacted", "escalated", "verified", "rejected"],
+  contacted: ["reviewing", "escalated", "verified", "rejected"],
+  escalated: ["reviewing", "contacted", "verified", "rejected"],
+  verified: ["reviewing", "resolved"],
+  rejected: ["reviewing"],
+  resolved: ["reviewing"],
+};
+const reportWorkflowReasonRequired = (from, to) =>
+  to === "rejected" || to === "resolved" || (to === "reviewing" && from !== "received");
+
+function createReportWorkflowFixture(workflowMutationLedger) {
+  const moderation = { notes: 2, replies: 3, flags: 1 };
+  const initialModeration = structuredClone(moderation);
+  let status = "received";
+  let assignedTo = null;
+  let publicationStatus = null;
+  let caseNoteStatus = null;
+  let staleNext = false;
+  let version = 1;
+  let history = [];
+
+  const reset = ({
+    nextStatus = "received",
+    nextAssignedTo = null,
+    nextPublicationStatus = null,
+    nextCaseNoteStatus = null,
+    makeNextWriteStale = false,
+  } = {}) => {
+    status = nextStatus;
+    assignedTo = nextAssignedTo;
+    publicationStatus = nextPublicationStatus;
+    caseNoteStatus = nextCaseNoteStatus;
+    staleNext = makeNextWriteStale;
+    version += 1;
+    history = [{
+      id: `workflow-history-${version}`,
+      type: `status.${status}`,
+      actor: "QA Fixture",
+      note: "Synthetic local workflow state.",
+      occurredAt: fixedNow,
+    }];
+  };
+
+  const detail = () => ({
+    id: "report-workflow-qa-001",
+    type: "find",
+    status,
+    createdAt: "2026-07-14T16:00:00.000Z",
+    updatedAt: fixedNow,
+    waypointId: "11",
+    waypointRouteOrder: 11,
+    waypointName: "The Driving Range & the Digger Café",
+    hunterSubject: "hunter-private-subject-sentinel",
+    name: "Private Reporter Sentinel",
+    email: "private-email-sentinel@example.test",
+    phone: "+1-555-private-phone-sentinel",
+    publicAttribution: "QA Hunter",
+    publicationEligible: true,
+    publicationEligibilityReason: "eligible",
+    publication: {
+      published: publicationStatus === "published",
+      updateId: publicationStatus === null ? null : "qa-update-001",
+      status: publicationStatus,
+      scheduledFor: null,
+      title: publicationStatus === null ? null : "Local QA update",
+      body: publicationStatus === null ? null : "Synthetic public outcome.",
+      mediaIds: [],
+      uploads: [],
+    },
+    caseNote: {
+      published: caseNoteStatus === "published",
+      noteId: caseNoteStatus === null ? null : "qa-case-note-001",
+      status: caseNoteStatus,
+    },
+    locationDescription: "Private location description sentinel",
+    latitude: 53.533,
+    longitude: -114.737,
+    details: "Private evidence sentinel that must never reach hunter output.",
+    assignedTo,
+    media: [],
+    history,
+  });
+
+  const error = (statusCode, code, message) => ({
+    status: statusCode,
+    body: { error: { code, message } },
+  });
+
+  const patch = (body) => {
+    const entry = { method: "PATCH", pathname: reportWorkflowEndpoint, body: structuredClone(body), outcome: "pending" };
+    workflowMutationLedger.push(entry);
+    if (staleNext) {
+      staleNext = false;
+      entry.outcome = "report_transition_stale";
+      return error(409, "report_transition_stale", "The report changed before this request was applied.");
+    }
+    if (!body || body.expectedStatus !== status) {
+      entry.outcome = "version_conflict";
+      return error(409, "version_conflict", "Refresh the report before changing it.");
+    }
+    if (body.operation === "unassign") {
+      if (!assignedTo || body.confirmed !== true) {
+        entry.outcome = "report_assignment_stale";
+        return error(409, "report_assignment_stale", "The report assignment changed.");
+      }
+      assignedTo = null;
+      version += 1;
+      history = [{
+        id: `workflow-history-${version}`,
+        type: "assignment.unassigned",
+        actor: "QA Operator",
+        note: typeof body.note === "string" && body.note.trim() ? body.note.trim() : null,
+        occurredAt: fixedNow,
+      }, ...history];
+      entry.outcome = "applied";
+      return { status: 200, body: { data: detail() } };
+    }
+    if (body.operation !== "transition" || !reportWorkflowTransitions[status]?.includes(body.status)) {
+      entry.outcome = "invalid_transition";
+      return error(422, "invalid_transition", "That workflow transition is unavailable.");
+    }
+    if (reportWorkflowReasonRequired(status, body.status) && (!body.note?.trim() || body.confirmed !== true)) {
+      entry.outcome = "reason_or_confirmation_required";
+      return error(422, "reason_or_confirmation_required", "A reason and confirmation are required.");
+    }
+    const officialUpdateActive = publicationStatus !== null && publicationStatus !== "withdrawn";
+    const officialUpdateBlocks = officialUpdateActive && (
+      body.status === "resolved" || body.status === "rejected" ||
+      (status === "verified" && body.status === "reviewing")
+    );
+    const caseNoteBlocks = caseNoteStatus === "published" && body.status === "rejected";
+    if (officialUpdateBlocks || caseNoteBlocks) {
+      entry.outcome = "active_publication_guard";
+      return error(409, "active_publication_guard", "Withdraw the linked public outcome first.");
+    }
+    const previous = status;
+    status = body.status;
+    if (status === "reviewing" && !assignedTo) assignedTo = "QA Operator";
+    version += 1;
+    history = [{
+      id: `workflow-history-${version}`,
+      type: `status.${status}`,
+      actor: "QA Operator",
+      note: typeof body.note === "string" && body.note.trim() ? body.note.trim() : null,
+      occurredAt: fixedNow,
+    }, ...history];
+    entry.outcome = `applied:${previous}->${status}`;
+    return { status: 200, body: { data: detail() } };
+  };
+
+  reset();
+  return {
+    reset,
+    detail,
+    patch,
+    moderation,
+    initialModeration,
+    snapshot: () => ({ status, assignedTo, publicationStatus, caseNoteStatus, version }),
+  };
+}
 const mimeTypes = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -159,7 +335,7 @@ async function closeServer(server) {
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
 
-async function installQaBoundary(context, origin, networkLedger) {
+async function installQaBoundary(context, origin, networkLedger, { reportWorkflowFixture = null } = {}) {
   await context.addInitScript(({ iso }) => {
     const RealDate = Date;
     const epoch = RealDate.parse(iso);
@@ -181,12 +357,66 @@ async function installQaBoundary(context, origin, networkLedger) {
     const isLocal = url.origin === origin;
 
     if (isLocal && url.pathname.startsWith("/api/")) {
+      if (reportWorkflowFixture && url.pathname === reportWorkflowEndpoint) {
+        if (method === "GET") {
+          networkLedger.localApiMocks.push({ method, pathname: url.pathname });
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json; charset=utf-8",
+            body: JSON.stringify({ data: reportWorkflowFixture.detail() }),
+          });
+          return;
+        }
+        if (method === "PATCH") {
+          let requestBody = null;
+          try { requestBody = request.postDataJSON(); } catch { /* The fixture rejects malformed JSON below. */ }
+          const response = reportWorkflowFixture.patch(requestBody);
+          networkLedger.localApiMocks.push({ method, pathname: url.pathname, status: response.status });
+          await route.fulfill({
+            status: response.status,
+            contentType: "application/json; charset=utf-8",
+            body: JSON.stringify(response.body),
+          });
+          return;
+        }
+      }
       if (!isRead) {
         networkLedger.localWriteAttempts.push({ method, pathname: url.pathname });
         await route.abort("blockedbyclient");
         return;
       }
-      const body = url.pathname === "/api/v1/status" ? statusEnvelope : { data: null };
+      let body = url.pathname === "/api/v1/status" ? statusEnvelope : { data: null };
+      if (reportWorkflowFixture) {
+        if (url.pathname === "/api/v1/ops/reports") {
+          const detail = reportWorkflowFixture.detail();
+          body = { data: [{
+            id: detail.id,
+            type: detail.type,
+            status: detail.status,
+            createdAt: detail.createdAt,
+            waypointId: detail.waypointId,
+            waypointRouteOrder: detail.waypointRouteOrder,
+            waypointName: detail.waypointName,
+            mediaCount: detail.media.length,
+          }] };
+        } else if (url.pathname === "/api/v1/ops/dashboard") {
+          body = { data: {
+            status: { state: "open", updatedAt: fixedNow, nextClue: "None scheduled", version: 1 },
+            counts: {
+              pendingNotes: reportWorkflowFixture.moderation.notes,
+              receivedReports: reportWorkflowFixture.detail().status === "received" ? 1 : 0,
+              receivedFlags: reportWorkflowFixture.moderation.flags,
+              activeHunters: 1,
+            },
+            killSwitches: { boardVisible: true, notesEnabled: true, repliesEnabled: true },
+          } };
+        } else if (
+          url.pathname === "/api/v1/ops/audit" || url.pathname === "/api/v1/ops/staff" ||
+          url.pathname.startsWith("/api/v1/ops/moderation/")
+        ) {
+          body = { data: [] };
+        }
+      }
       networkLedger.localApiMocks.push({ method, pathname: url.pathname });
       await route.fulfill({ status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify(body) });
       return;
@@ -671,6 +901,400 @@ async function runRouteLightboxAudit({ browser, origin, networkLedger, consoleEr
   };
 }
 
+async function focusAndPress(page, locator, key = "Enter", label = "control") {
+  await locator.focus();
+  await assertActiveElement(page, locator, label);
+  await page.keyboard.press(key);
+}
+
+async function selectWorkflowStateByKeyboard(page, value) {
+  const select = page.locator("[data-report-next-status]");
+  const values = await select.locator("option").evaluateAll((options) => options.map((option) => option.value));
+  const index = values.indexOf(value);
+  assert.ok(index > 0, `workflow state ${value} must be available after the placeholder`);
+  await select.focus();
+  await assertActiveElement(page, select, `workflow state ${value}`);
+  await page.keyboard.press("Home");
+  for (let position = 0; position < index; position += 1) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  assert.equal(await select.inputValue(), value, `keyboard selection must choose ${value}`);
+}
+
+async function answerConfirmation(page, action, accept) {
+  const confirmation = page.waitForEvent("dialog");
+  const actionResult = action();
+  const dialog = await confirmation;
+  assert.equal(dialog.type(), "confirm", "workflow correction must use an explicit confirmation");
+  if (accept) await dialog.accept();
+  else await dialog.dismiss();
+  await actionResult;
+}
+
+async function waitForWorkflowResult(page, copy) {
+  await page.waitForFunction((expected) => {
+    const result = document.querySelector("[data-report-workflow-result]");
+    return result?.textContent?.includes(expected);
+  }, copy);
+}
+
+async function exposeLocalOpsWorkspace(page) {
+  await page.waitForFunction(() => document.querySelector("#ops-auth-config")?.getAttribute("data-state") === "error");
+  await page.evaluate(() => {
+    const auth = document.querySelector("#ops-auth-panel");
+    const app = document.querySelector("#ops-app");
+    if (auth instanceof HTMLElement) auth.hidden = true;
+    if (app instanceof HTMLElement) app.hidden = false;
+    const reportsButton = document.querySelector('[data-view="reports"]');
+    if (reportsButton instanceof HTMLButtonElement) reportsButton.click();
+    const table = document.querySelector("#reports-table");
+    if (table) {
+      const row = document.createElement("tr");
+      row.innerHTML = [
+        '<td><time datetime="2026-07-14T16:00:00.000Z">Jul 14, 2026</time></td>',
+        '<td><span class="ops-chip">find</span></td>',
+        '<td>Stop 11 · The Driving Range &amp; the Digger Café</td>',
+        '<td>0 files</td>',
+        '<td>received</td>',
+        '<td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-report-review data-report-id="report-workflow-qa-001">Review report</button></div></td>',
+      ].join("");
+      table.replaceChildren(row);
+    }
+  });
+}
+
+async function openLocalWorkflowReport(page) {
+  const review = page.getByRole("button", { name: "Review report", exact: true });
+  await focusAndPress(page, review, "Enter", "Review report");
+  const dialog = page.locator("[data-report-review-dialog]");
+  await dialog.waitFor({ state: "visible" });
+  await page.waitForFunction(() => document.querySelector("#report-review-state")?.textContent?.startsWith("Private report loaded."));
+  return dialog;
+}
+
+async function closeLocalWorkflowReport(page) {
+  const close = page.getByRole("button", { name: "Close report review", exact: true });
+  await focusAndPress(page, close, "Enter", "Close report review");
+  await page.locator("[data-report-review-dialog]").waitFor({ state: "hidden" });
+  await page.waitForFunction(() => {
+    const dialog = document.querySelector("[data-report-review-dialog]");
+    const state = document.querySelector("#report-review-state");
+    return dialog?.getAttribute("data-report-id") === "" && state?.textContent?.startsWith("Choose Review report");
+  });
+}
+
+async function runReportWorkflowAudit({
+  browser,
+  origin,
+  networkLedger,
+  consoleErrors: shellConsoleErrors,
+  pageErrors: shellPageErrors,
+  requestFailures: shellRequestFailures,
+}) {
+  qaTrace("report workflow audit: start");
+  const workflowMutationLedger = [];
+  const reportWorkflowFixture = createReportWorkflowFixture(workflowMutationLedger);
+  const scenarioEvidence = [];
+  const contexts = [];
+  const workflowConsoleErrors = [];
+  const workflowPageErrors = [];
+  const workflowRequestFailures = [];
+
+  const createPage = async (viewport, labelPrefix) => {
+    const context = await browser.newContext({ viewport });
+    contexts.push(context);
+    await installQaBoundary(context, origin, networkLedger, { reportWorkflowFixture });
+    const page = await context.newPage();
+    let label = `${labelPrefix}/starting`;
+    attachErrorAudit(page, () => label, workflowConsoleErrors, workflowPageErrors, workflowRequestFailures);
+    await page.goto(`${origin}/ops.html`, { waitUntil: "domcontentloaded" });
+    label = `${labelPrefix}/workspace`;
+    await exposeLocalOpsWorkspace(page);
+    return { page, setLabel: (next) => { label = `${labelPrefix}/${next}`; } };
+  };
+
+  try {
+    const desktop = await createPage({ width: 1440, height: 1000 }, "report-workflow-desktop");
+    const { page } = desktop;
+
+    // received-to-reviewing assignment
+    qaTrace("report workflow audit: received-to-reviewing assignment");
+    desktop.setLabel("received-to-reviewing-assignment");
+    reportWorkflowFixture.reset({ nextStatus: "received" });
+    await openLocalWorkflowReport(page);
+    const selectWriteCount = workflowMutationLedger.length;
+    await selectWorkflowStateByKeyboard(page, "reviewing");
+    assert.equal(workflowMutationLedger.length, selectWriteCount, "selecting a status must send zero writes");
+    await focusAndPress(page, page.getByRole("button", { name: "Apply status", exact: true }), "Enter", "Apply status");
+    await waitForWorkflowResult(page, "Reviewing saved. Nothing was published.");
+    assert.equal(workflowMutationLedger.length, selectWriteCount + 1, "Apply status must send exactly one write");
+    assert.deepEqual(
+      workflowMutationLedger.at(-1).body,
+      { operation: "transition", expectedStatus: "received", status: "reviewing", confirmed: true },
+      "received-to-reviewing must send the explicit worker contract",
+    );
+    assert.deepEqual(
+      { status: reportWorkflowFixture.snapshot().status, assignedTo: reportWorkflowFixture.snapshot().assignedTo },
+      { status: "reviewing", assignedTo: "QA Operator" },
+      "reviewing must assign the synthetic report without publishing",
+    );
+    const stateSummary = page.locator("[data-report-state-summary]");
+    assert.match(await stateSummary.innerText(), /Status:\s*Reviewing/i, "status must be available as text, not color alone");
+    assert.match(await page.locator("[data-report-status-explanation]").innerText(), /operator is assessing/i);
+    const history = page.locator(".ops-report-history");
+    await focusAndPress(page, history.locator("summary"), "Enter", "Recent status history");
+    assert.equal(await history.getAttribute("open"), "", "history must open from the keyboard");
+    assert.match(await history.innerText(), /Reviewing/);
+    scenarioEvidence.push(reportWorkflowScenarioNames[0]);
+    await closeLocalWorkflowReport(page);
+
+    // contacted-to-reviewing reason confirmation, including cancel.
+    qaTrace("report workflow audit: contacted-to-reviewing confirmation");
+    desktop.setLabel("contacted-to-reviewing-reason-confirmation");
+    reportWorkflowFixture.reset({ nextStatus: "contacted", nextAssignedTo: "QA Operator" });
+    await openLocalWorkflowReport(page);
+    await selectWorkflowStateByKeyboard(page, "reviewing");
+    const correctionBaseline = workflowMutationLedger.length;
+    await focusAndPress(page, page.getByRole("button", { name: "Apply status", exact: true }), "Enter", "Apply status without reason");
+    await waitForWorkflowResult(page, "Record a private reason");
+    assert.equal(workflowMutationLedger.length, correctionBaseline, "a required missing reason must prevent the write");
+    const reason = page.locator("[data-report-status-note]");
+    await reason.focus();
+    await page.keyboard.type("Reporter supplied corrected context.");
+    await answerConfirmation(
+      page,
+      () => focusAndPress(page, page.getByRole("button", { name: "Apply status", exact: true }), "Enter", "Cancel workflow correction"),
+      false,
+    );
+    assert.equal(workflowMutationLedger.length, correctionBaseline, "canceling confirmation must send zero writes");
+    assert.equal(await reason.inputValue(), "Reporter supplied corrected context.", "canceling must preserve the private reason");
+    await answerConfirmation(
+      page,
+      () => focusAndPress(page, page.getByRole("button", { name: "Apply status", exact: true }), "Enter", "Confirm workflow correction"),
+      true,
+    );
+    await waitForWorkflowResult(page, "Reviewing saved. Nothing was published.");
+    assert.equal(workflowMutationLedger.length, correctionBaseline + 1, "confirmed correction must send exactly one write");
+    assert.equal(workflowMutationLedger.at(-1).body.expectedStatus, "contacted");
+    assert.equal(workflowMutationLedger.at(-1).body.note, "Reporter supplied corrected context.");
+    assert.equal(workflowMutationLedger.at(-1).body.confirmed, true);
+    scenarioEvidence.push(reportWorkflowScenarioNames[1]);
+    await closeLocalWorkflowReport(page);
+
+    // rejected/resolved reopen
+    qaTrace("report workflow audit: rejected/resolved reopen");
+    for (const closedState of ["rejected", "resolved"]) {
+      desktop.setLabel(`${closedState}-reopen`);
+      reportWorkflowFixture.reset({ nextStatus: closedState });
+      await openLocalWorkflowReport(page);
+      await selectWorkflowStateByKeyboard(page, "reviewing");
+      await page.locator("[data-report-status-note]").fill(`Reopen ${closedState} after supervisor review.`);
+      const baseline = workflowMutationLedger.length;
+      await answerConfirmation(
+        page,
+        () => focusAndPress(page, page.getByRole("button", { name: "Apply status", exact: true }), "Enter", `Reopen ${closedState}`),
+        true,
+      );
+      await waitForWorkflowResult(page, "Reviewing saved. Nothing was published.");
+      assert.equal(workflowMutationLedger.length, baseline + 1);
+      assert.equal(reportWorkflowFixture.snapshot().status, "reviewing");
+      await closeLocalWorkflowReport(page);
+    }
+    scenarioEvidence.push(reportWorkflowScenarioNames[2]);
+
+    // unassign without status change
+    qaTrace("report workflow audit: unassign");
+    desktop.setLabel("unassign-without-status-change");
+    reportWorkflowFixture.reset({ nextStatus: "reviewing", nextAssignedTo: "QA Operator" });
+    await openLocalWorkflowReport(page);
+    const unassignBaseline = workflowMutationLedger.length;
+    await answerConfirmation(
+      page,
+      () => focusAndPress(page, page.getByRole("button", { name: "Unassign report", exact: true }), "Enter", "Unassign report"),
+      true,
+    );
+    await waitForWorkflowResult(page, "Report unassigned. Its review status did not change.");
+    assert.equal(workflowMutationLedger.length, unassignBaseline + 1);
+    assert.deepEqual(workflowMutationLedger.at(-1).body, {
+      operation: "unassign",
+      expectedStatus: "reviewing",
+      confirmed: true,
+    });
+    assert.deepEqual(
+      { status: reportWorkflowFixture.snapshot().status, assignedTo: reportWorkflowFixture.snapshot().assignedTo },
+      { status: "reviewing", assignedTo: null },
+    );
+    scenarioEvidence.push(reportWorkflowScenarioNames[3]);
+    await closeLocalWorkflowReport(page);
+
+    // stale response recovery; the failed write must preserve the operator's reason.
+    qaTrace("report workflow audit: stale recovery");
+    desktop.setLabel("stale-response-recovery");
+    reportWorkflowFixture.reset({
+      nextStatus: "contacted",
+      nextAssignedTo: "QA Operator",
+      makeNextWriteStale: true,
+    });
+    await openLocalWorkflowReport(page);
+    await selectWorkflowStateByKeyboard(page, "reviewing");
+    const staleReason = page.locator("[data-report-status-note]");
+    await staleReason.fill("Recheck after another operator changed the report.");
+    const staleBaseline = workflowMutationLedger.length;
+    await answerConfirmation(
+      page,
+      () => focusAndPress(page, page.getByRole("button", { name: "Apply status", exact: true }), "Enter", "Apply stale correction"),
+      true,
+    );
+    await waitForWorkflowResult(page, "The report changed. Refresh report and try again.");
+    assert.equal(workflowMutationLedger.length, staleBaseline + 1);
+    assert.equal(workflowMutationLedger.at(-1).outcome, "report_transition_stale");
+    assert.equal(await staleReason.inputValue(), "Recheck after another operator changed the report.");
+    await focusAndPress(page, page.getByRole("button", { name: "Refresh report", exact: true }), "Enter", "Refresh stale report");
+    await waitForWorkflowResult(page, "Report refreshed from the verified source.");
+    assert.equal(await staleReason.inputValue(), "Recheck after another operator changed the report.");
+    await selectWorkflowStateByKeyboard(page, "reviewing");
+    await answerConfirmation(
+      page,
+      () => focusAndPress(page, page.getByRole("button", { name: "Apply status", exact: true }), "Enter", "Retry stale correction"),
+      true,
+    );
+    await waitForWorkflowResult(page, "Reviewing saved. Nothing was published.");
+    assert.equal(workflowMutationLedger.length, staleBaseline + 2);
+    scenarioEvidence.push(reportWorkflowScenarioNames[4]);
+    await closeLocalWorkflowReport(page);
+
+    // active-publication guards
+    qaTrace("report workflow audit: publication guards");
+    desktop.setLabel("active-publication-guards");
+    reportWorkflowFixture.reset({
+      nextStatus: "verified",
+      nextAssignedTo: "QA Operator",
+      nextPublicationStatus: "draft",
+    });
+    await openLocalWorkflowReport(page);
+    const guardBaseline = workflowMutationLedger.length;
+    const guardedOptions = await page.locator("[data-report-next-status] option").evaluateAll((options) =>
+      options.filter((option) => option.value).map((option) => ({ value: option.value, disabled: option.disabled })),
+    );
+    assert.deepEqual(guardedOptions, [
+      { value: "reviewing", disabled: true },
+      { value: "resolved", disabled: true },
+    ]);
+    assert.match(await page.locator("[data-report-next-status-help]").innerText(), /Withdraw the linked Official Update first/);
+    assert.equal(workflowMutationLedger.length, guardBaseline, "active publication guards must prevent all writes");
+    scenarioEvidence.push(reportWorkflowScenarioNames[5]);
+    await closeLocalWorkflowReport(page);
+
+    const mobile = await createPage({ width: 390, height: 844 }, "report-workflow-mobile-390x844");
+    qaTrace("report workflow audit: mobile layout and keyboard");
+    mobile.setLabel("guided-keyboard-layout");
+    reportWorkflowFixture.reset({ nextStatus: "received" });
+    const mobileDialog = await openLocalWorkflowReport(mobile.page);
+    await assertNoHorizontalViewportOverflow(mobile.page, "mobile report workflow");
+    await assertMinimumHitTargets({
+      close: mobile.page.getByRole("button", { name: "Close report review", exact: true }),
+      status: mobile.page.locator("[data-report-next-status]"),
+      apply: mobile.page.getByRole("button", { name: "Apply status", exact: true }),
+      unassign: mobile.page.getByRole("button", { name: "Unassign report", exact: true }),
+      refresh: mobile.page.getByRole("button", { name: "Refresh report", exact: true }),
+    }, "mobile report workflow");
+    const mobileGeometry = await mobile.page.evaluate(() => {
+      const dialog = document.querySelector("[data-report-review-dialog]");
+      const workflow = document.querySelector("[data-report-status-actions]");
+      const publicOutcome = document.querySelector(".ops-report-public");
+      if (!(dialog instanceof HTMLElement) || !(workflow instanceof HTMLElement) || !(publicOutcome instanceof HTMLElement)) return null;
+      return {
+        dialogClientWidth: dialog.clientWidth,
+        dialogScrollWidth: dialog.scrollWidth,
+        workflowTop: workflow.getBoundingClientRect().top,
+        publicOutcomeTop: publicOutcome.getBoundingClientRect().top,
+      };
+    });
+    assert.ok(mobileGeometry, "mobile Review workflow and Public outcome geometry must be available");
+    assert.ok(mobileGeometry.dialogScrollWidth <= mobileGeometry.dialogClientWidth + 1, "mobile report drawer must not overflow horizontally");
+    assert.ok(mobileGeometry.workflowTop < mobileGeometry.publicOutcomeTop, "Review workflow must appear before Public outcome on mobile");
+    await selectWorkflowStateByKeyboard(mobile.page, "reviewing");
+    const mobileBaseline = workflowMutationLedger.length;
+    await focusAndPress(mobile.page, mobile.page.getByRole("button", { name: "Apply status", exact: true }), "Enter", "Mobile Apply status");
+    await waitForWorkflowResult(mobile.page, "Reviewing saved. Nothing was published.");
+    assert.equal(workflowMutationLedger.length, mobileBaseline + 1);
+    await focusAndPress(mobile.page, mobileDialog.locator(".ops-report-history summary"), "Enter", "Mobile status history");
+    await closeLocalWorkflowReport(mobile.page);
+
+    mobile.setLabel("hunter-safe-dashboard-projection");
+    qaTrace("report workflow audit: hunter projection");
+    await mobile.page.goto(`${origin}/dashboard.html`, { waitUntil: "domcontentloaded" });
+    const hunterProjection = await mobile.page.evaluate(async () => {
+      const { normalizeHunterReports } = await import("/assets/app/dashboard.js");
+      return normalizeHunterReports([{
+        id: "report-workflow-qa-001",
+        type: "find",
+        hunterStatus: "Under review",
+        createdAt: "2026-07-14T16:00:00.000Z",
+        publications: [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }],
+        rawStatus: "contacted-private-sentinel",
+        privateReason: "private-reason-sentinel",
+        staffActor: "staff-actor-sentinel",
+        email: "private-email-sentinel@example.test",
+        phone: "+1-555-private-phone-sentinel",
+        evidenceKey: "private-evidence-key-sentinel",
+        childName: "private-child-identity-sentinel",
+      }]);
+    });
+    assert.deepEqual(hunterProjection, [{
+      id: "report-workflow-qa-001",
+      type: "find",
+      hunterStatus: "Under review",
+      createdAt: "2026-07-14T16:00:00.000Z",
+      publications: [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }],
+    }]);
+    const serializedProjection = JSON.stringify(hunterProjection);
+    for (const sentinel of ["private-reason", "staff-actor", "private-email", "private-phone", "private-evidence", "private-child"]) {
+      assert.equal(serializedProjection.includes(sentinel), false, `hunter-safe Dashboard projection must exclude ${sentinel}`);
+    }
+    await assertNoHorizontalViewportOverflow(mobile.page, "mobile hunter Dashboard");
+    scenarioEvidence.push(reportWorkflowScenarioNames[6]);
+
+    assert.deepEqual(reportWorkflowFixture.moderation, reportWorkflowFixture.initialModeration, "moderation state must remain unchanged");
+    assert.equal(
+      workflowMutationLedger.some((entry) => entry.pathname.includes("moderation")),
+      false,
+      "zero Moderation Queue mutation is allowed during report workflow QA",
+    );
+    assert.ok(workflowMutationLedger.every((entry) => entry.method === "PATCH" && entry.pathname === reportWorkflowEndpoint));
+    scenarioEvidence.push(reportWorkflowScenarioNames[7]);
+    assert.deepEqual(scenarioEvidence, reportWorkflowScenarioNames, "all named reversible workflow scenarios must execute");
+    const expectedStaleConsoleErrors = workflowConsoleErrors.filter((entry) =>
+      entry.label.endsWith("/stale-response-recovery") &&
+      entry.message.includes("409 (Conflict)") &&
+      entry.location?.url?.endsWith(reportWorkflowEndpoint)
+    );
+    const unexpectedWorkflowConsoleErrors = workflowConsoleErrors.filter((entry) => !expectedStaleConsoleErrors.includes(entry));
+    shellConsoleErrors.push(...unexpectedWorkflowConsoleErrors);
+    shellPageErrors.push(...workflowPageErrors);
+    shellRequestFailures.push(...workflowRequestFailures);
+    assert.equal(expectedStaleConsoleErrors.length, 1, "stale recovery must exercise exactly one locally mocked 409 conflict");
+    assert.deepEqual(unexpectedWorkflowConsoleErrors, [], "report workflow QA must not emit unexpected console errors");
+    assert.deepEqual(workflowPageErrors, [], "report workflow QA must not emit page errors");
+    assert.deepEqual(workflowRequestFailures, [], "report workflow QA must not emit request failures");
+    qaTrace("report workflow audit: complete");
+
+    return {
+      endpoint: reportWorkflowEndpoint,
+      scenarios: scenarioEvidence,
+      allowedWrites: workflowMutationLedger.length,
+      appliedWrites: workflowMutationLedger.filter((entry) => entry.outcome.startsWith("applied")).length,
+      staleWrites: workflowMutationLedger.filter((entry) => entry.outcome === "report_transition_stale").length,
+      expectedStaleConsoleErrors: expectedStaleConsoleErrors.length,
+      viewports: ["1440x1000", "390x844"],
+      isolatedFixture: true,
+      moderationQueueUnchanged: true,
+      hunterProjectionFields: Object.keys(hunterProjection[0]),
+    };
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
+}
+
 async function run() {
   let temporaryBuild;
   let server;
@@ -691,6 +1315,7 @@ async function run() {
     server = started.server;
     const origin = started.origin;
     const launched = await launchBrowser();
+    qaTrace("browser launched");
     browser = launched.browser;
     const consoleErrors = [];
     const pageErrors = [];
@@ -699,6 +1324,7 @@ async function run() {
     let statesAudited = 0;
 
     for (const matrixEntry of auditMatrix) {
+      qaTrace(`shell matrix: ${matrixEntry.name}`);
       const context = await browser.newContext({ viewport: { width: matrixEntry.width, height: matrixEntry.height } });
       await installQaBoundary(context, origin, networkLedger);
       const page = await context.newPage();
@@ -723,6 +1349,7 @@ async function run() {
     }
 
     const screenshotEvidence = [];
+    qaTrace("screenshots: start");
     for (const viewport of [
       { name: "mobile-390x844", width: 390, height: 844 },
       { name: "desktop-1440x1000", width: 1440, height: 1000 },
@@ -760,6 +1387,7 @@ async function run() {
     let zoomLabel = "zoom-200/starting";
     attachErrorAudit(zoomPage, () => zoomLabel, consoleErrors, pageErrors, requestFailures);
     try {
+      qaTrace("zoom audit: start");
       assert.deepEqual(zoomPage.viewportSize(), shellZoomEquivalent.cssLayoutViewport, "shell 200% zoom evidence must halve the CSS layout viewport");
       assert.equal(
         await zoomPage.evaluate(() => window.devicePixelRatio),
@@ -812,6 +1440,15 @@ async function run() {
       requestFailures,
       screenshotEvidence,
     });
+    qaTrace("route lightbox audit: complete");
+    const reportWorkflowAudit = await runReportWorkflowAudit({
+      browser,
+      origin,
+      networkLedger,
+      consoleErrors,
+      pageErrors,
+      requestFailures,
+    });
 
     const consoleErrorCount = consoleErrors.length;
     const pageErrorCount = pageErrors.length;
@@ -820,6 +1457,8 @@ async function run() {
     assert.equal(statesAudited, 102, "the canonical matrix must audit 102 shell states");
     assert.equal(routeLightboxAudit.statesAudited, 10, "the route lightbox audit must exercise 10 browser states");
     assert.ok(routeLightboxAudit.reducedMotionTargetsAudited >= 40, "the route lightbox audit must inspect the complete element and pseudo-element tree for reduced motion");
+    assert.deepEqual(reportWorkflowAudit.scenarios, reportWorkflowScenarioNames, "the reversible report workflow audit must complete every named scenario");
+    assert.equal(reportWorkflowAudit.moderationQueueUnchanged, true, "the report workflow must leave Moderation Queue state unchanged");
     assert.equal(screenshotEvidence.length, 19, "the screenshot suite must contain 19 artifacts");
     assert.deepEqual(
       screenshotEvidence.map(({ artifactName }) => artifactName.replace("screenshots/", "")).sort(),
@@ -850,6 +1489,7 @@ async function run() {
       reportPublicationSurface: { updatesRouteAudited: true, signedOutPublicShellOnly: true },
       shellZoomEquivalent,
       routeLightbox: routeLightboxAudit,
+      reportWorkflow: reportWorkflowAudit,
       audit: {
         pageNavigations,
         statesAudited,

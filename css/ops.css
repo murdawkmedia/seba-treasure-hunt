@@ -141,7 +141,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .ops-page :focus-visible { outline: 3px solid var(--ops-gold); outline-offset: 3px; }
 .ops-button,
 .ops-text-button,
-.ops-icon-button { min-width: 40px; min-height: 40px; cursor: pointer; }
+.ops-icon-button { min-width: 44px; min-height: 44px; cursor: pointer; }
 .ops-button {
   display: inline-flex;
   align-items: center;
