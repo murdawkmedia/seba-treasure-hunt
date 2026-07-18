@@ -177,6 +177,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
   let heldWaiverAcceptAborts = 0;
   let verificationBootstrapCalls = 0;
   let verificationBootstrapCompletions = 0;
+  let verificationBootstrapAborts = 0;
   let verificationProfileWrites = 0;
   let verificationWaiverReviews = 0;
   let verificationWaiverAccepts = 0;
@@ -212,6 +213,14 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         if (request.headers.authorization === "Bearer browser-verification-token") {
           verificationBootstrapCalls += 1;
           if (holdVerificationBootstrap) {
+            let abortRecorded = false;
+            const recordAbort = () => {
+              if (abortRecorded || response.writableEnded) return;
+              abortRecorded = true;
+              verificationBootstrapAborts += 1;
+            };
+            request.once("aborted", recordAbort);
+            response.once("close", recordAbort);
             releaseVerificationBootstraps.push(() => {
               if (!response.destroyed) {
                 verificationBootstrapCompletions += 1;
@@ -705,10 +714,12 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       session: sessionStorage.getItem(key) !== null,
       local: localStorage.getItem(key) !== null,
     }), { key: activationResumeKey }), { session: true, local: true }, "owned activation retains resumable state until authoritative completion");
-    await verificationPage.evaluate(() => {
-      dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
-      dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
-    });
+    await verificationPage.evaluate(() => dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
+    for (let attempt = 0; attempt < 50 && verificationBootstrapAborts < 1; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(verificationBootstrapAborts, 1, "pagehide aborts the first held finalization bootstrap before BFCache restore");
+    await verificationPage.evaluate(() => dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
     for (let attempt = 0; attempt < 50 && verificationBootstrapCalls < 2; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
@@ -726,7 +737,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       profile: verificationProfileWrites,
       review: verificationWaiverReviews,
       accept: verificationWaiverAccepts,
-    }, { bootstrap: 2, completedBootstrap: 2, profile: 1, review: 1, accept: 1 });
+    }, { bootstrap: 2, completedBootstrap: 1, profile: 1, review: 1, accept: 1 });
     assert.deepEqual(await verificationPage.evaluate(({ key }) => ({
       session: sessionStorage.getItem(key),
       local: localStorage.getItem(key),
