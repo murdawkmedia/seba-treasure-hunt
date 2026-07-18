@@ -13,6 +13,38 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-18 - Guided Official Update publishing validation
+
+- Completed the approved guided Official Update workflow through source commit
+  `0ced5f2` and deployed only to the Cloudflare Pages `codex-validation`
+  branch. The immutable deployment is
+  `https://a1a3cbcc.seba-treasure-hunt.pages.dev`; the stable owner-review URL
+  is `https://codex-validation.seba-treasure-hunt.pages.dev/ops?release=0ced5f2`.
+- Standalone Updates now have a private draft/reopen ledger, up to three
+  private images, explicit publish-now or schedule-later choices, exact public
+  preview confirmation and audited lifecycle actions. Scheduled entries stay
+  off the public feed until due.
+- Report-linked Updates use the same guided flow. Operators may prepare a draft
+  while reviewing, but publication remains blocked until Verified. Case Notes,
+  Official Updates and private review remain separate outcomes; submitted and
+  direct media share one visible three-image limit and start unchecked.
+- Every Ops view now explains its source state, recovery action and retry path.
+  Disabled controls identify their missing prerequisite. The report dialog has
+  one scroll body, narrow-screen ordering and focus restoration.
+- The complete regression gate passed: 285 JavaScript tests and 568 TypeScript
+  tests, all TypeScript projects, exact legal artifacts, 16 privacy/isolation
+  tests, 15 environment/security tests, a clean production-shaped build and
+  `git diff --check`. The 32-test real-D1 file completed successfully in 298.5
+  seconds; earlier short-window stops were command timeouts rather than an
+  application or Miniflare hang.
+- Both validation URLs return HTTP 200 and identify the runtime as
+  `validation`. A 390 x 844 browser smoke test found no horizontal overflow or
+  console errors. Production was not deployed, migrated or mutated.
+- Next: Murphy should run the authenticated owner checklist in
+  `docs/operations/2026-07-18-private-report-workflow-validation.md` using
+  disposable validation records. Production promotion remains a separate
+  explicit decision.
+
 ## Update 2026-07-18 — Guided report workflow validation candidate
 
 - Completed the approved reversible Private Reports workflow through source

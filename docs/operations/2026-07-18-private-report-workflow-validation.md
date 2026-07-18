@@ -131,3 +131,79 @@ Using disposable validation records only:
 
 Production promotion requires Murphy's separate explicit approval after this
 authenticated owner check.
+
+## Guided Official Update publishing candidate
+
+### Release identity
+
+- Source commit: `0ced5f2bef2719b83c233bc345c8a62a5bc9d489`
+- Cloudflare Pages project: `seba-treasure-hunt`
+- Preview branch: `codex-validation`
+- Immutable deployment: `https://a1a3cbcc.seba-treasure-hunt.pages.dev`
+- Stable owner-review URL:
+  `https://codex-validation.seba-treasure-hunt.pages.dev/ops?release=0ced5f2`
+- Runtime on both validation URLs: `validation`
+- Schema migrations: none
+- Production deployment, migration and data mutation: not performed
+
+### Candidate behavior
+
+The Official Updates ledger now uses an explicit private lifecycle: an operator
+creates or reopens a private draft, reviews the copy and up to three private
+images, chooses **Publish now** or **Schedule for later**, and completes one
+clearly labelled final confirmation. Scheduled entries stay absent from the
+public feed until their due time. Drafts, media selections and publication
+state remain private and auditable until that confirmation succeeds.
+
+Report-linked publishing uses the same guided steps and keeps three outcomes
+separate: private review only, publication to Case Notes, and publication or
+scheduling as an Official Update. A report draft may be prepared during review,
+but Official Update publication remains blocked until the report is Verified.
+Submitted evidence and direct Update uploads share one visible three-image
+limit, and every publishable image starts unchecked.
+
+Every Ops view now presents a source/status explanation, a recovery action and
+an explicit retry control. Disabled controls identify the missing prerequisite.
+The report dialog uses one scroll body, restores focus on close, and collapses
+to a single ordered column at narrow widths.
+
+### Verification evidence
+
+- JavaScript/MJS regression suite: 285 passed, 0 failed.
+- TypeScript regression suite: 568 passed, 0 failed. The real-D1 integration
+  file completed all 32 tests in 298.5 seconds; the earlier short-window stop
+  was a command timeout, not a Miniflare or application hang.
+- TypeScript worker, client and test projects: passed.
+- Authoritative legal-artifact verification: passed.
+- Public-output privacy and build-isolation suite: 16 passed, 0 failed.
+- Environment, API-security and production-snapshot suite: 15 passed, 0 failed.
+- Production-shaped build: passed.
+- `git diff --check`: passed.
+- Stable and immutable Ops routes: HTTP 200.
+- Stable and immutable runtime configuration: `validation`.
+- In-app browser mobile smoke test at 390 x 844: no horizontal overflow and no
+  console errors on the validation staff-entry page.
+- Production homepage: HTTP 200 and no validation banner. It was not deployed,
+  migrated or otherwise changed during this release.
+
+### Authenticated owner checks still required
+
+Use disposable validation records only:
+
+1. Create a standalone Official Update draft, leave the view and reopen it.
+2. Exercise zero, one and three images, including a supported source over
+   20 MB, and confirm every image starts private and unchecked.
+3. Schedule an Update and confirm it is absent from the public feed before its
+   due time; then publish a separate Update and open the public result.
+4. Open a Reviewing report, save an Update draft and confirm publication is
+   blocked until the report reaches Verified.
+5. Move that report to Verified, select submitted evidence and direct uploads
+   together, then publish or schedule the exact preview.
+6. Publish the same report to Case Notes and confirm the Case Note remains
+   visibly distinct from the Official Update.
+7. Exercise the report dialog at desktop 100%, Windows 125% and 150%, and a
+   narrow phone width. Confirm keyboard navigation, status announcements,
+   scroll reachability and focus restoration.
+
+Production promotion still requires Murphy's separate explicit approval after
+these authenticated owner checks.
