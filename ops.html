@@ -136,6 +136,7 @@
 
         <section class="ops-view is-active" data-view-panel="command" aria-labelledby="command-title">
           <header class="ops-view__header"><div><p class="ops-kicker">Case control / official source</p><h1 id="command-title">Command Desk</h1></div><p id="command-updated">Awaiting a verified source timestamp</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="command" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Source not loaded</strong><span data-guide-next>Refresh the Command Desk before publishing a case-state change.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="command">Refresh Command Desk</button></div>
           <div class="ops-metrics" aria-label="Current case totals">
             <article><span>Case status</span><strong id="metric-status">--</strong><small id="metric-status-time">Not loaded</small></article>
             <article><span>Reports awaiting review</span><strong id="metric-reports">--</strong><small>Private queue</small></article>
@@ -180,6 +181,7 @@
 
         <section class="ops-view" data-view-panel="updates" aria-labelledby="updates-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Official publishing</p><h1 id="updates-title">Official Updates</h1></div><p>Private draft first &middot; exact preview before release</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="updates" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Update ledger not loaded</strong><span data-guide-next>Refresh Updates to load private drafts, scheduled posts and public records.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="updates">Refresh Updates</button></div>
           <div class="ops-update-workspace">
             <form class="ops-panel ops-update-composer" id="official-update-form" novalidate>
               <header class="ops-panel__header"><div><p class="ops-kicker">Guided publisher</p><h2>Prepare an Official Update</h2></div><span class="ops-chip">Nothing auto-publishes</span></header>
@@ -199,7 +201,7 @@
                 <label for="update-files">Choose images</label>
                 <input id="update-files" data-update-files type="file" accept="image/jpeg,image/png,image/webp" multiple disabled aria-describedby="update-upload-blocker" />
                 <p class="ops-action-blocker" id="update-upload-blocker" data-update-upload-blocker>Save a private draft before adding images.</p>
-                <div class="ops-action-row"><button class="ops-button ops-button--quiet" type="button" data-update-upload disabled>Prepare &amp; upload images</button><button class="ops-button ops-button--quiet" type="button" data-update-refresh-media disabled>Refresh image status</button></div>
+                <div class="ops-action-row"><button class="ops-button ops-button--quiet" type="button" data-update-upload disabled aria-describedby="update-upload-blocker">Prepare &amp; upload images</button><button class="ops-button ops-button--quiet" type="button" data-update-refresh-media disabled aria-describedby="update-upload-blocker">Refresh image status</button></div>
                 <p class="ops-publish-stage__status" data-update-selected-count role="status" aria-live="polite">0 of 3 images selected</p>
                 <div class="ops-update-media" data-update-uploads><p class="ops-report-evidence__empty">Save a draft to add optional images.</p></div>
               </section>
@@ -226,6 +228,7 @@
 
         <section class="ops-view" data-view-panel="reports" aria-labelledby="reports-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Private and never auto-published</p><h1 id="reports-title">Private Reports</h1></div><p>Finds / tips / safety</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="reports" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Private reports not loaded</strong><span data-guide-next>Refresh Reports to load the current review queue.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="reports">Refresh Reports</button></div>
           <section class="ops-panel"><div class="ops-toolbar"><label for="report-filter">Show</label><select id="report-filter"><option value="all">All reports</option><option value="find">Find claims</option><option value="tip">Tips</option><option value="safety">Safety</option></select><button class="ops-button ops-button--quiet" type="button" id="refresh-reports">Refresh</button></div><div class="ops-table-wrap"><table><thead><tr><th>Received</th><th>Type</th><th>Waypoint</th><th>Evidence</th><th>State</th><th><span class="sr-only">Action</span></th></tr></thead><tbody id="reports-table"><tr><td colspan="6"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
         </section>
 
@@ -256,6 +259,7 @@
 
         <section class="ops-view" data-view-panel="moderation" aria-labelledby="moderation-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Nothing auto-publishes</p><h1 id="moderation-title">Moderation Queue</h1></div><p>Field Notes and image derivatives</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="moderation" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Moderation queues not loaded</strong><span data-guide-next>Refresh Moderation to check Case Notes, replies and received flags.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="moderation">Refresh Moderation</button></div>
           <section class="ops-panel"><div class="ops-table-wrap"><table><thead><tr><th>Submitted</th><th>Hunter</th><th>Waypoint</th><th>Media</th><th>Excerpt</th><th><span class="sr-only">Decision</span></th></tr></thead><tbody id="moderation-table"><tr><td colspan="6"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
           <section class="ops-panel" aria-labelledby="moderation-replies-title"><header class="ops-panel__header"><div><p class="ops-kicker">Public case notes</p><h2 id="moderation-replies-title">Public replies</h2></div><span class="ops-chip">Reversible</span></header><p class="ops-ledger-state" id="moderation-replies-state" role="status" aria-live="polite" tabindex="-1">Reply moderation source not loaded.</p><div class="ops-table-wrap"><table class="ops-moderation-table"><thead><tr><th>Submitted</th><th>Hunter</th><th>Waypoint</th><th>Reply</th><th>Public state</th><th>Flags</th><th><span class="sr-only">Action</span></th></tr></thead><tbody id="moderation-replies-table"><tr><td colspan="7"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div><div class="ops-moderation-pagination"><button class="ops-button ops-button--quiet ops-moderation-load-more" id="moderation-replies-load-more" type="button" aria-controls="moderation-replies-table" hidden>Load older replies</button></div></section>
           <section class="ops-panel" aria-labelledby="moderation-flags-title"><header class="ops-panel__header"><div><p class="ops-kicker">Private review</p><h2 id="moderation-flags-title">Received flags</h2></div><span class="ops-chip">Audited</span></header><p class="ops-ledger-state" id="moderation-flags-state" role="status" aria-live="polite" tabindex="-1">Flag moderation source not loaded.</p><div class="ops-table-wrap"><table class="ops-moderation-table"><thead><tr><th>Received</th><th>Hunter</th><th>Waypoint</th><th>Flagged content</th><th>Reported concern</th><th>State</th><th><span class="sr-only">Action</span></th></tr></thead><tbody id="moderation-flags-table"><tr><td colspan="7"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div><div class="ops-moderation-pagination"><button class="ops-button ops-button--quiet ops-moderation-load-more" id="moderation-flags-load-more" type="button" aria-controls="moderation-flags-table" hidden>Load older flags</button></div></section>
@@ -263,19 +267,22 @@
 
         <section class="ops-view" data-view-panel="zones" aria-labelledby="zones-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Ops-approved boundaries only</p><h1 id="zones-title">Search Zones</h1></div><p>Unknown areas fail closed</p></header>
-          <section class="ops-panel"><div class="ops-zone-key" aria-label="Zone-state legend"><span data-zone="open">Open</span><span data-zone="restricted">Restricted</span><span data-zone="hazardous">Hazardous</span><span data-zone="closed">Temporarily closed</span></div><div class="ops-table-wrap"><table><thead><tr><th>Waypoint</th><th>State</th><th>Public instruction</th><th>Verified</th></tr></thead><tbody id="zones-table"><tr><td colspan="4"><span class="ops-table-empty">No approved zone source loaded. Exact directions remain locked.</span></td></tr></tbody></table></div></section>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="zones" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Search zones not loaded</strong><span data-guide-next>Refresh Search Zones before relying on an area label.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="zones">Refresh Search Zones</button></div>
+          <section class="ops-panel"><div class="ops-zone-key" aria-label="Zone-state legend"><span data-zone="open">Open</span><span data-zone="restricted">Restricted</span><span data-zone="hazardous">Hazardous</span><span data-zone="closed">Temporarily closed</span></div><div class="ops-table-wrap"><table><thead><tr><th>Area</th><th>State</th><th>Public instruction</th><th>Verified</th></tr></thead><tbody id="zones-table"><tr><td colspan="4"><span class="ops-table-empty">No approved zone source loaded. Exact directions remain locked.</span></td></tr></tbody></table></div></section>
         </section>
 
         <section class="ops-view" data-view-panel="rules" aria-labelledby="rules-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Dated public record</p><h1 id="rules-title">Rules Ledger</h1></div><p>Versioned, never silently overwritten</p></header>
-          <section class="ops-panel"><header class="ops-panel__header"><div><p class="ops-kicker">Published versions</p><h2>Rules history</h2></div><span class="ops-chip" id="rules-current-version">No current version</span></header><div class="ops-table-wrap"><table><thead><tr><th>Version</th><th>Published</th><th>Summary</th><th>State</th></tr></thead><tbody id="rules-table"><tr><td colspan="4"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="rules" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Rules not loaded</strong><span data-guide-next>Refresh Rules to confirm the current published version.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="rules">Refresh Rules</button></div>
+          <section class="ops-panel"><header class="ops-panel__header"><div><p class="ops-kicker">Published version</p><h2>Current Rules</h2></div><span class="ops-chip" id="rules-current-version">No current version</span></header><div class="ops-table-wrap"><table><thead><tr><th>Version</th><th>Published</th><th>Title</th><th>State</th></tr></thead><tbody id="rules-table"><tr><td colspan="4"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
         </section>
 
         <section class="ops-view" data-view-panel="subscribers" aria-labelledby="subscribers-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Private participation ledger</p><h1 id="subscribers-title">Players</h1></div><p>Account stage, legal versions and separate email permissions</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="subscribers" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Player ledger not loaded</strong><span data-guide-next>Refresh Players before reviewing or exporting the private ledger.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="subscribers">Refresh Players</button></div>
           <div class="ops-metrics"><article><span>Verified accounts</span><strong id="subscriber-accounts">--</strong><small>Provider-verified email</small></article><article><span>Profiles complete</span><strong id="subscriber-profiles">--</strong><small>Onboarding complete</small></article><article><span>Hunter updates</span><strong id="subscriber-hunt">--</strong><small>Explicit consent</small></article><article><span>SebaHub marketing</span><strong id="subscriber-marketing">--</strong><small>Separate consent</small></article></div>
           <section class="ops-panel">
-            <header class="ops-panel__header"><div><p class="ops-kicker">Authorized private data</p><h2>Subscriber ledger</h2></div><div class="ops-row-actions"><button class="ops-button ops-button--quiet" id="subscriber-refresh" type="button">Refresh</button><button class="ops-button ops-button--quiet" id="subscriber-export" type="button" disabled>Export loaded CSV</button></div></header>
+            <header class="ops-panel__header"><div><p class="ops-kicker">Authorized private data</p><h2>Subscriber ledger</h2></div><div class="ops-row-actions"><button class="ops-button ops-button--quiet" id="subscriber-refresh" type="button">Refresh</button><button class="ops-button ops-button--quiet" id="subscriber-export" type="button" disabled aria-describedby="subscribers-state">Export loaded CSV</button></div></header>
             <p class="ops-ledger-state" id="subscribers-state" role="status" aria-live="polite">Source not loaded. Counts and export remain unavailable until this private ledger is opened.</p>
             <div class="ops-table-wrap"><table><thead><tr><th>Verified email</th><th>Hunter</th><th>Town / area</th><th>Funnel stage</th><th>Privacy/media</th><th>Waiver</th><th>Hunt email</th><th>Marketing</th><th>Account actions</th></tr></thead><tbody id="subscribers-table"><tr><td colspan="9"><span class="ops-table-empty">Open this ledger to load authorized player records.</span></td></tr></tbody></table></div>
             <div class="ops-ledger-actions"><button class="ops-button ops-button--quiet" id="subscriber-load-more" type="button" hidden>Load more players</button><span id="subscriber-loaded-count">No player records loaded</span></div>
@@ -284,12 +291,14 @@
 
         <section class="ops-view" data-view-panel="access" aria-labelledby="access-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Invitation-only operators</p><h1 id="access-title">Users &amp; Access</h1></div><p>Equal publishing rights / audited recovery</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="access" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Access ledger not loaded</strong><span data-guide-next>Refresh Access before sending recovery instructions or changing sessions.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="access">Refresh Access</button></div>
           <section class="ops-panel ops-access-note"><strong>Peer recovery is not peer password control.</strong><span>An active operator may send recovery instructions, revoke sessions or suspend access. The account owner receives the verification code and chooses their own password.</span></section>
           <section class="ops-panel"><div class="ops-table-wrap"><table><thead><tr><th>Operator</th><th>Invitation</th><th>Last sign-in</th><th>Sessions</th><th>Access</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="staff-table"><tr><td colspan="6"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div><div class="ops-action-explainer"><span><strong>Send recovery instructions</strong> Emails a verified recovery flow.</span><span><strong>Revoke sessions</strong> Signs the operator out on other devices.</span><span><strong>Suspend access</strong> Blocks the D1 authorization check immediately.</span></div></section>
         </section>
 
         <section class="ops-view" data-view-panel="audit" aria-labelledby="audit-title" hidden>
           <header class="ops-view__header"><div><p class="ops-kicker">Append-only accountability</p><h1 id="audit-title">Audit Trail</h1></div><p>Security and publishing events</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="audit" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Audit trail not loaded</strong><span data-guide-next>Refresh Audit to load the latest security and publication events.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="audit">Refresh Audit</button></div>
           <section class="ops-panel"><div class="ops-table-wrap"><table><thead><tr><th>When</th><th>Operator</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody id="audit-table"><tr><td colspan="5"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div></section>
         </section>
 
@@ -314,7 +323,7 @@
   </div>
 
   <dialog class="ops-dialog ops-report-dialog" data-report-review-dialog aria-labelledby="report-review-title">
-    <form method="dialog" class="ops-dialog__head"><div><p class="ops-kicker">Private report review</p><h2 id="report-review-title">Review report</h2></div><button class="ops-icon-button" value="close" data-report-review-close aria-label="Close report review">&times;</button></form>
+    <form method="dialog" class="ops-dialog__head"><div><p class="ops-kicker">Private report review</p><h2 id="report-review-title">Review report</h2></div><button class="ops-icon-button" value="close" data-report-review-close aria-label="Close review">&times;</button></form>
     <div class="ops-dialog__body ops-report-dialog__body">
       <p class="ops-ledger-state" id="report-review-state" role="status" aria-live="polite">Choose Review report to load one private submission.</p>
       <div class="ops-report-dialog__grid">
@@ -340,8 +349,8 @@
             <label for="report-status-note">Private note or reason <span data-report-reason-requirement>(optional)</span></label>
             <textarea id="report-status-note" data-report-status-note rows="3" maxlength="2000" disabled></textarea>
             <div class="ops-action-row ops-action-row--workflow">
-              <button class="ops-button ops-button--primary" type="button" data-report-save-status disabled>Apply status</button>
-              <button class="ops-button ops-button--quiet" type="button" data-report-unassign disabled>Unassign report</button>
+              <button class="ops-button ops-button--primary" type="button" data-report-save-status disabled aria-describedby="report-next-status-help">Apply status</button>
+              <button class="ops-button ops-button--quiet" type="button" data-report-unassign disabled aria-describedby="report-next-status-help">Unassign report</button>
               <button class="ops-button ops-button--quiet" type="button" data-report-refresh>Refresh report</button>
             </div>
             <p class="ops-inline-result" data-report-workflow-result role="status" aria-live="polite" tabindex="-1"></p>
@@ -383,9 +392,9 @@
             </div>
             <fieldset class="ops-update-upload" data-report-update-upload>
               <legend>Direct Update images <span class="ops-optional">(optional, up to 3)</span></legend>
-              <p>Save the Update draft first. Images are prepared in this browser, processed privately, and remain unpublished until checked below.</p>
+              <p id="report-update-upload-blocker">Save the Update draft first. Images are prepared in this browser, processed privately, and remain unpublished until checked below.</p>
               <input type="file" name="updateImages" accept="image/jpeg,image/png,image/webp" multiple data-report-update-files disabled />
-              <button class="ops-button ops-button--quiet" type="button" data-report-upload-update-images disabled>Prepare &amp; upload images</button>
+              <button class="ops-button ops-button--quiet" type="button" data-report-upload-update-images disabled aria-describedby="report-update-upload-blocker">Prepare &amp; upload images</button>
               <p class="ops-inline-result" data-report-update-upload-result role="status" aria-live="polite"></p>
               <div class="ops-report-evidence" data-report-update-uploads></div>
             </fieldset>
@@ -401,7 +410,7 @@
                 <h4 id="case-note-path-title">Community destination</h4>
                 <p>Publish the reviewed story as a Case Note. It will not be labelled as an Official Update.</p>
                 <div class="ops-action-row">
-                  <button class="ops-button ops-button--primary" type="button" data-report-publish-case-note disabled>Publish to Case Notes</button>
+                  <button class="ops-button ops-button--primary" type="button" data-report-publish-case-note disabled aria-describedby="report-publication-result">Publish to Case Notes</button>
                   <button class="ops-button ops-button--danger" type="button" data-report-withdraw-case-note hidden>Withdraw Case Note</button>
                 </div>
               </section>
@@ -412,7 +421,7 @@
                 <label for="report-scheduled-for">Schedule time <span class="ops-optional">(only for Schedule)</span></label>
                 <input id="report-scheduled-for" name="scheduledFor" type="datetime-local" data-report-scheduled-for disabled />
                 <div class="ops-action-row">
-                  <button class="ops-button ops-button--quiet" type="button" data-report-save-draft disabled>Save private Update draft</button>
+                  <button class="ops-button ops-button--quiet" type="button" data-report-save-draft disabled aria-describedby="report-official-blocker">Save private Update draft</button>
                   <button class="ops-button ops-button--quiet" type="button" data-report-schedule aria-describedby="report-official-blocker" disabled>Schedule Official Update</button>
                   <button class="ops-button ops-button--quiet" type="button" data-report-publish data-report-publish-now aria-describedby="report-official-blocker" disabled>Publish Official Update now</button>
                   <button class="ops-button ops-button--danger" type="button" data-report-unpublish hidden>Withdraw Official Update</button>
@@ -431,7 +440,7 @@
     <div class="ops-dialog__body">
       <p class="ops-ledger-state" id="waiver-detail-state" role="status" aria-live="polite">Choose Review legal record for one player to load the private acceptance.</p>
       <div data-waiver-detail-output></div>
-      <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-retry-waiver-receipt disabled>Retry receipt</button></div>
+      <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-retry-waiver-receipt disabled aria-describedby="waiver-detail-state">Retry receipt</button></div>
       <p class="ops-panel__note">Participant names and birth years stay in this deliberately opened record. They are not included in the player export.</p>
     </div>
   </dialog>

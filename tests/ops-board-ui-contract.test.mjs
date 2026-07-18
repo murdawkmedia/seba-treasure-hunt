@@ -177,6 +177,30 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.doesNotMatch(html, /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/);
 });
 
+test("every primary Ops workspace explains source state, recovery, and disabled controls", () => {
+  const html = read("ops.html");
+  const client = read("src/client/ops.ts");
+  const css = read("css/ops.css");
+  const views = ["command", "updates", "reports", "moderation", "zones", "rules", "subscribers", "access", "audit"];
+
+  for (const view of views) {
+    assert.match(html, new RegExp(`data-ops-guide="${view}"[^>]*role="status"`, "i"));
+    assert.match(html, new RegExp(`data-view-retry="${view}"`, "i"));
+  }
+
+  const disabledButtons = html.match(/<button\b[^>]*class="[^"]*\bops-button\b[^"]*"[^>]*\bdisabled\b[^>]*>/gi) ?? [];
+  assert.ok(disabledButtons.length > 0);
+  for (const button of disabledButtons) {
+    assert.match(button, /(?:aria-describedby|data-readonly-control)/i, button);
+  }
+
+  assert.match(client, /function setOpsGuide\(/);
+  assert.match(client, /data-view-retry/);
+  assert.match(html, /data-report-review-close[^>]*aria-label="Close review"/i);
+  assert.match(css, /\.ops-dialog\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/s);
+  assert.match(css, /\.ops-dialog:not\(\[open\]\)\s*\{[^}]*display:\s*none/s);
+});
+
 test("the moderation queue provides separate accessible reply and flag controls", () => {
   const html = read("ops.html");
   const client = read("src/client/ops.ts");

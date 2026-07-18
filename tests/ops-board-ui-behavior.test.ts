@@ -19,6 +19,8 @@ import {
   normalizeOpsDashboard,
   normalizeOpsUpdateDetail,
   normalizeOpsUpdates,
+  normalizeOpsZones,
+  normalizeOpsCurrentRules,
   moderationAttentionCount,
   normalizeOpsReportDetail,
   reportDestinationControls,
@@ -34,6 +36,8 @@ import {
   normalizeOpsWaiverDetail,
   renderOpsWaiverDetail,
   renderOpsUpdateLedger,
+  renderOpsZoneRows,
+  renderOpsRulesRows,
   renderStandaloneUpdateUploads,
   renderReportEvidence,
   renderReportHistory,
@@ -55,6 +59,7 @@ import {
   resolveOpsView,
   reorderStandaloneUpdateSelection,
   buildStandaloneUpdateMutation,
+  setOpsGuide,
   waiverReceiptRetryIntent,
 } from "../src/client/ops";
 import { nextReportStates } from "../src/shared/publication";
@@ -739,6 +744,45 @@ test("report publication guidance separates private drafting from verified relea
   assert.match(reportPublicationActions("received").blocker ?? "", /Verified/);
   assert.equal(reportSelectedMediaCount(["evidence-1", "upload-1"]), "2 of 3 images selected");
   assert.equal(reportSelectedMediaCount(["evidence-1", "evidence-1", "upload-1"]), "2 of 3 images selected");
+});
+
+test("shared Ops guidance and read-only public ledgers fail closed with escaped values", () => {
+  const state = { textContent: "" };
+  const next = { textContent: "" };
+  const attributes = new Map<string, string>();
+  const root = {
+    dataset: {} as Record<string, string>,
+    querySelector(selector: string) {
+      return selector === "[data-guide-state]" ? state : selector === "[data-guide-next]" ? next : null;
+    },
+    setAttribute(name: string, value: string) { attributes.set(name, value); },
+    removeAttribute(name: string) { attributes.delete(name); },
+  } as unknown as HTMLElement;
+  setOpsGuide(root, { state: "Loading source", next: "Wait for verification.", kind: "loading" });
+  assert.equal(state.textContent, "Loading source");
+  assert.equal(next.textContent, "Wait for verification.");
+  assert.equal(attributes.get("aria-busy"), "true");
+  setOpsGuide(root, { state: "Ready", next: "Review the record.", kind: "readonly" });
+  assert.equal(attributes.has("aria-busy"), false);
+  assert.equal(root.dataset.kind, "readonly");
+
+  const zones = normalizeOpsZones({ data: [{
+    id: "zone-1",
+    label: "RV <area>",
+    state: "restricted",
+    instruction: "Check in & wait",
+    verifiedAt: "2026-07-18T18:00:00.000Z",
+  }, { id: "bad", label: "Bad", state: "unknown", instruction: "No" }] });
+  assert.equal(zones.length, 1);
+  assert.match(renderOpsZoneRows(zones), /RV &lt;area&gt;/);
+  assert.doesNotMatch(renderOpsZoneRows(zones), /<area>/);
+
+  const rules = normalizeOpsCurrentRules({ data: {
+    id: "rules-1", version: "2026.1", title: "Rules <current>", body: "Body", lastUpdatedAt: "2026-07-18T18:00:00.000Z",
+  } });
+  assert.ok(rules);
+  assert.match(renderOpsRulesRows(rules), /Rules &lt;current&gt;/);
+  assert.equal(normalizeOpsCurrentRules({ data: null }), null);
 });
 
 test("direct Update uploads start unselected and require publication metadata", () => {

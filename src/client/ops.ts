@@ -85,6 +85,22 @@ export interface OpsUpdateUpload extends OpsReportMedia {
   position: number | null;
 }
 
+export interface OpsZoneRecord {
+  id: string;
+  label: string;
+  state: "open" | "restricted" | "hazardous" | "temporarily_closed";
+  instruction: string;
+  verifiedAt: string;
+}
+
+export interface OpsRulesRecord {
+  id: string;
+  version: string;
+  title: string;
+  body: string;
+  lastUpdatedAt: string;
+}
+
 export interface OpsStandaloneUpdate {
   id: string;
   title: string;
@@ -636,6 +652,33 @@ export function normalizeOpsUpdates(payload: unknown): OpsStandaloneUpdate[] {
     const update = normalizeOpsUpdate(value, false);
     return update ? [update] : [];
   });
+}
+
+export function normalizeOpsZones(payload: unknown): OpsZoneRecord[] {
+  const allowed = new Set<OpsZoneRecord["state"]>(["open", "restricted", "hazardous", "temporarily_closed"]);
+  return asArray(envelopeData(payload)).flatMap((item): OpsZoneRecord[] => {
+    if (!isRecord(item)) return [];
+    const id = asString(item.id).trim();
+    const label = asString(item.label).trim();
+    const state = asString(item.state) as OpsZoneRecord["state"];
+    const instruction = asString(item.instruction).trim();
+    const verifiedAt = asString(item.verifiedAt).trim();
+    if (!id || !label || !instruction || !allowed.has(state)) return [];
+    return [{ id, label, state, instruction, verifiedAt }];
+  });
+}
+
+export function normalizeOpsCurrentRules(payload: unknown): OpsRulesRecord | null {
+  const item = envelopeData(payload);
+  if (!isRecord(item)) return null;
+  const id = asString(item.id).trim();
+  const version = typeof item.version === "number" ? String(item.version) : asString(item.version).trim();
+  const title = asString(item.title).trim();
+  const body = asString(item.body).trim();
+  const lastUpdatedAt = asString(item.lastUpdatedAt).trim();
+  return id && version && title && body && lastUpdatedAt
+    ? { id, version, title, body, lastUpdatedAt }
+    : null;
 }
 
 export function normalizeOpsUpdateDetail(payload: unknown): OpsStandaloneUpdate | null {
@@ -1698,7 +1741,7 @@ export function renderStandaloneUpdateUploads(uploads: readonly OpsUpdateUpload[
         <input id="standalone-media-alt-${fieldId}" data-standalone-media-alt="${fieldId}" maxlength="200" value="${escapeOpsHtml(upload.altText ?? "")}" ${isSelected ? "" : "disabled"} />
         <label for="standalone-media-caption-${fieldId}">Caption <span>optional</span></label>
         <textarea id="standalone-media-caption-${fieldId}" data-standalone-media-caption="${fieldId}" rows="2" maxlength="500" ${isSelected ? "" : "disabled"}>${escapeOpsHtml(upload.caption ?? "")}</textarea>
-        <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-update-move="earlier" data-media-id="${fieldId}" ${selectedIndex <= 0 ? "disabled" : ""}>Move earlier</button><button class="ops-button ops-button--quiet" type="button" data-update-move="later" data-media-id="${fieldId}" ${selectedIndex < 0 || selectedIndex === selected.length - 1 ? "disabled" : ""}>Move later</button><button class="ops-button ops-button--danger" type="button" data-update-remove-media="${fieldId}">${removeLabel}</button></div>`
+        <div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-update-move="earlier" data-media-id="${fieldId}" ${selectedIndex <= 0 ? 'disabled data-readonly-control aria-label="Move earlier unavailable at this position"' : ""}>Move earlier</button><button class="ops-button ops-button--quiet" type="button" data-update-move="later" data-media-id="${fieldId}" ${selectedIndex < 0 || selectedIndex === selected.length - 1 ? 'disabled data-readonly-control aria-label="Move later unavailable at this position"' : ""}>Move later</button><button class="ops-button ops-button--danger" type="button" data-update-remove-media="${fieldId}">${removeLabel}</button></div>`
         : `<p class="ops-action-blocker">${escapeOpsHtml(upload.status === "processing" ? "Processing. Refresh shortly, or remove this image to choose another." : "This image cannot be published. Remove it and try another file.")}</p><button class="ops-button ops-button--danger" type="button" data-update-remove-media="${fieldId}">${removeLabel}</button>`}
     </article>`;
   }).join("");
@@ -1922,6 +1965,36 @@ export function resolveOpsView(value: string, allowProductionSnapshot = true): O
   return views.includes(normalized as OpsView) ? normalized as OpsView : "command";
 }
 
+export function renderOpsZoneRows(records: readonly OpsZoneRecord[]): string {
+  if (records.length === 0) {
+    return `<tr><td colspan="4"><span class="ops-table-empty">No published search zones are available. Treat every unknown area as closed.</span></td></tr>`;
+  }
+  const labels: Record<OpsZoneRecord["state"], string> = {
+    open: "Open",
+    restricted: "Restricted",
+    hazardous: "Hazardous",
+    temporarily_closed: "Temporarily closed",
+  };
+  return records.map((record) => `<tr>
+    <td><strong>${escapeOpsHtml(record.label)}</strong></td>
+    <td><span class="ops-chip" data-zone="${escapeOpsHtml(record.state)}">${escapeOpsHtml(labels[record.state])}</span></td>
+    <td>${escapeOpsHtml(record.instruction)}</td>
+    <td>${escapeOpsHtml(record.verifiedAt ? formatOpsTime(record.verifiedAt) : "Verification time unavailable")}</td>
+  </tr>`).join("");
+}
+
+export function renderOpsRulesRows(record: OpsRulesRecord | null): string {
+  if (!record) {
+    return `<tr><td colspan="4"><span class="ops-table-empty">No current published rules version is available.</span></td></tr>`;
+  }
+  return `<tr>
+    <td><strong>${escapeOpsHtml(record.version)}</strong></td>
+    <td>${escapeOpsHtml(formatOpsTime(record.lastUpdatedAt))}</td>
+    <td>${escapeOpsHtml(record.title)}</td>
+    <td>Current</td>
+  </tr>`;
+}
+
 function setProductionSnapshotAvailability(environment: string): void {
   productionSnapshotAvailable = environment === "validation";
   const navigation = document.querySelector<HTMLButtonElement>('[data-view="production-snapshot"]');
@@ -2042,6 +2115,29 @@ function switchView(view: OpsView, focus = true): void {
   if (view === "production-snapshot" && !productionSnapshotLoaded && !productionSnapshotLoading) {
     void loadProductionSnapshot();
   }
+}
+
+type OpsGuideKind = "loading" | "ready" | "empty" | "error" | "readonly";
+
+export function setOpsGuide(
+  root: HTMLElement,
+  model: { state: string; next: string; kind: OpsGuideKind },
+): void {
+  const state = root.querySelector<HTMLElement>("[data-guide-state]");
+  const next = root.querySelector<HTMLElement>("[data-guide-next]");
+  if (state) state.textContent = model.state;
+  if (next) next.textContent = model.next;
+  root.dataset.kind = model.kind;
+  if (model.kind === "loading") root.setAttribute("aria-busy", "true");
+  else root.removeAttribute("aria-busy");
+}
+
+function setViewGuide(
+  view: OpsView,
+  model: { state: string; next: string; kind: OpsGuideKind },
+): void {
+  const guide = document.querySelector<HTMLElement>(`[data-ops-guide="${CSS.escape(view)}"]`);
+  if (guide) setOpsGuide(guide, model);
 }
 
 function setOfficialUpdateResult(message: string, kind: "normal" | "error" = "normal"): void {
@@ -2256,6 +2352,7 @@ async function loadOpsUpdateDetail(updateId: string): Promise<OpsStandaloneUpdat
 async function loadOpsUpdates(): Promise<void> {
   if (updatesLoading) return;
   updatesLoading = true;
+  setViewGuide("updates", { state: "Loading Official Updates", next: "Wait for the private ledger before choosing an action.", kind: "loading" });
   setUpdateLedgerState(updatesLoaded ? "Refreshing Official Updates..." : "Loading Official Updates...");
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/updates?limit=50");
@@ -2266,9 +2363,13 @@ async function loadOpsUpdates(): Promise<void> {
     setUpdateLedgerState(records.length
       ? `${records.length} Official Update ${records.length === 1 ? "record" : "records"} loaded. Choose the action beside the record you need.`
       : "No Official Updates exist yet. Start with a private draft.");
+    setViewGuide("updates", records.length
+      ? { state: `${records.length} Update ${records.length === 1 ? "record" : "records"} loaded`, next: "Continue a private draft or review a scheduled or public record.", kind: "ready" }
+      : { state: "No Official Updates yet", next: "Start with Step 1 and save a private draft.", kind: "empty" });
   } catch (error) {
     setUpdateLedgerState(error instanceof Error ? `${error.message} Use Refresh Updates to try again.` : "The Official Update ledger is unavailable. Use Refresh Updates to try again.", "error");
     if (!updatesLoaded) setTable("#updates-table", `<tr><td colspan="4"><span class="ops-table-empty">Update ledger unavailable. No publication action was taken.</span></td></tr>`);
+    setViewGuide("updates", { state: "Official Updates unavailable", next: "Choose Refresh Updates. No publication action was taken.", kind: "error" });
   } finally {
     updatesLoading = false;
   }
@@ -2316,7 +2417,7 @@ function renderDashboard(dashboard: OpsDashboard): void {
       ["Field Note submissions", dashboard.killSwitches.notesEnabled, "Pre-moderated posts"],
       ["Replies", dashboard.killSwitches.repliesEnabled, "Immediate constrained replies"],
     ];
-    switches.innerHTML = entries.map(([label, enabled, detail]) => `<div class="ops-switch"><span><strong>${escapeOpsHtml(label)}</strong><small>${escapeOpsHtml(detail)}</small></span><button class="ops-button ops-button--quiet" type="button" disabled aria-label="${escapeOpsHtml(label)} is ${enabled ? "enabled" : "disabled"}">${enabled ? "Enabled" : "Disabled"}</button></div>`).join("");
+    switches.innerHTML = entries.map(([label, enabled, detail]) => `<div class="ops-switch"><span><strong>${escapeOpsHtml(label)}</strong><small>${escapeOpsHtml(detail)}. Read-only status; change requires a configured feature control.</small></span><button class="ops-button ops-button--quiet" type="button" disabled data-readonly-control aria-label="${escapeOpsHtml(label)} is ${enabled ? "enabled" : "disabled"}; read-only status">${enabled ? "Enabled" : "Disabled"}</button></div>`).join("");
   } else if (switches) {
     switches.innerHTML = `<div class="ops-empty"><strong>Control state unavailable</strong><span>No switches can be changed until the source confirms their current state.</span></div>`;
   }
@@ -2324,26 +2425,69 @@ function renderDashboard(dashboard: OpsDashboard): void {
 
 async function loadDashboard(): Promise<void> {
   setConnection("checking", "Refreshing source");
+  setViewGuide("command", { state: "Refreshing Command Desk", next: "Wait for the verified source before publishing a case-state change.", kind: "loading" });
   showPageError("");
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/dashboard");
     if (!response.ok) throw new Error(apiError(payload, "The case-room source is unavailable."));
     renderDashboard(normalizeOpsDashboard(payload));
     setConnection("online", "Verified source online");
+    setViewGuide("command", { state: "Verified source online", next: "Review the current status and queues before taking an audited action.", kind: "ready" });
   } catch (error) {
     renderDashboard(normalizeOpsDashboard(null));
     setConnection("offline", "Source unavailable");
     showPageError(error instanceof Error ? error.message : "The case-room source is unavailable.");
+    setViewGuide("command", { state: "Command Desk unavailable", next: "Choose Refresh Command Desk. Public state has not been assumed.", kind: "error" });
   }
 }
 
 async function loadReports(): Promise<void> {
+  setViewGuide("reports", { state: "Loading private reports", next: "Wait for the current review queue.", kind: "loading" });
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/reports");
     if (!response.ok) throw new Error(apiError(payload, "Private reports are unavailable."));
-    setTable("#reports-table", renderReportRows(normalizeReports(payload)));
+    const records = normalizeReports(payload);
+    setTable("#reports-table", renderReportRows(records));
+    setViewGuide("reports", records.length
+      ? { state: `${records.length} private ${records.length === 1 ? "report" : "reports"} loaded`, next: "Open Review report beside the submission you need.", kind: "ready" }
+      : { state: "No private reports", next: "The source loaded successfully; no review is currently waiting.", kind: "empty" });
   } catch {
     setTable("#reports-table", `<tr><td colspan="6"><span class="ops-table-empty">Private reports are unavailable from the source.</span></td></tr>`);
+    setViewGuide("reports", { state: "Private reports unavailable", next: "Choose Refresh Reports. No report state was changed.", kind: "error" });
+  }
+}
+
+async function loadZones(): Promise<void> {
+  setViewGuide("zones", { state: "Loading Search Zones", next: "Unknown areas remain closed while the source is checked.", kind: "loading" });
+  try {
+    const { response, payload } = await opsRequest("/api/v1/zones");
+    if (!response.ok) throw new Error(apiError(payload, "Search Zones are unavailable."));
+    const records = normalizeOpsZones(payload);
+    setTable("#zones-table", renderOpsZoneRows(records));
+    setViewGuide("zones", records.length
+      ? { state: `${records.length} published ${records.length === 1 ? "zone" : "zones"} loaded`, next: "Use only these verified public instructions; unknown areas remain closed.", kind: "readonly" }
+      : { state: "No published Search Zones", next: "Treat every unknown area as closed and retry after the source is updated.", kind: "empty" });
+  } catch {
+    setTable("#zones-table", `<tr><td colspan="4"><span class="ops-table-empty">Search Zones are unavailable. Treat every unknown area as closed.</span></td></tr>`);
+    setViewGuide("zones", { state: "Search Zones unavailable", next: "Choose Refresh Search Zones. Treat every unknown area as closed.", kind: "error" });
+  }
+}
+
+async function loadRules(): Promise<void> {
+  setViewGuide("rules", { state: "Loading current Rules", next: "Wait for the published version before relying on this ledger.", kind: "loading" });
+  try {
+    const { response, payload } = await opsRequest("/api/v1/rules/current");
+    if (!response.ok) throw new Error(apiError(payload, "The current Rules are unavailable."));
+    const record = normalizeOpsCurrentRules(payload);
+    setTable("#rules-table", renderOpsRulesRows(record));
+    setText("#rules-current-version", record ? `Version ${record.version}` : "No current version");
+    setViewGuide("rules", record
+      ? { state: `Rules version ${record.version} loaded`, next: "This is the current published read-only version.", kind: "readonly" }
+      : { state: "No current Rules version", next: "Choose Refresh Rules after a version is published.", kind: "empty" });
+  } catch {
+    setTable("#rules-table", `<tr><td colspan="4"><span class="ops-table-empty">The current Rules are unavailable from the source.</span></td></tr>`);
+    setText("#rules-current-version", "Source unavailable");
+    setViewGuide("rules", { state: "Rules unavailable", next: "Choose Refresh Rules. No version has been assumed.", kind: "error" });
   }
 }
 
@@ -3139,16 +3283,25 @@ async function unassignActiveReport(): Promise<void> {
 }
 
 async function loadModeration(): Promise<void> {
-  await Promise.allSettled([loadModerationNotes(), loadModerationReplies(), loadContentFlags()]);
+  setViewGuide("moderation", { state: "Loading moderation queues", next: "Wait for Case Notes, replies and flags to finish loading.", kind: "loading" });
+  const [notes, replies, flags] = await Promise.allSettled([loadModerationNotes(), loadModerationReplies(), loadContentFlags()]);
+  const ok = notes.status === "fulfilled" && notes.value &&
+    replies.status === "fulfilled" && replies.value.ok &&
+    flags.status === "fulfilled" && flags.value.ok;
+  setViewGuide("moderation", ok
+    ? { state: "Moderation queues loaded", next: "Review each queue separately; every hide or rejection remains deliberate and audited.", kind: "ready" }
+    : { state: "One or more moderation queues are unavailable", next: "Choose Refresh Moderation before assuming the queues are clear.", kind: "error" });
 }
 
-async function loadModerationNotes(): Promise<void> {
+async function loadModerationNotes(): Promise<boolean> {
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/moderation/notes");
     if (!response.ok) throw new Error(apiError(payload, "The moderation queue is unavailable."));
     setTable("#moderation-table", renderModerationRows(normalizeModeration(payload)));
+    return true;
   } catch {
     setTable("#moderation-table", `<tr><td colspan="6"><span class="ops-table-empty">The moderation queue is unavailable from the source.</span></td></tr>`);
+    return false;
   }
 }
 
@@ -3251,22 +3404,34 @@ async function loadSponsors(): Promise<void> {
 }
 
 async function loadStaff(): Promise<void> {
+  setViewGuide("access", { state: "Loading access ledger", next: "Wait before changing sessions or account access.", kind: "loading" });
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/staff");
     if (!response.ok) throw new Error(apiError(payload, "Staff access records are unavailable."));
-    setTable("#staff-table", renderStaffRows(normalizeOpsStaff(payload)));
+    const records = normalizeOpsStaff(payload);
+    setTable("#staff-table", renderStaffRows(records));
+    setViewGuide("access", records.length
+      ? { state: `${records.length} operator ${records.length === 1 ? "record" : "records"} loaded`, next: "Recovery, session and access actions are separate and audited.", kind: "ready" }
+      : { state: "No operator records", next: "Refresh Access before assuming no operators exist.", kind: "empty" });
   } catch {
     setTable("#staff-table", `<tr><td colspan="6"><span class="ops-table-empty">Staff access records are unavailable from the private source.</span></td></tr>`);
+    setViewGuide("access", { state: "Access ledger unavailable", next: "Choose Refresh Access. No account action was taken.", kind: "error" });
   }
 }
 
 async function loadAudit(): Promise<void> {
+  setViewGuide("audit", { state: "Loading audit trail", next: "Wait for the append-only event source.", kind: "loading" });
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/audit");
     if (!response.ok) throw new Error(apiError(payload, "The audit trail is unavailable."));
-    setTable("#audit-table", renderAuditRows(normalizeAudit(payload)));
+    const records = normalizeAudit(payload);
+    setTable("#audit-table", renderAuditRows(records));
+    setViewGuide("audit", records.length
+      ? { state: `${records.length} audit ${records.length === 1 ? "event" : "events"} loaded`, next: "Review timestamps and actors before investigating an action.", kind: "readonly" }
+      : { state: "No audit events returned", next: "The source loaded successfully; choose Refresh Audit to check again.", kind: "empty" });
   } catch {
     setTable("#audit-table", `<tr><td colspan="5"><span class="ops-table-empty">The audit trail is unavailable from the source.</span></td></tr>`);
+    setViewGuide("audit", { state: "Audit trail unavailable", next: "Choose Refresh Audit. Do not infer that no actions occurred.", kind: "error" });
   }
 }
 
@@ -3372,6 +3537,7 @@ function setSubscriberState(message: string, kind: "normal" | "error" = "normal"
 async function loadSubscribers(append = false): Promise<void> {
   if (subscribersLoading || (append && !subscriberNextCursor)) return;
   subscribersLoading = true;
+  setViewGuide("subscribers", { state: append ? "Loading more Players" : "Loading Player ledger", next: "Wait for the authorized private source before reviewing or exporting records.", kind: "loading" });
   const exportButton = document.querySelector<HTMLButtonElement>("#subscriber-export");
   const loadMore = document.querySelector<HTMLButtonElement>("#subscriber-load-more");
   const loadedCount = document.querySelector<HTMLElement>("#subscriber-loaded-count");
@@ -3404,6 +3570,9 @@ async function loadSubscribers(append = false): Promise<void> {
     setSubscriberState(loadedSubscribers.length === 0
       ? "The authorized ledger loaded successfully and currently contains no player records."
       : `${loadedSubscribers.length} authorized player ${loadedSubscribers.length === 1 ? "record is" : "records are"} loaded in this browser session.`);
+    setViewGuide("subscribers", loadedSubscribers.length
+      ? { state: `${loadedSubscribers.length} Player ${loadedSubscribers.length === 1 ? "record" : "records"} loaded`, next: "Review account and legal state here; export includes only the records loaded in this browser.", kind: "ready" }
+      : { state: "No Player records", next: "The private source loaded successfully; export remains unavailable.", kind: "empty" });
     if (exportButton) exportButton.disabled = loadedSubscribers.length === 0;
     if (loadMore) {
       loadMore.hidden = subscriberNextCursor === null;
@@ -3419,6 +3588,7 @@ async function loadSubscribers(append = false): Promise<void> {
         loadMore.hidden = subscriberNextCursor === null;
         loadMore.disabled = false;
       }
+      setViewGuide("subscribers", { state: "Player refresh failed", next: "Previously loaded records remain visible and may be stale. Choose Refresh Players to retry.", kind: "error" });
     } else {
       loadedSubscribers = [];
       subscriberNextCursor = null;
@@ -3428,6 +3598,7 @@ async function loadSubscribers(append = false): Promise<void> {
       setMetric("#subscriber-marketing", null);
       setTable("#subscribers-table", `<tr><td colspan="9"><span class="ops-table-empty">The private player ledger is unavailable from the source.</span></td></tr>`);
       setSubscriberState(`${detail} No player data was loaded or exported.`, "error");
+      setViewGuide("subscribers", { state: "Player ledger unavailable", next: "Choose Refresh Players. No private data was loaded or exported.", kind: "error" });
       if (exportButton) exportButton.disabled = true;
       if (loadMore) loadMore.hidden = true;
       if (loadedCount) loadedCount.textContent = "No player records loaded";
@@ -3520,7 +3691,7 @@ async function verifyStaffSession(): Promise<boolean> {
   document.querySelector<HTMLElement>("#ops-auth-panel")?.setAttribute("hidden", "");
   const app = document.querySelector<HTMLElement>("#ops-app");
   if (app) app.hidden = false;
-  await Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit()]);
+  await Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit()]);
   switchView(resolveOpsView(location.hash, productionSnapshotAvailable), false);
   return true;
 }
@@ -3732,7 +3903,26 @@ function setupWorkspace(): void {
     sidebar?.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", String(open));
   });
-  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadStaff(), loadAudit(), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit(), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view-retry]")) {
+    button.addEventListener("click", async () => {
+      const view = resolveOpsView(button.dataset.viewRetry ?? "");
+      button.disabled = true;
+      try {
+        if (view === "command") await loadDashboard();
+        else if (view === "updates") await loadOpsUpdates();
+        else if (view === "reports") await loadReports();
+        else if (view === "moderation") await loadModeration();
+        else if (view === "zones") await loadZones();
+        else if (view === "rules") await loadRules();
+        else if (view === "subscribers") await loadSubscribers();
+        else if (view === "access") await loadStaff();
+        else if (view === "audit") await loadAudit();
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
   document.querySelector("#refresh-reports")?.addEventListener("click", () => void loadReports());
   document.querySelector("#refresh-sponsors")?.addEventListener("click", () => void loadSponsors());
   document.querySelector("#sponsor-filters")?.addEventListener("submit", (event) => {
