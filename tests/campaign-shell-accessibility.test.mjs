@@ -175,12 +175,19 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
   let heldProfileAborts = 0;
   let holdWaiverAccept = false;
   let heldWaiverAcceptAborts = 0;
+  let verificationBootstrapCalls = 0;
+  let verificationProfileWrites = 0;
+  let verificationWaiverReviews = 0;
+  let verificationWaiverAccepts = 0;
+  let verificationProfile = null;
+  let holdVerificationBootstrap = false;
   const releaseHeldBootstraps = [];
   const releaseHeldDashboards = [];
   const releaseHeldCaseNotes = [];
   const releaseHeldReplies = [];
   const releaseHeldProfiles = [];
   const releaseHeldWaiverAccepts = [];
+  const releaseVerificationBootstraps = [];
   const appServer = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://local.test");
@@ -201,6 +208,15 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         return;
       }
       if (url.pathname === "/api/v1/me/bootstrap") {
+        if (request.headers.authorization === "Bearer browser-verification-token") {
+          verificationBootstrapCalls += 1;
+          if (holdVerificationBootstrap) {
+            releaseVerificationBootstraps.push(() => {
+              if (!response.destroyed) json({ data: { ready: true } });
+            });
+            return;
+          }
+        }
         if (holdPreflightBootstrap) {
           request.once("aborted", () => { preflightBootstrapAborts += 1; });
           releaseHeldBootstraps.push(() => {
@@ -212,11 +228,18 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         return;
       }
       if (url.pathname === "/api/v1/me/profile") {
+        const verificationRequest = request.headers.authorization === "Bearer browser-verification-token";
         if (request.method === "PATCH") {
           profileMutations += 1;
           let body = "";
           for await (const chunk of request) body += chunk;
           const update = JSON.parse(body);
+          if (verificationRequest) {
+            verificationProfileWrites += 1;
+            verificationProfile = { ...update, publicHandle: "Hunter VERIFY" };
+            json({ data: verificationProfile });
+            return;
+          }
           if (holdProfilePatch) {
             const heldProfile = {
               ...identity,
@@ -242,12 +265,13 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
             publicDisplayName: typeof update.publicDisplayName === "string" ? update.publicDisplayName : "",
           };
         }
-        json({ data: identity });
+        json({ data: verificationRequest ? verificationProfile : identity });
         return;
       }
       if (url.pathname === "/api/v1/me/dashboard") {
         dashboardRequests += 1;
-        if (request.headers.authorization !== "Bearer browser-token") {
+        const verificationRequest = request.headers.authorization === "Bearer browser-verification-token";
+        if (request.headers.authorization !== "Bearer browser-token" && !verificationRequest) {
           json({ error: { message: "Sign in required" } }, 401);
           return;
         }
@@ -268,8 +292,8 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           return;
         }
         json({ data: {
-          profile: identity,
-          privacyMediaRequired: false,
+          profile: verificationRequest ? verificationProfile : identity,
+          privacyMediaRequired: verificationRequest ? verificationProfile === null : false,
           status: { state: "open" },
           waypoints: [],
           reports: [],
@@ -352,6 +376,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       }
       if (url.pathname === "/api/v1/me/waiver/review") {
         legalMutations += 1;
+        if (request.headers.authorization === "Bearer browser-verification-token") verificationWaiverReviews += 1;
         json({ data: { review: { reviewEventId: "review-browser" } } });
         return;
       }
@@ -372,6 +397,9 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       }
       if (url.pathname.startsWith("/api/v1/me/waiver/")) {
         legalMutations += 1;
+        if (url.pathname === "/api/v1/me/waiver/accept" && request.headers.authorization === "Bearer browser-verification-token") {
+          verificationWaiverAccepts += 1;
+        }
         json({ data: {} });
         return;
       }
@@ -421,17 +449,26 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       const listeners = new Set();
       const startsSignedIn = localStorage.getItem("__authStartSignedIn") === "true";
       const preflightFixture = localStorage.getItem("__authPreflightFixture") === "true";
+      const verificationFixture = localStorage.getItem("__authVerificationFixture") === "true";
       const state = { publishes: 0, signOuts: 0, activations: 0, loadCalls: 0, failNextSignOut: false };
       const clerk = {
         user: startsSignedIn ? { id: "user_browser", imageUrl: null } : null,
         session: startsSignedIn ? { id: "session_browser", async getToken() { return "browser-token"; } } : null,
         client: {
-          signUp: preflightFixture ? {
+          signUp: preflightFixture || verificationFixture ? (verificationFixture ? {
+            id: "signup_verification",
+            status: "missing_requirements",
+            createdSessionId: null,
+            emailAddress: "verification@example.test",
+            unverifiedFields: ["email_address"],
+            missingFields: [],
+            verifications: { emailAddress: { status: "unverified", strategy: "email_code" } },
+          } : {
             id: "signup_preflight",
             status: "complete",
             createdSessionId: "session_browser",
             emailAddress: "preflight@example.test",
-          } : null,
+          }) : null,
           signIn: {
             async create() {
               return { status: "complete", createdSessionId: "session_browser" };
@@ -485,7 +522,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           profileKey = nextKey;
           publish();
         },
-        async getToken() { return clerk.session ? "browser-token" : null; },
+        async getToken() { return await clerk.session?.getToken() ?? null; },
         hasActiveSession(sessionId) { return clerk.session?.id === sessionId; },
         signupAttempt() {
           const attempt = clerk.client.signUp;
@@ -494,7 +531,18 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
             status: attempt.status,
             createdSessionId: attempt.createdSessionId,
             emailAddress: attempt.emailAddress,
+            unverifiedFields: [...(attempt.unverifiedFields ?? [])],
+            missingFields: [...(attempt.missingFields ?? [])],
+            verifications: attempt.verifications ?? null,
           } : null;
+        },
+        async prepareSignupVerification() { return this.signupAttempt(); },
+        async attemptSignupVerification() {
+          clerk.client.signUp.status = "complete";
+          clerk.client.signUp.createdSessionId = "session_verification";
+          clerk.client.signUp.unverifiedFields = [];
+          clerk.client.signUp.verifications = { emailAddress: { status: "verified", strategy: "email_code" } };
+          return this.signupAttempt();
         },
         async signInWithPassword() {
           return { status: "complete", createdSessionId: "session_browser" };
@@ -504,8 +552,13 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         },
         async activate(sessionId) {
           state.activations += 1;
-          clerk.user = { id: "user_browser", imageUrl: null };
-          clerk.session = { id: sessionId, async getToken() { return "browser-token"; } };
+          clerk.user = verificationFixture
+            ? { id: "user_verification", imageUrl: null, primaryEmailAddress: { emailAddress: "verification@example.test" } }
+            : { id: "user_browser", imageUrl: null };
+          clerk.session = {
+            id: sessionId,
+            async getToken() { return verificationFixture ? "browser-verification-token" : "browser-token"; },
+          };
           principalVersion += 1;
           snapshot = { status: "ready", principal: { subject: clerk.user.id, version: principalVersion }, profile: null };
           profileKey = "";
@@ -609,6 +662,60 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       loadCalls: 2,
       failNextSignOut: false,
     });
+
+    const activationResumeKey = `tim-lost:hunter-signup-resume:${encodeURIComponent(`${appOrigin}:test`)}`;
+    const verificationPage = await context.newPage();
+    await verificationPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
+    await verificationPage.evaluate(({ key, hash }) => {
+      localStorage.setItem("__authVerificationFixture", "true");
+      const resume = JSON.stringify({
+        version: 2,
+        createdAt: Date.now(),
+        stage: "awaiting_email_verification",
+        emailAddress: "verification@example.test",
+        maskedEmail: "v***@e***.test",
+        fullName: "Activation Finalizer Hunter",
+        participationBasis: "adult",
+        guardianPermissionAttested: false,
+        privacyMediaDocument: { version: "privacy-test", hash },
+        waiverDocument: { version: "waiver-test", hash },
+        providerAttemptId: "signup_verification",
+        resendAvailableAt: null,
+        finalizationIdempotencyKey: "22222222-2222-4222-8222-222222222222",
+      });
+      sessionStorage.setItem(key, resume);
+      localStorage.setItem(key, resume);
+    }, { key: activationResumeKey, hash: legalHash });
+    holdVerificationBootstrap = true;
+    await verificationPage.goto(`${appOrigin}/dashboard.html`, { waitUntil: "domcontentloaded" });
+    await verificationPage.locator("#hunter-verify-form").waitFor({ state: "visible" });
+    await verificationPage.locator('#hunter-verify-form [name="code"]').fill("123456");
+    await verificationPage.locator('#hunter-verify-form button[type="submit"]').click();
+    for (let attempt = 0; attempt < 50 && releaseVerificationBootstraps.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(verificationBootstrapCalls, 1, "owned activation begins one authoritative bootstrap");
+    assert.equal(releaseVerificationBootstraps.length, 1, "verification finalization reaches the held bootstrap");
+    assert.deepEqual(await verificationPage.evaluate(({ key }) => ({
+      session: sessionStorage.getItem(key) !== null,
+      local: localStorage.getItem(key) !== null,
+    }), { key: activationResumeKey }), { session: true, local: true }, "owned activation retains resumable state until authoritative completion");
+    holdVerificationBootstrap = false;
+    for (const release of releaseVerificationBootstraps.splice(0)) release();
+    await verificationPage.locator("[data-dashboard-profile]").getByText("Activation Finalizer Hunter").waitFor();
+    assert.deepEqual({
+      bootstrap: verificationBootstrapCalls,
+      profile: verificationProfileWrites,
+      review: verificationWaiverReviews,
+      accept: verificationWaiverAccepts,
+    }, { bootstrap: 1, profile: 1, review: 1, accept: 1 });
+    assert.deepEqual(await verificationPage.evaluate(({ key }) => ({
+      session: sessionStorage.getItem(key),
+      local: localStorage.getItem(key),
+    }), { key: activationResumeKey }), { session: null, local: null });
+    assert.equal(await verificationPage.locator("[data-dashboard-content]").isVisible(), true);
+    assert.equal(await verificationPage.locator("#hunter-verify-form").isVisible(), false);
+    await verificationPage.evaluate(() => localStorage.removeItem("__authVerificationFixture"));
 
     const bfcachePage = await context.newPage();
     await bfcachePage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });

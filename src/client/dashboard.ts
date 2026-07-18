@@ -569,6 +569,7 @@ let invalidateAccountOperations: (() => void) | null = null;
 let explicitHunterSignOutPending = false;
 let signInAttempt: SignInResource | null = null;
 let signUpAttempt: SignUpResource | null = null;
+let ownedHunterActivationSessionId: string | null = null;
 let pristineDashboardContent: HTMLElement | null = null;
 let dashboardAccountOperationGeneration = 0;
 const dashboardAccountOperationControllers = new Set<AbortController>();
@@ -2075,17 +2076,22 @@ export async function waitForActiveSession(
 
 async function activateSession(sessionId: string | null | undefined): Promise<boolean> {
   if (!sessionId || (!hunterAuthSession && !hunterClerk)) return false;
-  if (hunterAuthSession) await hunterAuthSession.activate(sessionId);
-  else await hunterClerk?.setActive({ session: sessionId });
-  return waitForActiveSession(
-    sessionId,
-    () => hunterAuthSession
-      ? hunterAuthSession.hasActiveSession(sessionId)
-        ? { id: sessionId, getToken: hunterAuthSession.getToken }
-        : null
-      : hunterClerk?.session,
-    (milliseconds) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)),
-  );
+  ownedHunterActivationSessionId = sessionId;
+  try {
+    if (hunterAuthSession) await hunterAuthSession.activate(sessionId);
+    else await hunterClerk?.setActive({ session: sessionId });
+    return await waitForActiveSession(
+      sessionId,
+      () => hunterAuthSession
+        ? hunterAuthSession.hasActiveSession(sessionId)
+          ? { id: sessionId, getToken: hunterAuthSession.getToken }
+          : null
+        : hunterClerk?.session,
+      (milliseconds) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)),
+    );
+  } finally {
+    if (ownedHunterActivationSessionId === sessionId) ownedHunterActivationSessionId = null;
+  }
 }
 
 export const PLAYER_BOOTSTRAP_RETRY_DELAYS_MS = [1_000, 4_000, 10_000, 15_000] as const;
@@ -2367,8 +2373,12 @@ async function bootstrapPlayer(
   }, abortableDelay, onProgress, signal);
 }
 
-async function loadSignedInDashboard(auth: HunterAuthHook, signal?: AbortSignal): Promise<void> {
-  await bootstrapPlayer(auth, showProvisioningProgress, signal);
+async function loadSignedInDashboard(
+  auth: HunterAuthHook,
+  signal?: AbortSignal,
+  bootstrapRequired = true,
+): Promise<void> {
+  if (bootstrapRequired) await bootstrapPlayer(auth, showProvisioningProgress, signal);
   const response = await fetchDashboard(auth, signal);
   const envelope: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(envelope));
@@ -2672,7 +2682,7 @@ async function finalizeVerifiedSignup(
         signal,
       );
     },
-    refreshDashboard: () => loadSignedInDashboard(auth, signal),
+    refreshDashboard: () => loadSignedInDashboard(auth, signal, false),
     ensureActive: () => throwIfAborted(signal),
   });
 }
@@ -3520,7 +3530,7 @@ async function initializeDashboard(): Promise<void> {
     invalidateActiveAccountOperations();
     if (principalChanged) clearPrivateDashboard();
     if (snapshot.status !== "ready" || !snapshot.principal) {
-      if (!explicitHunterSignOutPending) resumeStore.clear();
+      if (principalChanged && !explicitHunterSignOutPending) resumeStore.clear();
       showSignedOut(snapshot.status === "ready" ? "signed-out" : "unavailable");
       if (!principalChanged && snapshot.status === "ready") {
         await initializeAccountState(auth, config, resumeStore);
@@ -3550,6 +3560,11 @@ async function initializeDashboard(): Promise<void> {
       : null;
     if (snapshot.status === "ready" && nextPrincipalKey === observedPrincipalKey) return;
     observedPrincipalKey = nextPrincipalKey;
+    if (
+      snapshot.principal &&
+      ownedHunterActivationSessionId &&
+      hunterAuthSession?.hasActiveSession(ownedHunterActivationSessionId)
+    ) return;
     void presentAccount(snapshot, true);
   };
   if (hunterAuthSession) {
