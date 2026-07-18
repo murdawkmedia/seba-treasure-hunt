@@ -265,6 +265,21 @@ export interface PendingNoteMedia {
   size: number;
 }
 
+export interface OfficialUpdateMediaSelection {
+  id: string;
+  altText: string | null;
+  caption: string | null;
+}
+
+export interface OfficialUpdateMutation {
+  title: string;
+  body: string;
+  mediaIds: string[];
+  mediaSelections?: OfficialUpdateMediaSelection[];
+  action: "save_draft" | "schedule" | "publish_now";
+  scheduledFor: string | null;
+}
+
 export interface DataStore {
   getStatus(): Promise<CaseStatus>;
   listUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
@@ -373,7 +388,18 @@ export interface DataStore {
   isActiveStaff(subject: string, normalizedEmail: string | null): Promise<boolean>;
   getOpsDashboard(): Promise<Record<string, unknown>>;
   updateStatus(input: Record<string, unknown>, actorSubject: string): Promise<CaseStatus>;
-  createUpdate(input: Record<string, unknown>, actorSubject: string): Promise<Record<string, unknown>>;
+  listOpsUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  getOpsUpdateDetail(id: string, actorSubject: string): Promise<Record<string, unknown> | null>;
+  createUpdate(
+    input: { title: string; body: string },
+    actorSubject: string
+  ): Promise<Record<string, unknown>>;
+  mutateUpdate(
+    id: string,
+    input: OfficialUpdateMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  withdrawUpdate(id: string, actorSubject: string): Promise<Record<string, unknown> | null>;
   listReports(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   /** Returns private report detail only after its privacy-safe staff-view audit append succeeds. */
   getReportDetail(id: string, actorSubject: string): Promise<Record<string, unknown> | null>;

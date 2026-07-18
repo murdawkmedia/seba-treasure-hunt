@@ -278,6 +278,105 @@ const createOperatorAlertDatabase = async (t: { after(callback: () => unknown): 
   return db;
 };
 
+test("standalone Official Updates use a private draft-first audited lifecycle", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const store = new D1DataStore(db);
+
+  const draft = await store.createUpdate(
+    { title: "Weather delay", body: "The search is paused near the trail." },
+    "staff-publisher"
+  );
+  assert.equal(draft.status, "draft");
+  assert.equal(draft.publisherName, "A representative from SebaHub");
+  assert.equal(
+    (await store.listUpdates()).items.some((item) => item.id === draft.id),
+    false
+  );
+
+  const privateLedger = await store.listOpsUpdates();
+  assert.equal(privateLedger.items[0]?.id, draft.id);
+  assert.equal(privateLedger.items[0]?.status, "draft");
+  assert.equal(privateLedger.items[0]?.uploadCount, 0);
+
+  const detail = await store.getOpsUpdateDetail(String(draft.id), "staff-viewer");
+  assert.equal(detail?.id, draft.id);
+  assert.deepEqual(detail?.uploads, []);
+
+  const scheduled = await store.mutateUpdate(
+    String(draft.id),
+    {
+      title: "Weather delay",
+      body: "The search is paused near the trail.",
+      mediaIds: [],
+      action: "schedule",
+      scheduledFor: "2099-07-20T15:00:00.000Z",
+    },
+    "staff-publisher"
+  );
+  assert.equal(scheduled?.status, "scheduled");
+  assert.equal(
+    (await store.listUpdates()).items.some((item) => item.id === draft.id),
+    false
+  );
+
+  const returnedToDraft = await store.mutateUpdate(
+    String(draft.id),
+    {
+      title: "Weather delay",
+      body: "The search is paused near the trail.",
+      mediaIds: [],
+      action: "save_draft",
+      scheduledFor: null,
+    },
+    "staff-publisher"
+  );
+  assert.equal(returnedToDraft?.status, "draft");
+
+  const published = await store.mutateUpdate(
+    String(draft.id),
+    {
+      title: "Weather delay",
+      body: "The search is paused near the trail.",
+      mediaIds: [],
+      action: "publish_now",
+      scheduledFor: null,
+    },
+    "staff-publisher"
+  );
+  assert.equal(published?.status, "published");
+  assert.equal(
+    (await store.listUpdates()).items.filter((item) => item.id === draft.id).length,
+    1
+  );
+
+  const withdrawn = await store.withdrawUpdate(String(draft.id), "staff-publisher");
+  assert.equal(withdrawn?.status, "withdrawn");
+  assert.equal(
+    (await store.listUpdates()).items.some((item) => item.id === draft.id),
+    false
+  );
+
+  const auditRows = await db
+    .prepare(
+      `SELECT action FROM audit_events
+       WHERE target_kind = 'official_update' AND target_id = ?
+       ORDER BY occurred_at, id`
+    )
+    .bind(draft.id)
+    .all<{ action: string }>();
+  assert.deepEqual(
+    auditRows.results.map((row) => row.action),
+    [
+      "update.draft_created",
+      "update.detail_viewed",
+      "update.scheduled",
+      "update.draft_saved",
+      "update.published",
+      "update.withdrawn",
+    ]
+  );
+});
+
 const applyOperatorAlertMigration = async (db: D1Database) => {
   const sql = await readFile(
     path.join(root, "migrations", "0013_operator_submission_alerts.sql"),

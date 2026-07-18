@@ -3,6 +3,7 @@ import type {
   IdentityLifecycleEvent,
   OperatorAlertRecipientClaim,
   OperatorAlertRecipientCompletion,
+  OfficialUpdateMutation,
   PlayerAccessState,
   ReportWorkflowMutation,
   SponsorInquiryCounts,
@@ -1033,15 +1034,111 @@ export class FakeStore {
     return this.status;
   }
 
-  async createUpdate(input: Record<string, unknown>, actorSubject: string) {
+  async listOpsUpdates() {
+    return {
+      items: this.updates
+        .filter((update) => update.kind !== "approved_report" && !update.sourceReportId)
+        .map((update) => ({
+          ...update,
+          status: update.status ?? "published",
+          uploadCount: Array.isArray(update.uploads)
+            ? update.uploads.filter((item) => {
+                const status = String((item as Record<string, unknown>).status ?? "");
+                return status !== "deleted" && status !== "rejected";
+              }).length
+            : 0,
+        })),
+      nextCursor: null,
+    };
+  }
+
+  async getOpsUpdateDetail(id: string, actorSubject: string) {
+    const update = this.updates.find((item) =>
+      item.id === id && item.kind !== "approved_report" && !item.sourceReportId
+    );
+    if (!update) return null;
+    this.audits.push({ action: "update.detail_viewed", actorSubject, targetId: id });
+    return {
+      ...update,
+      status: update.status ?? "published",
+      uploads: Array.isArray(update.uploads)
+        ? update.uploads.filter((item) => (item as Record<string, unknown>).status !== "deleted")
+        : [],
+    };
+  }
+
+  async createUpdate(input: { title: string; body: string }, actorSubject: string) {
+    const timestamp = "2026-07-11T18:00:00.000Z";
     const update = {
       ...input,
       id: `update-${this.updates.length + 1}`,
-      publisherName: "Campaign Ops",
-      publishedAt: "2026-07-11T18:00:00.000Z"
+      publisherName: "A representative from SebaHub",
+      publishedAt: timestamp,
+      scheduledFor: null,
+      status: "draft",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      uploadCount: 0,
+      uploads: [],
     };
     this.updates.unshift(update);
-    this.audits.push({ action: "update.published", actorSubject });
+    this.audits.push({ action: "update.draft_created", actorSubject, targetId: update.id });
+    return update;
+  }
+
+  async mutateUpdate(id: string, input: OfficialUpdateMutation, actorSubject: string) {
+    const update = this.updates.find((item) =>
+      item.id === id && item.kind !== "approved_report" && !item.sourceReportId
+    );
+    if (!update) return null;
+    const currentStatus = String(update.status ?? "published");
+    if (currentStatus === "published" || currentStatus === "withdrawn") {
+      throw new ApiError(409, "update_state_invalid", "This Official Update is not editable.");
+    }
+    if (input.mediaIds.length || input.mediaSelections?.length) {
+      throw new ApiError(422, "publication_media_invalid", "Selected Update media is not available yet.");
+    }
+    const status = input.action === "save_draft"
+      ? "draft"
+      : input.action === "schedule"
+        ? "scheduled"
+        : "published";
+    if (status === "scheduled") {
+      const scheduledTime = input.scheduledFor ? new Date(input.scheduledFor).getTime() : Number.NaN;
+      if (Number.isNaN(scheduledTime) || scheduledTime <= Date.now()) {
+        throw new ApiError(422, "validation_failed", "Choose a future date and time for the scheduled Update.");
+      }
+    } else if (input.scheduledFor !== null) {
+      throw new ApiError(422, "validation_failed", "scheduledFor is only accepted when scheduling an Update.");
+    }
+    Object.assign(update, {
+      title: input.title,
+      body: input.body,
+      status,
+      scheduledFor: status === "scheduled" ? input.scheduledFor : null,
+      publishedAt: status === "scheduled" ? input.scheduledFor : "2026-07-11T18:05:00.000Z",
+      updatedAt: "2026-07-11T18:05:00.000Z",
+    });
+    this.audits.push({
+      action: status === "draft" ? "update.draft_saved" : status === "scheduled" ? "update.scheduled" : "update.published",
+      actorSubject,
+      targetId: id,
+    });
+    return update;
+  }
+
+  async withdrawUpdate(id: string, actorSubject: string) {
+    const update = this.updates.find((item) =>
+      item.id === id && item.kind !== "approved_report" && !item.sourceReportId
+    );
+    if (!update) return null;
+    if (update.status === "withdrawn") return update;
+    if (update.status !== "scheduled" && update.status !== "published") {
+      throw new ApiError(409, "update_state_invalid", "Only a scheduled or published Official Update can be withdrawn.");
+    }
+    update.status = "withdrawn";
+    update.scheduledFor = null;
+    this.audits.push({ action: "update.withdrawn", actorSubject, targetId: id });
     return update;
   }
 

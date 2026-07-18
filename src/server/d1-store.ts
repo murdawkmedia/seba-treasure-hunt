@@ -19,6 +19,7 @@ import type {
   OperatorAlertRecipientClaim,
   OperatorAlertRecipientCompletion,
   OpsWaiverReceiptResendResult,
+  OfficialUpdateMutation,
   Page,
   PlayerAccessState,
   ReportWorkflowMutation,
@@ -55,6 +56,23 @@ const publicUpdatePublisherName = (input: unknown): string => {
 };
 const numberOrNull = (input: unknown): number | null =>
   typeof input === "number" && Number.isFinite(input) ? input : null;
+
+const opsUpdateFromRow = (
+  row: Row,
+  uploads?: Record<string, unknown>[]
+): Record<string, unknown> => ({
+  id: value(row.id),
+  title: value(row.title),
+  body: value(row.body),
+  publisherName: value(row.publisher_name),
+  status: value(row.status),
+  publishedAt: nullable(row.published_at),
+  scheduledFor: nullable(row.scheduled_for),
+  createdAt: nullable(row.created_at),
+  updatedAt: nullable(row.updated_at),
+  uploadCount: Number(row.upload_count ?? uploads?.length ?? 0),
+  ...(uploads ? { uploads } : {})
+});
 const json = (input: unknown) => JSON.stringify(input ?? null);
 const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -3102,38 +3120,253 @@ export class D1DataStore implements DataStore {
     return this.getStatus();
   }
 
-  async createUpdate(input: Record<string, unknown>, actorSubject: string): Promise<Record<string, unknown>> {
+  async listOpsUpdates(
+    options: { limit?: number; cursor?: string | null } = {}
+  ): Promise<Page> {
+    const limit = pageLimit(options.limit);
+    const cursor = options.cursor ?? now();
+    const result = await this.db
+      .prepare(
+        `SELECT u.id, u.title, u.body, u.publisher_name, u.status,
+                u.published_at, u.scheduled_for, u.created_at, u.updated_at,
+                COUNT(CASE WHEN upload.status NOT IN ('deleted', 'rejected') THEN 1 END) AS upload_count
+         FROM official_updates u
+         LEFT JOIN official_update_uploads upload ON upload.update_id = u.id
+         WHERE u.source_report_id IS NULL
+           AND COALESCE(u.created_at, u.published_at) <= ?
+         GROUP BY u.id
+         ORDER BY COALESCE(u.updated_at, u.created_at, u.published_at) DESC, u.id DESC
+         LIMIT ?`
+      )
+      .bind(cursor, limit + 1)
+      .all<Row>();
+    const rows = result.results;
+    return {
+      items: rows.slice(0, limit).map((row) => opsUpdateFromRow(row)),
+      nextCursor: rows.length > limit
+        ? value(rows[limit - 1]?.updated_at ?? rows[limit - 1]?.created_at ?? rows[limit - 1]?.published_at)
+        : null
+    };
+  }
+
+  async getOpsUpdateDetail(
+    updateId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id, title, body, publisher_name, status, published_at,
+                scheduled_for, created_at, updated_at
+         FROM official_updates
+         WHERE id = ? AND source_report_id IS NULL LIMIT 1`
+      )
+      .bind(updateId)
+      .first<Row>();
+    if (!row) return null;
+    const uploadResult = await this.db
+      .prepare(
+        `SELECT upload.id, upload.content_type, upload.byte_size, upload.status,
+                selected.alt_text, selected.caption, selected.position
+         FROM official_update_uploads upload
+         LEFT JOIN official_update_uploaded_media selected
+           ON selected.update_id = upload.update_id AND selected.upload_id = upload.id
+         WHERE upload.update_id = ? AND upload.status != 'deleted'
+         ORDER BY upload.created_at, upload.id`
+      )
+      .bind(updateId)
+      .all<Row>();
+    const uploads = uploadResult.results.map((upload) => ({
+      id: value(upload.id),
+      contentType: value(upload.content_type),
+      size: Number(upload.byte_size ?? 0),
+      status: value(upload.status),
+      altText: nullable(upload.alt_text),
+      caption: nullable(upload.caption),
+      position: typeof upload.position === "number" ? upload.position : null
+    }));
+    await this.audit(actorSubject, "update.detail_viewed", "official_update", updateId, {});
+    return opsUpdateFromRow(row, uploads);
+  }
+
+  async createUpdate(
+    input: { title: string; body: string },
+    actorSubject: string
+  ): Promise<Record<string, unknown>> {
     const updateId = id();
     const timestamp = now();
-    const scheduledFor = nullable(input.scheduledFor);
-    const isScheduled = Boolean(scheduledFor && scheduledFor > timestamp);
+    const publisherName = "A representative from SebaHub";
     await this.db
       .prepare(
         `INSERT INTO official_updates
-         (id, title, body, publisher_subject, publisher_name, published_at, scheduled_for, status)
-         VALUES (?, ?, ?, ?, 'Campaign Ops', ?, ?, ?)`
+         (id, title, body, publisher_subject, publisher_name, published_at,
+          scheduled_for, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, 'draft', ?, ?)`
       )
       .bind(
         updateId,
         input.title,
         input.body,
         actorSubject,
-        isScheduled ? scheduledFor : timestamp,
-        scheduledFor,
-        isScheduled ? "scheduled" : "published"
+        publisherName,
+        timestamp,
+        timestamp,
+        timestamp
       )
       .run();
-    await this.audit(actorSubject, "update.created", "official_update", updateId, {
-      scheduled: isScheduled
-    });
+    await this.audit(actorSubject, "update.draft_created", "official_update", updateId, {});
     return {
       id: updateId,
       title: input.title,
       body: input.body,
-      publisherName: "Campaign Ops",
-      publishedAt: isScheduled ? scheduledFor : timestamp,
-      status: isScheduled ? "scheduled" : "published"
+      publisherName,
+      publishedAt: timestamp,
+      scheduledFor: null,
+      status: "draft",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      uploadCount: 0,
+      uploads: []
     };
+  }
+
+  async mutateUpdate(
+    updateId: string,
+    input: OfficialUpdateMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.db
+      .prepare(
+        `SELECT id, title, body, publisher_name, status, published_at,
+                scheduled_for, created_at, updated_at
+         FROM official_updates
+         WHERE id = ? AND source_report_id IS NULL LIMIT 1`
+      )
+      .bind(updateId)
+      .first<Row>();
+    if (!existing) return null;
+
+    const currentStatus = value(existing.status);
+    if (currentStatus === "published" || currentStatus === "withdrawn") {
+      throw new ApiError(
+        409,
+        "update_state_invalid",
+        currentStatus === "published"
+          ? "Withdraw the published Official Update before making another editorial change."
+          : "Withdrawn Official Updates are read-only."
+      );
+    }
+    if (input.mediaIds.length > 0 || (input.mediaSelections?.length ?? 0) > 0) {
+      throw new ApiError(422, "publication_media_invalid", "Selected Update media is not available yet.");
+    }
+
+    const timestamp = now();
+    const desiredStatus = input.action === "save_draft"
+      ? "draft"
+      : input.action === "schedule"
+        ? "scheduled"
+        : "published";
+    const desiredScheduledFor = desiredStatus === "scheduled" ? input.scheduledFor : null;
+    if (
+      desiredStatus === "scheduled" &&
+      (!desiredScheduledFor || Number.isNaN(new Date(desiredScheduledFor).getTime()) || desiredScheduledFor <= timestamp)
+    ) {
+      throw new ApiError(422, "validation_failed", "Choose a future date and time for the scheduled Update.");
+    }
+    if (desiredStatus !== "scheduled" && input.scheduledFor !== null) {
+      throw new ApiError(422, "validation_failed", "scheduledFor is only accepted when scheduling an Update.");
+    }
+
+    if (
+      currentStatus === desiredStatus &&
+      value(existing.title) === input.title &&
+      value(existing.body) === input.body &&
+      nullable(existing.scheduled_for) === desiredScheduledFor
+    ) {
+      return opsUpdateFromRow(existing, []);
+    }
+
+    const publishedAt = desiredStatus === "scheduled" ? desiredScheduledFor! : timestamp;
+    const updateResult = await this.db
+      .prepare(
+        `UPDATE official_updates
+         SET title = ?, body = ?, published_at = ?, scheduled_for = ?,
+             status = ?, updated_at = ?
+         WHERE id = ? AND source_report_id IS NULL AND status = ?`
+      )
+      .bind(
+        input.title,
+        input.body,
+        publishedAt,
+        desiredScheduledFor,
+        desiredStatus,
+        timestamp,
+        updateId,
+        currentStatus
+      )
+      .run();
+    if (!updateResult.meta.changes) throw new ConflictError("The Official Update changed. Refresh and try again.");
+
+    const action = desiredStatus === "draft"
+      ? "update.draft_saved"
+      : desiredStatus === "scheduled"
+        ? "update.scheduled"
+        : "update.published";
+    await this.audit(actorSubject, action, "official_update", updateId, {
+      previousStatus: currentStatus,
+      status: desiredStatus,
+      scheduledFor: desiredScheduledFor
+    });
+    const updated = await this.db
+      .prepare(
+        `SELECT id, title, body, publisher_name, status, published_at,
+                scheduled_for, created_at, updated_at
+         FROM official_updates WHERE id = ? LIMIT 1`
+      )
+      .bind(updateId)
+      .first<Row>();
+    return updated ? opsUpdateFromRow(updated, []) : null;
+  }
+
+  async withdrawUpdate(
+    updateId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.db
+      .prepare(
+        `SELECT id, title, body, publisher_name, status, published_at,
+                scheduled_for, created_at, updated_at
+         FROM official_updates
+         WHERE id = ? AND source_report_id IS NULL LIMIT 1`
+      )
+      .bind(updateId)
+      .first<Row>();
+    if (!existing) return null;
+    if (existing.status === "withdrawn") return opsUpdateFromRow(existing, []);
+    if (existing.status !== "scheduled" && existing.status !== "published") {
+      throw new ApiError(409, "update_state_invalid", "Only a scheduled or published Official Update can be withdrawn.");
+    }
+    const timestamp = now();
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE official_updates
+           SET status = 'withdrawn', scheduled_for = NULL, updated_at = ?
+           WHERE id = ? AND source_report_id IS NULL AND status = ?`
+        )
+        .bind(timestamp, updateId, existing.status),
+      this.db.prepare("DELETE FROM official_update_media WHERE update_id = ?").bind(updateId),
+      this.db.prepare("DELETE FROM official_update_uploaded_media WHERE update_id = ?").bind(updateId)
+    ]);
+    if (!results[0]?.meta.changes) throw new ConflictError("The Official Update changed. Refresh and try again.");
+    await this.audit(actorSubject, "update.withdrawn", "official_update", updateId, {
+      previousStatus: existing.status
+    });
+    return opsUpdateFromRow({
+      ...existing,
+      status: "withdrawn",
+      scheduled_for: null,
+      updated_at: timestamp
+    }, []);
   }
 
   async listReports(options: { limit?: number; cursor?: string | null } = {}): Promise<Page> {

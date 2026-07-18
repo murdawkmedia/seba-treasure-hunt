@@ -1630,8 +1630,7 @@ export const createApi = (deps: ApiDependencies) => {
       await deps.store.createUpdate(
         {
           title: requiredString(body, "title", { max: 200 }),
-          body: requiredString(body, "body", { max: 10_000 }),
-          scheduledFor: optionalString(body, "scheduledFor", 40)
+          body: requiredString(body, "body", { max: 10_000 })
         },
         staff.subject
       ),
