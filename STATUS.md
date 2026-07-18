@@ -13,6 +13,42 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-18 — Guided report workflow validation candidate
+
+- Completed the approved reversible Private Reports workflow through source
+  commit `c6c8765` and deployed only to the Cloudflare Pages
+  `codex-validation` branch. The immutable deployment is
+  `https://f7da724f.seba-treasure-hunt.pages.dev`; the stable owner-review URL
+  is `https://codex-validation.seba-treasure-hunt.pages.dev/ops?release=c6c8765`.
+- The report drawer now uses one viewport-bounded grid with one scrolling body.
+  The Review workflow, history and public-outcome controls remain reachable at
+  1440×1000, 390×844, a short 360×640 phone, and a 360×250 200%-zoom
+  equivalent. The fix is shared by the other Ops dialogs as well.
+- Fresh validation passed 21 focused static contracts, 284 legacy/static
+  tests, all TypeScript projects, exact legal artifacts, a clean production
+  build, a 48-file public-output privacy scan, and the isolated browser audit
+  across 66 navigations and 102 states. The browser audit reported no console,
+  page, request, overflow or external-write error.
+- Both the immutable and stable validation URLs return HTTP 200, identify the
+  runtime as `validation`, and serve the viewport-safe dialog rules. No schema
+  migration was required.
+- Count-only production reads before and after the validation upload matched
+  exactly: 17 players, 6 reports, 0 report-derived Case Notes, 2 Official
+  Updates, 1 staff principal, 73 audit events, 14 report events, 22 media rows,
+  32 legal acceptances and 13 waypoints. Both reads wrote zero rows and the
+  foreign-key check was clean. Production Pages, D1, R2, queues and public
+  content were not deployed or mutated.
+- `scripts/verify-environment.mjs` is stale: it still requires an empty
+  validation database and retired waypoint wording. The release instead used
+  read-only checks that confirmed the validation sentinel, the 13 ordered
+  waypoint IDs, and the distinct Seniors Centre and Derby's URLs. Updating the
+  old verifier is a separate maintenance task; it was not weakened during this
+  release.
+- Next: Murphy should open a disposable validation report on desktop and phone,
+  scroll to Review workflow/history, change and reverse a status, and confirm
+  the public-outcome controls remain deliberate. Production promotion remains
+  a separate explicit decision.
+
 ## Update 2026-07-18 — Approved guided report-workflow design
 
 - Approved and documented the next Private Reports refinement in

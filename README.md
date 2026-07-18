@@ -31,6 +31,33 @@ and uses one scoped approved-media viewer across Updates, Case Notes, Ops and
 the 13 Stops route. Mobile signup and password flows return to explicit,
 restartable recovery states when the identity provider does not answer.
 
+## Guided private-report workflow
+
+The next Private Reports workflow is available on validation for owner review.
+It keeps the private review state separate from every public outcome and uses
+this audited state graph:
+
+```text
+Received -> Reviewing -> Contacted -> Verified -> Resolved
+              |             |            |
+              +-------------+------------+-> Rejected
+Rejected or Resolved -> Reviewing (explicit reopen)
+```
+
+An operator chooses a destination, reviews its explanation, and applies it as
+a separate action. Moving backward, rejecting, resolving, or reopening
+requires a private reason and confirmation where the transition is
+consequential. Unassigning keeps the current review state. Every accepted
+change is recorded in the report history; a stale second tab fails closed and
+offers Refresh. Review-state changes never publish, withdraw, or republish a
+Case Note or Official Update.
+
+Hunters see only **Received**, **Under review**, **Verified**, or **Closed**.
+Any edited public use is shown separately as **Published in Case Notes** or
+**Used in an Official Update**. The validation candidate and known owner checks
+are recorded in
+[`docs/operations/2026-07-18-private-report-workflow-validation.md`](docs/operations/2026-07-18-private-report-workflow-validation.md).
+
 ## Design source
 
 [`DESIGN.md`](DESIGN.md) records the approved Documentary Case File direction, shared typography and media rules, and the legal, authentication, route and reporting invariants that future public campaign work must preserve.
