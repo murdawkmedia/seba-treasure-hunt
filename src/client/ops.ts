@@ -1350,7 +1350,14 @@ export function renderReportEvidence(detail: OpsReportDetail): string {
   if (detail.media.length === 0) {
     return `<p class="ops-report-evidence__empty">No evidence images were submitted.</p>`;
   }
-  return detail.media.map((media, index) => {
+  const lockMessage = !detail.publicationEligible
+    ? detail.status === "resolved"
+      ? "Reopen this report to select ready images."
+      : detail.status === "rejected"
+        ? "Rejected reports cannot publish images."
+        : "Image selection is locked until this report's legal and public-attribution requirements are complete."
+    : "";
+  const evidence = detail.media.map((media, index) => {
     const ready = media.status === "ready" && ["image/jpeg", "image/png", "image/webp"].includes(media.contentType);
     return `<article class="ops-report-evidence__item">
       ${ready ? `<img data-report-media-preview data-media-id="${escapeOpsHtml(media.id)}" alt="Private processed evidence ${index + 1}" hidden /><div class="ops-report-evidence__placeholder" data-report-media-placeholder>Loading private preview&hellip;</div>` : `<div class="ops-report-evidence__placeholder" aria-hidden="true">Image unavailable</div>`}
@@ -1360,6 +1367,7 @@ export function renderReportEvidence(detail: OpsReportDetail): string {
         : `<span class="ops-report-evidence__status">${escapeOpsHtml(media.status === "processing" ? "Processing; unavailable for publication" : `${media.status}; unavailable for publication`)}</span>`}
     </article>`;
   }).join("");
+  return `${lockMessage ? `<p class="ops-report-evidence__status">${escapeOpsHtml(lockMessage)}</p>` : ""}${evidence}`;
 }
 
 export function renderReportPublicationPreview(
@@ -2246,6 +2254,7 @@ function renderReportDialog(
     saveStatus.hidden = selectableTransitions.length === 0;
     saveStatus.disabled = selectableTransitions.length === 0 ||
       (controls.terminalTransitionsBlocked && ["rejected", "resolved"].includes(status?.value ?? ""));
+    saveStatus.textContent = detail.status === "resolved" ? "Reopen report" : "Apply next state";
   }
   if (publish) {
     publish.disabled = !detail.publicationEligible || detail.status !== "verified";
@@ -2261,9 +2270,13 @@ function renderReportDialog(
   }
   if (withdrawCaseNote) withdrawCaseNote.hidden = !destinations.showWithdrawCaseNote;
   updateReportPublicationPreview();
-  const eligibility = detail.publicationEligible
-    ? "This report is eligible for a deliberate public preview and publication."
-    : `Publication is blocked (${detail.publicationEligibilityReason.replaceAll("_", " ")}). Private review remains available.`;
+  const eligibility = detail.status === "resolved"
+    ? "This report is resolved. Reopen it to select ready images or prepare a public post."
+    : detail.status === "rejected"
+      ? "This report was rejected and cannot be published."
+      : detail.publicationEligible
+        ? "This report is eligible for a deliberate public preview and publication."
+        : `Publication is blocked (${detail.publicationEligibilityReason.replaceAll("_", " ")}). Private review remains available.`;
   setReportReviewState(`Private report loaded. ${eligibility}${controls.guidance ? ` ${controls.guidance}` : ""}`);
   void hydrateReportEvidence(detail, intent, signal);
 }
@@ -2337,7 +2350,9 @@ async function updateActiveReportStatus(status: string): Promise<void> {
     return;
   }
   const note = status === "reviewing"
-    ? "Review opened in the private case room"
+    ? activeReportDetail.status === "resolved"
+      ? "Resolved report reopened for publication review"
+      : "Review opened in the private case room"
     : window.prompt("Add an optional private note for this status change:", "");
   if (
     note === null || !window.confirm(`Change this private report to ${status}? This action is audited.`) ||

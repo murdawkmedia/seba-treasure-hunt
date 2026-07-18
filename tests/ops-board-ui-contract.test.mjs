@@ -101,6 +101,12 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(html, /data-report-review-close/);
   assert.match(html, /data-report-private-detail/);
   assert.match(html, /data-report-evidence/);
+  assert.match(
+    html,
+    /Select each ready image you want to include in Case Notes or an Official Update/i
+  );
+  assert.match(html, /Nothing is selected automatically/i);
+  assert.match(client, /Reopen report/i);
   assert.match(html, /data-report-status-actions/);
   assert.match(html, /data-report-publication-form/);
   assert.match(html, /data-report-public-preview/);

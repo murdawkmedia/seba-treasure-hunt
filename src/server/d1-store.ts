@@ -4812,6 +4812,8 @@ export class D1DataStore implements DataStore {
       attributionKind: row.attribution_kind,
       protectsMinor
     });
+    const isLegacyMissingSnapshot = nullable(row.public_attribution) === null &&
+      nullable(row.attribution_kind) === null;
     if (row.status === "rejected" || row.status === "resolved") {
       return preview({
         publicAttribution: safeMinorAttribution ?? (hunterSubject ? null : "Community Hunter"),
@@ -4861,6 +4863,13 @@ export class D1DataStore implements DataStore {
     if (safeSnapshot) {
       return preview({
         publicAttribution: safeSnapshot,
+        publicationEligible: true,
+        publicationEligibilityReason: "eligible"
+      });
+    }
+    if (isLegacyMissingSnapshot) {
+      return preview({
+        publicAttribution: "Community Hunter",
         publicationEligible: true,
         publicationEligibilityReason: "eligible"
       });

@@ -379,7 +379,7 @@ test("report review states expose only guided next steps and a persistent assign
   assert.deepEqual(nextReportStates("received"), ["reviewing", "rejected"]);
   assert.deepEqual(nextReportStates("reviewing"), ["contacted", "escalated", "verified", "rejected"]);
   assert.deepEqual(nextReportStates("verified"), ["resolved"]);
-  assert.deepEqual(nextReportStates("resolved"), []);
+  assert.deepEqual(nextReportStates("resolved"), ["reviewing"]);
   const html = renderReportState({ status: "reviewing", assignedTo: "staff-1" });
   assert.match(html, /Status: Reviewing/);
   assert.match(html, /Assigned to: staff-1/);
@@ -433,6 +433,14 @@ test("minor report publication preview exposes game facts but no private identit
   assert.match(evidence, /media-ready/);
   assert.match(evidence, /Processing; unavailable for publication/);
   assert.doesNotMatch(evidence, /checked[^>]*name="publishMedia"|name="publishMedia"[^>]*checked/);
+
+  const resolvedEvidence = renderReportEvidence({
+    ...detail,
+    status: "resolved",
+    publicationEligible: false,
+    publicationEligibilityReason: "report_state_invalid",
+  });
+  assert.match(resolvedEvidence, /Reopen this report to select ready images/i);
 });
 
 test("adult report preview uses only the stored public handle", () => {

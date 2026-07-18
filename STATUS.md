@@ -13,6 +13,37 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-18 — Private Report media-publication repair
+
+- Prepared a validation-first repair for the Ops Private Reports workflow.
+  Ready report images remain unselected by default, but eligible reports now
+  explain where to select them for Case Notes or an Official Update.
+- Resolved reports may be deliberately reopened to `reviewing`; the transition
+  is recorded through the existing report-event and audit ledgers. Rejected
+  reports remain terminal, and an active public post still blocks a terminal
+  state change.
+- Older signed-in reports that predate the stored public-attribution snapshot
+  may use the fixed privacy-safe label `Community Hunter` only after the
+  existing report-time waiver, current legal acceptance and participation
+  checks pass. The fallback never copies a private name, email, current display
+  name or current hunter handle. Blank or invalid stored snapshots still fail
+  closed, and minor protection still forces `Young Hunter`.
+- The Moderation Queue was not changed. Publication remains a separate operator
+  action, report images remain off by default, only ready derivatives qualify,
+  and an Official Update still requires a verified report plus final review.
+- Verification completed with a red-green regression cycle, all TypeScript
+  projects, a clean build and diff check, the complete legacy/browser suite,
+  all TypeScript suites outside the D1 integration file, and the full real-D1
+  integration suite. All completed with zero test failures.
+- A count-only production D1 baseline read reported 17 players, 6 private
+  reports, 0 report-derived Case Notes, 2 Official Updates, 1 staff principal,
+  69 audit events, 22 report-media rows and 32 legal acceptances. The database
+  sentinel was `production`; the read wrote zero rows and `changed_db` was
+  false. No production record or publication was changed.
+- Next: commit the exact candidate, deploy it to the `codex-validation` Pages
+  branch, verify the immutable and stable validation URLs, and complete an
+  authenticated owner check before any separate production-promotion decision.
+
 ## Update 2026-07-18 — Production promotion
 
 - Murphy explicitly approved production promotion after validation and owner

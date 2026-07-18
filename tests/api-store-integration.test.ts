@@ -2391,6 +2391,25 @@ test("real D1 atomically changes private report state with its event and audit h
     store.updateReport("report-guided", { status: "resolved" }, "staff-owner"),
     /transition/i
   );
+  const verifiedGuided = await store.updateReport(
+    "report-guided",
+    { status: "verified" },
+    "staff-owner"
+  );
+  assert.equal(verifiedGuided?.status, "verified");
+  const resolvedGuided = await store.updateReport(
+    "report-guided",
+    { status: "resolved" },
+    "staff-owner"
+  );
+  assert.equal(resolvedGuided?.status, "resolved");
+  const reopenedGuided = await store.updateReport(
+    "report-guided",
+    { status: "reviewing", note: "Reopened for publication review" },
+    "staff-owner"
+  );
+  assert.equal(reopenedGuided?.status, "reviewing");
+  assert.equal(reopenedGuided?.assignedTo, "staff-owner");
 
   const assertRolledBack = async () => {
     assert.deepEqual(
@@ -3420,8 +3439,19 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.equal(youngSnapshotPreview?.publicAttribution, "Young Hunter");
   assert.equal(youngSnapshotPreview?.publicationEligible, true);
 
-  for (const reportId of [
+  const legacyPreview = await store.getReportDetail(
     "report-missing-snapshot",
+    "staff-preview-legacy"
+  );
+  assert.equal(legacyPreview?.publicAttribution, "Community Hunter");
+  assert.equal(legacyPreview?.publicationEligible, true);
+  assert.equal(legacyPreview?.publicationEligibilityReason, "eligible");
+  assert.doesNotMatch(
+    JSON.stringify(legacyPreview),
+    /Current Handle Must Not Leak|Current Display Must Not Leak/
+  );
+
+  for (const reportId of [
     "report-blank-snapshot",
     "report-invalid-snapshot",
     "report-invalid-display-syntax",
@@ -3735,8 +3765,12 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     { title: "Young Hunter report", body: "Edited privacy-safe story", mediaIds: [] },
     "staff-publisher"
   );
-  for (const reportId of [
+  const legacyUpdate = await store.publishReport(
     "report-missing-snapshot",
+    { title: "Legacy report", body: "Edited privacy-safe legacy story", mediaIds: [] },
+    "staff-publisher"
+  );
+  for (const reportId of [
     "report-blank-snapshot",
     "report-invalid-snapshot",
     "report-invalid-display-syntax",
@@ -3764,6 +3798,11 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.equal(adultCommunityUpdate?.publisherName, "Community Hunter");
   assert.equal(youngSnapshotUpdate?.publisherName, youngSnapshotPreview?.publicAttribution);
   assert.equal(youngSnapshotUpdate?.publisherName, "Young Hunter");
+  assert.equal(legacyUpdate?.publisherName, "Community Hunter");
+  assert.doesNotMatch(
+    JSON.stringify(legacyUpdate),
+    /Current Handle Must Not Leak|Current Display Must Not Leak/
+  );
   assert.equal(communityUpdate?.publisherName, "Community Hunter");
   const storedAttributionSnapshots = await db.prepare(
     `SELECT id, public_attribution, attribution_kind
@@ -3797,7 +3836,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     `SELECT source_report_id, publisher_name, public_attribution
      FROM official_updates
      WHERE source_report_id IN ('report-adult', 'report-adult-community', 'report-minor',
-                                'report-young-snapshot')
+                                'report-young-snapshot', 'report-missing-snapshot')
      ORDER BY source_report_id`
   ).all<{ source_report_id: string; publisher_name: string; public_attribution: string }>();
   assert.deepEqual(storedPublishedAttributions.results, [
@@ -3817,20 +3856,25 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       public_attribution: "Young Hunter"
     },
     {
+      source_report_id: "report-missing-snapshot",
+      publisher_name: "Community Hunter",
+      public_attribution: "Community Hunter"
+    },
+    {
       source_report_id: "report-young-snapshot",
       publisher_name: "Young Hunter",
       public_attribution: "Young Hunter"
     }
   ]);
   assert.doesNotMatch(
-    JSON.stringify([adultUpdate, adultCommunityUpdate, minorUpdate, youngSnapshotUpdate]),
+    JSON.stringify([adultUpdate, adultCommunityUpdate, minorUpdate, youngSnapshotUpdate, legacyUpdate]),
     /Current Handle Must Not Leak|Current Display Must Not Leak/
   );
   assert.equal(
     (await db.prepare(
       `SELECT COUNT(*) AS count FROM official_updates
-       WHERE source_report_id IN ('report-missing-snapshot', 'report-blank-snapshot',
-                                  'report-invalid-snapshot', 'report-invalid-display-syntax',
+       WHERE source_report_id IN ('report-blank-snapshot', 'report-invalid-snapshot',
+                                  'report-invalid-display-syntax',
                                   'report-invalid-handle-syntax')`
     ).first<{ count: number }>())?.count,
     0
@@ -3838,8 +3882,8 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   assert.equal(
     (await db.prepare(
       `SELECT COUNT(*) AS count FROM audit_events
-       WHERE target_id IN ('report-missing-snapshot', 'report-blank-snapshot',
-                           'report-invalid-snapshot', 'report-invalid-display-syntax',
+       WHERE target_id IN ('report-blank-snapshot', 'report-invalid-snapshot',
+                           'report-invalid-display-syntax',
                            'report-invalid-handle-syntax')
          AND action IN ('report.published', 'report.update.draft_saved', 'report.update.scheduled')`
     ).first<{ count: number }>())?.count,
@@ -3866,7 +3910,7 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   );
 
   const feed = await store.listUpdates({ limit: 10 });
-  assert.equal(feed.items.length, 8);
+  assert.equal(feed.items.length, 9);
   assert.equal(feed.items.some((item) => item.kind === "approved_report"), true);
   assert.equal(
     feed.items.find((item) => item.title === "Ordinary update")?.publisherName,

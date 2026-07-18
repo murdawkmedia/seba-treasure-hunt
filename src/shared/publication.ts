@@ -46,7 +46,7 @@ const REPORT_TRANSITIONS: Record<ReportReviewState, readonly ReportReviewState[]
   escalated: ["reviewing", "verified", "rejected"],
   verified: ["resolved"],
   rejected: [],
-  resolved: [],
+  resolved: ["reviewing"],
 };
 
 export function isReportReviewState(value: unknown): value is ReportReviewState {
