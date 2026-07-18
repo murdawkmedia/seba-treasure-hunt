@@ -608,6 +608,16 @@ button.hunter-button {
   color: var(--hunter-gold);
 }
 
+#hunter-signup-finishing-state .field-hint {
+  display: block;
+  margin-top: 14px;
+  max-width: 64ch;
+}
+
+#hunter-signup-finishing-state [data-signup-finishing-status][data-kind="error"] {
+  color: #ffcfca;
+}
+
 .signup-legal-dialog {
   display: none;
   grid-template-rows: auto minmax(0, 1fr) auto;

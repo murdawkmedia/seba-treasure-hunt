@@ -24,14 +24,94 @@ import {
 } from "../src/client/report";
 import {
   buildProfilePayload,
+  classifyPlayerBootstrapFailure,
   createSignupLegalViewerLoadCoordinator,
+  PLAYER_BOOTSTRAP_RETRY_DELAYS_MS,
   profileMutationInvalidatesWaiver,
+  retryPlayerBootstrap,
+  signOutVerifiedAccount,
   supervisedDependantsState,
   validateProfileDraft,
   waiverMinorsForParticipationBasis,
   waitForActiveSession,
   type HunterProfileDraft,
 } from "../src/client/dashboard";
+
+for (const availableAfterMs of [0, 5_000, 30_000]) {
+  test(`player bootstrap keeps a verified identity finishing through ${availableAfterMs / 1_000} seconds of provisioning delay`, async () => {
+    let elapsedMs = 0;
+    const attempts: number[] = [];
+    const delays: number[] = [];
+
+    await retryPlayerBootstrap(
+      async () => {
+        attempts.push(elapsedMs);
+        return elapsedMs >= availableAfterMs
+          ? { ok: true, status: 200 }
+          : { ok: false, status: 409 };
+      },
+      async (milliseconds) => {
+        delays.push(milliseconds);
+        elapsedMs += milliseconds;
+      },
+    );
+
+    assert.equal(attempts.at(-1), availableAfterMs);
+    assert.deepEqual(delays, PLAYER_BOOTSTRAP_RETRY_DELAYS_MS.slice(0, Math.max(0, attempts.length - 1)));
+  });
+}
+
+test("player bootstrap stops its bounded automatic retry window and can succeed on a later manual run", async () => {
+  let provisioned = false;
+  let attempts = 0;
+  const run = () => retryPlayerBootstrap(
+    async () => {
+      attempts += 1;
+      return provisioned ? { ok: true, status: 200 } : { ok: false, status: 409 };
+    },
+    async () => undefined,
+  );
+
+  await assert.rejects(run, (error: unknown) => (
+    error instanceof Error &&
+    "classification" in error &&
+    error.classification === "retryable" &&
+    "automaticRetriesExhausted" in error &&
+    error.automaticRetriesExhausted === true
+  ));
+  assert.equal(attempts, PLAYER_BOOTSTRAP_RETRY_DELAYS_MS.length + 1);
+
+  provisioned = true;
+  await run();
+  assert.equal(attempts, PLAYER_BOOTSTRAP_RETRY_DELAYS_MS.length + 2);
+});
+
+test("player bootstrap classifies synchronization and service delays separately from invalid sessions", () => {
+  for (const status of [408, 409, 425, 429, 500, 502, 503, 504]) {
+    assert.equal(classifyPlayerBootstrapFailure(status), "retryable");
+  }
+  for (const status of [400, 401, 403, 404, 422]) {
+    assert.equal(classifyPlayerBootstrapFailure(status), "terminal");
+  }
+});
+
+test("verified-account sign out clears local resume only after provider sign out succeeds", async () => {
+  let releaseProvider!: () => void;
+  let clears = 0;
+  const provider = new Promise<void>((resolve) => { releaseProvider = resolve; });
+  const signingOut = signOutVerifiedAccount(async () => provider, () => { clears += 1; });
+  await Promise.resolve();
+  assert.equal(clears, 0);
+  releaseProvider();
+  await signingOut;
+  assert.equal(clears, 1);
+
+  await assert.rejects(
+    signOutVerifiedAccount(async () => { throw new Error("provider unavailable"); }, () => { clears += 1; }),
+    /provider unavailable/,
+  );
+  assert.equal(clears, 1);
+});
 
 function reportStaticWaypointChoices() {
   const html = readFileSync(new URL("../report.html", import.meta.url), "utf8");

@@ -170,6 +170,41 @@ test("verified hunters bootstrap a private player account before completing a pr
   assert.equal(body.data.participationUnlocked, false);
 });
 
+test("bootstrap keeps a valid hunter session pending until lifecycle synchronization arrives", async () => {
+  const { app, store } = makeApp();
+  for (const elapsedSeconds of [0, 5, 30]) {
+    const pending = await app.request("https://www.timlostsomething.com/api/v1/me/bootstrap", {
+      method: "POST",
+      headers: auth,
+    });
+    assert.equal(pending.status, 409, `valid session remains pending at ${elapsedSeconds} seconds`);
+    assert.equal((await responseJson(pending)).error.code, "identity_sync_pending");
+  }
+  assert.equal(store.accounts.size, 0);
+
+  await syncVerifiedHunter(app);
+  const ready = await app.request("https://www.timlostsomething.com/api/v1/me/bootstrap", {
+    method: "POST",
+    headers: auth,
+  });
+  assert.equal(ready.status, 200);
+  assert.equal(store.accounts.size, 1);
+});
+
+test("bootstrap distinguishes an invalid credential from a valid session awaiting synchronization", async () => {
+  const { app } = makeApp();
+  const invalid = await app.request("https://www.timlostsomething.com/api/v1/me/bootstrap", {
+    method: "POST",
+    headers: { authorization: "Bearer invalid-token" },
+  });
+  const pending = await app.request("https://www.timlostsomething.com/api/v1/me/bootstrap", {
+    method: "POST",
+    headers: auth,
+  });
+  assert.equal(invalid.status, 403);
+  assert.equal(pending.status, 409);
+});
+
 test("profile completion requires the current privacy-media notice but not Turnstile", async () => {
   const { app } = makeApp();
   await syncVerifiedHunter(app);

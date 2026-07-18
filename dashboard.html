@@ -102,10 +102,12 @@
           <div class="action-row"><button class="hunter-button" type="submit">Accept updates and finish</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-finish-retry hidden>Try loading documents again</button></div>
         </form>
         <section id="hunter-signup-finishing-state" class="auth-form signup-verification" aria-labelledby="hunter-signup-finishing-title" hidden>
-          <p class="field-label">Finishing verified account</p>
-          <h3 id="hunter-signup-finishing-title" tabindex="-1">Your email is verified</h3>
-          <p data-signup-finishing-status role="status" aria-live="polite">Connecting your verified session and finishing the remaining account steps&hellip;</p>
-          <div class="action-row"><button class="hunter-button" type="button" data-signup-finishing-retry>Try finishing again</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-restart>Restart account setup</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-back-to-sign-in>Back to sign in</button></div>
+          <p class="field-label">Verified account</p>
+          <h3 id="hunter-signup-finishing-title" tabindex="-1">Email verified &mdash; finishing your account</h3>
+          <p>Your email verification is complete. Secure account details can take a moment to synchronize, and this page will continue from the first unfinished step.</p>
+          <p class="signup-verification__status" data-signup-finishing-status role="status" aria-live="polite" aria-atomic="true">Checking your account setup&hellip;</p>
+          <div class="action-row"><button class="hunter-button" type="button" data-signup-finishing-retry hidden>Try again</button><button class="hunter-button hunter-button--quiet" type="button" data-hunter-sign-out>Sign out</button><a class="hunter-button hunter-button--quiet" href="mailto:info@sebahub.com?subject=Hunter%20account%20support">Contact support</a></div>
+          <p class="field-hint">If setup does not finish after another try or a later refresh, contact support. Sign out only if you want to use a different account.</p>
         </section>
         <section id="hunter-signup-lost-state" class="auth-form signup-verification" aria-labelledby="hunter-signup-lost-title" hidden>
           <p class="field-label">Account setup paused</p>

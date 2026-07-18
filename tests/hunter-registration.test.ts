@@ -489,6 +489,39 @@ test("verified signup retry skips profile and waiver writes already accepted aut
   assert.deepEqual(calls, ["bootstrap", "fetch-waiver", "refresh"]);
 });
 
+test("verified signup with profile and privacy already complete continues at the missing waiver only", async () => {
+  const calls: string[] = [];
+  const document = { version: "2026.2", hash: "a".repeat(64) };
+  await completeHunterRegistration({
+    bootstrap: async () => { calls.push("bootstrap"); },
+    loadState: async () => ({ profileAndPrivacyComplete: true, waiverAcceptance: null }),
+    saveProfileAndPrivacy: async () => { calls.push("profile"); },
+    fetchWaiverDocument: async () => { calls.push("fetch-waiver"); return document; },
+    recordWaiverReview: async () => { calls.push("review"); return "review-privacy-resume"; },
+    acceptWaiver: async () => { calls.push("accept"); },
+    refreshDashboard: async () => { calls.push("refresh"); },
+  });
+  assert.deepEqual(calls, ["bootstrap", "fetch-waiver", "review", "accept", "refresh"]);
+});
+
+test("verified signup with current legal acceptance but incomplete profile writes profile only", async () => {
+  const calls: string[] = [];
+  const document = { version: "2026.2", hash: "a".repeat(64) };
+  await completeHunterRegistration({
+    bootstrap: async () => { calls.push("bootstrap"); },
+    loadState: async () => ({
+      profileAndPrivacyComplete: false,
+      waiverAcceptance: { documentVersion: document.version, documentHash: document.hash },
+    }),
+    saveProfileAndPrivacy: async () => { calls.push("profile"); },
+    fetchWaiverDocument: async () => { calls.push("fetch-waiver"); return document; },
+    recordWaiverReview: async () => { calls.push("review"); return "review-profile-resume"; },
+    acceptWaiver: async () => { calls.push("accept"); },
+    refreshDashboard: async () => { calls.push("refresh"); },
+  });
+  assert.deepEqual(calls, ["bootstrap", "profile", "fetch-waiver", "refresh"]);
+});
+
 test("verified signup reconciles response loss before retrying profile or waiver acceptance", async () => {
   const document = { version: "2026.2", hash: "a".repeat(64) };
   let profileComplete = false;

@@ -869,6 +869,68 @@ test("active user wins over stale signup resumes shared across tabs", async () =
   }
 });
 
+test("a valid Clerk user stays in finishing while dashboard provisioning is unavailable, then manual retry succeeds", async () => {
+  const page = await signupPage();
+  try {
+    const source = String.raw`
+      const initialize = window.DashboardTestModule.initializeAccountStateForTest;
+      if (!initialize) throw new Error("initializeAccountStateForTest export is unavailable");
+      window.__activeDashboardFailures = 1;
+      return initialize({
+        clerk: {
+          client: { signUp: null, signIn: { create: async function () { return {}; } } },
+          user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+          session: { id: "session-active" },
+          setActive: async function () {},
+          signOut: async function () {},
+        },
+        config: {
+          hunterPublishableKey: "pk_test_local",
+          deploymentEnvironment: "validation",
+          privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+          waiver: { version: "2026.2", hash: "b".repeat(64) },
+        },
+        auth: { getToken: async function () { return "valid-session-token"; } },
+        loadDashboard: async function () {
+          window.__activeDashboardLoads = Number(window.__activeDashboardLoads || 0) + 1;
+          if (Number(window.__activeDashboardFailures || 0) > 0) {
+            window.__activeDashboardFailures = Number(window.__activeDashboardFailures) - 1;
+            throw new window.DashboardTestModule.PlayerBootstrapError("retryable", true);
+          }
+          document.querySelector("[data-dashboard-state]").hidden = true;
+          document.querySelector("[data-dashboard-content]").hidden = false;
+        },
+      }).then(function (presentation) {
+        return {
+          presentation,
+          dashboardState: document.querySelector("[data-dashboard-state]").getAttribute("data-dashboard-state"),
+          signInHidden: document.querySelector("#hunter-sign-in-form").hidden,
+          loads: Number(window.__activeDashboardLoads || 0),
+        };
+      });
+    `;
+    const result = await page.evaluate((body) => new Function(body)(), source);
+
+    assert.deepEqual(result, {
+      presentation: "finishing",
+      dashboardState: "finishing",
+      signInHidden: true,
+      loads: 1,
+    });
+    assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), true);
+    assert.equal(await page.locator("[data-signup-finishing-retry]").isVisible(), true);
+    assert.match(await page.locator("[data-signup-finishing-status]").textContent() ?? "", /email is verified|email verified/i);
+    assert.doesNotMatch(await page.locator("[data-signup-finishing-status]").textContent() ?? "", /password|invalid credentials|database|webhook|Clerk/i);
+
+    await page.locator("[data-signup-finishing-retry]").click();
+    await page.waitForFunction(() => Number((window as unknown as Record<string, unknown>).__activeDashboardLoads || 0) === 2);
+    assert.equal(await page.locator("[data-dashboard-content]").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), false);
+  } finally {
+    await page.close();
+  }
+});
+
 test("active user trusts authoritative current waiver completion over stale resume legal identity", async () => {
   const page = await signupPage();
   let acceptanceWrites = 0;

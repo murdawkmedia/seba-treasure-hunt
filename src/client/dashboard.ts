@@ -1780,11 +1780,34 @@ function showLostSignupAttempt(copy: string): void {
   heading?.focus();
 }
 
-function showSignupFinishing(copy: string): void {
+function showSignupFinishing(
+  copy: string,
+  options: { retryAvailable?: boolean; kind?: "info" | "error" | "success" } = {},
+): void {
+  const finishing = document.querySelector<HTMLElement>("#hunter-signup-finishing-state");
+  const shouldFocusHeading = finishing?.hidden !== false;
+  const gate = document.querySelector<HTMLElement>("[data-dashboard-state]");
+  const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
+  if (gate) {
+    gate.hidden = false;
+    gate.dataset.dashboardState = "finishing";
+  }
+  if (content) content.hidden = true;
   showAuthForm("hunter-signup-finishing-state");
   const status = document.querySelector<HTMLElement>("[data-signup-finishing-status]");
-  if (status) status.textContent = copy;
-  document.querySelector<HTMLElement>("#hunter-signup-finishing-title")?.focus();
+  if (status) {
+    status.dataset.kind = options.kind ?? "info";
+    status.textContent = copy;
+  }
+  const retry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
+  if (retry) retry.hidden = options.retryAvailable !== true;
+  if (shouldFocusHeading) document.querySelector<HTMLElement>("#hunter-signup-finishing-title")?.focus();
+}
+
+function showProvisioningProgress(_elapsedMilliseconds: number, nextAttempt: number, totalAttempts: number): void {
+  showSignupFinishing(
+    `Your email is verified. Secure account setup is still synchronizing. Check ${nextAttempt} of ${totalAttempts} will run automatically; this can take about 30 seconds.`,
+  );
 }
 
 function browserSignupResumeStore(config: PublicConfig): HunterSignupResumeStore {
@@ -1832,26 +1855,94 @@ async function activateSession(sessionId: string | null | undefined): Promise<bo
   );
 }
 
-async function bootstrapPlayer(auth: HunterAuthHook): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+export const PLAYER_BOOTSTRAP_RETRY_DELAYS_MS = [1_000, 4_000, 10_000, 15_000] as const;
+
+export type PlayerBootstrapFailureClassification = "retryable" | "terminal";
+
+export function classifyPlayerBootstrapFailure(status: number): PlayerBootstrapFailureClassification {
+  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500
+    ? "retryable"
+    : "terminal";
+}
+
+export function provisioningFailureMessage(classification: PlayerBootstrapFailureClassification): string {
+  return classification === "retryable"
+    ? "Your email is verified. Account setup is still syncing, so automatic checks have paused. Try again now or refresh later."
+    : "Your email is verified, but account setup could not continue. Try again or refresh later; sign out and contact support if this continues.";
+}
+
+export class PlayerBootstrapError extends Error {
+  constructor(
+    readonly classification: PlayerBootstrapFailureClassification,
+    readonly automaticRetriesExhausted: boolean,
+  ) {
+    super(provisioningFailureMessage(classification));
+    this.name = "PlayerBootstrapError";
+  }
+}
+
+export async function signOutVerifiedAccount(
+  providerSignOut: () => Promise<void>,
+  clearLocalResume: () => void,
+): Promise<void> {
+  await providerSignOut();
+  clearLocalResume();
+}
+
+interface PlayerBootstrapResponse {
+  ok: boolean;
+  status: number;
+}
+
+export async function retryPlayerBootstrap(
+  attemptBootstrap: () => Promise<PlayerBootstrapResponse>,
+  delay: (milliseconds: number) => Promise<void>,
+  onProgress?: (elapsedMilliseconds: number, nextAttempt: number, totalAttempts: number) => void,
+): Promise<void> {
+  let elapsedMilliseconds = 0;
+  const totalAttempts = PLAYER_BOOTSTRAP_RETRY_DELAYS_MS.length + 1;
+  for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+    let response: PlayerBootstrapResponse;
+    try {
+      response = await attemptBootstrap();
+    } catch {
+      if (attempt === totalAttempts - 1) throw new PlayerBootstrapError("retryable", true);
+      const wait = PLAYER_BOOTSTRAP_RETRY_DELAYS_MS[attempt] ?? 0;
+      onProgress?.(elapsedMilliseconds, attempt + 2, totalAttempts);
+      await delay(wait);
+      elapsedMilliseconds += wait;
+      continue;
+    }
+    if (response.ok) return;
+    const classification = classifyPlayerBootstrapFailure(response.status);
+    if (classification === "terminal") throw new PlayerBootstrapError(classification, false);
+    if (attempt === totalAttempts - 1) throw new PlayerBootstrapError(classification, true);
+    const wait = PLAYER_BOOTSTRAP_RETRY_DELAYS_MS[attempt] ?? 0;
+    onProgress?.(elapsedMilliseconds, attempt + 2, totalAttempts);
+    await delay(wait);
+    elapsedMilliseconds += wait;
+  }
+}
+
+async function bootstrapPlayer(
+  auth: HunterAuthHook,
+  onProgress?: (elapsedMilliseconds: number, nextAttempt: number, totalAttempts: number) => void,
+): Promise<void> {
+  await retryPlayerBootstrap(async () => {
     const headers = await authHeaders(auth);
     headers.set("Content-Type", "application/json");
-    const response = await fetch("/api/v1/me/bootstrap", {
+    return await fetch("/api/v1/me/bootstrap", {
       method: "POST",
       headers,
       credentials: "same-origin",
       body: "{}",
+      signal: AbortSignal.timeout(8_000),
     });
-    if (response.ok) return;
-    if (response.status !== 409 || attempt === 3) {
-      throw new Error("Your verified player account could not be prepared.");
-    }
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
-  }
+  }, (milliseconds) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)), onProgress);
 }
 
 async function loadSignedInDashboard(auth: HunterAuthHook): Promise<void> {
-  await bootstrapPlayer(auth);
+  await bootstrapPlayer(auth, showProvisioningProgress);
   const response = await fetchDashboard(auth);
   if (!response.ok) throw new Error("Your dashboard could not be loaded.");
   const envelope: unknown = await response.json();
@@ -2092,7 +2183,7 @@ async function finalizeVerifiedSignup(auth: HunterAuthHook, draft: HunterSignupD
     waiver: currentWaiverIdentity,
   });
   await completeHunterRegistration({
-    bootstrap: () => bootstrapPlayer(auth),
+    bootstrap: () => bootstrapPlayer(auth, showProvisioningProgress),
     loadState: async () => {
       const [dashboard, waiverAcceptance] = await Promise.all([
         fetchDashboardData(auth),
@@ -2136,6 +2227,7 @@ type SignupRecoveryPresentation = "none" | "verification" | "lost_attempt" | "un
 interface SignupAccountFormDependencies {
   activateSignupSession?: (sessionId: string) => Promise<boolean>;
   finalizeSignup?: (draft: HunterSignupDraft) => Promise<void>;
+  loadSignedInAccount?: () => Promise<void>;
   resendCooldownMs?: number;
   completedFinishingMessage?: string;
 }
@@ -2148,6 +2240,7 @@ function setupAccountForms(
 ): SignupRecoveryPresentation {
   const activateSignupSession = dependencies.activateSignupSession ?? activateSession;
   const finalizeSignup = dependencies.finalizeSignup ?? ((draft) => finalizeVerifiedSignup(auth, draft));
+  const loadSignedInAccount = dependencies.loadSignedInAccount ?? (() => loadSignedInDashboard(auth));
   const resendCooldownMs = dependencies.resendCooldownMs ?? 30_000;
   let resendCooldownTimer: number | null = null;
   let currentSignupResume = resumeStore.read();
@@ -2178,6 +2271,26 @@ function setupAccountForms(
     currentSignupResume = null;
     signUpAttempt = null;
   };
+  const runSignedInAccountLoad = createSerializedSubmission(async () => {
+    const retry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
+    if (retry) {
+      retry.disabled = true;
+      retry.hidden = true;
+    }
+    showSignupFinishing("Your email is verified. Checking the remaining account setup now…");
+    try {
+      await loadSignedInAccount();
+      clearSignupResume();
+    } catch (error) {
+      const classification = error instanceof PlayerBootstrapError ? error.classification : "retryable";
+      showSignupFinishing(provisioningFailureMessage(classification), {
+        retryAvailable: true,
+        kind: classification === "terminal" ? "error" : "info",
+      });
+    } finally {
+      if (retry) retry.disabled = false;
+    }
+  });
 
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-show-auth]")) {
     button.addEventListener("click", () => {
@@ -2224,7 +2337,7 @@ function setupAccountForms(
         throw new Error("Additional account verification is required.");
       }
       clearSignupResume();
-      await loadSignedInDashboard(auth);
+      await runSignedInAccountLoad();
     } catch (error) {
       console.error("Hunter password sign-in failed.", identityDiagnostic(error));
       authMessage(identityError(error, "Sign-in failed. Check your email and password."), "error");
@@ -2308,7 +2421,10 @@ function setupAccountForms(
     const operationGeneration = beginSignupOperation();
     const retry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
     signUpAttempt = providerAttempt;
-    if (retry) retry.disabled = true;
+    if (retry) {
+      retry.disabled = true;
+      retry.hidden = true;
+    }
     showSignupFinishing("Connecting your verified session and finishing the remaining account steps…");
     try {
       const activated = await activateSignupSession(reconciliation.createdSessionId);
@@ -2325,9 +2441,13 @@ function setupAccountForms(
         await showSignupLegalRefresh(error);
         return;
       }
-      showSignupFinishing(
-        `${error instanceof Error ? error.message : "Account setup could not be finished."} Your verified progress is retained. Try again.`,
-      );
+      const copy = error instanceof PlayerBootstrapError
+        ? provisioningFailureMessage(error.classification)
+        : `${error instanceof Error ? error.message : "Account setup could not be finished."} Your verified progress is retained. Try again or refresh later.`;
+      showSignupFinishing(copy, {
+        retryAvailable: true,
+        kind: error instanceof PlayerBootstrapError && error.classification === "retryable" ? "info" : "error",
+      });
     } finally {
       if (signupOperationIsCurrent(operationGeneration) && currentSignupResume && retry) {
         retry.disabled = false;
@@ -2335,7 +2455,13 @@ function setupAccountForms(
     }
   });
   document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]")?.addEventListener("click", () => {
-    void runSignupFinishing();
+    const resume = currentSignupResume ?? resumeStore.read();
+    const providerAttempt = signUpAttempt ?? hunterClerk?.client?.signUp;
+    if (resume && providerAttempt && reconcileHunterSignupResume(resume, providerAttempt).state === "complete") {
+      void runSignupFinishing();
+      return;
+    }
+    void runSignedInAccountLoad();
   });
   const startSignupResendCooldown = (availableAt = Date.now() + resendCooldownMs): void => {
     const resend = document.querySelector<HTMLButtonElement>("[data-signup-resend]");
@@ -2503,6 +2629,9 @@ function setupAccountForms(
           if (!signUpAttempt) return { status: null, createdSessionId: null };
           if (signUpAttempt.status === "complete" && signUpAttempt.createdSessionId) return signUpAttempt;
           signUpAttempt = await signUpAttempt.attemptEmailAddressVerification({ code: verificationCode });
+          if (signUpAttempt.status === "complete" && signUpAttempt.createdSessionId) {
+            showSignupFinishing("Email verified. Checking the remaining account setup now…");
+          }
           return signUpAttempt;
         },
         activateSession: activateSignupSession,
@@ -2526,6 +2655,16 @@ function setupAccountForms(
       }
       if (currentResume && recovery?.state === "lost_attempt") {
         showLostSignupAttempt("The identity provider no longer has the matching secure sign-up attempt. Restart account setup or sign in to an existing account.");
+        return;
+      }
+      if (currentResume && recovery?.state === "complete") {
+        const copy = error instanceof PlayerBootstrapError
+          ? provisioningFailureMessage(error.classification)
+          : `${error instanceof Error ? error.message : "Account setup could not be finished."} Your verified progress is retained. Try again or refresh later.`;
+        showSignupFinishing(copy, {
+          retryAvailable: true,
+          kind: error instanceof PlayerBootstrapError && error.classification === "retryable" ? "info" : "error",
+        });
         return;
       }
       const copy = error instanceof SignupLegalDocumentsChangedError
@@ -2611,7 +2750,7 @@ function setupAccountForms(
       return;
     }
     if (reconcileHunterSignupResume(resume, signUpAttempt).state === "complete") {
-      showSignupFinishing("Your email is already verified. Use Try finishing again to continue the remaining account steps.");
+      showSignupFinishing("Your email is already verified. Use Try again to continue the remaining account steps.", { retryAvailable: true });
       return;
     }
     if (resume.resendAvailableAt && resume.resendAvailableAt > Date.now()) {
@@ -2729,11 +2868,26 @@ function setupAccountForms(
     }
   });
 
-  document.querySelector("[data-hunter-sign-out]")?.addEventListener("click", async () => {
-    clearSignupResume();
-    await hunterClerk?.signOut();
-    window.location.reload();
-  });
+  for (const signOut of document.querySelectorAll<HTMLButtonElement>("[data-hunter-sign-out]")) {
+    if (signOut.dataset.accountSignOutBound === "true") continue;
+    signOut.dataset.accountSignOutBound = "true";
+    signOut.addEventListener("click", async () => {
+      signOut.disabled = true;
+      try {
+        await signOutVerifiedAccount(
+          async () => { await hunterClerk?.signOut(); },
+          clearSignupResume,
+        );
+        window.location.reload();
+      } catch {
+        showSignupFinishing(
+          "Your verified session is still active because sign out could not finish. Try again, refresh later, or contact support.",
+          { retryAvailable: true, kind: "error" },
+        );
+        signOut.disabled = false;
+      }
+    });
+  }
 
   const resume = currentSignupResume;
   if (!resume || !hunterClerk?.client) return "none";
@@ -2758,7 +2912,7 @@ function setupAccountForms(
 
   signUpAttempt = providerAttempt;
   if (dependencies.completedFinishingMessage) {
-    showSignupFinishing(dependencies.completedFinishingMessage);
+    showSignupFinishing(dependencies.completedFinishingMessage, { retryAvailable: true });
     return "finishing";
   }
   void runSignupFinishing();
@@ -2776,7 +2930,7 @@ async function signupNeedsAuthoritativeFinishing(
   auth: HunterAuthHook,
   _resume: HunterSignupResumeRecord,
 ): Promise<boolean> {
-  await bootstrapPlayer(auth);
+  await bootstrapPlayer(auth, showProvisioningProgress);
   const [dashboard, waiverAcceptance] = await Promise.all([
     fetchDashboardData(auth),
     fetchWaiverAcceptanceProjection(auth),
@@ -2791,9 +2945,13 @@ async function initializeAccountState(
   resumeStore: HunterSignupResumeStore,
   dependencies: AccountStateDependencies = {},
 ): Promise<AccountStatePresentation> {
-  showSignedOut("signed-out");
   const resume = resumeStore.read();
+  const accountFormDependencies: SignupAccountFormDependencies = {
+    ...dependencies,
+    ...(dependencies.loadDashboard ? { loadSignedInAccount: dependencies.loadDashboard } : {}),
+  };
   if (hunterClerk?.user) {
+    showSignupFinishing("Your email is verified. Checking your secure account setup…");
     const activeEmail = hunterClerk.user.primaryEmailAddress?.emailAddress?.trim().toLowerCase() ?? "";
     const providerAttempt = hunterClerk.client?.signUp;
     const reconciliation = resume && providerAttempt
@@ -2816,12 +2974,23 @@ async function initializeAccountState(
       }
     }
     if (needsFinishing) {
-      return setupAccountForms(auth, config, resumeStore, dependencies);
+      return setupAccountForms(auth, config, resumeStore, accountFormDependencies);
     }
     resumeStore.clear();
-    await (dependencies.loadDashboard ?? (() => loadSignedInDashboard(auth)))();
-    return "dashboard";
+    setupAccountForms(auth, config, resumeStore, accountFormDependencies);
+    try {
+      await (dependencies.loadDashboard ?? (() => loadSignedInDashboard(auth)))();
+      return "dashboard";
+    } catch (error) {
+      const classification = error instanceof PlayerBootstrapError ? error.classification : "retryable";
+      showSignupFinishing(provisioningFailureMessage(classification), {
+        retryAvailable: true,
+        kind: classification === "terminal" ? "error" : "info",
+      });
+      return "finishing";
+    }
   }
+  showSignedOut("signed-out");
   return setupAccountForms(auth, config, resumeStore, dependencies);
 }
 
@@ -2838,6 +3007,10 @@ async function initializeDashboard(): Promise<void> {
     const presentation = await initializeAccountState(auth, config, resumeStore);
     if (presentation === "none") authMessage("Secure account access is ready.");
   } catch {
+    if (hunterClerk.user) {
+      showSignupFinishing(provisioningFailureMessage("retryable"), { retryAvailable: true });
+      return;
+    }
     showSignedOut("unavailable");
   }
 }
