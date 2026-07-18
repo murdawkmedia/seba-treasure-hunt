@@ -130,3 +130,71 @@ test("legal dialog dismisses a backdrop click but not a click on dialog content"
     await browser.close();
   }
 });
+
+test("open legal dialogs wrap keyboard focus across visible iframe and fallback controls", { timeout: 30_000 }, async () => {
+  const bundle = await build({
+    stdin: {
+      contents: `
+        import * as dashboard from "./src/client/dashboard.ts";
+        window.__installLegalFocusContainment = dashboard.installSignupLegalDialogFocusContainment;
+      `,
+      resolveDir: root,
+      sourcefile: "legal-dialog-focus-entry.ts",
+    },
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    target: "es2023",
+    write: false,
+    logLevel: "silent",
+  });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <button id="outside">Outside</button>
+      ${["privacy-media", "waiver"].map((kind) => `
+        <dialog data-kind="${kind}">
+          <button data-first type="button">Close</button>
+          <button hidden type="button">Hidden</button>
+          <button disabled type="button">Disabled</button>
+          <iframe data-frame title="Legal document" src="about:blank"></iframe>
+          <a data-fallback href="/full-${kind}" target="_blank">Open full document</a>
+          <button data-last type="button">Done</button>
+          <a data-hidden-link href="/hidden" style="display:none">Hidden link</a>
+        </dialog>
+      `).join("")}
+    `);
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+
+    assert.equal(await page.evaluate(() => typeof window.__installLegalFocusContainment), "function");
+    for (const kind of ["privacy-media", "waiver"]) {
+      const dialog = page.locator(`dialog[data-kind="${kind}"]`);
+      await dialog.evaluate((element) => {
+        window.__installLegalFocusContainment(element);
+        element.showModal();
+      });
+
+      await dialog.locator("[data-first]").focus();
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await dialog.locator("[data-last]").evaluate((element) => element === document.activeElement), true, `${kind} Shift+Tab wraps first to last`);
+
+      await page.keyboard.press("Tab");
+      assert.equal(await dialog.locator("[data-first]").evaluate((element) => element === document.activeElement), true, `${kind} Tab wraps last to first`);
+
+      await page.keyboard.press("Tab");
+      assert.equal(await dialog.locator("[data-frame]").evaluate((element) => element === document.activeElement), true, `${kind} includes the visible iframe in focus order`);
+      await page.keyboard.press("Tab");
+      assert.equal(await dialog.locator("[data-fallback]").evaluate((element) => element === document.activeElement), true, `${kind} includes the fallback link in focus order`);
+
+      await dialog.evaluate((element) => element.close());
+      assert.equal(await dialog.evaluate((element) => {
+        const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+        element.dispatchEvent(event);
+        return event.defaultPrevented;
+      }), false, `${kind} does not trap focus while closed`);
+    }
+  } finally {
+    await browser.close();
+  }
+});

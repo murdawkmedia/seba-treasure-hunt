@@ -105,12 +105,42 @@ async function auditRoutes(browser, viewport, files) {
       await runAxe(`${file} collapsed menu`);
 
       if (file === "dashboard.html" && viewport.width === 390) {
-        await page.locator('[data-signup-dialog="privacy-media"]').evaluate((dialog) => dialog.showModal());
-        const fallback = page.locator('[data-signup-dialog="privacy-media"] [data-signup-dialog-fallback]');
-        const box = await fallback.boundingBox();
-        assert.ok(box && box.height >= 44, `mobile legal fallback target is at least 44px high (actual ${box?.height ?? 0}px)`);
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "mobile legal dialog does not create horizontal overflow");
-        await page.locator('[data-signup-dialog="privacy-media"]').evaluate((dialog) => dialog.close());
+        const contrastAgainstFooter = (fallback) => fallback.evaluate((element) => {
+          const channels = (value) => value.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
+          const luminance = (value) => {
+            const [red, green, blue] = channels(value).map((channel) => {
+              const normalized = channel / 255;
+              return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+          };
+          const style = getComputedStyle(element);
+          const background = getComputedStyle(element.closest(".signup-legal-dialog__footer")).backgroundColor;
+          const ratio = (foreground) => {
+            const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+            return (values[0] + 0.05) / (values[1] + 0.05);
+          };
+          return { text: ratio(style.color), outline: ratio(style.outlineColor) };
+        });
+        for (const kind of ["privacy-media", "waiver"]) {
+          const dialog = page.locator(`[data-signup-dialog="${kind}"]`);
+          await dialog.evaluate((element) => element.showModal());
+          const fallback = dialog.locator("[data-signup-dialog-fallback]");
+          const box = await fallback.boundingBox();
+          assert.ok(box && box.height >= 44, `${kind} mobile legal fallback target is at least 44px high (actual ${box?.height ?? 0}px)`);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${kind} mobile legal dialog does not create horizontal overflow`);
+          await runAxe(`${kind} open legal dialog`);
+          const restingContrast = await contrastAgainstFooter(fallback);
+          assert.ok(restingContrast.text >= 4.5, `${kind} fallback text contrast is at least 4.5:1 (actual ${restingContrast.text})`);
+          await fallback.hover();
+          const hoverContrast = await contrastAgainstFooter(fallback);
+          assert.ok(hoverContrast.text >= 4.5, `${kind} fallback hover contrast is at least 4.5:1 (actual ${hoverContrast.text})`);
+          await page.keyboard.press("Tab");
+          await fallback.focus();
+          const focusContrast = await contrastAgainstFooter(fallback);
+          assert.ok(focusContrast.outline >= 3, `${kind} fallback focus outline contrast is at least 3:1 (actual ${focusContrast.outline})`);
+          await dialog.evaluate((element) => element.close());
+        }
       }
 
       if (viewport.width <= 760) {

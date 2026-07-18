@@ -132,6 +132,33 @@ export function installSignupLegalDialogBackdropDismissal(dialog: HTMLDialogElem
   });
 }
 
+export function installSignupLegalDialogFocusContainment(dialog: HTMLDialogElement): void {
+  const selector = [
+    "a[href]",
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "iframe",
+    "[tabindex]:not([tabindex^='-'])",
+  ].join(",");
+  dialog.addEventListener("keydown", (event) => {
+    if (!dialog.open || event.defaultPrevented || event.key !== "Tab") return;
+    const targets = [...dialog.querySelectorAll<HTMLElement>(selector)].filter((target) => {
+      if (target.hidden || target.closest("[hidden], [aria-hidden='true']") || target.tabIndex < 0) return false;
+      const style = window.getComputedStyle(target);
+      return style.display !== "none" && style.visibility !== "hidden" && target.getClientRects().length > 0;
+    });
+    const first = targets[0];
+    const last = targets.at(-1);
+    if (!first || !last) return;
+    const active = document.activeElement;
+    if (event.shiftKey ? active !== first : active !== last) return;
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  });
+}
+
 interface SignupLegalReviewPreparation {
   kind: SignupLegalDocumentKind;
   identity: LegalDocumentIdentity;
@@ -2508,6 +2535,7 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
     const loads = createSignupLegalViewerLoadCoordinator(dialog);
     viewerLoads.set(dialog, loads);
     installSignupLegalDialogBackdropDismissal(dialog);
+    installSignupLegalDialogFocusContainment(dialog);
     for (const close of dialog.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
       close.addEventListener("click", () => dialog.close());
     }

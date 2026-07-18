@@ -619,6 +619,7 @@ button.hunter-button {
 }
 
 .signup-legal-dialog {
+  --campaign-focus: var(--campaign-focus-dark);
   display: none;
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(960px, calc(100vw - 28px));
@@ -705,13 +706,16 @@ button.hunter-button {
   border-top: 1px solid var(--hunter-paper-deep);
 }
 
-[data-signup-dialog-fallback] {
+.signup-legal-dialog [data-signup-dialog-fallback] {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
   padding-block: 8px;
   box-sizing: border-box;
+  color: var(--hunter-ink-dark);
 }
+
+.signup-legal-dialog [data-signup-dialog-fallback]:hover { color: var(--campaign-rust); }
 
 .legal-embed--signup .skip-link,
 .legal-embed--signup .case-strip,
