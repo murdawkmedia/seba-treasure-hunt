@@ -1,4 +1,20 @@
+import type { ReportReviewState } from "../shared/report-workflow";
 import type { TransactionalMailAcceptance } from "./transactional-mail";
+
+export type ReportWorkflowMutation =
+  | {
+      operation: "transition";
+      expectedStatus: ReportReviewState;
+      status: ReportReviewState;
+      note: string | null;
+      confirmed: boolean;
+    }
+  | {
+      operation: "unassign";
+      expectedStatus: ReportReviewState;
+      note: string | null;
+      confirmed: boolean;
+    };
 
 export type CaseState = "open" | "paused" | "found";
 export type ZoneState = "open" | "restricted" | "hazardous" | "temporarily_closed";
@@ -367,7 +383,11 @@ export interface DataStore {
     mediaId: string,
     actorSubject: string
   ): Promise<{ key: string; contentType: string } | null>;
-  updateReport(id: string, input: Record<string, unknown>, actorSubject: string): Promise<Record<string, unknown> | null>;
+  updateReport(
+    id: string,
+    input: ReportWorkflowMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
   publishReportToCaseNotes(
     reportId: string,
     input: { body: string; mediaIds: string[] },

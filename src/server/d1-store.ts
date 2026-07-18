@@ -1,11 +1,13 @@
 import { ApiError, ConflictError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument } from "./legal-documents";
 import { isAllowedStaffEmail, staffDisplayName } from "./staff-domains";
+import { publicAttributionFromReportSnapshot } from "../shared/publication";
 import {
   isReportReviewState,
   nextReportStates,
-  publicAttributionFromReportSnapshot
-} from "../shared/publication";
+  reportTransitionRequiresConfirmation,
+  reportTransitionRequiresReason
+} from "../shared/report-workflow";
 import { publicHunterIdentity } from "../shared/public-identity";
 import type {
   CaseStatus,
@@ -18,6 +20,7 @@ import type {
   OpsWaiverReceiptResendResult,
   Page,
   PlayerAccessState,
+  ReportWorkflowMutation,
   SponsorContributionRange,
   SponsorInquiryCounts,
   SponsorInquiryInput,
@@ -3158,112 +3161,197 @@ export class D1DataStore implements DataStore {
 
   async updateReport(
     reportId: string,
-    input: Record<string, unknown>,
+    input: ReportWorkflowMutation,
     actorSubject: string
   ): Promise<Record<string, unknown> | null> {
     const existing = await this.reportById(reportId);
     if (!existing) return null;
-    const requestedStatus = input.status;
     const currentStatus = existing.status;
-    const terminal = requestedStatus === "rejected" || requestedStatus === "resolved";
-    if (terminal) {
-      const activePublication = await this.db
-        .prepare(
-          `SELECT 1 AS active FROM official_updates
-           WHERE source_report_id = ?
-             AND (status = 'published' OR (status = 'scheduled' AND scheduled_for <= ?))
-           LIMIT 1`
-        )
-        .bind(reportId, now())
-        .first<Row>();
-      if (activePublication) {
+    if (!isReportReviewState(currentStatus) || currentStatus !== input.expectedStatus) {
+      throw new ApiError(409, "report_transition_stale", "The report changed. Refresh and try again.");
+    }
+    const previousAssignedTo = nullable(existing.assignedTo);
+    const note = input.note?.trim() || null;
+    const timestamp = now();
+    let requestedStatus = currentStatus;
+    let assignedTo: string | null = previousAssignedTo;
+    let eventType = "assignment.unassigned";
+    let auditAction = "report.unassigned";
+    let officialUpdateGuard = false;
+    let caseNoteGuard = false;
+
+    if (input.operation === "transition") {
+      requestedStatus = input.status;
+      if (!nextReportStates(currentStatus).includes(requestedStatus)) {
         throw new ApiError(
           409,
-          "report_publication_active",
-          "Unpublish the linked report post before moving this report to a terminal state."
+          "report_transition_invalid",
+          `Invalid report transition: cannot move from ${currentStatus} to ${requestedStatus}.`
         );
       }
+      if (reportTransitionRequiresReason(currentStatus, requestedStatus) && !note) {
+        throw new ApiError(
+          422,
+          "report_transition_reason_required",
+          "Record a private reason for this status change."
+        );
+      }
+      if (reportTransitionRequiresConfirmation(currentStatus, requestedStatus) && !input.confirmed) {
+        throw new ApiError(
+          422,
+          "report_transition_confirmation_required",
+          "Confirm this audited status change."
+        );
+      }
+
+      officialUpdateGuard = requestedStatus === "resolved" || requestedStatus === "rejected" ||
+        (currentStatus === "verified" && requestedStatus === "reviewing");
+      caseNoteGuard = requestedStatus === "rejected";
+      const [activeOfficialUpdate, publicCaseNote] = await Promise.all([
+        officialUpdateGuard
+          ? this.db.prepare(
+              `SELECT 1 AS active FROM official_updates
+               WHERE source_report_id = ? AND status IN ('draft', 'scheduled', 'published')
+               LIMIT 1`
+            ).bind(reportId).first<Row>()
+          : Promise.resolve(null),
+        caseNoteGuard
+          ? this.db.prepare(
+              `SELECT 1 AS active FROM operator_reviewed_case_notes
+               WHERE source_report_id = ? AND status = 'published'
+               LIMIT 1`
+            ).bind(reportId).first<Row>()
+          : Promise.resolve(null)
+      ]);
+      if (activeOfficialUpdate) {
+        throw new ApiError(
+          409,
+          "report_official_update_active",
+          "Withdraw the linked Official Update before changing this report to that state.",
+          { destination: "official_update", action: "withdraw" }
+        );
+      }
+      if (publicCaseNote) {
+        throw new ApiError(
+          409,
+          "report_case_note_active",
+          "Withdraw the linked Case Note before rejecting this report.",
+          { destination: "case_note", action: "withdraw" }
+        );
+      }
+
+      assignedTo = requestedStatus === "reviewing" &&
+          (currentStatus === "received" || currentStatus === "rejected" || currentStatus === "resolved")
+        ? actorSubject
+        : previousAssignedTo ?? actorSubject;
+      eventType = `status.${requestedStatus}`;
+      auditAction = "report.updated";
+    } else {
+      if (!input.confirmed) {
+        throw new ApiError(
+          422,
+          "report_transition_confirmation_required",
+          "Confirm this audited status change."
+        );
+      }
+      if (!previousAssignedTo) {
+        throw new ApiError(409, "report_assignment_stale", "The report assignment changed. Refresh and try again.");
+      }
+      assignedTo = null;
     }
-    if (
-      !isReportReviewState(currentStatus) ||
-      !isReportReviewState(requestedStatus) ||
-      !nextReportStates(currentStatus).includes(requestedStatus)
-    ) {
-      throw new ApiError(
-        409,
-        "report_transition_invalid",
-        `Invalid report transition: cannot move from ${String(currentStatus)} to ${String(requestedStatus)}.`
-      );
-    }
-    const timestamp = now();
-    const assignedTo = nullable(input.assignedTo) ?? nullable(existing.assignedTo) ??
-      (requestedStatus === "reviewing" ? actorSubject : null);
-    const operationToken = `report-status:${id()}`;
+
+    const operationToken = `report-workflow:${id()}`;
     const eventId = id();
     const auditId = id();
-    const update = terminal
-      ? this.db.prepare(
-          `UPDATE private_reports
-           SET status = ?, assigned_to = ?, updated_at = ?
-           WHERE id = ? AND status = ?
-             AND NOT EXISTS (
-               SELECT 1 FROM official_updates
-               WHERE source_report_id = ?
-                 AND (status = 'published' OR (status = 'scheduled' AND scheduled_for <= ?))
-             )`
-        ).bind(requestedStatus, operationToken, timestamp, reportId, currentStatus, reportId, timestamp)
-      : this.db.prepare(
-          `UPDATE private_reports SET status = ?, assigned_to = ?, updated_at = ?
-           WHERE id = ? AND status = ?`
-        ).bind(requestedStatus, operationToken, timestamp, reportId, currentStatus);
+    let updateSql = input.operation === "transition"
+      ? `UPDATE private_reports SET status = ?, assigned_to = ?, updated_at = ?
+         WHERE id = ? AND status = ?`
+      : `UPDATE private_reports SET assigned_to = ?, updated_at = ?
+         WHERE id = ? AND status = ?`;
+    const updateBindings: unknown[] = input.operation === "transition"
+      ? [requestedStatus, operationToken, timestamp, reportId, currentStatus]
+      : [operationToken, timestamp, reportId, currentStatus];
+    if (previousAssignedTo === null) {
+      updateSql += " AND assigned_to IS NULL";
+    } else {
+      updateSql += " AND assigned_to = ?";
+      updateBindings.push(previousAssignedTo);
+    }
+    if (officialUpdateGuard) {
+      updateSql += ` AND NOT EXISTS (
+        SELECT 1 FROM official_updates
+        WHERE source_report_id = ? AND status IN ('draft', 'scheduled', 'published')
+      )`;
+      updateBindings.push(reportId);
+    }
+    if (caseNoteGuard) {
+      updateSql += ` AND NOT EXISTS (
+        SELECT 1 FROM operator_reviewed_case_notes
+        WHERE source_report_id = ? AND status = 'published'
+      )`;
+      updateBindings.push(reportId);
+    }
+    const update = this.db.prepare(updateSql).bind(...updateBindings);
+    const metadata = {
+      operation: input.operation,
+      previousStatus: currentStatus,
+      status: requestedStatus,
+      reason: note,
+      previousAssignedTo,
+      assignedTo,
+      assignmentChanged: previousAssignedTo !== assignedTo
+    };
     const results = await this.db.batch([
       update,
       this.db.prepare(
         `INSERT INTO report_events (id, report_id, event_type, actor_subject, note, occurred_at)
          SELECT ?, ?, ?, ?, ?, ?
          WHERE EXISTS (
-           SELECT 1 FROM private_reports WHERE id = ? AND assigned_to = ?
+           SELECT 1 FROM private_reports WHERE id = ? AND assigned_to = ? AND status = ?
          )`
       ).bind(
         eventId,
         reportId,
-        `status.${requestedStatus}`,
+        eventType,
         actorSubject,
-        input.note ?? null,
+        note,
         timestamp,
         reportId,
-        operationToken
+        operationToken,
+        requestedStatus
       ),
       this.db.prepare(
         `INSERT INTO audit_events
          (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
-         SELECT ?, ?, 'report.updated', 'report', ?, ?, ?
+         SELECT ?, ?, ?, 'report', ?, ?, ?
          WHERE EXISTS (
-           SELECT 1 FROM private_reports WHERE id = ? AND assigned_to = ?
+           SELECT 1 FROM private_reports WHERE id = ? AND assigned_to = ? AND status = ?
          )`
       ).bind(
         auditId,
         actorSubject,
+        auditAction,
         reportId,
-        json({ status: requestedStatus }),
+        json(metadata),
         timestamp,
         reportId,
-        operationToken
+        operationToken,
+        requestedStatus
       ),
       this.db.prepare(
         `UPDATE private_reports SET assigned_to = ?
-         WHERE id = ? AND assigned_to = ?
+         WHERE id = ? AND assigned_to = ? AND status = ?
            AND EXISTS (SELECT 1 FROM report_events WHERE id = ?)
            AND EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`
-      ).bind(assignedTo, reportId, operationToken, eventId, auditId)
+      ).bind(assignedTo, reportId, operationToken, requestedStatus, eventId, auditId)
     ]);
     const updateChanged = Number(results[0]?.meta.changes) === 1;
     const historyComplete = results.every((result) => Number(result.meta.changes) === 1);
-    if (terminal && !updateChanged) {
-      throw new ConflictError("The report changed. Refresh and try again.");
-    }
     if (!updateChanged || !historyComplete) {
-      throw new ConflictError("The report changed. Refresh and try again.");
+      if (input.operation === "unassign") {
+        throw new ApiError(409, "report_assignment_stale", "The report assignment changed. Refresh and try again.");
+      }
+      throw new ApiError(409, "report_transition_stale", "The report changed. Refresh and try again.");
     }
     return this.reportById(reportId);
   }

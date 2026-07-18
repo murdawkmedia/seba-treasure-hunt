@@ -6,6 +6,7 @@ import {
   publicDisplayNameError,
   resolvePublicAttribution,
 } from "../shared/publication";
+import { isReportReviewState } from "../shared/report-workflow";
 import {
   REPORT_IMAGE_DIRECT_BYTES,
   REPORT_IMAGE_TOTAL_BYTES,
@@ -18,6 +19,7 @@ import type {
   CaseState,
   PagesEnv,
   Principal,
+  ReportWorkflowMutation,
   SponsorContributionRange,
   SponsorInquiryRecord,
   SponsorInquiryState,
@@ -74,15 +76,6 @@ const legalFrameablePaths = new Set(["/privacy", "/privacy.html", "/waiver", "/w
 const privateReportMediaPath =
   /^\/api\/v1\/ops\/(?:production-snapshot\/)?reports\/[^/]+\/media\/[^/]+$/;
 const appPaths = new Set([...cleanRoutes.keys()].filter((path) => !["/", "/route", "/interview"].includes(path)));
-const validReportStates = new Set([
-  "received",
-  "reviewing",
-  "contacted",
-  "escalated",
-  "verified",
-  "rejected",
-  "resolved"
-]);
 const validImageTypes = REPORT_IMAGE_TYPES;
 const validSponsorSupportTypes = new Set<SponsorSupportType>([
   "community",
@@ -1738,19 +1731,45 @@ export const createApi = (deps: ApiDependencies) => {
     sameOrigin(c.req.raw);
     const staff = await requireStaff(deps, c.req.raw);
     const { body } = await requestBody(c.req.raw);
-    const status = requiredString(body, "status", { max: 20 });
-    if (!validReportStates.has(status)) {
-      throw new ApiError(422, "validation_failed", "Report status is invalid.", { field: "status" });
+    const operation = requiredString(body, "operation", { max: 20 });
+    const expectedStatus = requiredString(body, "expectedStatus", { max: 20 });
+    if (Object.hasOwn(body, "assignedTo")) {
+      throw new ApiError(
+        422,
+        "validation_failed",
+        "Report assignment cannot be set through a status request."
+      );
     }
-    const report = await deps.store.updateReport(
-      c.req.param("id"),
-      {
-        status,
-        note: optionalString(body, "note", 2_000),
-        assignedTo: optionalString(body, "assignedTo", 200)
-      },
-      staff.subject
-    );
+    if (!isReportReviewState(expectedStatus)) {
+      throw new ApiError(422, "validation_failed", "Expected report status is invalid.", {
+        field: "expectedStatus"
+      });
+    }
+    const note = optionalString(body, "note", 2_000);
+    const confirmed = body.confirmed === true;
+
+    let mutation: ReportWorkflowMutation;
+    if (operation === "transition") {
+      const status = requiredString(body, "status", { max: 20 });
+      if (!isReportReviewState(status)) {
+        throw new ApiError(422, "validation_failed", "Report status is invalid.", { field: "status" });
+      }
+      mutation = { operation, expectedStatus, status, note, confirmed };
+    } else if (operation === "unassign") {
+      if (Object.hasOwn(body, "status") || Object.hasOwn(body, "assignedTo")) {
+        throw new ApiError(
+          422,
+          "validation_failed",
+          "Unassign does not accept a status or assignment value."
+        );
+      }
+      mutation = { operation, expectedStatus, note, confirmed };
+    } else {
+      throw new ApiError(422, "validation_failed", "Report operation is invalid.", {
+        field: "operation"
+      });
+    }
+    const report = await deps.store.updateReport(c.req.param("id"), mutation, staff.subject);
     if (!report) throw new ApiError(404, "report_not_found", "Report not found.");
     return success(c, report);
   });

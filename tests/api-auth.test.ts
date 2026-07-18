@@ -889,8 +889,15 @@ test("gives active staff a private dashboard, report queue, and moderation actio
 
   const reportUpdate = await app.request("https://www.timlostsomething.com/api/v1/ops/reports/report-1", {
     method: "PATCH",
-    ...json({ status: "reviewing", note: "Checking the supplied details." }, headers)
+    ...json({
+      operation: "transition",
+      expectedStatus: "received",
+      status: "reviewing",
+      note: "Checking the supplied details.",
+      confirmed: false,
+    }, headers)
   });
+  assert.equal(reportUpdate.status, 200);
   assert.equal((await responseJson(reportUpdate)).data.status, "reviewing");
 
   const pending = await app.request("https://www.timlostsomething.com/api/v1/ops/moderation/notes", { headers });
@@ -925,6 +932,145 @@ test("gives active staff a private dashboard, report queue, and moderation actio
   const audit = await app.request("https://www.timlostsomething.com/api/v1/ops/audit", { headers });
   assert.equal(audit.status, 200);
   assert.equal((await responseJson(audit)).data.at(-1).action, "note.moderated");
+});
+
+test("enforces explicit reversible private report workflow mutations", async () => {
+  const { app, store } = makeApp();
+  store.staff.add("staff-2");
+  store.reports.push(
+    { id: "report-reviewing", status: "reviewing", type: "tip", assignedTo: "staff-1" },
+    { id: "report-contacted", status: "contacted", type: "tip", assignedTo: "staff-1" },
+    { id: "report-rejected", status: "rejected", type: "tip", assignedTo: "staff-1" },
+    { id: "report-verified", status: "verified", type: "find", assignedTo: "staff-1" },
+    { id: "report-stale", status: "reviewing", type: "tip", assignedTo: "staff-1" },
+    { id: "report-unassign", status: "reviewing", type: "tip", assignedTo: "staff-1" },
+    { id: "report-ambiguous", status: "reviewing", type: "tip", assignedTo: "staff-1" },
+    { id: "report-auth", status: "received", type: "tip", assignedTo: null },
+  );
+  const staffHeaders = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com",
+  };
+  const patchReport = (
+    reportId: string,
+    body: Record<string, unknown>,
+    headers: Record<string, string> = staffHeaders,
+  ) => app.request(`https://www.timlostsomething.com/api/v1/ops/reports/${reportId}`, {
+    method: "PATCH",
+    ...json(body, headers),
+  });
+  const errorCode = async (response: Response) => (await responseJson(response)).error.code as string;
+
+  const contacted = await patchReport("report-reviewing", {
+    operation: "transition",
+    expectedStatus: "reviewing",
+    status: "contacted",
+    confirmed: false,
+  });
+  assert.equal(contacted.status, 200);
+
+  const missingReason = await patchReport("report-contacted", {
+    operation: "transition",
+    expectedStatus: "contacted",
+    status: "reviewing",
+    confirmed: true,
+  });
+  assert.equal(missingReason.status, 422);
+  assert.equal(await errorCode(missingReason), "report_transition_reason_required");
+
+  const missingConfirmation = await patchReport("report-contacted", {
+    operation: "transition",
+    expectedStatus: "contacted",
+    status: "reviewing",
+    note: "Corrected evidence needs another review.",
+    confirmed: false,
+  });
+  assert.equal(missingConfirmation.status, 422);
+  assert.equal(await errorCode(missingConfirmation), "report_transition_confirmation_required");
+
+  const corrected = await patchReport("report-contacted", {
+    operation: "transition",
+    expectedStatus: "contacted",
+    status: "reviewing",
+    note: "Corrected evidence needs another review.",
+    confirmed: true,
+  });
+  assert.equal(corrected.status, 200);
+
+  const reopened = await patchReport("report-rejected", {
+    operation: "transition",
+    expectedStatus: "rejected",
+    status: "reviewing",
+    note: "A second operator supplied corrected evidence.",
+    confirmed: true,
+  }, {
+    authorization: "Bearer staff-2-token",
+    origin: "https://www.timlostsomething.com",
+  });
+  assert.equal(reopened.status, 200);
+  assert.equal((await responseJson(reopened)).data.assignedTo, "staff-2");
+
+  const resolved = await patchReport("report-verified", {
+    operation: "transition",
+    expectedStatus: "verified",
+    status: "resolved",
+    note: "Internal follow-up is complete.",
+    confirmed: true,
+  });
+  assert.equal(resolved.status, 200);
+
+  const stale = await patchReport("report-stale", {
+    operation: "transition",
+    expectedStatus: "contacted",
+    status: "reviewing",
+    note: "This tab is stale.",
+    confirmed: true,
+  });
+  assert.equal(stale.status, 409);
+  assert.equal(await errorCode(stale), "report_transition_stale");
+
+  const unassigned = await patchReport("report-unassign", {
+    operation: "unassign",
+    expectedStatus: "reviewing",
+    confirmed: true,
+  });
+  assert.equal(unassigned.status, 200);
+  assert.equal((await responseJson(unassigned)).data.status, "reviewing");
+  assert.equal(store.reports.find((item) => item.id === "report-unassign")?.assignedTo, null);
+
+  const repeatedUnassign = await patchReport("report-unassign", {
+    operation: "unassign",
+    expectedStatus: "reviewing",
+    confirmed: true,
+  });
+  assert.equal(repeatedUnassign.status, 409);
+  assert.equal(await errorCode(repeatedUnassign), "report_assignment_stale");
+
+  const ambiguous = await patchReport("report-ambiguous", {
+    status: "verified",
+    assignedTo: null,
+  });
+  assert.equal(ambiguous.status, 422);
+  assert.equal(await errorCode(ambiguous), "validation_failed");
+
+  const authBefore = JSON.stringify(store.reports.find((item) => item.id === "report-auth"));
+  const auditsBefore = store.audits.length;
+  const anonymous = await patchReport("report-auth", {
+    operation: "transition",
+    expectedStatus: "received",
+    status: "reviewing",
+    confirmed: false,
+  }, { origin: "https://www.timlostsomething.com" });
+  assert.equal(anonymous.status, 401);
+  const hunter = await patchReport("report-auth", {
+    operation: "transition",
+    expectedStatus: "received",
+    status: "reviewing",
+    confirmed: false,
+  }, hunterHeaders);
+  assert.ok(hunter.status === 401 || hunter.status === 403);
+  assert.equal(JSON.stringify(store.reports.find((item) => item.id === "report-auth")), authBefore);
+  assert.equal(store.audits.length, auditsBefore);
 });
 
 test("lets active staff inspect a private report and only its scoped derivative evidence", async () => {
@@ -1127,11 +1273,17 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
     "https://www.timlostsomething.com/api/v1/ops/reports/report-publish-1",
     {
       method: "PATCH",
-      ...json({ status: "resolved" }, { authorization: "Bearer staff-token" })
+      ...json({
+        operation: "transition",
+        expectedStatus: "verified",
+        status: "resolved",
+        note: "Internal work is complete.",
+        confirmed: true,
+      }, { authorization: "Bearer staff-token" })
     }
   );
   assert.equal(terminalWhilePublished.status, 409);
-  assert.equal((await responseJson(terminalWhilePublished)).error.code, "report_publication_active");
+  assert.equal((await responseJson(terminalWhilePublished)).error.code, "report_official_update_active");
   assert.equal(store.reports.find((report) => report.id === "report-publish-1")?.status, "verified");
   assert.equal(store.updates.some((update) => update.id === publishedData.id), true);
 
@@ -1165,7 +1317,13 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
     "https://www.timlostsomething.com/api/v1/ops/reports/report-publish-1",
     {
       method: "PATCH",
-      ...json({ status: "resolved" }, { authorization: "Bearer staff-token" })
+      ...json({
+        operation: "transition",
+        expectedStatus: "verified",
+        status: "resolved",
+        note: "Internal work is complete.",
+        confirmed: true,
+      }, { authorization: "Bearer staff-token" })
     }
   );
   assert.equal(terminalAfterUnpublish.status, 200);

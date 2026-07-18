@@ -4,6 +4,7 @@ import type {
   OperatorAlertRecipientClaim,
   OperatorAlertRecipientCompletion,
   PlayerAccessState,
+  ReportWorkflowMutation,
   SponsorInquiryCounts,
   SponsorInquiryInput,
   SponsorInquiryRecord,
@@ -21,6 +22,12 @@ import type {
 import { ApiError } from "../src/server/errors";
 import { publicAttributionFromReportSnapshot } from "../src/shared/publication";
 import { publicHunterIdentity } from "../src/shared/public-identity";
+import {
+  isReportReviewState,
+  nextReportStates,
+  reportTransitionRequiresConfirmation,
+  reportTransitionRequiresReason,
+} from "../src/shared/report-workflow";
 
 export type Principal = {
   kind: "hunter" | "staff";
@@ -198,6 +205,7 @@ export class FakeStore {
   participationUnlocked = false;
   progress: Array<Record<string, unknown>> = [];
   reports: Array<Record<string, unknown>> = [];
+  reportEvents: Array<Record<string, unknown>> = [];
   notes: Array<Record<string, unknown>> = [];
   noteIdempotency = new Map<string, string>();
   replies: Array<Record<string, unknown>> = [];
@@ -1078,23 +1086,116 @@ export class FakeStore {
     return { key, contentType: String(record.contentType ?? "application/octet-stream") };
   }
 
-  async updateReport(id: string, input: Record<string, unknown>, actorSubject: string) {
+  async updateReport(id: string, input: ReportWorkflowMutation, actorSubject: string) {
     const report = this.reports.find((item) => item.id === id);
     if (!report) return null;
+    const currentStatus = report.status;
+    if (!isReportReviewState(currentStatus) || currentStatus !== input.expectedStatus) {
+      throw new ApiError(409, "report_transition_stale", "The report changed. Refresh and try again.");
+    }
+    const previousAssignedTo = typeof report.assignedTo === "string" && report.assignedTo
+      ? report.assignedTo
+      : null;
+    const note = input.note?.trim() || null;
     const publicationId = this.reportPublicationIds.get(id);
     const linkedUpdate = publicationId ? this.updates.find((update) => update.id === publicationId) : null;
-    const published = linkedUpdate?.status === "published" ||
-      (linkedUpdate?.status === "scheduled" && typeof linkedUpdate.scheduledFor === "string" &&
-        new Date(linkedUpdate.scheduledFor).getTime() <= Date.now());
-    if (published && (input.status === "rejected" || input.status === "resolved")) {
-      throw new ApiError(
-        409,
-        "report_publication_active",
-        "Unpublish the linked report post before moving this report to a terminal state."
+    const activeOfficialUpdate = linkedUpdate?.status === "draft" ||
+      linkedUpdate?.status === "scheduled" || linkedUpdate?.status === "published";
+    const publicCaseNote = this.reportCaseNotes.get(id)?.status === "published";
+    let status = currentStatus;
+    let assignedTo: string | null = previousAssignedTo;
+    let eventType = "assignment.unassigned";
+    let auditAction = "report.unassigned";
+
+    if (input.operation === "transition") {
+      status = input.status;
+      if (!nextReportStates(currentStatus).includes(status)) {
+        throw new ApiError(
+          409,
+          "report_transition_invalid",
+          `Invalid report transition: cannot move from ${currentStatus} to ${status}.`
+        );
+      }
+      if (reportTransitionRequiresReason(currentStatus, status) && !note) {
+        throw new ApiError(
+          422,
+          "report_transition_reason_required",
+          "Record a private reason for this status change."
+        );
+      }
+      if (reportTransitionRequiresConfirmation(currentStatus, status) && !input.confirmed) {
+        throw new ApiError(
+          422,
+          "report_transition_confirmation_required",
+          "Confirm this audited status change."
+        );
+      }
+      const officialUpdateBlocks = activeOfficialUpdate && (
+        status === "resolved" || status === "rejected" ||
+        (currentStatus === "verified" && status === "reviewing")
       );
+      if (officialUpdateBlocks) {
+        throw new ApiError(
+          409,
+          "report_official_update_active",
+          "Withdraw the linked Official Update before changing this report to that state.",
+          { destination: "official_update", action: "withdraw" }
+        );
+      }
+      if (publicCaseNote && status === "rejected") {
+        throw new ApiError(
+          409,
+          "report_case_note_active",
+          "Withdraw the linked Case Note before rejecting this report.",
+          { destination: "case_note", action: "withdraw" }
+        );
+      }
+      assignedTo = status === "reviewing" &&
+          (currentStatus === "received" || currentStatus === "rejected" || currentStatus === "resolved")
+        ? actorSubject
+        : previousAssignedTo ?? actorSubject;
+      eventType = `status.${status}`;
+      auditAction = "report.updated";
+    } else {
+      if (!input.confirmed) {
+        throw new ApiError(
+          422,
+          "report_transition_confirmation_required",
+          "Confirm this audited status change."
+        );
+      }
+      if (!previousAssignedTo) {
+        throw new ApiError(409, "report_assignment_stale", "The report assignment changed. Refresh and try again.");
+      }
+      assignedTo = null;
     }
-    Object.assign(report, input);
-    this.audits.push({ action: "report.updated", actorSubject, targetId: id });
+
+    const occurredAt = new Date().toISOString();
+    report.status = status;
+    report.assignedTo = assignedTo;
+    report.updatedAt = occurredAt;
+    this.reportEvents.push({
+      id: `report-event-${this.reportEvents.length + 1}`,
+      reportId: id,
+      type: eventType,
+      actor: actorSubject,
+      note,
+      occurredAt,
+    });
+    this.audits.push({
+      action: auditAction,
+      actorSubject,
+      targetId: id,
+      metadata: {
+        operation: input.operation,
+        previousStatus: currentStatus,
+        status,
+        reason: note,
+        previousAssignedTo,
+        assignedTo,
+        assignmentChanged: previousAssignedTo !== assignedTo,
+      },
+    });
     return report;
   }
 
@@ -1615,8 +1716,14 @@ export class FakeIdentity {
   }
 
   async authenticateStaff(request: Request): Promise<Principal | null> {
-    if (request.headers.get("authorization") !== "Bearer staff-token") return null;
-    return { kind: "staff", subject: "staff-1", email: "operator@example.test" };
+    const authorization = request.headers.get("authorization");
+    if (authorization === "Bearer staff-token") {
+      return { kind: "staff", subject: "staff-1", email: "operator@example.test" };
+    }
+    if (authorization === "Bearer staff-2-token") {
+      return { kind: "staff", subject: "staff-2", email: "operator-two@example.test" };
+    }
+    return null;
   }
 }
 

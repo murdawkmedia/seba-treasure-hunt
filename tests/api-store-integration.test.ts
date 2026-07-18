@@ -10,6 +10,13 @@ import { D1DataStore } from "../src/server/d1-store";
 import { ApiError } from "../src/server/errors";
 import { participationWaiverDocument, privacyMediaDocument } from "../src/server/legal-documents";
 import { ManagedWaiverReceipts } from "../src/server/waiver-receipts";
+import {
+  REPORT_REVIEW_STATES,
+  nextReportStates,
+  reportTransitionRequiresConfirmation,
+  reportTransitionRequiresReason,
+  type ReportReviewState,
+} from "../src/shared/report-workflow";
 import type {
   TransactionalMailAcceptance,
   TransactionalMessage
@@ -2377,35 +2384,71 @@ test("real D1 atomically changes private report state with its event and audit h
              'Near the path', 'Guided details', 'received', ?, ?)`
   ).bind("2026-07-15T20:00:00.000Z", "2026-07-15T20:00:00.000Z").run();
   await assert.rejects(
-    store.updateReport("report-guided", { status: "verified" }, "staff-owner"),
+    store.updateReport("report-guided", {
+      operation: "transition",
+      expectedStatus: "received",
+      status: "verified",
+      note: null,
+      confirmed: false,
+    }, "staff-owner"),
     /transition/i
   );
   const reviewing = await store.updateReport(
     "report-guided",
-    { status: "reviewing" },
+    {
+      operation: "transition",
+      expectedStatus: "received",
+      status: "reviewing",
+      note: null,
+      confirmed: false,
+    },
     "staff-owner"
   );
   assert.equal(reviewing?.status, "reviewing");
   assert.equal(reviewing?.assignedTo, "staff-owner");
   await assert.rejects(
-    store.updateReport("report-guided", { status: "resolved" }, "staff-owner"),
+    store.updateReport("report-guided", {
+      operation: "transition",
+      expectedStatus: "reviewing",
+      status: "resolved",
+      note: "The report is not verified yet.",
+      confirmed: true,
+    }, "staff-owner"),
     /transition/i
   );
   const verifiedGuided = await store.updateReport(
     "report-guided",
-    { status: "verified" },
+    {
+      operation: "transition",
+      expectedStatus: "reviewing",
+      status: "verified",
+      note: null,
+      confirmed: false,
+    },
     "staff-owner"
   );
   assert.equal(verifiedGuided?.status, "verified");
   const resolvedGuided = await store.updateReport(
     "report-guided",
-    { status: "resolved" },
+    {
+      operation: "transition",
+      expectedStatus: "verified",
+      status: "resolved",
+      note: "Internal work is complete.",
+      confirmed: true,
+    },
     "staff-owner"
   );
   assert.equal(resolvedGuided?.status, "resolved");
   const reopenedGuided = await store.updateReport(
     "report-guided",
-    { status: "reviewing", note: "Reopened for publication review" },
+    {
+      operation: "transition",
+      expectedStatus: "resolved",
+      status: "reviewing",
+      note: "Reopened for publication review",
+      confirmed: true,
+    },
     "staff-owner"
   );
   assert.equal(reopenedGuided?.status, "reviewing");
@@ -2438,7 +2481,13 @@ test("real D1 atomically changes private report state with its event and audit h
      BEGIN SELECT RAISE(ABORT, 'forced report event failure'); END`
   ).run();
   await assert.rejects(
-    store.updateReport("report-atomic", { status: "contacted" }, "staff-atomic"),
+    store.updateReport("report-atomic", {
+      operation: "transition",
+      expectedStatus: "reviewing",
+      status: "contacted",
+      note: null,
+      confirmed: false,
+    }, "staff-atomic"),
     /forced report event failure/i
   );
   await db.prepare("DROP TRIGGER fail_atomic_report_event").run();
@@ -2450,7 +2499,13 @@ test("real D1 atomically changes private report state with its event and audit h
      BEGIN SELECT RAISE(ABORT, 'forced report audit failure'); END`
   ).run();
   await assert.rejects(
-    store.updateReport("report-atomic", { status: "contacted" }, "staff-atomic"),
+    store.updateReport("report-atomic", {
+      operation: "transition",
+      expectedStatus: "reviewing",
+      status: "contacted",
+      note: null,
+      confirmed: false,
+    }, "staff-atomic"),
     /forced report audit failure/i
   );
   await db.prepare("DROP TRIGGER fail_atomic_report_audit").run();
@@ -2458,7 +2513,13 @@ test("real D1 atomically changes private report state with its event and audit h
 
   const updated = await store.updateReport(
     "report-atomic",
-    { status: "contacted", note: "Reached the reporter" },
+    {
+      operation: "transition",
+      expectedStatus: "reviewing",
+      status: "contacted",
+      note: "Reached the reporter",
+      confirmed: false,
+    },
     "staff-atomic"
   );
   assert.equal(updated?.status, "contacted");
@@ -2478,9 +2539,237 @@ test("real D1 atomically changes private report state with its event and audit h
       actor_subject: "staff-atomic",
       target_kind: "report",
       target_id: "report-atomic",
-      metadata_json: '{"status":"contacted"}'
+      metadata_json: '{"operation":"transition","previousStatus":"reviewing","status":"contacted","reason":"Reached the reporter","previousAssignedTo":null,"assignedTo":"staff-atomic","assignmentChanged":true}'
     }
   );
+});
+
+test("guided report workflow is atomic, reversible and audited", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const store = new D1DataStore(db);
+  const timestamp = "2026-07-18T16:00:00.000Z";
+
+  const seedReport = async (
+    reportId: string,
+    status: ReportReviewState,
+    assignedTo: string | null = status === "received" ? null : "staff-original",
+  ) => {
+    await db.prepare(
+      `INSERT INTO private_reports
+       (id, report_type, reporter_name, reporter_email, location_description, details,
+        status, created_at, updated_at, assigned_to)
+       VALUES (?, 'tip', 'Private Reporter', 'private@example.test',
+               'Near the trail', 'Private details', ?, ?, ?, ?)`
+    ).bind(reportId, status, timestamp, timestamp, assignedTo).run();
+  };
+  const transition = (from: ReportReviewState, to: ReportReviewState) => ({
+    operation: "transition" as const,
+    expectedStatus: from,
+    status: to,
+    note: reportTransitionRequiresReason(from, to)
+      ? `Reason for ${from} to ${to}.`
+      : null,
+    confirmed: reportTransitionRequiresConfirmation(from, to),
+  });
+  const publicSnapshot = async (reportId: string) => ({
+    updates: (await db.prepare(
+      `SELECT id, status, title, body, scheduled_for, published_at
+       FROM official_updates WHERE source_report_id = ? ORDER BY id`
+    ).bind(reportId).all()).results,
+    caseNotes: (await db.prepare(
+      `SELECT id, status, body, published_at, withdrawn_at
+       FROM operator_reviewed_case_notes WHERE source_report_id = ? ORDER BY id`
+    ).bind(reportId).all()).results,
+  });
+  const countHistory = async (reportId: string) => ({
+    reportEvents: Number((await db.prepare(
+      "SELECT COUNT(*) AS count FROM report_events WHERE report_id = ?"
+    ).bind(reportId).first<{ count: number }>())?.count ?? 0),
+    audits: Number((await db.prepare(
+      "SELECT COUNT(*) AS count FROM audit_events WHERE target_kind = 'report' AND target_id = ?"
+    ).bind(reportId).first<{ count: number }>())?.count ?? 0),
+  });
+  const rejectsWithCode = (code: string) => (error: unknown) =>
+    error instanceof ApiError && error.code === code;
+
+  const allowedEdges = [
+    ["received", "reviewing"], ["received", "rejected"],
+    ["reviewing", "contacted"], ["reviewing", "escalated"],
+    ["reviewing", "verified"], ["reviewing", "rejected"],
+    ["contacted", "reviewing"], ["contacted", "escalated"],
+    ["contacted", "verified"], ["contacted", "rejected"],
+    ["escalated", "reviewing"], ["escalated", "contacted"],
+    ["escalated", "verified"], ["escalated", "rejected"],
+    ["verified", "reviewing"], ["verified", "resolved"],
+    ["rejected", "reviewing"], ["resolved", "reviewing"],
+  ] as const;
+
+  for (const [index, [from, to]] of allowedEdges.entries()) {
+    const reportId = `report-edge-${index}`;
+    const actor = `staff-edge-${index}`;
+    const previousAssignedTo = from === "received" ? null : "staff-original";
+    const expectedAssignedTo = to === "reviewing" &&
+        (from === "received" || from === "rejected" || from === "resolved")
+      ? actor
+      : previousAssignedTo ?? actor;
+    await seedReport(reportId, from, previousAssignedTo);
+    const beforePublic = await publicSnapshot(reportId);
+    const updated = await store.updateReport(reportId, transition(from, to), actor);
+    assert.equal(updated?.status, to, `${from} -> ${to} status`);
+    assert.equal(updated?.assignedTo, expectedAssignedTo, `${from} -> ${to} assignment`);
+    assert.deepEqual(await countHistory(reportId), { reportEvents: 1, audits: 1 });
+    assert.deepEqual(await publicSnapshot(reportId), beforePublic);
+
+    const event = await db.prepare(
+      `SELECT event_type, actor_subject, note, occurred_at
+       FROM report_events WHERE report_id = ?`
+    ).bind(reportId).first<{
+      event_type: string;
+      actor_subject: string;
+      note: string | null;
+      occurred_at: string;
+    }>();
+    assert.equal(event?.event_type, `status.${to}`);
+    assert.equal(event?.actor_subject, actor);
+    assert.equal(event?.note, transition(from, to).note);
+    assert.match(event?.occurred_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
+
+    const audit = await db.prepare(
+      `SELECT action, actor_subject, metadata_json, occurred_at
+       FROM audit_events WHERE target_kind = 'report' AND target_id = ?`
+    ).bind(reportId).first<{
+      action: string;
+      actor_subject: string;
+      metadata_json: string;
+      occurred_at: string;
+    }>();
+    assert.equal(audit?.action, "report.updated");
+    assert.equal(audit?.actor_subject, actor);
+    assert.equal(audit?.occurred_at, event?.occurred_at);
+    assert.deepEqual(JSON.parse(audit?.metadata_json ?? "{}"), {
+      operation: "transition",
+      previousStatus: from,
+      status: to,
+      reason: transition(from, to).note,
+      previousAssignedTo,
+      assignedTo: expectedAssignedTo,
+      assignmentChanged: previousAssignedTo !== expectedAssignedTo,
+    });
+  }
+
+  const allowedSet = new Set(allowedEdges.map(([from, to]) => `${from}:${to}`));
+  let invalidIndex = 0;
+  for (const from of REPORT_REVIEW_STATES) {
+    for (const to of REPORT_REVIEW_STATES) {
+      if (from === to || allowedSet.has(`${from}:${to}`)) continue;
+      const reportId = `report-invalid-${invalidIndex++}`;
+      await seedReport(reportId, from);
+      const beforePublic = await publicSnapshot(reportId);
+      await assert.rejects(
+        store.updateReport(reportId, {
+          operation: "transition",
+          expectedStatus: from,
+          status: to,
+          note: "This invalid edge must not mutate anything.",
+          confirmed: true,
+        }, "staff-invalid"),
+        rejectsWithCode("report_transition_invalid"),
+      );
+      assert.equal((await db.prepare(
+        "SELECT status FROM private_reports WHERE id = ?"
+      ).bind(reportId).first<{ status: string }>())?.status, from);
+      assert.deepEqual(await countHistory(reportId), { reportEvents: 0, audits: 0 });
+      assert.deepEqual(await publicSnapshot(reportId), beforePublic);
+    }
+  }
+
+  await seedReport("report-race", "received");
+  const raceInput = transition("received", "reviewing");
+  const race = await Promise.allSettled([
+    store.updateReport("report-race", raceInput, "staff-race"),
+    store.updateReport("report-race", raceInput, "staff-race"),
+  ]);
+  assert.equal(race.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(race.filter((result) => result.status === "rejected").length, 1);
+  const rejectedRace = race.find((result) => result.status === "rejected");
+  assert.ok(rejectedRace?.status === "rejected" && rejectsWithCode("report_transition_stale")(rejectedRace.reason));
+  assert.deepEqual(await countHistory("report-race"), { reportEvents: 1, audits: 1 });
+  await assert.rejects(
+    store.updateReport("report-race", raceInput, "staff-race"),
+    rejectsWithCode("report_transition_stale"),
+  );
+  assert.deepEqual(await countHistory("report-race"), { reportEvents: 1, audits: 1 });
+
+  await seedReport("report-unassign", "reviewing", "staff-assigned");
+  const unassigned = await store.updateReport("report-unassign", {
+    operation: "unassign",
+    expectedStatus: "reviewing",
+    note: "Returning this report to the shared queue.",
+    confirmed: true,
+  }, "staff-unassign");
+  assert.equal(unassigned?.status, "reviewing");
+  assert.equal(unassigned?.assignedTo, null);
+  assert.deepEqual(await countHistory("report-unassign"), { reportEvents: 1, audits: 1 });
+  await assert.rejects(
+    store.updateReport("report-unassign", {
+      operation: "unassign",
+      expectedStatus: "reviewing",
+      note: null,
+      confirmed: true,
+    }, "staff-unassign"),
+    rejectsWithCode("report_assignment_stale"),
+  );
+  assert.deepEqual(await countHistory("report-unassign"), { reportEvents: 1, audits: 1 });
+
+  for (const [suffix, status, from, to] of [
+    ["draft", "draft", "reviewing", "rejected"],
+    ["scheduled", "scheduled", "verified", "resolved"],
+    ["published", "published", "verified", "reviewing"],
+  ] as const) {
+    const reportId = `report-guard-${suffix}`;
+    await seedReport(reportId, from);
+    await db.prepare(
+      `INSERT INTO official_updates
+       (id, title, body, publisher_subject, published_at, scheduled_for, status,
+        source_report_id, created_at, updated_at)
+       VALUES (?, 'Private draft', 'Private body', 'staff-publisher', ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      `update-guard-${suffix}`,
+      timestamp,
+      status === "scheduled" ? "2099-07-18T16:00:00.000Z" : null,
+      status,
+      reportId,
+      timestamp,
+      timestamp,
+    ).run();
+    const beforePublic = await publicSnapshot(reportId);
+    await assert.rejects(
+      store.updateReport(reportId, transition(from, to), "staff-guard"),
+      rejectsWithCode("report_official_update_active"),
+    );
+    assert.deepEqual(await publicSnapshot(reportId), beforePublic);
+    assert.deepEqual(await countHistory(reportId), { reportEvents: 0, audits: 0 });
+  }
+
+  await seedReport("report-guard-case-note", "reviewing");
+  await db.prepare(
+    `INSERT INTO operator_reviewed_case_notes
+     (id, source_report_id, public_attribution, attribution_kind, body, status,
+      created_at, published_at, moderated_by)
+     VALUES ('case-note-guard', 'report-guard-case-note', 'Community Hunter', 'community',
+             'Public observation.', 'published', ?, ?, 'staff-publisher')`
+  ).bind(timestamp, timestamp).run();
+  const caseNoteBefore = await publicSnapshot("report-guard-case-note");
+  await assert.rejects(
+    store.updateReport(
+      "report-guard-case-note",
+      transition("reviewing", "rejected"),
+      "staff-guard",
+    ),
+    rejectsWithCode("report_case_note_active"),
+  );
+  assert.deepEqual(await publicSnapshot("report-guard-case-note"), caseNoteBefore);
+  assert.deepEqual(await countHistory("report-guard-case-note"), { reportEvents: 0, audits: 0 });
 });
 
 test("real D1 publishes and withdraws a report-sourced Case Note independently from Updates", async (t) => {
@@ -3707,9 +3996,15 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     uploads: [],
   });
   await assert.rejects(
-    store.updateReport("report-minor", { status: "resolved" }, "staff-terminal-blocked"),
+    store.updateReport("report-minor", {
+      operation: "transition",
+      expectedStatus: "verified",
+      status: "resolved",
+      note: "Internal work is complete.",
+      confirmed: true,
+    }, "staff-terminal-blocked"),
     (error: unknown) =>
-      error instanceof ApiError && error.code === "report_publication_active"
+      error instanceof ApiError && error.code === "report_official_update_active"
   );
   const publicText = JSON.stringify(minorUpdate);
   for (const forbidden of [
@@ -4154,7 +4449,13 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
   });
   const resolvedAfterUnpublish = await store.updateReport(
     "report-minor",
-    { status: "resolved" },
+    {
+      operation: "transition",
+      expectedStatus: "verified",
+      status: "resolved",
+      note: "Internal work is complete.",
+      confirmed: true,
+    },
     "staff-terminal-after-unpublish"
   );
   assert.equal(resolvedAfterUnpublish?.status, "resolved");
