@@ -88,7 +88,7 @@ async function initializeMemberRoute(): Promise<void> {
   if (!signedOut || !state) return;
 
   const session = await campaignHunterSession();
-  if (!session?.clerk.user) return;
+  if (!session?.coordinator.snapshot().principal) return;
   const token = await session.getToken().catch(() => null);
   if (!token) return;
 

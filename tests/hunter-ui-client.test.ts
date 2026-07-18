@@ -645,7 +645,8 @@ test("signup verification recovery keeps provider state authoritative and clears
   const setup = client.match(/function setupAccountForms[\s\S]*?\r?\n}\r?\n\r?\nasync function initializeDashboard/)?.[0] ?? "";
 
   assert.match(setup, /reconcileHunterSignupResume/);
-  assert.match(setup, /attemptEmailAddressVerification/);
+  assert.match(setup, /attemptProviderSignupVerification/);
+  assert.doesNotMatch(setup, /\.attemptEmailAddressVerification/);
   assert.match(setup, /data-signup-resend/);
   assert.match(setup, /data-signup-restart/);
   assert.match(setup, /data-signup-back-to-sign-in/);

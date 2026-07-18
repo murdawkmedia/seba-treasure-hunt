@@ -504,7 +504,7 @@ function applyProfilePrefill(prefill: ReportProfilePrefill): void {
 
 async function signedInReportToken(): Promise<string | null> {
   const session = await campaignHunterSession();
-  if (!session?.clerk.user) return null;
+  if (!session?.coordinator.snapshot().principal) return null;
   const token = await waitForReportToken(session.getToken);
   if (!token) throw new Error("Your Hunter sign-in is still starting. Complete the human check again and retry.");
   return token;

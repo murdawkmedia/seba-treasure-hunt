@@ -389,13 +389,14 @@ export async function initialiseBoard(): Promise<void> {
   let notes: CommunityNote[] = [];
   let cursor: string | null = null;
   let signedIn = false;
-  let observedAuthUser: HunterAuthSessionSnapshot["user"] = null;
-  let observedAuthSession: HunterAuthSessionSnapshot["session"] = null;
+  let observedPrincipalVersion: number | null = null;
   let pendingFlag: { kind: string; id: string; button: HTMLButtonElement } | null = null;
   let preparedNoteImages: PreparedReportImage[] = [];
   let notePreparationController: AbortController | null = null;
   let notePreparationPromise: Promise<void> | null = null;
   let notePreparationError: string | undefined;
+  let noteSubmissionController: AbortController | null = null;
+  const replySubmissionControllers = new Set<AbortController>();
 
   const updateNoteSubmitState = (): void => {
     const submit = noteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
@@ -539,8 +540,7 @@ export async function initialiseBoard(): Promise<void> {
   };
 
   await bootstrapRuntime();
-  observedAuthUser = hunterAuthSession?.snapshot().user ?? null;
-  observedAuthSession = hunterAuthSession?.snapshot().session ?? null;
+  observedPrincipalVersion = hunterAuthSession?.snapshot().principal?.version ?? null;
 
   try {
     const session = await requestJson("/api/v1/me/dashboard");
@@ -603,6 +603,10 @@ export async function initialiseBoard(): Promise<void> {
   let authTransitionGeneration = 0;
   const resetAuthenticatedBoardState = (): void => {
     authTransitionGeneration += 1;
+    noteSubmissionController?.abort();
+    noteSubmissionController = null;
+    for (const controller of replySubmissionControllers) controller.abort();
+    replySubmissionControllers.clear();
     noteTurnstileToken = "";
     pendingNoteIdempotencyKey = undefined;
     resetNoteImagePreparation(true);
@@ -644,12 +648,11 @@ export async function initialiseBoard(): Promise<void> {
     })();
   };
   const applyAuthSnapshot = (snapshot: HunterAuthSessionSnapshot): void => {
-    const nextAuthUser = snapshot.status === "ready" ? snapshot.user : null;
-    const nextAuthSession = snapshot.status === "ready" ? snapshot.session : null;
-    if (nextAuthUser === observedAuthUser && nextAuthSession === observedAuthSession) return;
-    observedAuthUser = nextAuthUser;
-    observedAuthSession = nextAuthSession;
-    const nextSignedIn = Boolean(nextAuthUser && nextAuthSession);
+    const nextPrincipal = snapshot.status === "ready" ? snapshot.principal : null;
+    const nextPrincipalVersion = nextPrincipal?.version ?? null;
+    if (nextPrincipalVersion === observedPrincipalVersion) return;
+    observedPrincipalVersion = nextPrincipalVersion;
+    const nextSignedIn = Boolean(nextPrincipal);
     signedIn = false;
     resetAuthenticatedBoardState();
     if (!nextSignedIn) return;
@@ -659,8 +662,7 @@ export async function initialiseBoard(): Promise<void> {
         if (
           !response.ok ||
           authTransitionGeneration !== pendingAuthTransition ||
-          observedAuthUser !== nextAuthUser ||
-          observedAuthSession !== nextAuthSession
+          observedPrincipalVersion !== nextPrincipalVersion
         ) return;
         signedIn = true;
         restoreAuthenticatedBoardState();
@@ -740,7 +742,14 @@ export async function initialiseBoard(): Promise<void> {
       if (result) result.textContent = "Sign in before sending a Case Note.";
       return;
     }
+    const submissionPrincipalVersion = observedPrincipalVersion;
+    const submissionAuthGeneration = authTransitionGeneration;
     while (notePreparationPromise) await notePreparationPromise;
+    if (
+      !signedIn ||
+      submissionPrincipalVersion !== observedPrincipalVersion ||
+      submissionAuthGeneration !== authTransitionGeneration
+    ) return;
     const formData = buildCaseNoteFormData(noteForm, preparedNoteImages);
     const files = imageInput instanceof HTMLInputElement ? [...(imageInput.files ?? [])] : [];
     const errors = validateFieldNote(asString(formData.get("waypointId")), asString(formData.get("body")), files);
@@ -764,9 +773,25 @@ export async function initialiseBoard(): Promise<void> {
     if (submit) submit.disabled = true;
     if (result) result.textContent = "Sending your Case Note for review...";
     let submitted = false;
+    noteSubmissionController?.abort();
+    const submissionController = new AbortController();
+    noteSubmissionController = submissionController;
+    const submissionIsCurrent = (): boolean =>
+      !submissionController.signal.aborted &&
+      noteSubmissionController === submissionController &&
+      signedIn &&
+      submissionPrincipalVersion === observedPrincipalVersion &&
+      submissionAuthGeneration === authTransitionGeneration;
     try {
       const headers = await authHeaders(buildCaseNoteRequestHeaders(attemptIdempotencyKey, humanToken));
-      const { response, payload } = await requestJson("/api/v1/board/notes", { method: "POST", body: formData, headers });
+      if (!submissionIsCurrent()) return;
+      const { response, payload } = await requestJson("/api/v1/board/notes", {
+        method: "POST",
+        body: formData,
+        headers,
+        signal: submissionController.signal,
+      });
+      if (!submissionIsCurrent()) return;
       if (!response.ok) throw new Error(errorMessage(payload, "Your Case Note could not be sent."));
       const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
       const reference = data && asString(data.id).trim() ? asString(data.id).trim() : "recorded";
@@ -783,11 +808,15 @@ export async function initialiseBoard(): Promise<void> {
       if (result) result.textContent = caseNoteReceipt(reference);
       submitted = true;
     } catch (error) {
+      if (!submissionIsCurrent()) return;
       const failure = failCaseNoteAttempt(attemptIdempotencyKey);
       pendingNoteIdempotencyKey = failure.idempotencyKey;
       noteTurnstileToken = failure.turnstileToken;
       if (result) result.textContent = error instanceof Error ? error.message : "Your Case Note could not be sent.";
     } finally {
+      const remainsCurrent = submissionIsCurrent();
+      if (noteSubmissionController === submissionController) noteSubmissionController = null;
+      if (!remainsCurrent) return;
       noteTurnstileToken = "";
       if (submit) submit.disabled = true;
       if (turnstileApi && noteTurnstileWidget) {
@@ -836,20 +865,37 @@ export async function initialiseBoard(): Promise<void> {
     }
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (submit) submit.disabled = true;
+    const submissionPrincipalVersion = observedPrincipalVersion;
+    const submissionAuthGeneration = authTransitionGeneration;
+    const submissionController = new AbortController();
+    replySubmissionControllers.add(submissionController);
+    const submissionIsCurrent = (): boolean =>
+      !submissionController.signal.aborted &&
+      replySubmissionControllers.has(submissionController) &&
+      signedIn &&
+      submissionPrincipalVersion === observedPrincipalVersion &&
+      submissionAuthGeneration === authTransitionGeneration;
     try {
       const headers = await authHeaders({ "Content-Type": "application/json" });
+      if (!submissionIsCurrent()) return;
       if (humanToken) headers.set("CF-Turnstile-Response", humanToken);
       const { response, payload } = await requestJson(`/api/v1/board/notes/${encodeURIComponent(noteId)}/replies`, {
         method: "POST",
         headers,
         body: JSON.stringify({ body: field.value.trim(), cfTurnstileResponse: humanToken || undefined }),
+        signal: submissionController.signal,
       });
+      if (!submissionIsCurrent()) return;
       if (!response.ok) throw new Error(replyFailureMessage(response, payload));
       if (result) result.textContent = "Reply posted.";
       await load();
     } catch (error) {
+      if (!submissionIsCurrent()) return;
       if (result) result.textContent = error instanceof Error ? error.message : "Your reply could not be posted.";
     } finally {
+      const remainsCurrent = submissionIsCurrent();
+      replySubmissionControllers.delete(submissionController);
+      if (!remainsCurrent) return;
       replyTurnstileTokens.delete(noteId);
       if (submit) submit.disabled = true;
       const widget = replyTurnstileWidgets.get(noteId);

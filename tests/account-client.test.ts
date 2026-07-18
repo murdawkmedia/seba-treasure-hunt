@@ -85,8 +85,19 @@ test("page lifecycle subscriptions can defer refresh until a persisted restore",
 test("shared coordinator snapshots project raw profiles to display-safe identity only", async () => {
   const browserGlobal: Record<string, unknown> = {};
   const provider = {
-    user: { id: "user_private" },
-    session: { id: "session_private", getToken: async () => "private-token" },
+    user: {
+      id: "user_private_subject",
+      firstName: "Private",
+      lastName: "Participant",
+      primaryEmailAddress: { emailAddress: "provider-private@example.test" },
+      primaryPhoneNumber: { phoneNumber: "+1 555 555 0100" },
+      privateMetadata: { internalNote: "provider private metadata" },
+    },
+    session: {
+      id: "session_private_secret",
+      lastActiveToken: { jwt: "provider-secret-jwt" },
+      getToken: async () => "private-token",
+    },
     client: null,
     async load() {},
     addListener() { return () => {}; },
@@ -110,12 +121,16 @@ test("shared coordinator snapshots project raw profiles to display-safe identity
     participationBasis: "adult",
   });
 
-  assert.deepEqual(coordinator.snapshot().profile, {
+  assert.deepEqual(coordinator.snapshot(), {
+    status: "ready",
+    principal: { subject: "user_private_subject", version: 1 },
+    profile: {
     publicDisplayName: "Nancy & Ron",
     publicHandle: "Hunter 43BA",
+    },
   });
   assert.equal(
-    campaignAccountModel(coordinator.snapshot().user, coordinator.snapshot().profile).handle,
+    campaignAccountModel(coordinator.snapshot().principal, coordinator.snapshot().profile).handle,
     "Nancy & Ron",
   );
   const windowCoordinator = browserGlobal.__timLostHunterAuthSessionV1 as typeof coordinator;
@@ -128,13 +143,22 @@ test("shared coordinator snapshots project raw profiles to display-safe identity
     "private interest",
     "marketing",
     "participationBasis",
+    "provider-private@example.test",
+    "+1 555 555 0100",
+    "provider private metadata",
+    "session_private_secret",
+    "provider-secret-jwt",
+    "private-token",
+    "primaryEmailAddress",
+    "privateMetadata",
+    "lastActiveToken",
   ]) {
-    assert.doesNotMatch(serializedGlobal, new RegExp(privateValue, "i"));
+    assert.equal(serializedGlobal.toLowerCase().includes(privateValue.toLowerCase()), false, privateValue);
   }
 
   coordinator.setProfile({ fullName: "Another Private Name", email: "another@example.test" });
   assert.deepEqual(coordinator.snapshot().profile, {});
-  assert.equal(campaignAccountModel(coordinator.snapshot().user, coordinator.snapshot().profile).handle, "Hunter");
+  assert.equal(campaignAccountModel(coordinator.snapshot().principal, coordinator.snapshot().profile).handle, "Hunter");
 });
 
 test("verified-account provisioning guidance never presents a password or bad-login failure", () => {
@@ -309,12 +333,7 @@ test("coordinator teardown invalidates a pending provider load before it can pub
   assert.equal(removedListeners, 0);
   assert.equal(browserGlobal.timLostAuth, undefined);
   assert.equal(browserGlobal.__timLostHunterAuthSessionV1, undefined);
-  assert.deepEqual({
-    status: staleSnapshot.status,
-    clerk: staleSnapshot.clerk,
-    user: staleSnapshot.user,
-    session: staleSnapshot.session,
-  }, { status: "idle", clerk: null, user: null, session: null });
+  assert.deepEqual(staleSnapshot, { status: "idle", principal: null, profile: null });
 
   const activeProvider = {
     user: { id: "user_active" },

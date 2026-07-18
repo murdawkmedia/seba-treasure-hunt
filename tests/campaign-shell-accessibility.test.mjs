@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import { build as buildWithEsbuild } from "esbuild";
 import { CAMPAIGN_PAGES, renderCampaignPage } from "../scripts/campaign-shell.mjs";
 import { buildSite } from "../scripts/build.mjs";
 
@@ -129,6 +130,24 @@ test("canonical campaign shell is accessible on every mobile route and represent
 
 test("separate account, Dashboard, and board bundles share one live hunter session", { timeout: 180_000 }, async () => {
   const output = await buildSite({ temporary: true });
+  const realCoordinatorHarness = path.join(output.dist, "real-coordinator-harness.js");
+  await buildWithEsbuild({
+    stdin: {
+      contents: `
+        import { getHunterAuthSessionCoordinator } from "./src/client/hunter-auth-session.ts";
+        globalThis.__createRealHunterAuthSessionForTest = (createClerk) =>
+          getHunterAuthSessionCoordinator({ browserGlobal: globalThis, createClerk });
+      `,
+      resolveDir: root,
+      sourcefile: "real-coordinator-harness.ts",
+      loader: "ts",
+    },
+    outfile: realCoordinatorHarness,
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    logLevel: "silent",
+  });
   let identity = {
     fullName: "Private Participant Name",
     publicDisplayName: "Nancy & Ron",
@@ -146,7 +165,16 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
   let legalMutations = 0;
   let boardWriteMutations = 0;
   let dashboardRequests = 0;
+  let holdDashboardResponse = false;
+  let heldDashboardAborts = 0;
+  let holdCaseNoteWrite = false;
+  let holdReplyWrite = false;
+  let heldCaseNoteAborts = 0;
+  let heldReplyAborts = 0;
   const releaseHeldBootstraps = [];
+  const releaseHeldDashboards = [];
+  const releaseHeldCaseNotes = [];
+  const releaseHeldReplies = [];
   const appServer = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://local.test");
@@ -198,6 +226,22 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           json({ error: { message: "Sign in required" } }, 401);
           return;
         }
+        if (holdDashboardResponse) {
+          const heldIdentity = structuredClone(identity);
+          request.once("aborted", () => { heldDashboardAborts += 1; });
+          releaseHeldDashboards.push(() => {
+            if (!response.destroyed) json({ data: {
+              profile: heldIdentity,
+              privacyMediaRequired: false,
+              status: { state: "open" },
+              waypoints: [],
+              reports: [],
+              notes: [],
+              latestUpdate: null,
+            } });
+          });
+          return;
+        }
         json({ data: {
           profile: identity,
           privacyMediaRequired: false,
@@ -207,6 +251,36 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           notes: [],
           latestUpdate: null,
         } });
+        return;
+      }
+      if (url.pathname === "/api/v1/board/notes" && request.method === "POST" && holdCaseNoteWrite) {
+        boardWriteMutations += 1;
+        let disconnected = false;
+        const markDisconnected = () => {
+          if (disconnected) return;
+          disconnected = true;
+          heldCaseNoteAborts += 1;
+        };
+        request.once("aborted", markDisconnected);
+        response.once("close", () => { if (!response.writableEnded) markDisconnected(); });
+        releaseHeldCaseNotes.push(() => {
+          if (!response.destroyed) json({ data: { id: "stale-case-note" } }, 201);
+        });
+        return;
+      }
+      if (/^\/api\/v1\/board\/notes\/[^/]+\/replies$/.test(url.pathname) && request.method === "POST" && holdReplyWrite) {
+        boardWriteMutations += 1;
+        let disconnected = false;
+        const markDisconnected = () => {
+          if (disconnected) return;
+          disconnected = true;
+          heldReplyAborts += 1;
+        };
+        request.once("aborted", markDisconnected);
+        response.once("close", () => { if (!response.writableEnded) markDisconnected(); });
+        releaseHeldReplies.push(() => {
+          if (!response.destroyed) json({ data: { id: "stale-reply" } }, 201);
+        });
         return;
       }
       if (url.pathname.startsWith("/api/v1/board/") && request.method !== "GET") {
@@ -267,6 +341,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
   const appOrigin = `http://127.0.0.1:${address.port}`;
   const browser = await chromium.launch({ headless: true });
   let context;
+  let realCoordinatorContext;
   try {
     assert.equal(
       await readFile(path.join(output.dist, "assets", "app", "account.js"), "utf8").then(() => true),
@@ -310,8 +385,25 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       if (preflightFixture && clerk.user) {
         clerk.user.primaryEmailAddress = { emailAddress: "preflight@example.test" };
       }
-      let snapshot = { status: "ready", clerk, user: clerk.user, session: clerk.session, profile: null };
+      let principalVersion = startsSignedIn ? 1 : 0;
+      let snapshot = {
+        status: "ready",
+        principal: clerk.user && clerk.session
+          ? { subject: clerk.user.id, version: principalVersion }
+          : null,
+        profile: null,
+      };
       let profileKey = "";
+      const refreshSnapshot = () => {
+        snapshot = {
+          status: "ready",
+          principal: clerk.user && clerk.session
+            ? { subject: clerk.user.id, version: principalVersion }
+            : null,
+          profile: snapshot.profile,
+        };
+        return snapshot;
+      };
       const publish = () => {
         state.publishes += 1;
         for (const listener of [...listeners]) listener(snapshot);
@@ -320,24 +412,45 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
         async load() { state.loadCalls += 1; return snapshot; },
         snapshot() { return snapshot; },
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-        refresh() { return snapshot; },
+        refresh() { return refreshSnapshot(); },
         setProfile(profile) {
-          const nextKey = JSON.stringify([
-            profile?.publicDisplayName ?? "",
-            profile?.publicHandle ?? "",
-            profile?.participationBasis ?? "",
-          ]);
-          snapshot = { ...snapshot, profile };
+          const projectedProfile = profile ? {
+            ...(typeof profile.publicDisplayName === "string" && profile.publicDisplayName.trim()
+              ? { publicDisplayName: profile.publicDisplayName.trim() }
+              : {}),
+            ...(typeof profile.publicHandle === "string" && profile.publicHandle.trim()
+              ? { publicHandle: profile.publicHandle.trim() }
+              : {}),
+          } : null;
+          const nextKey = JSON.stringify(projectedProfile);
+          snapshot = { ...snapshot, profile: projectedProfile };
           if (nextKey === profileKey) return;
           profileKey = nextKey;
           publish();
         },
         async getToken() { return clerk.session ? "browser-token" : null; },
+        hasActiveSession(sessionId) { return clerk.session?.id === sessionId; },
+        signupAttempt() {
+          const attempt = clerk.client.signUp;
+          return attempt ? {
+            id: attempt.id,
+            status: attempt.status,
+            createdSessionId: attempt.createdSessionId,
+            emailAddress: attempt.emailAddress,
+          } : null;
+        },
+        async signInWithPassword() {
+          return { status: "complete", createdSessionId: "session_browser" };
+        },
+        primaryEmailMatches(emailAddress) {
+          return clerk.user?.primaryEmailAddress?.emailAddress?.trim().toLowerCase() === emailAddress.trim().toLowerCase();
+        },
         async activate(sessionId) {
           state.activations += 1;
           clerk.user = { id: "user_browser", imageUrl: null };
           clerk.session = { id: sessionId, async getToken() { return "browser-token"; } };
-          snapshot = { status: "ready", clerk, user: clerk.user, session: clerk.session, profile: null };
+          principalVersion += 1;
+          snapshot = { status: "ready", principal: { subject: clerk.user.id, version: principalVersion }, profile: null };
           profileKey = "";
           publish();
         },
@@ -349,28 +462,46 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           state.signOuts += 1;
           clerk.user = null;
           clerk.session = null;
-          snapshot = { status: "ready", clerk, user: null, session: null, profile: null };
+          principalVersion += 1;
+          snapshot = { status: "ready", principal: null, profile: null };
           profileKey = "";
           publish();
         },
         emitAuthLoss() {
           clerk.user = null;
           clerk.session = null;
-          snapshot = { status: "ready", clerk, user: null, session: null, profile: null };
+          principalVersion += 1;
+          snapshot = { status: "ready", principal: null, profile: null };
           profileKey = "";
           publish();
+        },
+        switchPrincipal(subject, shouldPublish = true) {
+          clerk.user = { id: subject, imageUrl: null };
+          clerk.session = { id: `session_${subject}`, async getToken() { return "browser-token"; } };
+          principalVersion += 1;
+          snapshot = { status: "ready", principal: { subject, version: principalVersion }, profile: null };
+          profileKey = "";
+          if (shouldPublish) publish();
         },
         teardown() { listeners.clear(); },
       };
       globalThis.__timLostHunterAuthSessionV1 = coordinator;
       globalThis.__sharedAuthBrowserState = state;
+      let turnstileSequence = 0;
+      const turnstileCallbacks = new Map();
       globalThis.turnstile = {
-        render(_container, options) { options.callback("human-token"); return "widget_browser"; },
-        reset() {},
+        render(_container, options) {
+          const widgetId = `widget_browser_${++turnstileSequence}`;
+          turnstileCallbacks.set(widgetId, options.callback);
+          options.callback("human-token");
+          return widgetId;
+        },
+        reset(widgetId) { turnstileCallbacks.get(widgetId)?.("human-token"); },
       };
     });
     const page = await context.newPage();
     await page.goto(`${appOrigin}/dashboard.html`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => globalThis.__sharedAuthBrowserState.loadCalls === 2);
     await page.locator("#hunter-sign-in-email").fill("private@example.test");
     await page.locator("#hunter-sign-in-password").fill("a-secure-password");
     await page.locator('#hunter-sign-in-form button[type="submit"]').click();
@@ -436,6 +567,153 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
     await bfcachePage.locator("#hunter-sign-in-form").waitFor({ state: "visible" });
     assert.equal(await bfcachePage.locator("[data-campaign-account-toggle]").isVisible(), false);
     assert.equal(await bfcachePage.locator("[data-dashboard-content]").isVisible(), false);
+
+    identity = {
+      ...identity,
+      fullName: "First Account Private Name",
+      publicDisplayName: "First Account",
+      publicHandle: "Hunter FIRST",
+    };
+    const switchPage = await context.newPage();
+    await switchPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
+    await switchPage.evaluate(() => localStorage.setItem("__authStartSignedIn", "true"));
+    await switchPage.goto(`${appOrigin}/dashboard.html`, { waitUntil: "domcontentloaded" });
+    await switchPage.locator("[data-dashboard-profile]").getByText("First Account Private Name").waitFor();
+
+    holdDashboardResponse = true;
+    identity = {
+      ...identity,
+      fullName: "Second Account Private Name",
+      publicDisplayName: "Second Account",
+      publicHandle: "Hunter SECOND",
+    };
+    await switchPage.evaluate(() => {
+      dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+      globalThis.__timLostHunterAuthSessionV1.switchPrincipal("user_browser_second", false);
+      dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    });
+    assert.equal(
+      await switchPage.locator("[data-dashboard-content]").isVisible(),
+      false,
+      "persisted principal switches synchronously hide the previous private Dashboard",
+    );
+    assert.equal(
+      await switchPage.locator("body").textContent().then((copy) => copy.includes("First Account Private Name")),
+      false,
+      "persisted principal switches synchronously remove the previous account's private DOM",
+    );
+    for (let attempt = 0; attempt < 50 && releaseHeldDashboards.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(releaseHeldDashboards.length, 1, "the switched principal begins a fresh held Dashboard load");
+    holdDashboardResponse = false;
+    for (const release of releaseHeldDashboards.splice(0)) release();
+    await switchPage.locator("[data-dashboard-profile]").getByText("Second Account Private Name").waitFor();
+    assert.equal(
+      await switchPage.locator("body").textContent().then((copy) => copy.includes("First Account Private Name")),
+      false,
+      "the switched account response cannot restore private DOM from the previous principal",
+    );
+    assert.equal(heldDashboardAborts, 0, "the current principal's held response remains live until released");
+
+    realCoordinatorContext = await browser.newContext();
+    const realCoordinatorPage = await realCoordinatorContext.newPage();
+    await realCoordinatorPage.setContent("<!doctype html><title>Real coordinator harness</title>");
+    await realCoordinatorPage.addScriptTag({ path: realCoordinatorHarness });
+    const realCoordinatorJourney = await realCoordinatorPage.evaluate(async () => {
+      const providerListeners = new Set();
+      const provider = {
+        user: {
+          id: "user_real_private_subject",
+          firstName: "Private",
+          lastName: "Provider Name",
+          primaryEmailAddress: { emailAddress: "provider-private@example.test" },
+          privateMetadata: { recoveryCode: "provider-secret-code" },
+        },
+        session: {
+          id: "session_real_private_id",
+          privateMetadata: { bearerToken: "provider-secret-token" },
+          async getToken() { return "browser-real-token"; },
+        },
+        client: { signUp: null, signIn: {} },
+        async load() {},
+        addListener(listener) {
+          providerListeners.add(listener);
+          return () => providerListeners.delete(listener);
+        },
+        async setActive() {},
+        async signOut() {},
+      };
+      const coordinator = globalThis.__createRealHunterAuthSessionForTest(async () => provider);
+      const publications = [];
+      coordinator.subscribe((snapshot) => publications.push(snapshot));
+      await coordinator.load("pk_test_real_production_coordinator");
+      coordinator.setProfile({
+        fullName: "Legal Private Profile Name",
+        emailAddress: "profile-private@example.test",
+        participationBasis: "adult",
+        publicDisplayName: "Public Trail Team",
+        publicHandle: "Hunter SAFE",
+      });
+      const initial = coordinator.snapshot();
+      provider.user = {
+        id: "user_real_second_subject",
+        firstName: "Second Private",
+        primaryEmailAddress: { emailAddress: "second-private@example.test" },
+      };
+      provider.session = {
+        id: "session_real_second_private_id",
+        privateMetadata: { bearerToken: "second-provider-secret-token" },
+        async getToken() { return "browser-real-token-second"; },
+      };
+      for (const listener of providerListeners) listener();
+      const switched = coordinator.snapshot();
+      provider.user = null;
+      provider.session = null;
+      for (const listener of providerListeners) listener();
+      const signedOut = coordinator.snapshot();
+      return {
+        initial,
+        switched,
+        signedOut,
+        publications,
+        globalSnapshot: globalThis.__timLostHunterAuthSessionV1.snapshot(),
+        providerGlobalPresent: Object.hasOwn(globalThis, "clerk"),
+      };
+    });
+    assert.deepEqual(realCoordinatorJourney.initial, {
+      status: "ready",
+      principal: { subject: "user_real_private_subject", version: 1 },
+      profile: { publicDisplayName: "Public Trail Team", publicHandle: "Hunter SAFE" },
+    });
+    assert.deepEqual(realCoordinatorJourney.switched, {
+      status: "ready",
+      principal: { subject: "user_real_second_subject", version: 2 },
+      profile: null,
+    });
+    assert.deepEqual(realCoordinatorJourney.signedOut, {
+      status: "ready",
+      principal: null,
+      profile: null,
+    });
+    assert.deepEqual(realCoordinatorJourney.globalSnapshot, realCoordinatorJourney.signedOut);
+    assert.equal(realCoordinatorJourney.providerGlobalPresent, false);
+    assert.equal(realCoordinatorJourney.publications.length, 4, "the real provider listener publishes load, safe profile, switch, and auth loss");
+    const serializedRealJourney = JSON.stringify(realCoordinatorJourney);
+    for (const privateValue of [
+      "Provider Name",
+      "provider-private@example.test",
+      "provider-secret-code",
+      "session_real_private_id",
+      "provider-secret-token",
+      "Legal Private Profile Name",
+      "profile-private@example.test",
+      "second-private@example.test",
+      "session_real_second_private_id",
+      "second-provider-secret-token",
+    ]) {
+      assert.equal(serializedRealJourney.includes(privateValue), false, `real coordinator Chromium snapshots omit ${privateValue}`);
+    }
 
     const boardPage = await context.newPage();
     await boardPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
@@ -507,6 +785,53 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
     assert.equal(await boardPage.locator("#board-auth-prompt").isVisible(), false);
     assert.equal(await boardPage.locator(".reply-form").count(), 1);
 
+    holdCaseNoteWrite = true;
+    await boardPage.locator('[name="waypointId"]').selectOption("1");
+    await boardPage.locator("#note-body").fill("A held Case Note from the previous account.");
+    await boardPage.waitForFunction(() => !document.querySelector('#field-note-form button[type="submit"]')?.disabled);
+    await boardPage.locator('#field-note-form button[type="submit"]').click();
+    for (let attempt = 0; attempt < 50 && releaseHeldCaseNotes.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(releaseHeldCaseNotes.length, 1, "the Case Note POST reaches the held server response");
+    await boardPage.evaluate(() => globalThis.__timLostHunterAuthSessionV1.switchPrincipal("user_board_second"));
+    await boardPage.locator("#field-note-form").waitFor({ state: "visible" });
+    for (let attempt = 0; attempt < 50 && heldCaseNoteAborts === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(heldCaseNoteAborts, 1, "a principal switch aborts the previous account's Case Note POST");
+    holdCaseNoteWrite = false;
+    for (const release of releaseHeldCaseNotes.splice(0)) release();
+    await boardPage.waitForTimeout(50);
+    assert.equal(await boardPage.locator("[data-note-receipt]").isVisible(), false);
+    assert.equal(await boardPage.locator("#note-form-result").textContent(), "");
+    assert.equal(await boardPage.locator("#field-note-form").isVisible(), true);
+
+    holdReplyWrite = true;
+    const heldReplyForm = boardPage.locator(".reply-form").first();
+    await heldReplyForm.locator('textarea[name="body"]').fill("A held reply from the previous account.");
+    await boardPage.waitForFunction(() => !document.querySelector('.reply-form button[type="submit"]')?.disabled);
+    await heldReplyForm.locator('button[type="submit"]').click();
+    for (let attempt = 0; attempt < 50 && releaseHeldReplies.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(releaseHeldReplies.length, 1, "the reply POST reaches the held server response");
+    await boardPage.evaluate(() => globalThis.__timLostHunterAuthSessionV1.switchPrincipal("user_board_third"));
+    await boardPage.locator(".reply-form").waitFor({ state: "visible" });
+    for (let attempt = 0; attempt < 50 && heldReplyAborts === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(heldReplyAborts, 1, "a principal switch aborts the previous account's reply POST");
+    holdReplyWrite = false;
+    for (const release of releaseHeldReplies.splice(0)) release();
+    await boardPage.waitForTimeout(50);
+    assert.equal(
+      await boardPage.locator("#board-feed").textContent().then((copy) => copy.includes("Reply posted.")),
+      false,
+      "a stale reply success cannot mutate the restored principal's board UI",
+    );
+    assert.equal(await boardPage.locator(".reply-form").count(), 1);
+
     const preflightPage = await context.newPage();
     await preflightPage.goto(`${appOrigin}/index.html`, { waitUntil: "domcontentloaded" });
     await preflightPage.evaluate(({ key, hash }) => {
@@ -559,6 +884,7 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
     assert.equal(await preflightPage.locator("#hunter-signup-finishing-state").isVisible(), false);
     assert.deepEqual({ profile: profileMutations, legal: legalMutations }, mutationBaseline);
   } finally {
+    await realCoordinatorContext?.close();
     await context?.close();
     await browser.close();
     await new Promise((resolve, reject) => appServer.close((error) => error ? reject(error) : resolve()));

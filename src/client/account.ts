@@ -1,4 +1,3 @@
-import type { Clerk } from "@clerk/clerk-js";
 import { privateAccountIdentity } from "../shared/public-identity";
 import {
   getHunterAuthSessionCoordinator,
@@ -18,7 +17,6 @@ export interface CampaignAccountModel {
 }
 
 export interface CampaignHunterSession {
-  clerk: Clerk;
   getToken: () => Promise<string | null>;
   coordinator: HunterAuthSessionCoordinator;
   deploymentEnvironment: string | null;
@@ -70,10 +68,8 @@ async function loadCampaignHunterSession(): Promise<CampaignHunterSession | null
     if (!publishableKey) return null;
     const coordinator = getHunterAuthSessionCoordinator();
     const snapshot = await coordinator.load(publishableKey);
-    const clerk = snapshot.clerk;
-    if (!clerk || snapshot.status !== "ready") return null;
+    if (snapshot.status !== "ready") return null;
     const session: CampaignHunterSession = {
-      clerk,
       getToken: coordinator.getToken,
       coordinator,
       deploymentEnvironment,
@@ -167,7 +163,7 @@ async function initializeCampaignAccount(): Promise<void> {
 
   let profileRequestSessionId: string | null = null;
   const render = (snapshot: HunterAuthSessionSnapshot): void => {
-    const model = campaignAccountModel(snapshot.user, snapshot.profile);
+    const model = campaignAccountModel(snapshot.principal ? { imageUrl: null } : null, snapshot.profile);
     if (signIn) signIn.hidden = model.signedIn;
     if (toggle) toggle.hidden = !model.signedIn;
     if (handle) handle.textContent = model.handle;
@@ -188,12 +184,12 @@ async function initializeCampaignAccount(): Promise<void> {
   if (!session) return;
   const refreshProfile = (snapshot: HunterAuthSessionSnapshot): void => {
     render(snapshot);
-    const sessionId = snapshot.session?.id ?? null;
-    if (!snapshot.user || snapshot.profile || !sessionId || profileRequestSessionId === sessionId) return;
-    profileRequestSessionId = sessionId;
+    const principalVersion = snapshot.principal?.version ?? null;
+    if (!snapshot.principal || snapshot.profile || !principalVersion || profileRequestSessionId === String(principalVersion)) return;
+    profileRequestSessionId = String(principalVersion);
     void fetchPrivateProfile(session)
       .then((profile) => {
-        if (session.coordinator.snapshot().session?.id === sessionId) {
+        if (session.coordinator.snapshot().principal?.version === principalVersion) {
           session.coordinator.setProfile(profile);
         }
       })
@@ -201,7 +197,7 @@ async function initializeCampaignAccount(): Promise<void> {
         // The privacy-safe provider fallback remains available while profile data is unavailable.
       })
       .finally(() => {
-        if (profileRequestSessionId === sessionId) profileRequestSessionId = null;
+        if (profileRequestSessionId === String(principalVersion)) profileRequestSessionId = null;
       });
   };
   managePageLifecycleSubscription(
