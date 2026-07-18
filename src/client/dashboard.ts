@@ -58,11 +58,20 @@ interface SignupLegalViewerLoadCoordinator {
   invalidate: () => void;
   isCurrent: (lease: SignupLegalViewerLoadLease) => boolean;
   apply: (lease: SignupLegalViewerLoadLease, update: () => void) => boolean;
+  prepareFrame: (lease: SignupLegalViewerLoadLease) => HTMLIFrameElement | null;
 }
 
-export function createSignupLegalViewerLoadCoordinator(): SignupLegalViewerLoadCoordinator {
+export function createSignupLegalViewerLoadCoordinator(
+  dialog: HTMLDialogElement | null = null,
+): SignupLegalViewerLoadCoordinator {
   let generation = 0;
   let controller: AbortController | null = null;
+  const suppressFrame = (): void => {
+    const frame = dialog?.querySelector<HTMLIFrameElement>("iframe");
+    if (!frame) return;
+    frame.hidden = true;
+    frame.removeAttribute("src");
+  };
   const isCurrent = (lease: SignupLegalViewerLoadLease): boolean =>
     controller !== null && lease.generation === generation &&
     lease.signal === controller.signal && !lease.signal.aborted;
@@ -70,6 +79,7 @@ export function createSignupLegalViewerLoadCoordinator(): SignupLegalViewerLoadC
   return {
     begin: () => {
       controller?.abort();
+      suppressFrame();
       controller = new AbortController();
       generation += 1;
       return Object.freeze({ generation, signal: controller.signal });
@@ -78,12 +88,23 @@ export function createSignupLegalViewerLoadCoordinator(): SignupLegalViewerLoadC
       generation += 1;
       controller?.abort();
       controller = null;
+      suppressFrame();
     },
     isCurrent,
     apply: (lease, update) => {
       if (!isCurrent(lease)) return false;
       update();
       return true;
+    },
+    prepareFrame: (lease) => {
+      if (!isCurrent(lease)) return null;
+      const currentFrame = dialog?.querySelector<HTMLIFrameElement>("iframe");
+      if (!currentFrame) return null;
+      const frame = currentFrame.cloneNode(false) as HTMLIFrameElement;
+      frame.hidden = true;
+      frame.removeAttribute("src");
+      currentFrame.replaceWith(frame);
+      return frame;
     },
   };
 }
@@ -1745,16 +1766,15 @@ function showHunterSignupErrors(form: HTMLFormElement, errors: HunterSignupError
 }
 
 function reloadSignupLegalViewer(
-  dialog: HTMLDialogElement,
   url: string,
   kind: SignupLegalDocumentKind,
-  signal: AbortSignal,
+  load: SignupLegalViewerLoadLease,
+  loads: SignupLegalViewerLoadCoordinator,
 ): Promise<void> {
-  const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
-  if (!currentViewer) return Promise.reject(new Error("The legal document viewer is unavailable."));
+  const signal = load.signal;
   if (signal.aborted) return Promise.reject(new DOMException("The legal document load was cancelled.", "AbortError"));
-  const viewer = currentViewer.cloneNode(false) as HTMLIFrameElement;
-  viewer.removeAttribute("src");
+  const viewer = loads.prepareFrame(load);
+  if (!viewer) return Promise.reject(new Error("The legal document viewer is unavailable."));
   return new Promise<void>((resolve, reject) => {
     let settled = false;
     const timeout = window.setTimeout(() => {
@@ -1787,7 +1807,6 @@ function reloadSignupLegalViewer(
       () => finish(() => reject(new Error("The embedded legal document could not be displayed. Use the full-page link below."))),
       { once: true },
     );
-    currentViewer.replaceWith(viewer);
     viewer.src = url;
   });
 }
@@ -1810,7 +1829,7 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
   const restoreFocus = new Map<HTMLDialogElement, HTMLButtonElement>();
   const viewerLoads = new Map<HTMLDialogElement, SignupLegalViewerLoadCoordinator>();
   for (const dialog of document.querySelectorAll<HTMLDialogElement>("[data-signup-dialog]")) {
-    const loads = createSignupLegalViewerLoadCoordinator();
+    const loads = createSignupLegalViewerLoadCoordinator(dialog);
     viewerLoads.set(dialog, loads);
     for (const close of dialog.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
       close.addEventListener("click", () => dialog.close());
@@ -1837,13 +1856,11 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
       if (!loads) return;
       const load = loads.begin();
       const status = dialog.querySelector<HTMLElement>("[data-signup-dialog-status]");
-      const viewer = dialog.querySelector<HTMLIFrameElement>("iframe");
       restoreFocus.set(dialog, button);
       if (status) {
         status.textContent = "Loading the current legal document…";
         status.hidden = false;
       }
-      if (viewer) viewer.hidden = false;
       if (!dialog.open) dialog.showModal();
       dialog.querySelector<HTMLButtonElement>("[data-signup-dialog-close]")?.focus();
       try {
@@ -1856,16 +1873,21 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
         await prepareSignupLegalReview({
           kind,
           identity,
-          loadViewer: (url) => reloadSignupLegalViewer(dialog, url, kind, load.signal),
+          loadViewer: (url) => reloadSignupLegalViewer(url, kind, load, loads),
         });
         loads.apply(load, () => {
           storeSignupLegalIdentity(form, kind, identity);
+          const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
+          if (currentViewer) currentViewer.hidden = false;
           if (status) status.hidden = true;
         });
       } catch (error) {
         loads.apply(load, () => {
           const currentViewer = dialog.querySelector<HTMLIFrameElement>("iframe");
-          if (currentViewer) currentViewer.hidden = true;
+          if (currentViewer) {
+            currentViewer.hidden = true;
+            currentViewer.removeAttribute("src");
+          }
           if (status) {
             const message = error instanceof Error
               ? error.message
