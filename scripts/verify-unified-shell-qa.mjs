@@ -971,6 +971,59 @@ async function openLocalWorkflowReport(page) {
   return dialog;
 }
 
+async function assertReportDialogVerticalReachability(page, label) {
+  const metrics = await page.evaluate(() => {
+    const dialog = document.querySelector("[data-report-review-dialog]");
+    const header = dialog?.querySelector(".ops-dialog__head");
+    const body = dialog?.querySelector(".ops-report-dialog__body");
+    if (!(dialog instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement)) {
+      return null;
+    }
+    const dialogRect = dialog.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    const bodyRect = body.getBoundingClientRect();
+    return {
+      viewportHeight: window.innerHeight,
+      dialogTop: dialogRect.top,
+      dialogBottom: dialogRect.bottom,
+      headerTop: headerRect.top,
+      headerBottom: headerRect.bottom,
+      bodyTop: bodyRect.top,
+      bodyBottom: bodyRect.bottom,
+      bodyClientHeight: body.clientHeight,
+      bodyScrollHeight: body.scrollHeight,
+      dialogClientHeight: dialog.clientHeight,
+      dialogScrollHeight: dialog.scrollHeight,
+    };
+  });
+  assert.ok(metrics, `${label} dialog geometry must be available`);
+  assert.ok(metrics.dialogTop >= -1, `${label} dialog must begin inside the viewport`);
+  assert.ok(metrics.dialogBottom <= metrics.viewportHeight + 1, `${label} dialog must end inside the viewport`);
+  assert.ok(metrics.headerTop >= metrics.dialogTop - 1, `${label} header must remain inside the dialog`);
+  assert.ok(metrics.headerBottom <= metrics.bodyTop + 1, `${label} header and scroll body must not overlap`);
+  assert.ok(metrics.bodyBottom <= metrics.dialogBottom + 1, `${label} scroll body must end inside the dialog`);
+  assert.ok(
+    metrics.dialogScrollHeight <= metrics.dialogClientHeight + 1,
+    `${label} outer dialog must not hide vertically overflowing content`,
+  );
+
+  const reportDialog = page.locator("[data-report-review-dialog]");
+  const body = reportDialog.locator(".ops-report-dialog__body");
+  const history = reportDialog.locator(".ops-report-history summary");
+  await history.scrollIntoViewIfNeeded();
+  const reached = await body.evaluate((element) => {
+    const historyControl = element.querySelector(".ops-report-history summary");
+    if (!(historyControl instanceof HTMLElement)) return false;
+    const bodyRect = element.getBoundingClientRect();
+    const historyRect = historyControl.getBoundingClientRect();
+    const visibleTop = Math.max(0, bodyRect.top);
+    const visibleBottom = Math.min(window.innerHeight, bodyRect.bottom);
+    return historyRect.top >= visibleTop - 1 && historyRect.bottom <= visibleBottom + 1;
+  });
+  assert.equal(reached, true, `${label} final Review workflow control must be reachable in the one scroll body`);
+  await assertElementInViewport(page, history, `${label} final Review workflow control`);
+}
+
 async function closeLocalWorkflowReport(page) {
   const close = page.getByRole("button", { name: "Close report review", exact: true });
   await focusAndPress(page, close, "Enter", "Close report review");
@@ -1021,6 +1074,7 @@ async function runReportWorkflowAudit({
     desktop.setLabel("received-to-reviewing-assignment");
     reportWorkflowFixture.reset({ nextStatus: "received" });
     await openLocalWorkflowReport(page);
+    await assertReportDialogVerticalReachability(page, "desktop report workflow");
     const selectWriteCount = workflowMutationLedger.length;
     await selectWorkflowStateByKeyboard(page, "reviewing");
     assert.equal(workflowMutationLedger.length, selectWriteCount, "selecting a status must send zero writes");
@@ -1189,6 +1243,7 @@ async function runReportWorkflowAudit({
     mobile.setLabel("guided-keyboard-layout");
     reportWorkflowFixture.reset({ nextStatus: "received" });
     const mobileDialog = await openLocalWorkflowReport(mobile.page);
+    await assertReportDialogVerticalReachability(mobile.page, "mobile report workflow");
     await assertNoHorizontalViewportOverflow(mobile.page, "mobile report workflow");
     await assertMinimumHitTargets({
       close: mobile.page.getByRole("button", { name: "Close report review", exact: true }),
@@ -1219,6 +1274,35 @@ async function runReportWorkflowAudit({
     assert.equal(workflowMutationLedger.length, mobileBaseline + 1);
     await focusAndPress(mobile.page, mobileDialog.locator(".ops-report-history summary"), "Enter", "Mobile status history");
     await closeLocalWorkflowReport(mobile.page);
+
+    const constrainedViewports = [
+      {
+        viewport: { width: 360, height: 640 },
+        labelPrefix: "report-workflow-short-phone-360x640",
+        label: "short phone report workflow",
+      },
+      {
+        viewport: { width: 360, height: 250 },
+        labelPrefix: "report-workflow-zoom-200-equivalent-360x250",
+        label: "200% zoom-equivalent report workflow",
+      },
+    ];
+    for (const { viewport, labelPrefix, label } of constrainedViewports) {
+      const constrained = await createPage(viewport, labelPrefix);
+      constrained.setLabel("dialog-reachability");
+      reportWorkflowFixture.reset({ nextStatus: "received" });
+      await openLocalWorkflowReport(constrained.page);
+      await assertReportDialogVerticalReachability(constrained.page, label);
+      await assertNoHorizontalViewportOverflow(constrained.page, label);
+      await assertMinimumHitTargets({
+        close: constrained.page.getByRole("button", { name: "Close report review", exact: true }),
+        status: constrained.page.locator("[data-report-next-status]"),
+        apply: constrained.page.getByRole("button", { name: "Apply status", exact: true }),
+        unassign: constrained.page.getByRole("button", { name: "Unassign report", exact: true }),
+        refresh: constrained.page.getByRole("button", { name: "Refresh report", exact: true }),
+      }, label);
+      await closeLocalWorkflowReport(constrained.page);
+    }
 
     mobile.setLabel("hunter-safe-dashboard-projection");
     qaTrace("report workflow audit: hunter projection");
@@ -1285,7 +1369,7 @@ async function runReportWorkflowAudit({
       appliedWrites: workflowMutationLedger.filter((entry) => entry.outcome.startsWith("applied")).length,
       staleWrites: workflowMutationLedger.filter((entry) => entry.outcome === "report_transition_stale").length,
       expectedStaleConsoleErrors: expectedStaleConsoleErrors.length,
-      viewports: ["1440x1000", "390x844"],
+      viewports: ["1440x1000", "390x844", "360x640", "360x250 (200% zoom equivalent)"],
       isolatedFixture: true,
       moderationQueueUnchanged: true,
       hunterProjectionFields: Object.keys(hunterProjection[0]),

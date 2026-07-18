@@ -235,6 +235,21 @@ test("the report review drawer is responsive and keeps evidence constrained", ()
   assert.match(css, /@media\s*\(max-width:\s*820px\)[\s\S]*\.ops-report-dialog__grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
 });
 
+test("shared operations dialogs reserve the viewport for one reachable scroll body", () => {
+  const css = read("css/ops.css");
+  assert.match(
+    css,
+    /\.ops-dialog\[open\]\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/s,
+  );
+  assert.match(css, /\.ops-dialog\s*\{[^}]*max-height:\s*calc\(100dvh\s*-\s*28px\)/s);
+  assert.match(css, /\.ops-dialog__body\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s);
+  assert.match(css, /\.ops-report-dialog__body\s*\{[^}]*max-height:\s*none/s);
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*620px\)[\s\S]*\.ops-report-dialog\s*\{[^}]*max-height:\s*calc\(100dvh\s*-\s*12px\)/s,
+  );
+});
+
 test("the private player ledger loads authorized rows and exports only in the client", () => {
   const html = read("ops.html");
   const client = read("src/client/ops.ts");
