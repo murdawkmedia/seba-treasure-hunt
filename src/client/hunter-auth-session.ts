@@ -82,8 +82,8 @@ const signupAttemptSnapshot = (attempt: SignUpResource | null | undefined): Sign
     status: attempt.status ?? null,
     emailAddress: attempt.emailAddress ?? null,
     createdSessionId: attempt.createdSessionId ?? null,
-    unverifiedFields: attempt.unverifiedFields ?? [],
-    missingFields: attempt.missingFields ?? [],
+    unverifiedFields: Object.freeze([...(attempt.unverifiedFields ?? [])]),
+    missingFields: Object.freeze([...(attempt.missingFields ?? [])]),
     verifications: attempt.verifications ? {
       emailAddress: attempt.verifications.emailAddress ? {
         status: attempt.verifications.emailAddress.status ?? null,

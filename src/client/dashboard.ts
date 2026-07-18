@@ -570,12 +570,52 @@ let explicitHunterSignOutPending = false;
 let signInAttempt: SignInResource | null = null;
 let signUpAttempt: SignUpResource | null = null;
 let pristineDashboardContent: HTMLElement | null = null;
+let dashboardAccountOperationGeneration = 0;
+const dashboardAccountOperationControllers = new Set<AbortController>();
+
+interface DashboardAccountOperationLease {
+  signal: AbortSignal;
+  isCurrent: () => boolean;
+  finish: () => void;
+}
+
+function activeDashboardPrincipalKey(): string | null {
+  const principal = hunterAuthSession?.snapshot().principal;
+  if (principal) return `${principal.subject}:${principal.version}`;
+  return hunterClerk?.user?.id && hunterClerk.session?.id
+    ? `${hunterClerk.user.id}:${hunterClerk.session.id}`
+    : null;
+}
+
+function beginDashboardAccountOperation(): DashboardAccountOperationLease {
+  const generation = dashboardAccountOperationGeneration;
+  const principalKey = activeDashboardPrincipalKey();
+  const controller = new AbortController();
+  dashboardAccountOperationControllers.add(controller);
+  return {
+    signal: controller.signal,
+    isCurrent: () =>
+      !controller.signal.aborted &&
+      dashboardAccountOperationControllers.has(controller) &&
+      generation === dashboardAccountOperationGeneration &&
+      principalKey !== null &&
+      principalKey === activeDashboardPrincipalKey(),
+    finish: () => { dashboardAccountOperationControllers.delete(controller); },
+  };
+}
+
+function invalidateDashboardAccountOperations(): void {
+  dashboardAccountOperationGeneration += 1;
+  for (const controller of dashboardAccountOperationControllers) controller.abort();
+  dashboardAccountOperationControllers.clear();
+}
 
 function registerAccountOperationsInvalidator(invalidator: () => void): void {
   invalidateAccountOperations = invalidator;
 }
 
 function invalidateActiveAccountOperations(): void {
+  invalidateDashboardAccountOperations();
   invalidateAccountOperations?.();
 }
 
@@ -1162,18 +1202,22 @@ async function initializeProfileForm(
     showProfileErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    const operation = beginDashboardAccountOperation();
     submit.disabled = true;
     try {
       const headers = await authHeaders(auth);
+      if (!operation.isCurrent()) return;
       headers.set("Content-Type", "application/json");
       const response = await protectedFetch("/api/v1/me/profile", {
         method: "PATCH",
         headers,
         credentials: "same-origin",
         body: JSON.stringify(buildProfilePayload(draft)),
-        signal: AbortSignal.timeout(12_000),
-      });
+        signal: requestSignal(12_000, operation.signal),
+      }, operation.signal);
+      if (!operation.isCurrent()) return;
       const payload: unknown = await response.json().catch(() => null);
+      if (!operation.isCurrent()) return;
       if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
       const saved = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
       if (saved) {
@@ -1186,8 +1230,10 @@ async function initializeProfileForm(
         fillProfileForm(form, saved, saved.privacyMediaRequired === true);
       }
 
-      const dashboardResponse = await fetchDashboard(auth);
+      const dashboardResponse = await fetchDashboard(auth, operation.signal);
+      if (!operation.isCurrent()) return;
       const dashboardPayload: unknown = await dashboardResponse.json().catch(() => null);
+      if (!operation.isCurrent()) return;
       if (!dashboardResponse.ok) {
         throw new ProtectedAccountRequestError(dashboardResponse.status, waiverErrorCode(dashboardPayload));
       }
@@ -1209,7 +1255,9 @@ async function initializeProfileForm(
           await initializeWaiverExperience(
             auth,
             isRecord(dashboardPayload.data.profile) && dashboardPayload.data.privacyMediaRequired !== true,
+            operation.signal,
           );
+          if (!operation.isCurrent()) return;
         }
       }
       showProfileErrors({});
@@ -1220,9 +1268,12 @@ async function initializeProfileForm(
         "success",
       );
     } catch (error) {
+      if (!operation.isCurrent()) return;
       setProfileResult(error instanceof Error ? error.message : "Your profile could not be saved.", "error");
     } finally {
-      submit.disabled = false;
+      const remainsCurrent = operation.isCurrent();
+      operation.finish();
+      if (remainsCurrent) submit.disabled = false;
     }
   });
 }
@@ -1232,6 +1283,7 @@ async function fetchDashboardData(auth: HunterAuthHook | null, signal?: AbortSig
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new ProtectedAccountRequestError(response.status, waiverErrorCode(payload));
   if (!isRecord(payload) || !isRecord(payload.data)) throw new Error("Your dashboard could not be refreshed.");
+  throwIfAborted(signal);
   hunterAuthSession?.setProfile(payload.data.profile);
   return payload.data;
 }
@@ -1743,11 +1795,13 @@ async function initializeWaiverExperience(
 
     const activateWaiverReview = reviewLink
       ? createSerializedWaiverReviewActivation(async () => {
+        const operation = beginDashboardAccountOperation();
         reviewLink.setAttribute("aria-busy", "true");
         try {
           const reviewed = await performWaiverReview({
-            fetchDocument: fetchCurrentWaiverDocument,
+            fetchDocument: () => fetchCurrentWaiverDocument(operation.signal),
             renderAndReveal: (documentValue) => {
+              if (!operation.isCurrent()) return;
               activeWaiverDocument = documentValue;
               waiverReviewEventId = "";
               renderWaiverDocument(documentValue);
@@ -1758,26 +1812,33 @@ async function initializeWaiverExperience(
               }
             },
             recordReview: async (documentValue) => {
+              if (!operation.isCurrent()) throw new DOMException("The account operation was cancelled.", "AbortError");
               const reviewPayload = await waiverWrite(auth, "/api/v1/me/waiver/review", {
                 version: documentValue.version,
                 hash: documentValue.hash,
-              });
+              }, undefined, operation.signal);
+              if (!operation.isCurrent()) throw new DOMException("The account operation was cancelled.", "AbortError");
               return reviewIdFrom(reviewPayload);
             },
             setAcceptanceEnabled: (enabled) => {
+              if (!operation.isCurrent()) return;
               if (!acceptanceInput) return;
               acceptanceInput.disabled = !enabled;
               if (!enabled) acceptanceInput.checked = false;
             },
           });
+          if (!operation.isCurrent()) return;
           activeWaiverDocument = reviewed.document;
           waiverReviewEventId = reviewed.reviewEventId;
           showWaiverErrors({});
           setWaiverResult("The current waiver review is recorded. You may now accept it.", "success");
         } catch (error) {
+          if (!operation.isCurrent()) return;
           setWaiverResult(error instanceof Error ? error.message : "The waiver review could not be recorded.", "error", true);
         } finally {
-          reviewLink.removeAttribute("aria-busy");
+          const remainsCurrent = operation.isCurrent();
+          operation.finish();
+          if (remainsCurrent) reviewLink.removeAttribute("aria-busy");
         }
       })
       : null;
@@ -1799,6 +1860,7 @@ async function initializeWaiverExperience(
       showWaiverErrors(errors);
       if (Object.keys(errors).length) return;
       const submit = document.querySelector<HTMLButtonElement>("[data-waiver-submit]");
+      const operation = beginDashboardAccountOperation();
       if (submit) submit.disabled = true;
       retainedWaiverIdempotencyKey ??= crypto.randomUUID();
       let acceptanceStored = false;
@@ -1810,30 +1872,43 @@ async function initializeWaiverExperience(
               "/api/v1/me/waiver/accept",
               buildWaiverPayload(draft),
               retainedWaiverIdempotencyKey ?? undefined,
+              operation.signal,
             );
+            if (!operation.isCurrent()) throw new DOMException("The account operation was cancelled.", "AbortError");
             acceptanceStored = true;
             retainedWaiverIdempotencyKey = null;
           },
           loadProjection: async () => {
-            const projection = await fetchWaiverAcceptanceProjection(auth);
+            const projection = await fetchWaiverAcceptanceProjection(auth, operation.signal);
+            if (!operation.isCurrent()) throw new DOMException("The account operation was cancelled.", "AbortError");
             if (!projection) {
               throw new Error("Your acceptance was stored, but its confirmation could not be loaded. Refresh to retrieve it.");
             }
             return projection;
           },
-          fetchDashboard: () => fetchDashboardData(auth),
-          renderDashboard,
-          renderProjection: renderWaiverAcceptanceProjection,
-          resetOutdatedState: resetOutdatedWaiverState,
+          fetchDashboard: () => fetchDashboardData(auth, operation.signal),
+          renderDashboard: (dashboard) => {
+            if (operation.isCurrent()) renderDashboard(dashboard);
+          },
+          renderProjection: (projection) => {
+            if (operation.isCurrent()) renderWaiverAcceptanceProjection(projection);
+          },
+          resetOutdatedState: () => {
+            if (operation.isCurrent()) resetOutdatedWaiverState();
+          },
         });
+        if (!operation.isCurrent()) return;
         setWaiverResult(
           waiverAcceptanceResultMessage(outcome.dashboardRefreshed),
           "success",
         );
       } catch (error) {
+        if (!operation.isCurrent()) return;
         setWaiverResult(error instanceof Error ? error.message : "The waiver could not be accepted.", "error", true);
       } finally {
-        if (submit && !acceptanceStored && !currentWaiverAcceptance) submit.disabled = false;
+        const remainsCurrent = operation.isCurrent();
+        operation.finish();
+        if (remainsCurrent && submit && !acceptanceStored && !currentWaiverAcceptance) submit.disabled = false;
       }
     });
 
@@ -1862,13 +1937,18 @@ async function initializeWaiverExperience(
       button.disabled = true;
       const status = document.querySelector<HTMLElement>("[data-waiver-receipt-status]");
       if (status) status.textContent = "Requesting another receipt email…";
+      const operation = beginDashboardAccountOperation();
       try {
-        await waiverWrite(auth, "/api/v1/me/waiver/receipt");
+        await waiverWrite(auth, "/api/v1/me/waiver/receipt", undefined, undefined, operation.signal);
+        if (!operation.isCurrent()) return;
         if (status) status.textContent = "Receipt resend queued for your verified account email.";
       } catch (error) {
+        if (!operation.isCurrent()) return;
         if (status) status.textContent = error instanceof Error ? error.message : "The receipt could not be queued.";
       } finally {
-        button.disabled = status?.dataset.receiptStatus === "uncertain";
+        const remainsCurrent = operation.isCurrent();
+        operation.finish();
+        if (remainsCurrent) button.disabled = status?.dataset.receiptStatus === "uncertain";
       }
     });
   }
@@ -2121,7 +2201,8 @@ function verifiedSignOutHandler(
 ): HunterSignOutHandler {
   return async (button) => {
     button.disabled = true;
-    invalidateOperations();
+    invalidateActiveAccountOperations();
+    if (invalidateAccountOperations !== invalidateOperations) invalidateOperations();
     disableFinishingRetry();
     explicitHunterSignOutPending = true;
     try {
@@ -3258,13 +3339,18 @@ function setupAccountForms(
       if (result) result.textContent = "Enter your current password and matching new passwords of at least 12 characters.";
       return;
     }
+    const operation = beginDashboardAccountOperation();
     try {
       if (hunterAuthSession) await hunterAuthSession.updatePassword(currentPassword, newPassword);
       else await hunterClerk?.user?.updatePassword({ currentPassword, newPassword, signOutOfOtherSessions: true });
+      if (!operation.isCurrent()) return;
       changePassword.reset();
       if (result) result.textContent = "Password changed. Other sessions have been revoked.";
     } catch (error) {
+      if (!operation.isCurrent()) return;
       if (result) result.textContent = identityError(error, "Your password could not be changed.");
+    } finally {
+      operation.finish();
     }
   });
 
@@ -3424,6 +3510,7 @@ async function initializeDashboard(): Promise<void> {
   let observedPrincipalKey = hunterAuthSession.snapshot().principal
     ? `${hunterAuthSession.snapshot().principal?.subject}:${hunterAuthSession.snapshot().principal?.version}`
     : null;
+  let pageWasHidden = false;
   let accountPresentationGeneration = 0;
   const presentAccount = async (
     snapshot: ReturnType<HunterAuthSessionCoordinator["snapshot"]>,
@@ -3466,10 +3553,19 @@ async function initializeDashboard(): Promise<void> {
     void presentAccount(snapshot, true);
   };
   if (hunterAuthSession) {
+    window.addEventListener("pagehide", () => {
+      pageWasHidden = true;
+      invalidateActiveAccountOperations();
+    });
     managePageLifecycleSubscription(
       () => hunterAuthSession?.subscribe(handleAuthSnapshot) ?? (() => {}),
       () => {
-        if (hunterAuthSession) handleAuthSnapshot(hunterAuthSession.refresh());
+        if (!hunterAuthSession) return;
+        if (pageWasHidden) {
+          pageWasHidden = false;
+          observedPrincipalKey = null;
+        }
+        handleAuthSnapshot(hunterAuthSession.refresh());
       },
       { refreshOnStart: false },
     );

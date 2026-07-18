@@ -171,10 +171,16 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
   let holdReplyWrite = false;
   let heldCaseNoteAborts = 0;
   let heldReplyAborts = 0;
+  let holdProfilePatch = false;
+  let heldProfileAborts = 0;
+  let holdWaiverAccept = false;
+  let heldWaiverAcceptAborts = 0;
   const releaseHeldBootstraps = [];
   const releaseHeldDashboards = [];
   const releaseHeldCaseNotes = [];
   const releaseHeldReplies = [];
+  const releaseHeldProfiles = [];
+  const releaseHeldWaiverAccepts = [];
   const appServer = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://local.test");
@@ -211,6 +217,25 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
           let body = "";
           for await (const chunk of request) body += chunk;
           const update = JSON.parse(body);
+          if (holdProfilePatch) {
+            const heldProfile = {
+              ...identity,
+              ...update,
+              publicDisplayName: typeof update.publicDisplayName === "string" ? update.publicDisplayName : "",
+            };
+            let disconnected = false;
+            const markDisconnected = () => {
+              if (disconnected) return;
+              disconnected = true;
+              heldProfileAborts += 1;
+            };
+            request.once("aborted", markDisconnected);
+            response.once("close", () => { if (!response.writableEnded) markDisconnected(); });
+            releaseHeldProfiles.push(() => {
+              if (!response.destroyed) json({ data: heldProfile });
+            });
+            return;
+          }
           identity = {
             ...identity,
             ...update,
@@ -311,6 +336,38 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       if (url.pathname === "/api/v1/me/waiver") {
         if (request.method !== "GET") legalMutations += 1;
         json({ data: null });
+        return;
+      }
+      if (url.pathname === "/api/v1/legal/waiver") {
+        json({ data: { waiver: {
+          version: "waiver-test",
+          hash: legalHash,
+          title: "Browser participation waiver",
+          effectiveDate: "2026-07-18",
+          effectiveDateLabel: "July 18, 2026",
+          acceptanceStatement: "I accept this browser participation waiver.",
+          sections: [{ number: 1, title: "Test terms", blocks: [{ kind: "paragraph", text: "Browser-safe test terms." }] }],
+        } } });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver/review") {
+        legalMutations += 1;
+        json({ data: { review: { reviewEventId: "review-browser" } } });
+        return;
+      }
+      if (url.pathname === "/api/v1/me/waiver/accept" && holdWaiverAccept) {
+        legalMutations += 1;
+        let disconnected = false;
+        const markDisconnected = () => {
+          if (disconnected) return;
+          disconnected = true;
+          heldWaiverAcceptAborts += 1;
+        };
+        request.once("aborted", markDisconnected);
+        response.once("close", () => { if (!response.writableEnded) markDisconnected(); });
+        releaseHeldWaiverAccepts.push(() => {
+          if (!response.destroyed) json({ data: { acceptance: { referenceCode: "STALE-A-ACCEPTANCE" } } });
+        });
         return;
       }
       if (url.pathname.startsWith("/api/v1/me/waiver/")) {
@@ -615,6 +672,67 @@ test("separate account, Dashboard, and board bundles share one live hunter sessi
       "the switched account response cannot restore private DOM from the previous principal",
     );
     assert.equal(heldDashboardAborts, 0, "the current principal's held response remains live until released");
+
+    holdProfilePatch = true;
+    await switchPage.locator('[data-profile-form] [name="fullName"]').fill("Stale Account A Saved Name");
+    await switchPage.locator('[data-profile-form] [name="publicDisplayName"]').fill("Stale Account A Public Name");
+    await switchPage.locator("[data-profile-submit]").click();
+    for (let attempt = 0; attempt < 50 && releaseHeldProfiles.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(releaseHeldProfiles.length, 1, "Account A's profile PATCH reaches the held response");
+    identity = {
+      ...identity,
+      fullName: "Profile Account B Private Name",
+      publicDisplayName: "Profile Account B",
+      publicHandle: "Hunter PROFILE-B",
+    };
+    await switchPage.evaluate(() => {
+      dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+      globalThis.__timLostHunterAuthSessionV1.switchPrincipal("user_profile_account_b", false);
+      dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    });
+    await switchPage.locator("[data-dashboard-profile]").getByText("Profile Account B Private Name").waitFor();
+    for (let attempt = 0; attempt < 50 && heldProfileAborts === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(heldProfileAborts, 1, "switching principals aborts Account A's profile PATCH");
+    holdProfilePatch = false;
+    for (const release of releaseHeldProfiles.splice(0)) release();
+    await switchPage.waitForTimeout(50);
+    const profileSwitchCopy = await switchPage.locator("body").textContent();
+    assert.equal(profileSwitchCopy.includes("Stale Account A Saved Name"), false);
+    assert.equal(profileSwitchCopy.includes("Stale Account A Public Name"), false);
+    assert.equal(await switchPage.locator("[data-profile-result]").isVisible(), false);
+
+    await switchPage.locator("[data-waiver-review-link]").click();
+    await switchPage.waitForFunction(() => !document.querySelector("#waiver-accepted")?.disabled);
+    holdWaiverAccept = true;
+    await switchPage.locator("#waiver-accepted").check();
+    await switchPage.locator("[data-waiver-submit]").click();
+    for (let attempt = 0; attempt < 50 && releaseHeldWaiverAccepts.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(releaseHeldWaiverAccepts.length, 1, "Account A's waiver accept POST reaches the held response");
+    identity = {
+      ...identity,
+      fullName: "Waiver Account B Private Name",
+      publicDisplayName: "Waiver Account B",
+      publicHandle: "Hunter WAIVER-B",
+    };
+    await switchPage.evaluate(() => globalThis.__timLostHunterAuthSessionV1.switchPrincipal("user_waiver_account_b"));
+    await switchPage.locator("[data-dashboard-profile]").getByText("Waiver Account B Private Name").waitFor();
+    for (let attempt = 0; attempt < 50 && heldWaiverAcceptAborts === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(heldWaiverAcceptAborts, 1, "switching principals aborts Account A's waiver accept POST");
+    holdWaiverAccept = false;
+    for (const release of releaseHeldWaiverAccepts.splice(0)) release();
+    await switchPage.waitForTimeout(50);
+    const waiverSwitchCopy = await switchPage.locator("body").textContent();
+    assert.equal(waiverSwitchCopy.includes("STALE-A-ACCEPTANCE"), false);
+    assert.equal(await switchPage.locator("[data-waiver-receipt]").isVisible(), false);
+    assert.equal(await switchPage.locator("[data-waiver-result]").isVisible(), false);
 
     realCoordinatorContext = await browser.newContext();
     const realCoordinatorPage = await realCoordinatorContext.newPage();

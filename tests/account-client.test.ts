@@ -161,6 +161,48 @@ test("shared coordinator snapshots project raw profiles to display-safe identity
   assert.equal(campaignAccountModel(coordinator.snapshot().principal, coordinator.snapshot().profile).handle, "Hunter");
 });
 
+test("signup attempt projections copy and freeze provider-owned field arrays", async () => {
+  const unverifiedFields = ["email_address"];
+  const missingFields = ["password"];
+  const browserGlobal: Record<string, unknown> = {};
+  const provider = {
+    user: null,
+    session: null,
+    client: {
+      signUp: {
+        id: "signup_array_projection",
+        status: "missing_requirements",
+        emailAddress: "safe@example.test",
+        createdSessionId: null,
+        unverifiedFields,
+        missingFields,
+        verifications: null,
+      },
+    },
+    async load() {},
+    addListener() { return () => {}; },
+    async setActive() {},
+    async signOut() {},
+  };
+  const coordinator = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => provider as never,
+  });
+  await coordinator.load("pk_test_signup_array_projection");
+
+  const attempt = coordinator.signupAttempt();
+  assert.notEqual(attempt?.unverifiedFields, unverifiedFields);
+  assert.notEqual(attempt?.missingFields, missingFields);
+  assert.equal(Object.isFrozen(attempt?.unverifiedFields), true);
+  assert.equal(Object.isFrozen(attempt?.missingFields), true);
+  unverifiedFields.push("phone_number");
+  missingFields.push("first_name");
+  assert.deepEqual(attempt?.unverifiedFields, ["email_address"]);
+  assert.deepEqual(attempt?.missingFields, ["password"]);
+  assert.throws(() => (attempt?.unverifiedFields as string[]).push("unsafe"), TypeError);
+  assert.throws(() => (attempt?.missingFields as string[]).push("unsafe"), TypeError);
+});
+
 test("verified-account provisioning guidance never presents a password or bad-login failure", () => {
   const transient = provisioningFailureMessage("retryable");
   const terminal = provisioningFailureMessage("terminal");
