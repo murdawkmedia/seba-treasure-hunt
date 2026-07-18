@@ -72,6 +72,32 @@ test("onboarding keeps legal acceptance direct, required, and independent from o
   assert.doesNotMatch(html, /Participation waiver[^<]*coming soon|name="participationWaiver"/i);
 });
 
+test("email verification exposes resumable, restart, and lost-attempt actions", () => {
+  const html = read("dashboard.html");
+  const client = read("src/client/dashboard.ts");
+
+  const verification = html.match(/<form\b(?=[^>]*id="hunter-verify-form")[^>]*>[\s\S]*?<\/form>/)?.[0] ?? "";
+  assert.match(verification, /data-signup-masked-email/);
+  assert.match(verification, /data-signup-verification-status[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(verification, /data-signup-resend[^>]*>Resend code<\/button>/);
+  assert.match(verification, /data-signup-restart[^>]*>Use a different email<\/button>/);
+  assert.match(verification, /data-signup-back-to-sign-in[^>]*>Back to sign in<\/button>/);
+  assert.match(html, /id="hunter-signup-lost-state"[\s\S]*data-signup-restart[\s\S]*data-signup-back-to-sign-in/);
+  assert.match(client, /client\.signUp/);
+  assert.match(client, /prepareEmailAddressVerification\(\{\s*strategy:\s*"email_code"\s*\}\)/);
+  assert.match(client, /clearSignupResume/);
+});
+
+test("signup persistence is isolated to the safe resume module", () => {
+  const resume = read("src/client/hunter-signup-resume.ts");
+  const dashboard = read("src/client/dashboard.ts");
+  assert.match(resume, /sessionStorage/);
+  assert.match(resume, /localStorage/);
+  assert.match(resume, /SIGNUP_RESUME_TTL_MS/);
+  assert.doesNotMatch(resume, /password|verificationCode|sessionToken|resetCode|providerSecret/i);
+  assert.doesNotMatch(dashboard, /(?:localStorage|sessionStorage)\.setItem/);
+});
+
 test("signup legal dialogs have labelled top close controls and sticky completion actions", () => {
   const html = read("dashboard.html");
   for (const kind of ["privacy-media", "waiver"]) {

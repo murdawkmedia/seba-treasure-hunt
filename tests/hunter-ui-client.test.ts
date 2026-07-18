@@ -489,6 +489,19 @@ test("signup legal review never needs to toggle acceptance controls", () => {
   assert.doesNotMatch(setup, /\.checked\s*=|\.disabled\s*=/);
 });
 
+test("signup verification recovery keeps provider state authoritative and clears local resume on exits", () => {
+  const client = readFileSync(new URL("../src/client/dashboard.ts", import.meta.url), "utf8");
+  const setup = client.match(/function setupAccountForms[\s\S]*?\r?\n}\r?\n\r?\nasync function initializeDashboard/)?.[0] ?? "";
+
+  assert.match(setup, /reconcileHunterSignupResume/);
+  assert.match(setup, /attemptEmailAddressVerification/);
+  assert.match(setup, /data-signup-resend/);
+  assert.match(setup, /data-signup-restart/);
+  assert.match(setup, /data-signup-back-to-sign-in/);
+  assert.match(setup, /clearSignupResume/);
+  assert.doesNotMatch(setup, /JSON\.stringify\([^\n]*(?:password|code|token)/i);
+});
+
 test("rapid legal viewer close and reopen prevents a stale timeout from replacing newer ready state", () => {
   interface LoadLease {
     signal: AbortSignal;

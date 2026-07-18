@@ -582,6 +582,32 @@ button.hunter-button {
   gap: 10px;
 }
 
+.signup-verification {
+  margin-block: 18px;
+  padding: 18px;
+  background: rgba(250, 240, 207, 0.08);
+  border: 1px solid var(--hunter-rule);
+  border-radius: 8px;
+}
+
+.signup-verification h3 {
+  margin-top: 0;
+}
+
+.signup-verification__status {
+  min-height: 1.5em;
+  margin-bottom: 0;
+  font-weight: 700;
+}
+
+.signup-verification__status[data-kind="error"] {
+  color: #ffb2ac;
+}
+
+.signup-verification__status[data-kind="success"] {
+  color: var(--hunter-gold);
+}
+
 .signup-legal-dialog {
   display: none;
   grid-template-rows: auto minmax(0, 1fr) auto;
