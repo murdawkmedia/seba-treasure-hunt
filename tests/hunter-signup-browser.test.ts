@@ -316,7 +316,7 @@ test("resolved but unprepared initial provider state cannot masquerade as waitin
   }
 });
 
-test("ambiguous initial create failure reconciles a prepared provider attempt without clearing the draft", async () => {
+test("ambiguous initial create failure never adopts an uncorrelated same-email provider attempt", async () => {
   const page = await signupPage();
   try {
     await setup(page, preparedAttempt());
@@ -330,10 +330,10 @@ test("ambiguous initial create failure reconciles a prepared provider attempt wi
     await page.locator('#hunter-sign-up-form [name="privacyMediaAccepted"]').check();
     await page.locator('#hunter-sign-up-form [name="waiverAccepted"]').check();
     await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-verify-form")?.hidden);
-    assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /prepared verification is still available/i);
+    await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-lost-state")?.hidden);
+    assert.match(await page.locator("[data-signup-lost-detail]").textContent() ?? "", /retained.*retry.*restart.*sign in/i);
     const record = JSON.parse((await page.evaluate((key) => sessionStorage.getItem(key), storageKey))!);
-    assert.equal(record.providerAttemptId, "sua_attempt_a");
+    assert.equal(record.providerAttemptId, null);
   } finally {
     await page.close();
   }
@@ -341,20 +341,35 @@ test("ambiguous initial create failure reconciles a prepared provider attempt wi
 
 test("real resend handler exposes success, cooldown, and provider error", async () => {
   const page = await signupPage();
+  let failedRecord: Record<string, unknown>;
   try {
     await installResume(page, "session", resumeRecord());
-    await setup(page, preparedAttempt(), 200);
+    await setup(page, preparedAttempt(), 1_500);
     const resend = page.locator("[data-signup-resend]");
     await resend.click();
     assert.equal(await resend.isDisabled(), true);
     assert.match(await resend.textContent() ?? "", /Resend code in/);
     assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /new code was sent/i);
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(2_100);
     await page.evaluate(() => { (window as unknown as Record<string, unknown>).__resendFailure = true; });
     await resend.click();
     assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /Please wait before requesting another code/);
+    assert.equal(await resend.isDisabled(), true);
+    failedRecord = JSON.parse((await page.evaluate((key) => sessionStorage.getItem(key), storageKey))!);
+    assert.ok((failedRecord.resendAvailableAt as number) > Date.now());
   } finally {
     await page.close();
+  }
+  const reloaded = await signupPage();
+  try {
+    await installResume(reloaded, "local", failedRecord!);
+    await setup(reloaded, preparedAttempt(), 1_500);
+    const resend = reloaded.locator("[data-signup-resend]");
+    assert.equal(await resend.isDisabled(), true);
+    await reloaded.waitForTimeout(2_100);
+    assert.equal(await resend.isDisabled(), false);
+  } finally {
+    await reloaded.close();
   }
 });
 
@@ -517,6 +532,35 @@ for (const changedKind of ["privacy-media", "waiver"] as const) {
     }
   });
 }
+
+test("a second legal identity change clears only its affected finishing acceptance", async () => {
+  const page = await signupPage();
+  try {
+    await installResume(page, "session", resumeRecord());
+    const privacyV2 = { version: "2026.4", hash: "c".repeat(64) };
+    const waiverV2 = { version: "2026.3", hash: "d".repeat(64) };
+    const waiverV3 = { version: "2026.4", hash: "e".repeat(64) };
+    (page as Page & { setLegal: (nextPrivacy: typeof privacy, nextWaiver: typeof waiver) => void }).setLegal(privacyV2, waiverV2);
+    await setup(page, preparedAttempt());
+    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__legalChanged = ["privacy-media", "waiver"]; });
+    await page.locator("#hunter-verification-code").fill("123456");
+    await page.locator("#hunter-verify-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-signup-finish-form")?.hidden);
+    await page.locator("[data-signup-finish-privacy] input").check();
+    await page.locator("[data-signup-finish-waiver] input").check();
+    (page as Page & { setLegal: (nextPrivacy: typeof privacy, nextWaiver: typeof waiver) => void }).setLegal(privacyV2, waiverV3);
+    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__legalChanged = ["waiver"]; });
+    await page.locator("#hunter-signup-finish-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => {
+      const waiverInput = document.querySelector<HTMLInputElement>("[data-signup-finish-waiver] input");
+      return waiverInput?.checked === false;
+    });
+    assert.equal(await page.locator("[data-signup-finish-waiver] input").isChecked(), false);
+    assert.equal(await page.locator("[data-signup-finish-privacy] input").isChecked(), true);
+  } finally {
+    await page.close();
+  }
+});
 
 test("already-complete provider resume enters the same acceptance-only finishing state", async () => {
   const page = await signupPage();

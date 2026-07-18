@@ -93,6 +93,33 @@ const legalDocument = (value: unknown): SignupResumeLegalDocument | null => {
   return { version: value.version.trim(), hash: value.hash.toLowerCase() };
 };
 
+const providerRetryDelayMs = (value: unknown): number => {
+  if (!isRecord(value)) return 0;
+  const firstError = Array.isArray(value.errors) && isRecord(value.errors[0]) ? value.errors[0] : value;
+  const meta = isRecord(firstError.meta) ? firstError.meta : null;
+  const milliseconds = firstError.retryAfterMs ?? firstError.retry_after_ms ??
+    meta?.retryAfterMs ?? meta?.retry_after_ms;
+  if (typeof milliseconds === "number" && Number.isFinite(milliseconds) && milliseconds > 0) {
+    return Math.min(Math.ceil(milliseconds), SIGNUP_RESUME_TTL_MS);
+  }
+  const seconds = firstError.retryAfterSeconds ?? firstError.retry_after_seconds ??
+    meta?.retryAfterSeconds ?? meta?.retry_after_seconds;
+  return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0
+    ? Math.min(Math.ceil(seconds * 1_000), SIGNUP_RESUME_TTL_MS)
+    : 0;
+};
+
+export function nextHunterSignupResendAvailableAt(
+  record: HunterSignupResumeRecord,
+  cooldownMs: number,
+  now = Date.now(),
+  providerError?: unknown,
+): number {
+  const boundedDefault = Number.isFinite(cooldownMs) && cooldownMs > 0 ? Math.ceil(cooldownMs) : 0;
+  const delay = Math.max(boundedDefault, providerRetryDelayMs(providerError));
+  return Math.min(now + delay, record.createdAt + SIGNUP_RESUME_TTL_MS - 1);
+}
+
 export function maskSignupEmail(value: string): string {
   const email = normalizedEmail(value);
   const separator = email.lastIndexOf("@");
@@ -178,9 +205,20 @@ export function updateHunterSignupResume(
   update: Partial<Pick<HunterSignupResumeRecord, "providerAttemptId" | "resendAvailableAt" |
     "privacyMediaDocument" | "waiverDocument">>,
 ): HunterSignupResumeRecord {
-  const updated = normalizeResume({ ...record, ...update });
-  if (!updated) throw new Error("The account setup details cannot be resumed.");
-  return updated;
+  const candidate = normalizeResume({
+    ...record,
+    ...update,
+    finalizationIdempotencyKey: record.finalizationIdempotencyKey,
+  });
+  if (!candidate) throw new Error("The account setup details cannot be resumed.");
+  const legalIdentityChanged = candidate.privacyMediaDocument.version !== record.privacyMediaDocument.version ||
+    candidate.privacyMediaDocument.hash !== record.privacyMediaDocument.hash ||
+    candidate.waiverDocument.version !== record.waiverDocument.version ||
+    candidate.waiverDocument.hash !== record.waiverDocument.hash;
+  if (!legalIdentityChanged) return candidate;
+  const rotated = normalizeResume({ ...candidate, finalizationIdempotencyKey: crypto.randomUUID() });
+  if (!rotated) throw new Error("The account setup details cannot be resumed.");
+  return rotated;
 }
 
 export function serializeHunterSignupResume(value: unknown): string {

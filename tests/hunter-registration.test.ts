@@ -15,6 +15,7 @@ import {
   SIGNUP_RESUME_TTL_MS,
   createHunterSignupResume,
   createHunterSignupResumeStore,
+  nextHunterSignupResendAvailableAt,
   updateHunterSignupResume,
   parseHunterSignupResume,
   reconcileHunterSignupResume,
@@ -276,6 +277,55 @@ test("signup resume reports verified persistence per storage tier", () => {
     local: true,
     persisted: true,
   });
+});
+
+test("signup resume rotates finalization identity only when an accepted legal identity changes", async () => {
+  const original = createHunterSignupResume(validDraft, 1_000, "11111111-1111-4111-8111-111111111111");
+  const waiverV2 = { version: "2026.3", hash: "c".repeat(64) };
+  const changed = updateHunterSignupResume(original, { waiverDocument: waiverV2 });
+  assert.notEqual(changed.finalizationIdempotencyKey, original.finalizationIdempotencyKey);
+  assert.deepEqual(changed.waiverDocument, waiverV2);
+  const sameIdentityRetry = updateHunterSignupResume(changed, { waiverDocument: { ...waiverV2 } });
+  assert.equal(sameIdentityRetry.finalizationIdempotencyKey, changed.finalizationIdempotencyKey);
+  const normalizedSameIdentityRetry = updateHunterSignupResume(changed, {
+    waiverDocument: { ...waiverV2, hash: waiverV2.hash.toUpperCase() },
+  });
+  assert.equal(normalizedSameIdentityRetry.finalizationIdempotencyKey, changed.finalizationIdempotencyKey);
+
+  let authoritativeAcceptance: Record<string, unknown> | null = {
+    documentVersion: original.waiverDocument.version,
+    documentHash: original.waiverDocument.hash,
+  };
+  const acceptedKeys: string[] = [];
+  const run = (resume: typeof changed) => completeHunterRegistration({
+    bootstrap: async () => {},
+    loadState: async () => ({ profileAndPrivacyComplete: true, waiverAcceptance: authoritativeAcceptance }),
+    saveProfileAndPrivacy: async () => { throw new Error("profile must already be complete"); },
+    fetchWaiverDocument: async () => resume.waiverDocument,
+    recordWaiverReview: async () => "review-v2",
+    acceptWaiver: async () => {
+      acceptedKeys.push(resume.finalizationIdempotencyKey);
+      authoritativeAcceptance = { documentVersion: waiverV2.version, documentHash: waiverV2.hash };
+      throw new Error("accept response lost after commit");
+    },
+    refreshDashboard: async () => {},
+  });
+  await run(changed);
+  await run(sameIdentityRetry);
+  assert.deepEqual(acceptedKeys, [changed.finalizationIdempotencyKey]);
+  assert.deepEqual(authoritativeAcceptance, { documentVersion: waiverV2.version, documentHash: waiverV2.hash });
+});
+
+test("resend retry timing honors longer provider metadata while remaining inside the resume lifetime", () => {
+  const resume = createHunterSignupResume(validDraft, 1_000, "11111111-1111-4111-8111-111111111111");
+  assert.equal(nextHunterSignupResendAvailableAt(resume, 30_000, 10_000), 40_000);
+  assert.equal(nextHunterSignupResendAvailableAt(resume, 30_000, 10_000, {
+    errors: [{ meta: { retry_after_seconds: 45 } }],
+  }), 55_000);
+  assert.equal(
+    nextHunterSignupResendAvailableAt(resume, 30_000, resume.createdAt + SIGNUP_RESUME_TTL_MS - 10_000),
+    resume.createdAt + SIGNUP_RESUME_TTL_MS - 1,
+  );
 });
 
 test("successful verification after reload finalizes from the recovered safe draft and clears it", async () => {

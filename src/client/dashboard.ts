@@ -3,6 +3,7 @@ import { publicDisplayNameError } from "../shared/publication";
 import {
   createHunterSignupResume,
   createHunterSignupResumeStore,
+  nextHunterSignupResendAvailableAt,
   reconcileHunterSignupResume,
   updateHunterSignupResume,
   type HunterSignupResumeRecord,
@@ -2219,10 +2220,18 @@ function setupAccountForms(
   const showSignupLegalRefresh = async (error: SignupLegalDocumentsChangedError): Promise<void> => {
     const [latestConfig, latestWaiver] = await Promise.all([loadPublicConfig(), fetchCurrentWaiverDocument()]);
     if (!latestConfig.privacyMedia || !isLegalDocumentIdentity(latestWaiver)) throw error;
-    pendingLegalRefresh = { changed: error.changed, privacyMedia: latestConfig.privacyMedia, waiver: latestWaiver };
     const finishForm = document.querySelector<HTMLFormElement>("#hunter-signup-finish-form");
     const privacyRow = finishForm?.querySelector<HTMLElement>("[data-signup-finish-privacy]");
     const waiverRow = finishForm?.querySelector<HTMLElement>("[data-signup-finish-waiver]");
+    const privacyInput = privacyRow?.querySelector<HTMLInputElement>('input[name="privacyMediaAccepted"]');
+    const waiverInput = waiverRow?.querySelector<HTMLInputElement>('input[name="waiverAccepted"]');
+    if (!pendingLegalRefresh || !legalDocumentIdentitiesMatch(pendingLegalRefresh.privacyMedia, latestConfig.privacyMedia)) {
+      if (privacyInput) privacyInput.checked = false;
+    }
+    if (!pendingLegalRefresh || !legalDocumentIdentitiesMatch(pendingLegalRefresh.waiver, latestWaiver)) {
+      if (waiverInput) waiverInput.checked = false;
+    }
+    pendingLegalRefresh = { changed: error.changed, privacyMedia: latestConfig.privacyMedia, waiver: latestWaiver };
     if (privacyRow) privacyRow.hidden = !error.changed.includes("privacy-media");
     if (waiverRow) waiverRow.hidden = !error.changed.includes("waiver");
     authMessage("");
@@ -2265,7 +2274,7 @@ function setupAccountForms(
         throw new Error("Email-code verification could not be prepared.");
       }
       currentSignupResume = updateHunterSignupResume(currentSignupResume, {
-        resendAvailableAt: Date.now() + resendCooldownMs,
+        resendAvailableAt: nextHunterSignupResendAvailableAt(currentSignupResume, resendCooldownMs),
       });
       persisted = persistSignupResume(currentSignupResume) && persisted;
       showSignupVerification(
@@ -2281,13 +2290,6 @@ function setupAccountForms(
         error,
         error instanceof Error ? error.message : "Your account could not be created.",
       );
-      const providerCandidate = signUpAttempt ?? hunterClerk?.client?.signUp ?? null;
-      if (currentSignupResume && !currentSignupResume.providerAttemptId && providerCandidate?.id &&
-          providerCandidate.emailAddress?.trim().toLowerCase() === currentSignupResume.emailAddress) {
-        currentSignupResume = updateHunterSignupResume(currentSignupResume, { providerAttemptId: providerCandidate.id });
-        persistSignupResume(currentSignupResume);
-        signUpAttempt = providerCandidate;
-      }
       const recovery = currentSignupResume && signUpAttempt
         ? reconcileHunterSignupResume(currentSignupResume, signUpAttempt)
         : null;
@@ -2315,16 +2317,17 @@ function setupAccountForms(
       if (!providerCandidate?.id || providerCandidate.emailAddress?.trim().toLowerCase() !== currentSignupResume.emailAddress) {
         throw new Error("The matching secure sign-up attempt is not available.");
       }
+      signUpAttempt = await providerCandidate.prepareEmailAddressVerification({ strategy: "email_code" });
       if (!currentSignupResume.providerAttemptId) {
-        currentSignupResume = updateHunterSignupResume(currentSignupResume, { providerAttemptId: providerCandidate.id });
+        if (!signUpAttempt.id) throw new Error("The prepared sign-up attempt has no safe correlation identity.");
+        currentSignupResume = updateHunterSignupResume(currentSignupResume, { providerAttemptId: signUpAttempt.id });
         persistSignupResume(currentSignupResume);
       }
-      signUpAttempt = await providerCandidate.prepareEmailAddressVerification({ strategy: "email_code" });
       if (reconcileHunterSignupResume(currentSignupResume, signUpAttempt).state !== "verification") {
         throw new Error("Email-code verification could not be prepared.");
       }
       currentSignupResume = updateHunterSignupResume(currentSignupResume, {
-        resendAvailableAt: Date.now() + resendCooldownMs,
+        resendAvailableAt: nextHunterSignupResendAvailableAt(currentSignupResume, resendCooldownMs),
       });
       persistSignupResume(currentSignupResume);
       showSignupVerification(currentSignupResume, "A new verification code was requested. Enter it below.");
@@ -2456,12 +2459,19 @@ function setupAccountForms(
       if (reconcileHunterSignupResume(resume, signUpAttempt).state !== "verification") {
         throw new Error("A new email-code verification attempt could not be prepared.");
       }
-      currentSignupResume = updateHunterSignupResume(resume, { resendAvailableAt: Date.now() + resendCooldownMs });
+      currentSignupResume = updateHunterSignupResume(resume, {
+        resendAvailableAt: nextHunterSignupResendAvailableAt(resume, resendCooldownMs),
+      });
       const persisted = persistSignupResume(currentSignupResume);
       startSignupResendCooldown(currentSignupResume.resendAvailableAt ?? undefined);
       if (persisted) setSignupVerificationStatus(`A new code was sent to ${resume.maskedEmail}.`, "success");
     } catch (error) {
-      const recovery = reconcileHunterSignupResume(resume, signUpAttempt);
+      currentSignupResume = updateHunterSignupResume(resume, {
+        resendAvailableAt: nextHunterSignupResendAvailableAt(resume, resendCooldownMs, Date.now(), error),
+      });
+      persistSignupResume(currentSignupResume);
+      startSignupResendCooldown(currentSignupResume.resendAvailableAt ?? undefined);
+      const recovery = reconcileHunterSignupResume(currentSignupResume, signUpAttempt);
       if (recovery.state !== "verification") {
         showLostSignupAttempt(
           error instanceof Error
@@ -2470,7 +2480,6 @@ function setupAccountForms(
         );
         return;
       }
-      startSignupResendCooldown(resume.resendAvailableAt ?? undefined);
       setSignupVerificationStatus(
         identityError(error, "Another code could not be sent yet. Wait for the resend timer, then try again."),
         "error",
