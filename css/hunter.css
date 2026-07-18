@@ -447,6 +447,59 @@ button.hunter-button {
   text-transform: uppercase;
 }
 
+.report-history-item {
+  align-items: start;
+}
+
+.report-history-reference {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.78rem;
+}
+
+.report-history-outcome {
+  min-width: min(100%, 220px);
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.report-history-status {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--hunter-ink);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.report-publications {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.report-publications strong {
+  color: var(--hunter-muted);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.report-publications a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
 .zone-state[data-zone="open"] {
   color: var(--hunter-open);
 }
@@ -1049,6 +1102,11 @@ button.hunter-button {
   .zone-state,
   .record-state {
     justify-self: start;
+  }
+
+  .report-history-outcome,
+  .report-publications {
+    width: 100%;
   }
 
   .minor-row {

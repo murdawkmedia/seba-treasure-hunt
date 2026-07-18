@@ -157,8 +157,21 @@ test("the clue board routes possible finds to a private report", () => {
 
 test("the report receipt keeps contact private and makes publication review explicit", () => {
   const html = read("report.html");
+  const dashboard = read("dashboard.html");
+  const client = read("src/client/dashboard.ts");
   assert.match(html, /Report received privately/i);
-  assert.match(html, /representative from SebaHub will review the report before anything is published/i);
+  assert.match(html, /sent privately to the SebaHub case team/i);
+  assert.match(html, /It is not public/i);
+  assert.match(html, /email, phone number and private details will not be published/i);
   assert.match(html, /Submitting creates a private review record/i);
+  for (const label of ["Received", "Under review", "Verified", "Closed"]) assert.match(html, new RegExp(label, "i"));
+  assert.match(html, /never publishes automatically/i);
+  assert.match(dashboard, /Your report stays private\. Review status and any edited public use are shown separately\./i);
+  for (const label of ["Not published", "Published in Case Notes", "Used in an Official Update"]) {
+    assert.match(client, new RegExp(label, "i"));
+  }
+  assert.match(client, /normalizeHunterReports/);
+  assert.match(client, /renderHunterReports\("\[data-dashboard-reports\]"/);
+  assert.doesNotMatch(client, /renderRecords\("\[data-dashboard-reports\]"/);
   assert.doesNotMatch(html, /publish(?:es|ed|ing)? your (?:email|phone)|public email|public phone/i);
 });

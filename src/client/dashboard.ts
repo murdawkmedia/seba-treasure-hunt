@@ -26,6 +26,17 @@ export interface HunterAuthHook {
   getToken: () => Promise<string | null>;
 }
 
+export interface HunterDashboardReport {
+  id: string;
+  type: "find" | "tip" | "safety";
+  hunterStatus: "Received" | "Under review" | "Verified" | "Closed";
+  createdAt: string;
+  publications: Array<
+    | { kind: "case_note"; label: "Published in Case Notes"; href: "/clue-board" }
+    | { kind: "official_update"; label: "Used in an Official Update"; href: "/updates" }
+  >;
+}
+
 export interface PublicConfig {
   hunterPublishableKey: string | null;
   deploymentEnvironment: string | null;
@@ -1005,6 +1016,126 @@ function renderLatestUpdate(value: unknown): void {
   root.appendChild(body);
 }
 
+export function normalizeHunterReports(value: unknown): HunterDashboardReport[] {
+  if (!Array.isArray(value)) return [];
+  const statuses = new Set<HunterDashboardReport["hunterStatus"]>([
+    "Received",
+    "Under review",
+    "Verified",
+    "Closed",
+  ]);
+  const types = new Set<HunterDashboardReport["type"]>(["find", "tip", "safety"]);
+  return value.flatMap((candidate): HunterDashboardReport[] => {
+    if (!isRecord(candidate)) return [];
+    const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
+    const type = candidate.type;
+    const hunterStatus = candidate.hunterStatus;
+    const createdAt = typeof candidate.createdAt === "string" ? candidate.createdAt.trim() : "";
+    if (
+      !id || !types.has(type as HunterDashboardReport["type"]) ||
+      !statuses.has(hunterStatus as HunterDashboardReport["hunterStatus"]) ||
+      !createdAt || Number.isNaN(new Date(createdAt).valueOf())
+    ) return [];
+
+    const publications: HunterDashboardReport["publications"] = [];
+    const seen = new Set<string>();
+    for (const publication of Array.isArray(candidate.publications) ? candidate.publications : []) {
+      if (!isRecord(publication) || seen.has(String(publication.kind))) continue;
+      if (
+        publication.kind === "case_note" &&
+        publication.label === "Published in Case Notes" &&
+        publication.href === "/clue-board"
+      ) {
+        publications.push({ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" });
+        seen.add("case_note");
+      } else if (
+        publication.kind === "official_update" &&
+        publication.label === "Used in an Official Update" &&
+        publication.href === "/updates"
+      ) {
+        publications.push({ kind: "official_update", label: "Used in an Official Update", href: "/updates" });
+        seen.add("official_update");
+      }
+    }
+    return [{
+      id,
+      type: type as HunterDashboardReport["type"],
+      hunterStatus: hunterStatus as HunterDashboardReport["hunterStatus"],
+      createdAt,
+      publications,
+    }];
+  });
+}
+
+function hunterReportTime(value: string): string {
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "America/Edmonton",
+  }).format(date);
+}
+
+function renderHunterReports(selector: string, values: unknown, empty: string): void {
+  const list = document.querySelector<HTMLUListElement>(selector);
+  if (!list) return;
+  list.replaceChildren();
+  const reports = normalizeHunterReports(values);
+  if (reports.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = empty;
+    list.appendChild(item);
+    return;
+  }
+  const typeLabels: Record<HunterDashboardReport["type"], string> = {
+    find: "Possible find",
+    tip: "Tip or observation",
+    safety: "Safety concern",
+  };
+  for (const report of reports) {
+    const item = document.createElement("li");
+    item.className = "report-history-item";
+    const copy = document.createElement("div");
+    const heading = document.createElement("h3");
+    const reference = document.createElement("p");
+    const received = document.createElement("p");
+    const time = document.createElement("time");
+    heading.textContent = typeLabels[report.type];
+    reference.textContent = `Reference ${report.id}`;
+    reference.className = "report-history-reference";
+    time.dateTime = report.createdAt;
+    time.textContent = hunterReportTime(report.createdAt);
+    received.append("Received ", time);
+    copy.append(heading, reference, received);
+
+    const outcome = document.createElement("div");
+    outcome.className = "report-history-outcome";
+    const state = document.createElement("span");
+    state.className = "report-history-status";
+    state.textContent = report.hunterStatus;
+    const publications = document.createElement("div");
+    publications.className = "report-publications";
+    const publicationLabel = document.createElement("strong");
+    publicationLabel.textContent = "Public use";
+    publications.appendChild(publicationLabel);
+    if (report.publications.length === 0) {
+      const notPublished = document.createElement("span");
+      notPublished.textContent = "Not published";
+      publications.appendChild(notPublished);
+    } else {
+      for (const publication of report.publications) {
+        const link = document.createElement("a");
+        link.href = publication.href;
+        link.textContent = publication.label;
+        publications.appendChild(link);
+      }
+    }
+    outcome.append(state, publications);
+    item.append(copy, outcome);
+    list.appendChild(item);
+  }
+}
+
 function renderRecords(selector: string, values: unknown, empty: string): void {
   const list = document.querySelector<HTMLUListElement>(selector);
   if (!list) return;
@@ -1044,7 +1175,7 @@ function renderDashboard(data: Record<string, unknown>): void {
   renderProfile(data.profile);
   renderLatestUpdate(data.latestUpdate);
   renderWaypoints(data.waypoints, data.status);
-  renderRecords("[data-dashboard-reports]", data.reports, "No private reports yet.");
+  renderHunterReports("[data-dashboard-reports]", data.reports, "No private reports yet.");
   renderRecords("[data-dashboard-notes]", data.notes, "No Case Notes yet.");
   const waiverPanel = document.querySelector<HTMLElement>("[data-waiver-panel]");
   if (waiverPanel) waiverPanel.hidden = !isRecord(data.profile) || data.privacyMediaRequired === true;

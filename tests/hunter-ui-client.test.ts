@@ -27,6 +27,7 @@ import {
   buildProfilePayload,
   classifyPlayerBootstrapFailure,
   createSignupLegalViewerLoadCoordinator,
+  normalizeHunterReports,
   PLAYER_BOOTSTRAP_RETRY_DELAYS_MS,
   profileMutationInvalidatesWaiver,
   retryPlayerBootstrap,
@@ -443,16 +444,78 @@ test("report profile prefill preserves anything already typed", () => {
 });
 
 test("successful private reports retain an explicit receipt reference", () => {
-  assert.deepEqual(reportSuccessModel({ id: "report-123" }), {
+  const message = "Your report was sent privately to the SebaHub case team. It is not public. " +
+    "We may contact you to verify details. After review, a representative from SebaHub may publish " +
+    "an edited Case Note or Official Update. Your email, phone number and private details will not be published.";
+  assert.deepEqual(reportSuccessModel({ data: { id: "report-123" } }), {
     reference: "report-123",
     heading: "Report received privately",
-    message: "This report stays private unless a representative from SebaHub deliberately approves a public version.",
+    message,
   });
   assert.deepEqual(reportSuccessModel({}), {
     reference: "recorded",
     heading: "Report received privately",
-    message: "This report stays private unless a representative from SebaHub deliberately approves a public version.",
+    message,
   });
+});
+
+test("hunter report history accepts only safe statuses and exact public destinations", () => {
+  const reports = normalizeHunterReports([
+    {
+      id: "report-received",
+      type: "find",
+      hunterStatus: "Received",
+      createdAt: "2026-07-18T10:00:00.000Z",
+      publications: [],
+      status: "reviewing",
+      reason: "PRIVATE REASON SENTINEL",
+      assignedTo: "STAFF SUBJECT SENTINEL",
+      email: "private@example.test",
+      phone: "555-555-5555",
+      evidenceKey: "private/evidence.jpg",
+      childName: "PRIVATE CHILD SENTINEL",
+    },
+    {
+      id: "report-reviewing",
+      type: "tip",
+      hunterStatus: "Under review",
+      createdAt: "2026-07-18T11:00:00.000Z",
+      publications: [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }],
+    },
+    {
+      id: "report-verified",
+      type: "safety",
+      hunterStatus: "Verified",
+      createdAt: "2026-07-18T12:00:00.000Z",
+      publications: [{ kind: "official_update", label: "Used in an Official Update", href: "/updates" }],
+    },
+    {
+      id: "report-closed",
+      type: "find",
+      hunterStatus: "Closed",
+      createdAt: "2026-07-18T13:00:00.000Z",
+      publications: [
+        { kind: "case_note", label: "Published in Case Notes", href: "/clue-board" },
+        { kind: "official_update", label: "Used in an Official Update", href: "/updates" },
+        { kind: "case_note", label: "Published in Case Notes", href: "https://evil.example/" },
+        { kind: "unknown", label: "Internal post", href: "/ops" },
+      ],
+    },
+    { id: "raw-status", type: "find", hunterStatus: "reviewing", createdAt: "2026-07-18T14:00:00.000Z", publications: [] },
+    { id: "bad-type", type: "unknown", hunterStatus: "Received", createdAt: "2026-07-18T14:00:00.000Z", publications: [] },
+  ]);
+
+  assert.deepEqual(reports.map((report) => [report.id, report.hunterStatus, report.publications.map((item) => item.kind)]), [
+    ["report-received", "Received", []],
+    ["report-reviewing", "Under review", ["case_note"]],
+    ["report-verified", "Verified", ["official_update"]],
+    ["report-closed", "Closed", ["case_note", "official_update"]],
+  ]);
+  assert.deepEqual(Object.keys(reports[0]!).sort(), ["createdAt", "hunterStatus", "id", "publications", "type"]);
+  const projection = JSON.stringify(reports);
+  for (const privateSentinel of ["PRIVATE REASON", "STAFF SUBJECT", "private@example", "555-555", "private/evidence", "PRIVATE CHILD", "evil.example", "/ops"]) {
+    assert.doesNotMatch(projection, new RegExp(privateSentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  }
 });
 
 test("report payload omits non-waypoint fallback choices", () => {

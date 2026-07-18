@@ -178,7 +178,7 @@ export interface ReportProfilePrefill {
 export interface ReportSuccessModel {
   reference: string;
   heading: "Report received privately";
-  message: "This report stays private unless a representative from SebaHub deliberately approves a public version.";
+  message: string;
 }
 
 export interface ReportAttemptFailureState {
@@ -249,7 +249,9 @@ export function reportSuccessModel(payload: unknown): ReportSuccessModel {
   return {
     reference: isRecord(data) && typeof data.id === "string" && data.id.trim() ? data.id.trim() : "recorded",
     heading: "Report received privately",
-    message: "This report stays private unless a representative from SebaHub deliberately approves a public version.",
+    message: "Your report was sent privately to the SebaHub case team. It is not public. " +
+      "We may contact you to verify details. After review, a representative from SebaHub may publish " +
+      "an edited Case Note or Official Update. Your email, phone number and private details will not be published.",
   };
 }
 
