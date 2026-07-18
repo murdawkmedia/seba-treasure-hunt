@@ -41,6 +41,7 @@ export interface HunterSignupResumeStore {
   key: string;
   read: () => HunterSignupResumeRecord | null;
   write: (record: HunterSignupResumeRecord) => SignupResumePersistence;
+  lastPersistence: () => SignupResumePersistence;
   clear: () => void;
 }
 
@@ -97,12 +98,20 @@ const providerRetryDelayMs = (value: unknown): number => {
   if (!isRecord(value)) return 0;
   const firstError = Array.isArray(value.errors) && isRecord(value.errors[0]) ? value.errors[0] : value;
   const meta = isRecord(firstError.meta) ? firstError.meta : null;
-  const milliseconds = firstError.retryAfterMs ?? firstError.retry_after_ms ??
+  const topLevelMeta = isRecord(value.meta) ? value.meta : null;
+  const milliseconds = value.retryAfterMs ?? value.retry_after_ms ??
+    topLevelMeta?.retryAfterMs ?? topLevelMeta?.retry_after_ms ??
+    firstError.retryAfterMs ?? firstError.retry_after_ms ??
     meta?.retryAfterMs ?? meta?.retry_after_ms;
   if (typeof milliseconds === "number" && Number.isFinite(milliseconds) && milliseconds > 0) {
     return Math.min(Math.ceil(milliseconds), SIGNUP_RESUME_TTL_MS);
   }
-  const seconds = firstError.retryAfterSeconds ?? firstError.retry_after_seconds ??
+  const seconds = value.retryAfter ?? value.retry_after ?? value.retryAfterSeconds ?? value.retry_after_seconds ??
+    topLevelMeta?.retryAfter ?? topLevelMeta?.retry_after ??
+    topLevelMeta?.retryAfterSeconds ?? topLevelMeta?.retry_after_seconds ??
+    firstError.retryAfter ?? firstError.retry_after ??
+    firstError.retryAfterSeconds ?? firstError.retry_after_seconds ??
+    meta?.retryAfter ?? meta?.retry_after ??
     meta?.retryAfterSeconds ?? meta?.retry_after_seconds;
   return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0
     ? Math.min(Math.ceil(seconds * 1_000), SIGNUP_RESUME_TTL_MS)
@@ -277,6 +286,7 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
   );
   const allKeys = [key, ...legacyKeys];
   const now = options.now ?? Date.now;
+  let persistence: SignupResumePersistence = { session: false, local: false, persisted: false };
   const clearTier = (storage: SignupResumeStorage | null): void => {
     for (const storageKey of allKeys) safeRemove(storage, storageKey);
   };
@@ -290,6 +300,9 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
     }
     return newest;
   };
+  const clearLegacyTier = (storage: SignupResumeStorage | null): void => {
+    for (const storageKey of legacyKeys) safeRemove(storage, storageKey);
+  };
   return {
     key,
     read: () => {
@@ -298,10 +311,13 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
       const selected = sessionRecord ?? localRecord;
       if (!selected) return null;
       const serialized = serializeHunterSignupResume(selected);
-      clearTier(options.sessionStorage);
-      clearTier(options.localStorage);
-      safeWrite(options.sessionStorage, key, serialized);
-      safeWrite(options.localStorage, key, serialized);
+      const session = safeWrite(options.sessionStorage, key, serialized);
+      const local = safeWrite(options.localStorage, key, serialized);
+      persistence = { session, local, persisted: session || local };
+      if (persistence.persisted) {
+        clearLegacyTier(options.sessionStorage);
+        clearLegacyTier(options.localStorage);
+      }
       return selected;
     },
     write: (record) => {
@@ -310,8 +326,10 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
       clearTier(options.localStorage);
       const session = safeWrite(options.sessionStorage, key, serialized);
       const local = safeWrite(options.localStorage, key, serialized);
-      return { session, local, persisted: session || local };
+      persistence = { session, local, persisted: session || local };
+      return persistence;
     },
+    lastPersistence: () => ({ ...persistence }),
     clear: () => {
       clearTier(options.sessionStorage);
       clearTier(options.localStorage);

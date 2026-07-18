@@ -2205,6 +2205,7 @@ function setupAccountForms(
     privacyMedia: LegalDocumentIdentity;
     waiver: LegalDocumentIdentity;
   } | null = null;
+  let pendingLegalRefreshError: SignupLegalDocumentsChangedError | null = null;
   const persistenceWarning = (): void => {
     setSignupVerificationStatus(
       "Keep this page open. Browser storage is unavailable, so leaving or reloading cannot recover this setup.",
@@ -2218,25 +2219,43 @@ function setupAccountForms(
     return result.persisted;
   };
   const showSignupLegalRefresh = async (error: SignupLegalDocumentsChangedError): Promise<void> => {
-    const [latestConfig, latestWaiver] = await Promise.all([loadPublicConfig(), fetchCurrentWaiverDocument()]);
-    if (!latestConfig.privacyMedia || !isLegalDocumentIdentity(latestWaiver)) throw error;
     const finishForm = document.querySelector<HTMLFormElement>("#hunter-signup-finish-form");
     const privacyRow = finishForm?.querySelector<HTMLElement>("[data-signup-finish-privacy]");
     const waiverRow = finishForm?.querySelector<HTMLElement>("[data-signup-finish-waiver]");
+    const status = finishForm?.querySelector<HTMLElement>("[data-signup-finish-status]");
+    const submit = finishForm?.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const retry = finishForm?.querySelector<HTMLButtonElement>("[data-signup-finish-retry]");
     const privacyInput = privacyRow?.querySelector<HTMLInputElement>('input[name="privacyMediaAccepted"]');
     const waiverInput = waiverRow?.querySelector<HTMLInputElement>('input[name="waiverAccepted"]');
-    if (!pendingLegalRefresh || !legalDocumentIdentitiesMatch(pendingLegalRefresh.privacyMedia, latestConfig.privacyMedia)) {
-      if (privacyInput) privacyInput.checked = false;
-    }
-    if (!pendingLegalRefresh || !legalDocumentIdentitiesMatch(pendingLegalRefresh.waiver, latestWaiver)) {
-      if (waiverInput) waiverInput.checked = false;
-    }
-    pendingLegalRefresh = { changed: error.changed, privacyMedia: latestConfig.privacyMedia, waiver: latestWaiver };
-    if (privacyRow) privacyRow.hidden = !error.changed.includes("privacy-media");
-    if (waiverRow) waiverRow.hidden = !error.changed.includes("waiver");
-    authMessage("");
+    pendingLegalRefreshError = error;
     showAuthForm("hunter-signup-finish-form");
-    finishForm?.querySelector<HTMLElement>("h3")?.focus();
+    try {
+      const [latestConfig, latestWaiver] = await Promise.all([loadPublicConfig(), fetchCurrentWaiverDocument()]);
+      if (!latestConfig.privacyMedia || !isLegalDocumentIdentity(latestWaiver)) throw error;
+      if (!pendingLegalRefresh || !legalDocumentIdentitiesMatch(pendingLegalRefresh.privacyMedia, latestConfig.privacyMedia)) {
+        if (privacyInput) privacyInput.checked = false;
+      }
+      if (!pendingLegalRefresh || !legalDocumentIdentitiesMatch(pendingLegalRefresh.waiver, latestWaiver)) {
+        if (waiverInput) waiverInput.checked = false;
+      }
+      pendingLegalRefresh = { changed: error.changed, privacyMedia: latestConfig.privacyMedia, waiver: latestWaiver };
+      pendingLegalRefreshError = null;
+      if (privacyRow) privacyRow.hidden = !error.changed.includes("privacy-media");
+      if (waiverRow) waiverRow.hidden = !error.changed.includes("waiver");
+      if (status) status.textContent = "";
+      if (submit) submit.disabled = false;
+      if (retry) retry.hidden = true;
+      authMessage("");
+      finishForm?.querySelector<HTMLElement>("h3")?.focus();
+    } catch {
+      pendingLegalRefresh = null;
+      if (privacyRow) privacyRow.hidden = true;
+      if (waiverRow) waiverRow.hidden = true;
+      if (submit) submit.disabled = true;
+      if (retry) retry.hidden = false;
+      if (status) status.textContent = "Updated legal documents are temporarily unavailable. Try again to continue without losing this verified setup.";
+      retry?.focus();
+    }
   };
   const startSignupResendCooldown = (availableAt = Date.now() + resendCooldownMs): void => {
     const button = document.querySelector<HTMLButtonElement>("[data-signup-resend]");
@@ -2312,17 +2331,16 @@ function setupAccountForms(
     const button = event.currentTarget;
     if (!(button instanceof HTMLButtonElement) || button.disabled || !currentSignupResume || !hunterClerk?.client) return;
     button.disabled = true;
+    let correlationValidated = false;
     try {
       const providerCandidate = signUpAttempt ?? hunterClerk.client.signUp;
-      if (!providerCandidate?.id || providerCandidate.emailAddress?.trim().toLowerCase() !== currentSignupResume.emailAddress) {
-        throw new Error("The matching secure sign-up attempt is not available.");
+      if (!currentSignupResume.providerAttemptId || !providerCandidate?.id ||
+          providerCandidate.id !== currentSignupResume.providerAttemptId ||
+          providerCandidate.emailAddress?.trim().toLowerCase() !== currentSignupResume.emailAddress) {
+        throw new Error("This secure sign-up attempt cannot be retried safely. Restart account setup or sign in to an existing account.");
       }
+      correlationValidated = true;
       signUpAttempt = await providerCandidate.prepareEmailAddressVerification({ strategy: "email_code" });
-      if (!currentSignupResume.providerAttemptId) {
-        if (!signUpAttempt.id) throw new Error("The prepared sign-up attempt has no safe correlation identity.");
-        currentSignupResume = updateHunterSignupResume(currentSignupResume, { providerAttemptId: signUpAttempt.id });
-        persistSignupResume(currentSignupResume);
-      }
       if (reconcileHunterSignupResume(currentSignupResume, signUpAttempt).state !== "verification") {
         throw new Error("Email-code verification could not be prepared.");
       }
@@ -2333,7 +2351,16 @@ function setupAccountForms(
       showSignupVerification(currentSignupResume, "A new verification code was requested. Enter it below.");
       startSignupResendCooldown(currentSignupResume.resendAvailableAt ?? undefined);
     } catch (error) {
-      showLostSignupAttempt(error instanceof Error ? error.message : "The verification code could not be requested.");
+      if (correlationValidated && currentSignupResume) {
+        currentSignupResume = updateHunterSignupResume(currentSignupResume, {
+          resendAvailableAt: nextHunterSignupResendAvailableAt(currentSignupResume, resendCooldownMs, Date.now(), error),
+        });
+        persistSignupResume(currentSignupResume);
+      }
+      showLostSignupAttempt(identityError(
+        error,
+        error instanceof Error ? error.message : "The verification code could not be requested.",
+      ));
     } finally {
       button.disabled = false;
     }
@@ -2436,12 +2463,25 @@ function setupAccountForms(
       const status = finish.querySelector<HTMLElement>("[data-signup-finish-status]");
       if (status) status.textContent = error instanceof Error ? error.message : "Account setup could not be completed.";
     } finally {
-      if (submit) submit.disabled = false;
+      if (submit) submit.disabled = pendingLegalRefresh === null;
     }
   }) : null;
   finish?.addEventListener("submit", (event) => {
     event.preventDefault();
     void runFinish?.();
+  });
+
+  finish?.querySelector<HTMLButtonElement>("[data-signup-finish-retry]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement) || button.disabled || !pendingLegalRefreshError) return;
+    button.disabled = true;
+    const status = finish.querySelector<HTMLElement>("[data-signup-finish-status]");
+    if (status) status.textContent = "Checking for the updated legal documentsâ€¦";
+    try {
+      await showSignupLegalRefresh(pendingLegalRefreshError);
+    } finally {
+      button.disabled = false;
+    }
   });
 
   document.querySelector<HTMLButtonElement>("[data-signup-resend]")?.addEventListener("click", async (event) => {

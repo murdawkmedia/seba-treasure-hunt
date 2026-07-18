@@ -56,6 +56,7 @@ async function signupPage(): Promise<Page> {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
   let livePrivacy = privacy;
   let liveWaiver = waiver;
+  let legalFetchFailure = false;
   await page.route(`${origin}/**`, async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/dashboard") {
@@ -63,6 +64,10 @@ async function signupPage(): Promise<Page> {
       return;
     }
     if (url.pathname === "/api/v1/config") {
+      if (legalFetchFailure) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Legal documents are temporarily unavailable." } }) });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -96,6 +101,10 @@ async function signupPage(): Promise<Page> {
       return;
     }
     if (url.pathname === "/api/v1/legal/waiver") {
+      if (legalFetchFailure) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Waiver is temporarily unavailable." } }) });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -120,6 +129,9 @@ async function signupPage(): Promise<Page> {
     livePrivacy = nextPrivacy;
     liveWaiver = nextWaiver;
   };
+  (page as Page & { setLegalFetchFailure?: (value: boolean) => void }).setLegalFetchFailure = (value) => {
+    legalFetchFailure = value;
+  };
   return page;
 }
 
@@ -139,7 +151,10 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
     hydrated.prepareEmailAddressVerification = async function () {
       window.__resendCalls = Number(window.__resendCalls || 0) + 1;
       if (window.__resendFailure === true) {
-        throw { errors: [{ longMessage: "Please wait before requesting another code." }] };
+        throw {
+          retryAfter: window.__retryAfterSeconds,
+          errors: [{ longMessage: "Please wait before requesting another code." }],
+        };
       }
       if (window.__prepareUnprepared === true) {
         return {
@@ -339,6 +354,47 @@ test("ambiguous initial create failure never adopts an uncorrelated same-email p
   }
 });
 
+for (const correlation of [null, "sua_different"] as const) {
+  test(`Retry refuses ${correlation === null ? "missing" : "mismatched"} provider correlation before preparation`, async () => {
+    const page = await signupPage();
+    try {
+      await installResume(page, "session", resumeRecord({ providerAttemptId: correlation }));
+      await setup(page, preparedAttempt());
+      await page.evaluate(() => { (window as unknown as Record<string, unknown>).__resendCalls = 0; });
+      await page.locator("[data-signup-retry]").click();
+      await page.waitForFunction(() => /cannot be retried safely/i.test(
+        document.querySelector("[data-signup-lost-detail]")?.textContent ?? "",
+      ), undefined, { timeout: 2_000 });
+      assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0)), 0);
+      assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), true);
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+test("Retry provider errors persist the Clerk retryAfter cooldown", async () => {
+  const page = await signupPage();
+  try {
+    await installResume(page, "session", resumeRecord());
+    await setup(page, preparedAttempt({ status: null, verifications: { emailAddress: { status: null, strategy: null } } }), 500);
+    await page.evaluate(() => {
+      (window as unknown as Record<string, unknown>).__resendFailure = true;
+      (window as unknown as Record<string, unknown>).__retryAfterSeconds = 2;
+      (window as unknown as Record<string, unknown>).__resendCalls = 0;
+    });
+    await page.locator("[data-signup-retry]").click();
+    await page.waitForFunction(() => /Please wait before requesting another code/i.test(
+      document.querySelector("[data-signup-lost-detail]")?.textContent ?? "",
+    ));
+    assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0)), 1);
+    const stored = JSON.parse((await page.evaluate((key) => sessionStorage.getItem(key), storageKey))!);
+    assert.ok(stored.resendAvailableAt > Date.now() + 1_000);
+  } finally {
+    await page.close();
+  }
+});
+
 test("real resend handler exposes success, cooldown, and provider error", async () => {
   const page = await signupPage();
   let failedRecord: Record<string, unknown>;
@@ -350,8 +406,9 @@ test("real resend handler exposes success, cooldown, and provider error", async 
     assert.equal(await resend.isDisabled(), true);
     assert.match(await resend.textContent() ?? "", /Resend code in/);
     assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /new code was sent/i);
-    await page.waitForTimeout(2_100);
+    await page.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-resend]")?.disabled === false, undefined, { timeout: 5_000 });
     await page.evaluate(() => { (window as unknown as Record<string, unknown>).__resendFailure = true; });
+    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__retryAfterSeconds = 2; });
     await resend.click();
     assert.match(await page.locator("[data-signup-verification-status]").textContent() ?? "", /Please wait before requesting another code/);
     assert.equal(await resend.isDisabled(), true);
@@ -366,7 +423,7 @@ test("real resend handler exposes success, cooldown, and provider error", async 
     await setup(reloaded, preparedAttempt(), 1_500);
     const resend = reloaded.locator("[data-signup-resend]");
     assert.equal(await resend.isDisabled(), true);
-    await reloaded.waitForTimeout(2_100);
+    await reloaded.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-resend]")?.disabled === false, undefined, { timeout: 5_000 });
     assert.equal(await resend.isDisabled(), false);
   } finally {
     await reloaded.close();
@@ -557,6 +614,30 @@ test("a second legal identity change clears only its affected finishing acceptan
     });
     assert.equal(await page.locator("[data-signup-finish-waiver] input").isChecked(), false);
     assert.equal(await page.locator("[data-signup-finish-privacy] input").isChecked(), true);
+  } finally {
+    await page.close();
+  }
+});
+
+test("acceptance-only legal refresh failure stays visible and retries without losing the verified resume", async () => {
+  const page = await signupPage();
+  try {
+    await installResume(page, "session", resumeRecord());
+    const control = page as Page & { setLegalFetchFailure: (value: boolean) => void };
+    control.setLegalFetchFailure(true);
+    await setup(page, preparedAttempt());
+    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__legalChanged = ["waiver"]; });
+    await page.locator("#hunter-verification-code").fill("123456");
+    await page.locator("#hunter-verify-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>("[data-signup-finish-retry]")?.hidden);
+    assert.equal(await page.locator("#hunter-signup-finish-form").isVisible(), true);
+    assert.match(await page.locator("[data-signup-finish-status]").textContent() ?? "", /temporarily unavailable|try again/i);
+    assert.ok(await page.evaluate((key) => sessionStorage.getItem(key), storageKey));
+    control.setLegalFetchFailure(false);
+    await page.locator("[data-signup-finish-retry]").click();
+    await page.waitForFunction(() => document.querySelector<HTMLButtonElement>("[data-signup-finish-retry]")?.hidden === true);
+    assert.equal(await page.locator("[data-signup-finish-waiver]").isVisible(), true);
+    assert.doesNotMatch(await page.locator("[data-signup-finish-status]").textContent() ?? "", /temporarily unavailable/i);
   } finally {
     await page.close();
   }

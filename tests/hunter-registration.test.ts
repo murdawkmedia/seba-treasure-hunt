@@ -322,10 +322,38 @@ test("resend retry timing honors longer provider metadata while remaining inside
   assert.equal(nextHunterSignupResendAvailableAt(resume, 30_000, 10_000, {
     errors: [{ meta: { retry_after_seconds: 45 } }],
   }), 55_000);
+  assert.equal(nextHunterSignupResendAvailableAt(resume, 30_000, 10_000, {
+    retryAfter: 50,
+    errors: [{ code: "too_many_requests" }],
+  }), 60_000);
   assert.equal(
     nextHunterSignupResendAvailableAt(resume, 30_000, resume.createdAt + SIGNUP_RESUME_TTL_MS - 10_000),
     resume.createdAt + SIGNUP_RESUME_TTL_MS - 1,
   );
+});
+
+test("signup resume resync never erases its only valid source when canonical writes fail", () => {
+  class ToggleStorage extends MemoryStorage {
+    denyWrites = false;
+    override setItem(key: string, value: string): void {
+      if (this.denyWrites) throw new Error("write denied");
+      super.setItem(key, value);
+    }
+  }
+  const session = new ToggleStorage();
+  const local = new ToggleStorage();
+  const namespace = "resync-failure";
+  const store = createHunterSignupResumeStore({ sessionStorage: session, localStorage: local, namespace, now: () => 2_000 });
+  const record = createHunterSignupResume(validDraft, 1_000, "11111111-1111-4111-8111-111111111111");
+  const legacyKey = `tim-lost:hunter-signup-resume:v2:${encodeURIComponent(namespace)}`;
+  session.setItem(legacyKey, serializeHunterSignupResume(record));
+  session.denyWrites = true;
+  local.denyWrites = true;
+
+  assert.deepEqual(store.read(), record);
+  assert.equal(session.getItem(legacyKey), serializeHunterSignupResume(record));
+  const diagnostics = (store as unknown as { lastPersistence?: () => unknown }).lastPersistence?.();
+  assert.deepEqual(diagnostics, { session: false, local: false, persisted: false });
 });
 
 test("successful verification after reload finalizes from the recovered safe draft and clears it", async () => {
