@@ -838,3 +838,13 @@ test("200 percent zoom geometry leaves every primary skip target uncovered", { t
     }
   }
 });
+
+test("mobile onboarding release QA owns iPhone, zoom, focus and touch-target geometry", async () => {
+  const runner = await readFile(path.join(root, "scripts", "verify-waiver-qa.mjs"), "utf8");
+
+  assert.match(runner, /name:\s*["']iphone["'],\s*width:\s*390,\s*height:\s*844/);
+  assert.match(runner, /name:\s*["']signup-zoom-200["'],\s*width:\s*360,\s*height:\s*500/);
+  assert.match(runner, /assertNoHorizontalOverflow\([^;]*mobile signup/i);
+  assert.match(runner, /assertMinimumTargetSize\([^;]*44 pixel signup targets/i);
+  assert.match(runner, /assertVisibleFocus\([^;]*keyboard-only signup/i);
+});

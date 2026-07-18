@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Current state
 
@@ -12,6 +12,52 @@ are active in production.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-07-18 — Resilient mobile onboarding verification
+
+- Completed the local verification gate for the mobile signup and recovery
+  candidate through source commit `1c7f531`. The implementation sequence spans
+  legal-viewer work through `b332056`, signup recovery through `37508d8`,
+  provisioning recovery through `e4904b3`, shared session hardening through
+  `95bdc31`, signup activation/BFCache fixes `1212d69`, `6d20a3f` and `bd9dd15`,
+  and mobile legal-dialog target/focus fixes `e3f8691` and `1c7f531`.
+- Added validation-safe, zero-write built-client journeys for iPhone-sized new
+  signup and returning password sign-in; legal dialog reading, Done/Escape and
+  focus restoration; independent legal acceptance; reload and email-app return;
+  resend and changed-email recovery; delayed provisioning plus manual retry;
+  incomplete-profile presentation; and reactive shared-header identity.
+- Extended automated mobile accessibility coverage for keyboard operation,
+  accessible names and statuses, visible focus, 44-pixel targets, 200%-zoom
+  equivalent plus real Chromium 2x page scale, reduced motion and horizontal
+  overflow. Added storage and public-build checks that forbid passwords,
+  verification codes, tokens, legal-acceptance values and private fields beyond
+  the approved bounded non-secret signup-resume record; successful finalization
+  must clear the exercised name, email and legal-resume fields.
+- The exact local gate reports 538 tests passing with zero failures or skips;
+  all worker, client and test TypeScript projects passing; a clean production
+  build; and exact generated legal artifacts. The focused Task 5 contract suite
+  reports 26 tests passing.
+- One recorded waiver browser journey completed 1,110 requests with all 74 external reads
+  fulfilled locally and zero external writes, continued external requests,
+  blocked writes, forbidden provider attempts or rejected writes. It scanned 48
+  public files plus one classified private bundle with zero privacy findings.
+- Unified-shell browser QA completed 66 navigations and 102 audited states with
+  zero console errors, page errors, request failures or local/external write
+  attempts. An explicit built-`dist` credential/private-fixture scan found zero
+  matches, `git diff --check` passed, and the legal artifacts have no worktree
+  changes.
+- Production and validation were not contacted, deployed, migrated or mutated.
+  Real Clerk email delivery, real mobile Safari, provider-managed password
+  recovery and manual VoiceOver/TalkBack/NVDA checks remain Task 6 owner
+  acceptance work in validation. The five HTTP 503 responses in the delayed
+  provisioning journey are intentional local fixtures and are explicitly
+  classified; unexpected console errors still fail the gate.
+- Direct Close, bottom Done and Escape focus restoration are covered. A
+  non-blocking follow-up is to make the dialog focus-containment installer
+  explicitly idempotent and removable if account setup is initialized more than
+  once in one document; current production setup installs it once.
+- `README.md` was not changed because this verification work does not alter the
+  operator or build contract.
 
 ## Update 2026-07-17 — Submission, Ops and publication validation
 

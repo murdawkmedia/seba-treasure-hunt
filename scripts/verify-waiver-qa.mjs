@@ -35,9 +35,10 @@ const excludedStageFilePatterns = [
 const axeTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
-  { name: "mobile", width: 390, height: 844 },
+  { name: "iphone", width: 390, height: 844 },
   { name: "zoom", width: 720, height: 500 },
 ];
+const signupZoomViewport = { name: "signup-zoom-200", width: 360, height: 500 };
 const routes = [
   { name: "waiver", path: "/waiver" },
   { name: "dashboard", path: "/dashboard" },
@@ -84,6 +85,19 @@ const scenarios = [
   "report upload boundary",
   "minor signup and guardian permission",
   "legal viewer failure recovery",
+  "iPhone signup and returning sign-in",
+  "verification reload and email-app return",
+  "resend code and change email",
+  "delayed provisioning and manual retry",
+  "valid session with incomplete profile",
+  "shared account header synchronization",
+  "keyboard-only signup",
+  "screen-reader names and live statuses",
+  "200 percent zoom signup",
+  "reduced motion signup",
+  "44 pixel signup targets",
+  "mobile signup horizontal overflow",
+  "unsafe signup storage privacy",
   "signed-in report prefill",
   "thirteen waypoints plus two fallback choices",
   "signed-out route exact-link privacy",
@@ -149,6 +163,13 @@ const privateFixtureValues = [
   ...Object.entries(privateFixtures).filter(([key]) => key !== "birthYear").map(([, value]) => value),
   `birth year ${privateFixtures.birthYear}`,
   `"birthYear":${privateFixtures.birthYear}`,
+];
+const privateProfileStorageSentinels = [
+  "qa-private-town-storage",
+  "qa-private-discovery-storage",
+  privateFixtures.childPhone,
+  privateFixtures.hunterSubject,
+  privateFixtures.acceptanceId,
 ];
 const mimeTypes = new Map([
   [".css", "text/css; charset=utf-8"], [".html", "text/html; charset=utf-8"],
@@ -300,45 +321,82 @@ const fakeClerkModule = `
 // Test-only fake Clerk module: the built application clients still own all UI and event handlers.
 export class Clerk {
   constructor() {
-    this.session = { getToken: async () => "qa-local-auth-token" };
-    this.user = { fullName: "QA Local User", primaryEmailAddress: { emailAddress: "qa-local-user@example.test" }, updatePassword: async () => {} };
+    this.listeners = new Set();
+    this.session = { id: "qa-local-session", getToken: async () => "qa-local-auth-token" };
+    this.user = { id: "qa-local-subject", fullName: "QA Local User", primaryEmailAddress: { emailAddress: "qa-local-user@example.test" }, updatePassword: async () => {} };
     this.client = { signIn: { create: async () => ({ status: "complete", createdSessionId: "qa-session" }) }, signUp: { create: async () => ({ status: "complete", createdSessionId: "qa-session" }) } };
   }
   async load() {}
-  async setActive() {}
-  async signOut() {}
+  addListener(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  emit() { for (const listener of [...this.listeners]) listener({ session: this.session, user: this.user }); }
+  async setActive({ session }) { this.session = { id: session, getToken: async () => "qa-local-auth-token" }; this.emit(); }
+  async signOut() { this.session = null; this.user = null; this.emit(); }
   openUserProfile() {}
 }
 `;
 
 const fakeSignedOutClerkModule = `
-// Test-only signed-out fake Clerk module for the public Updates verification.
+// Test-only provider mock. It persists only non-secret provider state so reload/email-return can use the real built client.
+const attemptKey = "qa-provider-signup-attempt";
+const attemptCounterKey = "qa-provider-signup-attempt-count";
+const activeSessionKey = "qa-provider-active-session";
+const listeners = new Set();
+const readAttempt = () => {
+  try { return JSON.parse(localStorage.getItem(attemptKey) || "null"); } catch { return null; }
+};
+const writeAttempt = (value) => localStorage.setItem(attemptKey, JSON.stringify(value));
+const makeSignup = () => {
+  const stored = readAttempt();
+  const signup = {
+    id: stored?.id ?? undefined,
+    status: stored?.status ?? null,
+    emailAddress: stored?.emailAddress ?? null,
+    createdSessionId: stored?.createdSessionId ?? null,
+    unverifiedFields: stored?.status === "complete" ? [] : ["email_address"],
+    missingFields: [],
+    verifications: { emailAddress: { status: stored?.status === "complete" ? "verified" : "unverified", strategy: "email_code" } },
+    async create({ emailAddress }) {
+      const attemptCount = Number(localStorage.getItem(attemptCounterKey) || "0") + 1;
+      localStorage.setItem(attemptCounterKey, String(attemptCount));
+      Object.assign(signup, { id: "qa-signup-attempt-" + attemptCount, status: "missing_requirements", emailAddress, createdSessionId: null, unverifiedFields: ["email_address"] });
+      writeAttempt({ id: signup.id, status: signup.status, emailAddress, createdSessionId: null });
+      return signup;
+    },
+    async prepareEmailAddressVerification() {
+      const count = Number(localStorage.getItem("qa-provider-resend-count") || "0") + 1;
+      localStorage.setItem("qa-provider-resend-count", String(count));
+      return signup;
+    },
+    async attemptEmailAddressVerification({ code }) {
+      if (code !== "qa-minor-verification-code") throw new Error("Invalid test verification code");
+      Object.assign(signup, { status: "complete", createdSessionId: "qa-minor-session", unverifiedFields: [], verifications: { emailAddress: { status: "verified", strategy: "email_code" } } });
+      writeAttempt({ id: signup.id, status: signup.status, emailAddress: signup.emailAddress, createdSessionId: signup.createdSessionId });
+      return signup;
+    },
+  };
+  return signup;
+};
 export class Clerk {
   constructor() {
     this.session = null;
     this.user = null;
-    const signUpAttempt = {
-      status: "missing_requirements",
-      createdSessionId: null,
-      async prepareEmailAddressVerification() { return signUpAttempt; },
-      async attemptEmailAddressVerification({ code }) {
-        if (code !== "qa-minor-verification-code") throw new Error("Invalid test verification code");
-        signUpAttempt.status = "complete";
-        signUpAttempt.createdSessionId = "qa-minor-session";
-        return signUpAttempt;
-      },
-    };
     this.client = {
-      signIn: { create: async () => ({ status: "needs_identifier" }) },
-      signUp: { create: async () => signUpAttempt },
+      signIn: { create: async ({ identifier }) => ({ status: "complete", createdSessionId: "qa-returning-session", identifier }) },
+      signUp: makeSignup(),
     };
+    const active = sessionStorage.getItem(activeSessionKey);
+    if (active) this.installSession(active);
   }
+  installSession(id) {
+    const activeAttempt = readAttempt();
+    this.session = { id, getToken: async () => "qa-local-auth-token" };
+    this.user = { id: "qa-hunter-subject", fullName: "QA Private Minor 01", primaryEmailAddress: { emailAddress: activeAttempt?.emailAddress || "qa-private-hunter@example.test" }, updatePassword: async () => {} };
+  }
+  emit() { for (const listener of [...listeners]) listener({ session: this.session, user: this.user }); }
+  addListener(listener) { listeners.add(listener); return () => listeners.delete(listener); }
   async load() {}
-  async setActive({ session }) {
-    this.session = { id: session, getToken: async () => "qa-local-auth-token" };
-    this.user = { fullName: "QA Private Minor 01", primaryEmailAddress: { emailAddress: "qa-private-hunter@example.test" }, updatePassword: async () => {} };
-  }
-  async signOut() {}
+  async setActive({ session }) { sessionStorage.setItem(activeSessionKey, session); this.installSession(session); localStorage.removeItem(attemptKey); this.emit(); }
+  async signOut() { sessionStorage.removeItem(activeSessionKey); this.session = null; this.user = null; this.emit(); }
   openUserProfile() {}
 }
 `;
@@ -371,11 +429,15 @@ function dashboardPayload(fixtureState = {}) {
         guardianPermissionAttestedAt: fixtureState.guardianPermissionAttestedAt,
       }
     : null;
+  const signupProfilePending = fixtureState.mode === "signup" && fixtureState.profileStored !== true;
+  const profile = fixtureState.dashboardProfileIncomplete === true || signupProfilePending
+    ? null
+    : minorSignupProfile ?? { fullName: privateFixtures.adultName, publicHandle: "@qa-hunter", townArea: "Seba Beach", interests: [], discoverySource: "friend", consents: { huntEmail: false, marketing: false }, adultAttestedAt: "2026-07-13T17:00:00.000Z" };
   return {
     data: {
-      profile: minorSignupProfile ?? { fullName: privateFixtures.adultName, publicHandle: "@qa-hunter", townArea: "Seba Beach", interests: [], discoverySource: "friend", consents: { huntEmail: false, marketing: false }, adultAttestedAt: "2026-07-13T17:00:00.000Z" },
-      privacyMediaRequired: false,
-      participationUnlocked: fixtureState.profileStored === true ? fixtureState.signupWaiverAccepted === true : true,
+      profile,
+      privacyMediaRequired: fixtureState.dashboardProfileIncomplete === true || signupProfilePending,
+      participationUnlocked: signupProfilePending ? false : fixtureState.profileStored === true ? fixtureState.signupWaiverAccepted === true : true,
       status: { state: "open" },
       latestUpdate: { title: "QA update", body: "Public-safe fixture update.", publisherName: "QA operator", publishedAt: "2026-07-13T18:00:00.000Z" },
       waypoints: [
@@ -535,7 +597,9 @@ function readMockResponse(url, fixtureState, legalDocument) {
   if (url.pathname === "/api/v1/rules/current") return jsonResponse({ data: { id: "rules-qa", version: "qa", title: "QA rules", body: "Test-only current rules.", lastUpdatedAt: "2026-07-13T18:00:00.000Z" } });
   if (url.pathname === "/api/v1/legal/waiver") return jsonResponse({ data: legalDocument });
   if (url.pathname === "/api/v1/me/dashboard") return jsonResponse(dashboardPayload(fixtureState));
-  if (url.pathname === "/api/v1/me/profile") return jsonResponse({ data: { fullName: privateFixtures.minorName, email: privateFixtures.email, publicHandle: "@qa-hunter" } });
+  if (url.pathname === "/api/v1/me/profile") return fixtureState.dashboardProfileIncomplete === true
+    ? jsonResponse({ data: null })
+    : jsonResponse({ data: { fullName: privateFixtures.minorName, email: privateFixtures.email, publicHandle: "@qa-hunter" } });
   if (url.pathname === "/api/v1/me/waiver") {
     if (fixtureState.signupWaiverAccepted) return jsonResponse(minorSignupAcceptancePayload(legalDocument));
     return fixtureState.accepted ? jsonResponse(acceptancePayload(legalDocument, fixtureState.receiptStatus)) : jsonResponse({ data: { acceptance: null, document: { waiver: legalDocument } } });
@@ -552,15 +616,20 @@ function readMockResponse(url, fixtureState, legalDocument) {
 function writeMockResponse(pathname, fixtureState, request) {
   if (pathname === identityBootstrapPath) {
     fixtureState.bootstrapCount = (fixtureState.bootstrapCount ?? 0) + 1;
+    if ((fixtureState.bootstrapFailuresRemaining ?? 0) > 0) {
+      fixtureState.bootstrapFailuresRemaining -= 1;
+      return jsonResponse({ error: { code: "player_not_ready", message: "Player provisioning is still syncing." } }, 503);
+    }
     return jsonResponse({ data: { created: fixtureState.bootstrapCount === 1 } });
   }
   if (pathname === "/api/v1/me/profile") {
     const body = request.postDataJSON();
-    assert.equal(body.participationBasis, "minor_guardian_permission");
-    assert.equal(body.guardianPermissionAttested, true);
+    assert.ok(["adult", "minor_guardian_permission"].includes(body.participationBasis));
+    assert.equal(body.guardianPermissionAttested, body.participationBasis === "minor_guardian_permission");
     assert.equal(body.privacyMediaAccepted, true);
     assert.equal(body.privacyMediaVersion, privacyMediaVersion);
     fixtureState.profileStored = true;
+    fixtureState.submittedFullName = body.fullName;
     fixtureState.participationBasis = body.participationBasis;
     fixtureState.guardianPermissionAttestedAt = "2026-07-15T22:59:00.000Z";
     fixtureState.privacyMediaVersion = body.privacyMediaVersion;
@@ -730,6 +799,127 @@ async function assertPrintCss(page, surface) {
   return state;
 }
 
+async function assertMinimumTargetSize(locator, label, minimum = 44) {
+  const boxes = await locator.evaluateAll((elements) => elements.map((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height, text: (element.textContent ?? "").trim().slice(0, 80) };
+  }));
+  assert.ok(boxes.length > 0, `${label} must audit at least one target`);
+  for (const box of boxes) {
+    assert.ok(box.width >= minimum && box.height >= minimum, `${label} target must be at least ${minimum}px: ${JSON.stringify(box)}`);
+  }
+  return boxes;
+}
+
+async function assertVisibleFocus(locator, label) {
+  await locator.evaluate((element) => element.blur());
+  const unfocused = await locator.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return { outlineStyle: styles.outlineStyle, outlineWidth: styles.outlineWidth, boxShadow: styles.boxShadow };
+  });
+  await locator.focus();
+  const focused = await locator.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return {
+      active: document.activeElement === element,
+      outlineStyle: styles.outlineStyle,
+      outlineWidth: Number.parseFloat(styles.outlineWidth),
+      boxShadow: styles.boxShadow,
+    };
+  });
+  assert.equal(focused.active, true, `${label} target must receive keyboard focus`);
+  assert.ok(
+    (focused.outlineStyle !== "none" && focused.outlineWidth >= 2 &&
+      (focused.outlineStyle !== unfocused.outlineStyle || `${focused.outlineWidth}px` !== unfocused.outlineWidth)) ||
+      (focused.boxShadow !== "none" && focused.boxShadow !== unfocused.boxShadow),
+    `${label} must add a visible focus indicator: ${JSON.stringify({ unfocused, focused })}`,
+  );
+  return { unfocused, focused };
+}
+
+async function assertReducedMotionApplied(locator, label) {
+  const motion = await locator.evaluateAll((elements) => elements.map((element) => {
+    const styles = getComputedStyle(element);
+    return { transitionDuration: styles.transitionDuration, animationDuration: styles.animationDuration };
+  }));
+  assert.ok(motion.length > 0, `${label} must audit at least one rendered element`);
+  const milliseconds = (value) => value.split(",").map((part) => {
+    const duration = Number.parseFloat(part);
+    return part.trim().endsWith("ms") ? duration : duration * 1_000;
+  });
+  for (const state of motion) {
+    assert.ok(Math.max(...milliseconds(state.transitionDuration), ...milliseconds(state.animationDuration)) <= 0.02,
+      `${label} must suppress motion: ${JSON.stringify(state)}`);
+  }
+}
+
+async function keyboardTabTo(page, locator, label, maximumTabs = 80) {
+  for (let index = 0; index <= maximumTabs; index += 1) {
+    if (await locator.evaluate((element) => document.activeElement === element)) return;
+    await page.keyboard.press("Tab");
+  }
+  const active = await page.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent?.trim().slice(0, 80) }));
+  assert.fail(`${label} must be reachable in keyboard order: ${JSON.stringify(active)}`);
+}
+
+async function keyboardTypeInto(page, locator, value, label) {
+  await keyboardTabTo(page, locator, label);
+  await page.keyboard.type(value);
+}
+
+async function keyboardActivate(page, locator, label, key = "Enter") {
+  await keyboardTabTo(page, locator, label);
+  await page.keyboard.press(key);
+}
+
+async function assertDialogFocusTrap(page, dialog, label) {
+  const focusable = dialog.locator('button:visible, a[href]:visible, iframe:visible, input:not([disabled]):visible, [tabindex]:not([tabindex="-1"]):visible');
+  const count = await focusable.count();
+  assert.ok(count >= 2, `${label} must expose multiple keyboard controls`);
+  await focusable.first().focus();
+  for (const key of ["Shift+Tab", ...Array.from({ length: count + 2 }, () => "Tab")]) {
+    await page.keyboard.press(key);
+    assert.equal(await dialog.evaluate((element) => element.contains(document.activeElement)), true, `${label} must keep ${key} focus inside the modal`);
+  }
+}
+
+async function assertEmbeddedLegalIsolation(frame, label) {
+  await frame.locator("main#main").waitFor();
+  assert.equal(await frame.locator('.campaign-header a[href="/dashboard"]:visible').count(), 0, `embedded ${label} review must not expose cyclic Dashboard navigation`);
+  assert.equal(await frame.locator('[data-registration-action]:visible, .legal-actions:visible').count(), 0, `embedded ${label} review must not expose registration actions`);
+}
+
+async function assertUnsafeStorageFree(page) {
+  const storageSnapshot = await page.evaluate(() => ({
+    localStorage: Object.entries(localStorage),
+    sessionStorage: Object.entries(sessionStorage),
+  }));
+  const serialized = JSON.stringify(storageSnapshot);
+  for (const forbidden of [
+    "QA-guardian-password-2026",
+    "qa-minor-verification-code",
+    "qa-local-auth-token",
+    "privacyMediaAccepted",
+    "waiverAccepted",
+    ...privateProfileStorageSentinels,
+  ]) assert.equal(serialized.includes(forbidden), false, `unsafe signup storage privacy must exclude ${forbidden}`);
+  for (const secretShape of ["password", "verification code", "session token", "reset code"]) {
+    assert.equal(serialized.toLowerCase().includes(secretShape), false, `browser storage must exclude ${secretShape}`);
+  }
+  return storageSnapshot;
+}
+
+async function assertSignupRecoveryCleared(page, values) {
+  const storageSnapshot = await page.evaluate(() => ({
+    localStorage: Object.entries(localStorage),
+    sessionStorage: Object.entries(sessionStorage),
+  }));
+  const serialized = JSON.stringify(storageSnapshot);
+  for (const forbidden of [...values, "privacyMediaDocument", "waiverDocument", "participationBasis", "guardianPermissionAttested"]) {
+    assert.equal(serialized.includes(forbidden), false, `completed signup storage must clear ${forbidden}`);
+  }
+}
+
 async function exerciseSignupLegalFailureRecovery(page, origin) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
@@ -859,7 +1049,17 @@ async function exerciseMinorSignupGate(page, fixtureState, legalDocument) {
   await verify.locator('[name="code"]').fill("qa-minor-verification-code");
   await verify.locator('button[type="submit"]').click();
   await page.locator("[data-dashboard-content]").waitFor({ state: "visible" });
-  await page.locator("[data-waiver-receipt]").waitFor({ state: "visible" });
+  await page.waitForTimeout(250);
+  if (!await page.locator("[data-waiver-receipt]").isVisible()) {
+    const diagnostics = await page.evaluate(() => ({
+      auth: document.querySelector("[data-auth-message]")?.textContent ?? "",
+      dashboardState: document.querySelector("[data-dashboard-access]")?.getAttribute("data-dashboard-state"),
+      finishing: document.querySelector("[data-signup-finishing-status]")?.textContent ?? "",
+      profile: document.querySelector("[data-dashboard-profile]")?.textContent ?? "",
+      waiver: document.querySelector("[data-waiver-result]")?.textContent ?? "",
+    }));
+    assert.fail(`verified signup must expose its waiver receipt: ${JSON.stringify({ diagnostics, fixtureState })}`);
+  }
   assert.equal(fixtureState.participationBasis, "minor_guardian_permission");
   assert.match(fixtureState.guardianPermissionAttestedAt ?? "", /^2026-07-15T/);
   assert.equal(fixtureState.privacyMediaVersion, privacyMediaVersion);
@@ -867,9 +1067,211 @@ async function exerciseMinorSignupGate(page, fixtureState, legalDocument) {
   assert.equal(fixtureState.reviewedWaiverHash, legalDocument.hash);
   assert.equal(fixtureState.acceptedWaiverVersion, legalDocument.version);
   assert.equal(fixtureState.signupWaiverAccepted, true);
-  assert.equal(fixtureState.bootstrapCount, 2, "verified signup must bootstrap before profile storage and once during dashboard refresh");
+  assert.equal(fixtureState.bootstrapCount, 1, "verified signup must bootstrap exactly once while preserving activation finalization");
   assert.match(await page.locator("[data-dashboard-profile]").innerText(), /QA Private Minor 01/);
   assert.equal(await page.locator('[data-dashboard-waypoints] a:has-text("Open approved directions")').count(), 1, "current minor legal acceptance must unlock approved participation tools");
+  await assertSignupRecoveryCleared(page, [privateFixtures.minorName, privateFixtures.email]);
+}
+
+async function exerciseResumableMobileSignup(page, origin, fixtureState) {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await goto(page, origin, "/dashboard");
+  assert.deepEqual(page.viewportSize(), { width: 390, height: 844 }, "iPhone signup and returning sign-in uses the supported mobile viewport");
+  assert.equal(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches), true, "reduced motion signup must use the reduced-motion presentation");
+
+  const createAccount = page.locator('[data-show-auth="hunter-sign-up-form"]');
+  await assertVisibleFocus(createAccount, "keyboard-only signup Create account");
+  await page.keyboard.press("Enter");
+  const signup = page.locator("#hunter-sign-up-form");
+  await signup.waitFor({ state: "visible" });
+  await assertNoHorizontalOverflow(page, "mobile signup");
+  await assertMinimumTargetSize(signup.locator('button:visible, input:not([type="radio"]):not([type="checkbox"]):visible, .check-row:visible'), "44 pixel signup targets");
+  await assertReducedMotionApplied(signup.locator("button:visible, .check-row:visible"), "reduced motion signup");
+
+  await signup.locator('[name="fullName"]').fill(privateFixtures.minorName);
+  await signup.locator('[name="email"]').fill(privateFixtures.email);
+  await signup.locator('[name="password"]').fill("QA-guardian-password-2026");
+  await signup.locator('[name="confirmPassword"]').fill("QA-guardian-password-2026");
+  await signup.locator('[name="participationBasis"][value="adult"]').check();
+
+  const privacyReview = signup.locator('[data-signup-review="privacy-media"]');
+  await privacyReview.click();
+  const privacyDialog = page.locator('[data-signup-dialog="privacy-media"]');
+  await privacyDialog.waitFor({ state: "visible" });
+  const privacyFrame = privacyDialog.locator("iframe").contentFrame();
+  await assertEmbeddedLegalIsolation(privacyFrame, "Privacy");
+  const legalScroll = await privacyFrame.locator("main#main").evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    return { y: window.scrollY, height: document.documentElement.scrollHeight, viewport: window.innerHeight };
+  });
+  assert.ok(legalScroll.height > legalScroll.viewport && legalScroll.y > 0, "iPhone legal review must support reading through the document");
+  await assertMinimumTargetSize(privacyDialog.locator("button:visible, a[href]:visible"), "44 pixel legal dialog controls");
+  await assertDialogFocusTrap(page, privacyDialog, "Privacy legal dialog");
+  await privacyDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to account setup" }).click();
+  await privacyDialog.waitFor({ state: "hidden" });
+  assert.equal(await privacyReview.evaluate((element) => document.activeElement === element), true, "Done restores focus during iPhone signup");
+
+  const privacyAcceptance = signup.locator('[name="privacyMediaAccepted"]');
+  const waiverAcceptance = signup.locator('[name="waiverAccepted"]');
+  assert.equal(await privacyAcceptance.isChecked(), false, "viewing Privacy never implies acceptance");
+  assert.equal(await waiverAcceptance.isChecked(), false, "viewing Privacy never changes Waiver acceptance");
+  await privacyAcceptance.check();
+  assert.equal(await waiverAcceptance.isChecked(), false, "checkbox independence keeps Waiver unchecked");
+  const waiverReview = signup.locator('[data-signup-review="waiver"]');
+  await waiverReview.click();
+  const waiverDialog = page.locator('[data-signup-dialog="waiver"]');
+  await waiverDialog.waitFor({ state: "visible" });
+  const waiverFrame = waiverDialog.locator("iframe").contentFrame();
+  await assertEmbeddedLegalIsolation(waiverFrame, "Waiver");
+  await assertMinimumTargetSize(waiverDialog.locator("button:visible, a[href]:visible"), "44 pixel Waiver legal dialog controls");
+  await assertDialogFocusTrap(page, waiverDialog, "Waiver legal dialog");
+  await waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: /Done/ }).click();
+  await waiverDialog.waitFor({ state: "hidden" });
+  assert.equal(await waiverReview.evaluate((element) => document.activeElement === element), true, "Waiver Done restores focus during iPhone signup");
+  await waiverAcceptance.check();
+  await signup.locator('button[type="submit"]').click();
+
+  const verify = page.locator("#hunter-verify-form");
+  await verify.waitFor({ state: "visible" });
+  assert.equal(await verify.getByLabel("Email verification code").count(), 1, "screen-reader names and live statuses expose the verification input");
+  assert.equal(await page.locator("[data-auth-message]").getAttribute("role"), "status", "verification guidance is a live status");
+  await assertMinimumTargetSize(verify.locator('input:visible, button:visible, [data-signup-resend]:visible, [data-signup-restart]:visible'), "44 pixel verification controls");
+  await assertUnsafeStorageFree(page);
+
+  await page.reload({ waitUntil: "networkidle" });
+  await verify.waitFor({ state: "visible" });
+  assert.match(await page.locator("[data-signup-verification-status]").innerText(), /verification|code/i, "verification reload and email-app return restores the waiting state");
+
+  await goto(page, origin, "/updates");
+  await goto(page, origin, "/dashboard");
+  await verify.waitFor({ state: "visible" });
+  await page.evaluate(() => {
+    for (const storage of [localStorage, sessionStorage]) {
+      for (const [key, value] of Object.entries(storage)) {
+        try {
+          const parsed = JSON.parse(value);
+          if (parsed && typeof parsed === "object" && "resendAvailableAt" in parsed) {
+            parsed.resendAvailableAt = Date.now() - 1;
+            storage.setItem(key, JSON.stringify(parsed));
+          }
+        } catch { /* non-JSON provider counters are expected */ }
+      }
+    }
+  });
+  await page.reload({ waitUntil: "networkidle" });
+  await verify.waitFor({ state: "visible" });
+  await page.locator("[data-signup-resend]:not([disabled])").click();
+  await page.locator("[data-signup-verification-status]").filter({ hasText: /new code was sent/i }).waitFor();
+  assert.ok(Number(await page.evaluate(() => localStorage.getItem("qa-provider-resend-count"))) >= 2, "resend code and change email must call the provider after the initial send");
+  const originalAttemptId = await page.evaluate(() => JSON.parse(localStorage.getItem("qa-provider-signup-attempt") || "null")?.id);
+  await verify.locator("[data-signup-restart]").click();
+  await signup.waitFor({ state: "visible" });
+  assert.equal(await signup.locator('[name="email"]').inputValue(), "", "Use a different email clears the signup form");
+
+  const changedName = "QA Keyboard Changed Hunter";
+  const changedEmail = "changed-hunter@different.test";
+  await keyboardTypeInto(page, signup.locator('[name="fullName"]'), changedName, "keyboard-only signup full name");
+  await keyboardTypeInto(page, signup.locator('[name="email"]'), changedEmail, "keyboard-only signup changed email");
+  await keyboardTypeInto(page, signup.locator('[name="password"]'), "QA-keyboard-password-2026", "keyboard-only signup password");
+  await keyboardTypeInto(page, signup.locator('[name="confirmPassword"]'), "QA-keyboard-password-2026", "keyboard-only signup password confirmation");
+  await keyboardActivate(page, signup.locator('[name="participationBasis"][value="adult"]'), "keyboard-only signup participation basis", "Space");
+  await keyboardActivate(page, privacyReview, "keyboard-only Privacy review");
+  await privacyDialog.waitFor({ state: "visible" });
+  await assertDialogFocusTrap(page, privacyDialog, "keyboard-only Privacy legal dialog");
+  await keyboardActivate(page, privacyDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: /Done/ }), "keyboard-only Privacy Done");
+  await privacyDialog.waitFor({ state: "hidden" });
+  await keyboardActivate(page, privacyAcceptance, "keyboard-only Privacy acceptance", "Space");
+  await keyboardActivate(page, waiverReview, "keyboard-only Waiver review");
+  await waiverDialog.waitFor({ state: "visible" });
+  await assertDialogFocusTrap(page, waiverDialog, "keyboard-only Waiver legal dialog");
+  await keyboardActivate(page, waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: /Done/ }), "keyboard-only Waiver Done");
+  await waiverDialog.waitFor({ state: "hidden" });
+  await keyboardActivate(page, waiverAcceptance, "keyboard-only Waiver acceptance", "Space");
+  await keyboardActivate(page, signup.locator('button[type="submit"]'), "keyboard-only Create account");
+  await verify.waitFor({ state: "visible" });
+  const replacementAttempt = await page.evaluate(() => JSON.parse(localStorage.getItem("qa-provider-signup-attempt") || "null"));
+  assert.notEqual(replacementAttempt?.id, originalAttemptId, "changed email must create a replacement provider attempt instead of resuming the old attempt");
+  assert.equal(replacementAttempt?.emailAddress, changedEmail, "changed email must own the replacement provider attempt");
+  assert.match(await page.locator("[data-signup-masked-email]").innerText(), /c\*\*\*@d\*\*\*\.test/i, "changed email must replace the old masked destination");
+  await keyboardTypeInto(page, verify.locator('[name="code"]'), "qa-minor-verification-code", "keyboard-only verification code");
+  await keyboardActivate(page, verify.locator('button[type="submit"]'), "keyboard-only Verify email");
+  await page.locator("[data-dashboard-content]").waitFor({ state: "visible" });
+  assert.equal(fixtureState.submittedFullName, changedName, "changed signup draft must reach profile finalization");
+  await assertSignupRecoveryCleared(page, [changedName, changedEmail]);
+  await assertAxe(page, "iPhone signup and returning sign-in");
+  await assertUnsafeStorageFree(page);
+}
+
+async function exerciseSignupZoom(page, origin) {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await goto(page, origin, "/dashboard");
+  assert.deepEqual(page.viewportSize(), { width: signupZoomViewport.width, height: signupZoomViewport.height }, "200 percent zoom signup must use the constrained CSS layout viewport");
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setPageScaleFactor", { pageScaleFactor: 2 });
+  assert.equal(await page.evaluate(() => visualViewport?.scale), 2, "200 percent zoom signup must apply a real 2x browser page scale");
+  const createAccount = page.locator('[data-show-auth="hunter-sign-up-form"]');
+  await assertVisibleFocus(createAccount, "keyboard-only signup at 200 percent zoom");
+  await page.keyboard.press("Enter");
+  const signup = page.locator("#hunter-sign-up-form");
+  await signup.waitFor({ state: "visible" });
+  await assertNoHorizontalOverflow(page, "mobile signup at 200 percent zoom");
+  await assertMinimumTargetSize(signup.locator('button:visible, input:not([type="radio"]):not([type="checkbox"]):visible, .check-row:visible'), "44 pixel signup targets at 200 percent zoom");
+  await assertReducedMotionApplied(signup.locator("button:visible, .check-row:visible"), "reduced motion signup at 200 percent zoom");
+  await assertAxe(page, "200 percent zoom signup");
+}
+
+async function exerciseReturningSignInAndHeader(page, origin) {
+  await goto(page, origin, "/dashboard?intent=signin");
+  const signIn = page.locator("#hunter-sign-in-form");
+  await signIn.waitFor({ state: "visible" });
+  await signIn.locator('[name="email"]').fill(privateFixtures.email);
+  await signIn.locator('[name="password"]').fill("QA-returning-password-2026");
+  await signIn.locator('button[type="submit"]').click();
+  await page.locator("[data-dashboard-content]").waitFor({ state: "visible" });
+  const headerHandle = page.locator("[data-campaign-account-handle]");
+  await page.waitForFunction(() => /qa-hunter/i.test(document.querySelector("[data-campaign-account-handle]")?.textContent ?? ""));
+  await page.locator(".campaign-menu-toggle").click();
+  await headerHandle.filter({ hasText: /qa-hunter/i }).waitFor({ state: "visible" });
+  assert.equal(await page.locator("[data-campaign-account-toggle]").isVisible(), true, "shared account header synchronization reflects in-page sign-in");
+  await page.locator("[data-hunter-sign-out]:visible").first().click();
+  await signIn.waitFor({ state: "visible" });
+  assert.equal(await page.locator("[data-campaign-account-sign-in]").isVisible(), true, "shared account header synchronization reflects in-page sign-out");
+}
+
+async function exerciseDelayedProvisioningRecovery(page, origin, fixtureState) {
+  await page.addInitScript(() => sessionStorage.setItem("qa-provider-active-session", "qa-delayed-session"));
+  await page.clock.install();
+  const response = await page.goto(`${origin}/dashboard`, { waitUntil: "domcontentloaded" });
+  assert.equal(response?.ok(), true);
+  const finishing = page.locator("#hunter-signup-finishing-state");
+  await finishing.waitFor({ state: "visible" });
+  for (const delay of [1_100, 4_100, 10_100, 15_100]) {
+    await page.clock.fastForward(delay);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const retry = page.locator("[data-signup-finishing-retry]");
+  await retry.filter({ hasText: "Try again" }).waitFor({ state: "visible" });
+  assert.match(await page.locator("[data-signup-finishing-status]").innerText(), /automatic checks have paused/i, "delayed provisioning and manual retry exposes a non-destructive retry state");
+  fixtureState.bootstrapFailuresRemaining = 0;
+  await retry.click();
+  await page.locator("[data-dashboard-content]").waitFor({ state: "visible" });
+  assert.equal(await finishing.isHidden(), true, "manual retry completes delayed provisioning without a new sign-in");
+}
+
+async function exerciseValidSessionIncompleteProfile(page, origin) {
+  await page.addInitScript(() => sessionStorage.setItem("qa-provider-active-session", "qa-incomplete-profile-session"));
+  await goto(page, origin, "/dashboard");
+  await page.locator("[data-dashboard-content]").waitFor({ state: "visible" });
+  assert.equal(await page.locator("[data-dashboard-access]").isHidden(), true, "valid session with incomplete profile must not render the signed-out gate");
+  assert.match(await page.locator("[data-dashboard-profile]").innerText(), /complete your private profile/i);
+  await page.waitForFunction(() => {
+    const accountToggle = document.querySelector("[data-campaign-account-toggle]");
+    const signIn = document.querySelector("[data-campaign-account-sign-in]");
+    return accountToggle instanceof HTMLElement && !accountToggle.hidden && signIn instanceof HTMLElement && signIn.hidden;
+  });
+  await page.locator(".campaign-menu-toggle").click();
+  assert.equal(await page.locator("[data-campaign-account-toggle]").isVisible(), true, "valid provider session remains visibly signed in while profile completion is pending");
 }
 
 async function exerciseDashboard(page, legalSource, viewportName, evidence) {
@@ -879,7 +1281,7 @@ async function exerciseDashboard(page, legalSource, viewportName, evidence) {
   assert.match(await page.locator("[data-dashboard-waypoints]").innerText(), /Exact directions locked/i);
   if (viewportName !== "desktop") {
     await page.locator("[data-waiver-receipt]").waitFor({ state: "visible" });
-    const expected = viewportName === "mobile" ? "sent" : "failed";
+    const expected = viewportName === "iphone" ? "sent" : "failed";
     assert.equal(await page.locator("[data-waiver-receipt-status]").getAttribute("data-receipt-status"), expected);
     return;
   }
@@ -1214,6 +1616,42 @@ async function run() {
       assert.deepEqual(signupPage.consoleProblems, [], "minor signup and legal review must have no console errors");
     } finally { await signupPage.context.close(); }
 
+    const resumableSignupState = { mode: "signup", signedOut: true, accepted: false, receiptStatus: "pending" };
+    const resumableSignupPage = await createQaPage(browser, viewports[1], origin, networkLedger, legalDocument, resumableSignupState, clerkChunkPaths);
+    try {
+      await exerciseResumableMobileSignup(resumableSignupPage.page, origin, resumableSignupState);
+      assert.deepEqual(resumableSignupPage.consoleProblems, [], "resumable iPhone signup must have no console errors");
+    } finally { await resumableSignupPage.context.close(); }
+
+    const signupZoomState = { mode: "signup", signedOut: true, accepted: false, receiptStatus: "pending" };
+    const signupZoomPage = await createQaPage(browser, signupZoomViewport, origin, networkLedger, legalDocument, signupZoomState, clerkChunkPaths);
+    try {
+      await exerciseSignupZoom(signupZoomPage.page, origin);
+      assert.deepEqual(signupZoomPage.consoleProblems, [], "200 percent zoom signup must have no console errors");
+    } finally { await signupZoomPage.context.close(); }
+
+    const returningState = { mode: "dashboard", signedOut: true, accepted: true, receiptStatus: "sent" };
+    const returningPage = await createQaPage(browser, viewports[1], origin, networkLedger, legalDocument, returningState, clerkChunkPaths);
+    try {
+      await exerciseReturningSignInAndHeader(returningPage.page, origin);
+      assert.deepEqual(returningPage.consoleProblems, [], "returning sign-in and shared header must have no console errors");
+    } finally { await returningPage.context.close(); }
+
+    const delayedState = { mode: "dashboard", signedOut: true, accepted: true, receiptStatus: "sent", bootstrapFailuresRemaining: 5 };
+    const delayedPage = await createQaPage(browser, viewports[1], origin, networkLedger, legalDocument, delayedState, clerkChunkPaths);
+    try {
+      await exerciseDelayedProvisioningRecovery(delayedPage.page, origin, delayedState);
+      assert.equal(delayedPage.consoleProblems.filter((message) => /503 \(Service Unavailable\)/.test(message)).length, 5, "the delayed provisioning fixture must exercise exactly five transient responses");
+      assert.deepEqual(delayedPage.consoleProblems.filter((message) => !/503 \(Service Unavailable\)/.test(message)), [], "delayed provisioning recovery must have no unexpected console errors");
+    } finally { await delayedPage.context.close(); }
+
+    const incompleteProfileState = { mode: "dashboard", signedOut: true, accepted: false, receiptStatus: "pending", dashboardProfileIncomplete: true };
+    const incompleteProfilePage = await createQaPage(browser, viewports[1], origin, networkLedger, legalDocument, incompleteProfileState, clerkChunkPaths);
+    try {
+      await exerciseValidSessionIncompleteProfile(incompleteProfilePage.page, origin);
+      assert.deepEqual(incompleteProfilePage.consoleProblems, [], "valid session with incomplete profile must have no console errors");
+    } finally { await incompleteProfilePage.context.close(); }
+
     const signedOutRouteState = { mode: "route", signedOut: true, accepted: false, receiptStatus: "pending" };
     const signedOutRoutePage = await createQaPage(browser, viewports[0], origin, networkLedger, legalDocument, signedOutRouteState, clerkChunkPaths);
     try {
@@ -1228,7 +1666,7 @@ async function run() {
         const fixtureState = {
           mode: routeSpec.name === "ops" ? "ops" : routeSpec.name,
           accepted: routeSpec.name === "dashboard" && viewport.name !== "desktop",
-          receiptStatus: viewport.name === "mobile" ? "sent" : viewport.name === "zoom" ? "failed" : "pending",
+          receiptStatus: viewport.name === "iphone" ? "sent" : viewport.name === "zoom" ? "failed" : "pending",
         };
         const { context, page, consoleProblems } = await createQaPage(browser, viewport, origin, networkLedger, legalDocument, fixtureState, clerkChunkPaths);
         const label = `${routeSpec.name}-${viewport.name}`;
@@ -1280,10 +1718,10 @@ async function run() {
 
     const mockedWriteCounts = Object.fromEntries(networkLedger.mockedWrites);
     const identityBootstrapWrites = mockedWriteCounts[identityBootstrapPath];
-    assert.equal(identityBootstrapWrites, 5, "identity/profile bootstrap must cover three authenticated dashboard viewports and two verified-signup bootstrap passes");
-    assert.equal(mockedWriteCounts["/api/v1/me/profile"], 1);
-    assert.equal(mockedWriteCounts["/api/v1/me/waiver/review"], 2);
-    assert.equal(mockedWriteCounts["/api/v1/me/waiver/accept"], 2);
+    assert.equal(identityBootstrapWrites, 13, "identity/profile bootstrap must cover dashboard, two exact-once verified signups, returning sign-in, delayed retry and incomplete-profile journeys");
+    assert.equal(mockedWriteCounts["/api/v1/me/profile"], 2);
+    assert.equal(mockedWriteCounts["/api/v1/me/waiver/review"], 3);
+    assert.equal(mockedWriteCounts["/api/v1/me/waiver/accept"], 3);
     assert.equal(mockedWriteCounts["/api/v1/me/waiver/receipt"], 1);
     assert.equal(mockedWriteCounts["/api/v1/ops/players/hunter-1/waiver/receipt"], 1);
     assert.equal(mockedWriteCounts["/api/v1/reports"], 1);

@@ -40,3 +40,22 @@ test("public output privacy scan catches board identity, moderation and object-k
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("mobile onboarding QA fails if secrets or private profile values enter browser storage", async () => {
+  const runner = await import("node:fs/promises").then(({ readFile }) => readFile(
+    new URL("../scripts/verify-waiver-qa.mjs", import.meta.url),
+    "utf8",
+  ));
+
+  assert.match(runner, /unsafe signup storage privacy/i);
+  assert.match(runner, /const storageSnapshot\s*=\s*await page\.evaluate/);
+  assert.match(runner, /Object\.entries\(localStorage\)/);
+  assert.match(runner, /Object\.entries\(sessionStorage\)/);
+  assert.match(runner, /QA-guardian-password-2026/);
+  assert.match(runner, /qa-minor-verification-code/);
+  assert.match(runner, /qa-local-auth-token/);
+  assert.match(runner, /privateProfileStorageSentinels/);
+  assert.match(runner, /privacyMediaAccepted/);
+  assert.match(runner, /waiverAccepted/);
+  assert.match(runner, /assertUnsafeStorageFree/);
+});

@@ -173,6 +173,62 @@ test("signup legal QA covers success controls and deterministic failure recovery
   assert.match(runner, /failureReview[^;]*document\.activeElement/);
 });
 
+test("waiver QA covers resumable mobile signup and returning sign-in journeys", async () => {
+  const script = await readRunner();
+
+  for (const scenario of [
+    "iPhone signup and returning sign-in",
+    "verification reload and email-app return",
+    "resend code and change email",
+    "delayed provisioning and manual retry",
+    "valid session with incomplete profile",
+    "shared account header synchronization",
+  ]) assert.match(script, new RegExp(scenario, "i"));
+
+  assert.match(script, /name:\s*["']iphone["'],\s*width:\s*390,\s*height:\s*844/);
+  assert.match(script, /async function exerciseResumableMobileSignup\(/);
+  assert.match(script, /page\.reload\(/);
+  assert.match(script, /data-signup-resend/);
+  assert.match(script, /data-signup-restart/);
+  assert.match(script, /changed-hunter@different\.test/);
+  assert.match(script, /assertEmbeddedLegalIsolation\([^;]*privacy/i);
+  assert.match(script, /assertEmbeddedLegalIsolation\([^;]*waiver/i);
+  assert.match(script, /keyboardTabTo\(/);
+  assert.match(script, /keyboardTypeInto\(/);
+  assert.match(script, /assertSignupRecoveryCleared\(/);
+  assert.match(script, /async function exerciseDelayedProvisioningRecovery\(/);
+  assert.match(script, /data-signup-finishing-retry/);
+  assert.match(script, /async function exerciseReturningSignInAndHeader\(/);
+  assert.match(script, /data-campaign-account-handle/);
+});
+
+test("waiver QA audits mobile accessibility and storage privacy without external writes", async () => {
+  const script = await readRunner();
+
+  for (const scenario of [
+    "keyboard-only signup",
+    "screen-reader names and live statuses",
+    "200 percent zoom signup",
+    "reduced motion signup",
+    "44 pixel signup targets",
+    "mobile signup horizontal overflow",
+    "unsafe signup storage privacy",
+  ]) assert.match(script, new RegExp(scenario, "i"));
+
+  assert.match(script, /async function assertMinimumTargetSize\(/);
+  assert.match(script, /async function assertVisibleFocus\(/);
+  assert.match(script, /unfocused/);
+  assert.match(script, /focused/);
+  assert.match(script, /assertReducedMotionApplied\(/);
+  assert.match(script, /emulateMedia\(\{\s*reducedMotion:\s*["']reduce["']/);
+  assert.match(script, /legal dialog controls/i);
+  assert.match(script, /verification controls/i);
+  assert.match(script, /const storageSnapshot\s*=\s*await page\.evaluate/);
+  assert.match(script, /localStorage/);
+  assert.match(script, /sessionStorage/);
+  assert.match(script, /password|verification code|session token/i);
+});
+
 test("waiver QA installs a zero-external-write boundary before every page", async () => {
   const script = await readRunner();
   const allowedMatch = script.match(/const allowedWritePaths = new Set\(\[([^]*?)\]\);/);
