@@ -88,6 +88,11 @@ test("email verification exposes resumable, restart, and lost-attempt actions", 
   assert.match(client, /clearSignupResume/);
 });
 
+test("an unavailable signup Retry stays hidden under the authored button styles", () => {
+  const styles = read("css/hunter.css");
+  assert.match(styles, /\[data-signup-retry\]\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});
+
 test("signup persistence is isolated to the safe resume module", () => {
   const resume = read("src/client/hunter-signup-resume.ts");
   const dashboard = read("src/client/dashboard.ts");

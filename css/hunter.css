@@ -131,6 +131,10 @@ button.hunter-button {
   cursor: pointer;
 }
 
+[data-signup-retry][hidden] {
+  display: none !important;
+}
+
 .hunter-button:hover {
   filter: brightness(1.07);
   transform: translateY(1px);
