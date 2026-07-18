@@ -356,6 +356,54 @@ test("signup resume resync never erases its only valid source when canonical wri
   assert.deepEqual(diagnostics, { session: false, local: false, persisted: false });
 });
 
+test("signup resume replacement preserves the old record unless a canonical tier verifies the new record", () => {
+  class ToggleStorage extends MemoryStorage {
+    denyWrites = false;
+    override setItem(key: string, value: string): void {
+      if (this.denyWrites) throw new Error("write denied");
+      super.setItem(key, value);
+    }
+  }
+  const namespace = "replacement-failure";
+  const canonicalKey = `tim-lost:hunter-signup-resume:${encodeURIComponent(namespace)}`;
+  const legacyKey = `tim-lost:hunter-signup-resume:v2:${encodeURIComponent(namespace)}`;
+  const oldRecord = createHunterSignupResume(validDraft, 1_000, "11111111-1111-4111-8111-111111111111");
+  const newRecord = createHunterSignupResume({ ...validDraft, fullName: "New Hunter" }, 1_500, "22222222-2222-4222-8222-222222222222");
+
+  const blockedSession = new ToggleStorage();
+  const blockedLocal = new ToggleStorage();
+  blockedSession.setItem(canonicalKey, serializeHunterSignupResume(oldRecord));
+  blockedLocal.setItem(legacyKey, serializeHunterSignupResume(oldRecord));
+  const blockedStore = createHunterSignupResumeStore({
+    sessionStorage: blockedSession,
+    localStorage: blockedLocal,
+    namespace,
+    now: () => 2_000,
+  });
+  blockedSession.denyWrites = true;
+  blockedLocal.denyWrites = true;
+  assert.deepEqual(blockedStore.write(newRecord), { session: false, local: false, persisted: false });
+  assert.equal(blockedSession.getItem(canonicalKey), serializeHunterSignupResume(oldRecord));
+  assert.equal(blockedLocal.getItem(legacyKey), serializeHunterSignupResume(oldRecord));
+  assert.deepEqual(blockedStore.read(), oldRecord);
+
+  const durableSession = new ToggleStorage();
+  const failedLocal = new ToggleStorage();
+  durableSession.setItem(canonicalKey, serializeHunterSignupResume(oldRecord));
+  failedLocal.setItem(legacyKey, serializeHunterSignupResume(oldRecord));
+  failedLocal.denyWrites = true;
+  const durableStore = createHunterSignupResumeStore({
+    sessionStorage: durableSession,
+    localStorage: failedLocal,
+    namespace,
+    now: () => 2_000,
+  });
+  assert.deepEqual(durableStore.write(newRecord), { session: true, local: false, persisted: true });
+  assert.equal(durableSession.getItem(canonicalKey), serializeHunterSignupResume(newRecord));
+  assert.equal(failedLocal.getItem(legacyKey), null);
+  assert.deepEqual(durableStore.read(), newRecord);
+});
+
 test("successful verification after reload finalizes from the recovered safe draft and clears it", async () => {
   const resume = createHunterSignupResume(validDraft, 1_000);
   const calls: string[] = [];

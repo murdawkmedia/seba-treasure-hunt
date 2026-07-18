@@ -303,6 +303,12 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
   const clearLegacyTier = (storage: SignupResumeStorage | null): void => {
     for (const storageKey of legacyKeys) safeRemove(storage, storageKey);
   };
+  const cleanupAfterCanonicalWrite = (session: boolean, local: boolean): void => {
+    clearLegacyTier(options.sessionStorage);
+    clearLegacyTier(options.localStorage);
+    if (!session) safeRemove(options.sessionStorage, key);
+    if (!local) safeRemove(options.localStorage, key);
+  };
   return {
     key,
     read: () => {
@@ -315,18 +321,16 @@ export function createHunterSignupResumeStore(options: SignupResumeStoreOptions)
       const local = safeWrite(options.localStorage, key, serialized);
       persistence = { session, local, persisted: session || local };
       if (persistence.persisted) {
-        clearLegacyTier(options.sessionStorage);
-        clearLegacyTier(options.localStorage);
+        cleanupAfterCanonicalWrite(session, local);
       }
       return selected;
     },
     write: (record) => {
       const serialized = serializeHunterSignupResume(record);
-      clearTier(options.sessionStorage);
-      clearTier(options.localStorage);
       const session = safeWrite(options.sessionStorage, key, serialized);
       const local = safeWrite(options.localStorage, key, serialized);
       persistence = { session, local, persisted: session || local };
+      if (persistence.persisted) cleanupAfterCanonicalWrite(session, local);
       return persistence;
     },
     lastPersistence: () => ({ ...persistence }),

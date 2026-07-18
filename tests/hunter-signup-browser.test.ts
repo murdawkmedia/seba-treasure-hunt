@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after, before } from "node:test";
-import { chromium, type Browser, type Page } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { build } from "esbuild";
 
 const origin = "https://signup.test";
@@ -50,8 +50,8 @@ function resumeRecord(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
-async function signupPage(): Promise<Page> {
-  const page = await browser.newPage();
+async function signupPage(context?: BrowserContext): Promise<Page> {
+  const page = context ? await context.newPage() : await browser.newPage();
   const html = readFileSync(new URL("../dashboard.html", import.meta.url), "utf8")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
   let livePrivacy = privacy;
@@ -192,13 +192,27 @@ async function setup(page: Page, providerAttempt: Record<string, unknown>, coold
       },
       auth: { getToken: async function () { return null; } },
       activateSession: async function (sessionId) {
+        window.__activationCalls = Number(window.__activationCalls || 0) + 1;
+        if (Number(window.__activationFailuresRemaining || 0) > 0) {
+          window.__activationFailuresRemaining = Number(window.__activationFailuresRemaining) - 1;
+          return false;
+        }
         window.__activatedSession = sessionId;
         return true;
       },
       finalizeSignup: async function (draft) {
         window.__finalizeCalls = Number(window.__finalizeCalls || 0) + 1;
+        window.__finalizationKeys = [...(window.__finalizationKeys || []), draft.finalizationIdempotencyKey];
         if (Array.isArray(window.__legalChanged)) {
           throw new window.DashboardTestModule.SignupLegalDocumentsChangedError(window.__legalChanged);
+        }
+        if (window.__authoritativeWriteDone !== true) {
+          window.__authoritativeWriteDone = true;
+          window.__authoritativeWriteCalls = Number(window.__authoritativeWriteCalls || 0) + 1;
+        }
+        if (Number(window.__finalizeFailuresRemaining || 0) > 0) {
+          window.__finalizeFailuresRemaining = Number(window.__finalizeFailuresRemaining) - 1;
+          throw new Error("The authoritative account update was interrupted.");
         }
         window.__finalizedDraft = draft;
       },
@@ -746,7 +760,7 @@ test("already-complete provider resume enters the same acceptance-only finishing
       createdSessionId: "session-complete",
       unverifiedFields: [],
       verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
-    })), "complete");
+    })), "finishing");
     await page.waitForFunction(() => !document.querySelector<HTMLFormElement>("#hunter-signup-finish-form")?.hidden);
     assert.equal(await page.locator("[data-signup-finish-privacy]").isVisible(), false);
     assert.equal(await page.locator("[data-signup-finish-waiver]").isVisible(), true);
@@ -754,5 +768,103 @@ test("already-complete provider resume enters the same acceptance-only finishing
     assert.equal(await page.evaluate(() => document.querySelector("[data-auth-message]")?.textContent ?? ""), "");
   } finally {
     await page.close();
+  }
+});
+
+for (const failure of ["activation", "finalization"] as const) {
+  test(`completed signup ${failure} failure retries from the dedicated finishing state`, async () => {
+    const page = await signupPage();
+    try {
+      await installResume(page, "session", resumeRecord());
+      await page.evaluate((failureKind) => {
+        const state = window as unknown as Record<string, unknown>;
+        state[failureKind === "activation" ? "__activationFailuresRemaining" : "__finalizeFailuresRemaining"] = 1;
+      }, failure);
+      assert.equal(await setup(page, preparedAttempt({
+        status: "complete",
+        createdSessionId: "session-complete",
+        unverifiedFields: [],
+        verifications: { emailAddress: { status: "verified", strategy: "email_code" } },
+      })), "finishing");
+      await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-finishing-state")?.hidden &&
+        document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]")?.disabled === false);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "hunter-signup-finishing-title");
+      assert.match(
+        await page.locator("[data-signup-finishing-status]").textContent() ?? "",
+        failure === "activation" ? /session.*starting|try again/i : /interrupted|try again/i,
+      );
+      assert.ok(await page.evaluate((key) => sessionStorage.getItem(key), storageKey));
+      assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0)), 0);
+      const finalizeCallsBeforeResend = await page.evaluate(() => Number(
+        (window as unknown as Record<string, unknown>).__finalizeCalls ?? 0,
+      ));
+      await page.locator("[data-signup-resend]").evaluate((button: HTMLButtonElement) => button.click());
+      assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__resendCalls ?? 0)), 0);
+      assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__finalizeCalls ?? 0)), finalizeCallsBeforeResend);
+      assert.equal(await page.locator("#hunter-signup-finishing-state").isVisible(), true);
+      await page.locator("[data-signup-finishing-retry]").click();
+      await page.waitForFunction(() => Boolean((window as unknown as Record<string, unknown>).__finalizedDraft));
+      assert.equal(await page.evaluate(() => Number((window as unknown as Record<string, unknown>).__authoritativeWriteCalls ?? 0)), 1);
+      assert.deepEqual(await page.evaluate(() => (window as unknown as Record<string, unknown>).__finalizationKeys),
+        failure === "activation"
+          ? ["11111111-1111-4111-8111-111111111111"]
+          : ["11111111-1111-4111-8111-111111111111", "11111111-1111-4111-8111-111111111111"]);
+      assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), storageKey), null);
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+test("active user wins over stale signup resumes shared across tabs", async () => {
+  const context = await browser.newContext();
+  const first = await signupPage(context);
+  const second = await signupPage(context);
+  try {
+    await installResume(first, "local", resumeRecord());
+    await installResume(second, "session", resumeRecord({ providerAttemptId: null }));
+    const source = String.raw`
+      const initialize = window.DashboardTestModule.initializeAccountStateForTest;
+      if (!initialize) throw new Error("initializeAccountStateForTest export is unavailable");
+      return initialize({
+          clerk: {
+            client: { signUp: attempt, signIn: { create: async function () { return {}; } } },
+            user: { id: "user-active", primaryEmailAddress: { emailAddress: "active@example.test" } },
+            session: { id: "session-active" },
+            setActive: async function () {},
+            signOut: async function () {},
+          },
+          config: {
+            hunterPublishableKey: "pk_test_local",
+            deploymentEnvironment: "validation",
+            privacyMedia: { version: "2026.3", hash: "a".repeat(64) },
+            waiver: { version: "2026.2", hash: "b".repeat(64) },
+          },
+          auth: { getToken: async function () { return null; } },
+          loadDashboard: async function () {
+            window.__dashboardLoads = Number(window.__dashboardLoads || 0) + 1;
+            document.querySelector("[data-dashboard-state]").hidden = true;
+            document.querySelector("[data-dashboard-content]").hidden = false;
+          },
+        }).then(function (presentation) {
+          return {
+            presentation,
+            session: sessionStorage.getItem(key),
+            local: localStorage.getItem(key),
+            dashboardLoads: Number(window.__dashboardLoads || 0),
+          };
+        });
+    `;
+    const result = await second.evaluate(({ key, attempt, body }) => (
+      new Function("key", "attempt", body)(key, attempt)
+    ), { key: storageKey, attempt: preparedAttempt(), body: source });
+    assert.deepEqual(result, { presentation: "dashboard", session: null, local: null, dashboardLoads: 1 });
+    assert.equal(await second.locator("[data-dashboard-content]").isVisible(), true);
+    assert.equal(await second.locator("#hunter-verify-form").isVisible(), false);
+    assert.equal(await second.locator("#hunter-signup-lost-state").isVisible(), false);
+  } finally {
+    await first.close();
+    await second.close();
+    await context.close();
   }
 });
