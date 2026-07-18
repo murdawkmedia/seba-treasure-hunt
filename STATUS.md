@@ -51,10 +51,13 @@ validation accounts, submissions, or credentials into production.
 - The post-deploy count-only production check exactly matched the baseline and
   again wrote zero rows with `changed_db: false`. Production Pages, D1, R2,
   queues and public content were not deployed or mutated.
-- Next: complete an authenticated owner check in validation. Confirm an older
-  eligible report exposes ready image checkboxes; reopen the resolved report,
-  select only the intended images, and verify the Case Note/Official Update
-  preview. Production promotion remains a separate explicit decision.
+- A read-only validation D1 check found one received report and one verified
+  report with a ready image; it wrote zero rows. Next: complete an authenticated
+  owner check on that verified report, select only the intended image, and
+  verify the Case Note/Official Update preview. The resolved-report reopen path
+  is covered by real-D1 regression; it can also be exercised by deliberately
+  moving a disposable validation report through resolve and reopen. Production
+  promotion remains a separate explicit decision.
 
 ## Update 2026-07-18 — Production promotion
 
