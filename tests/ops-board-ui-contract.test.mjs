@@ -131,7 +131,22 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(html, /Recent status history/i);
   assert.match(html, /Open full audit trail/i);
   assert.match(html, /data-report-public-guidance/);
-  assert.match(html, /Prepare public outcome/i);
+  assert.match(html, /<fieldset[^>]+data-report-public-destinations/);
+  assert.match(html, /<legend>Choose what happens next<\/legend>/);
+  for (const value of ["private", "case_note", "official_update"]) {
+    assert.match(
+      html,
+      new RegExp(`<input[^>]+type="radio"[^>]+name="reportPublicDestination"[^>]+value="${value}"`),
+    );
+  }
+  assert.match(html, /data-report-private-outcome[^>]+hidden/);
+  assert.match(html, /data-report-publication-form[^>]+hidden/);
+  assert.match(html, /data-report-official-copy[^>]+hidden/);
+  assert.equal((html.match(/data-report-destination-state=/g) ?? []).length, 3);
+  assert.match(html, /data-report-destination-panel="case_note"[^>]+hidden/);
+  assert.match(html, /data-report-destination-panel="official_update"[^>]+hidden/);
+  assert.doesNotMatch(html, /data-report-prepare-public/);
+  assert.doesNotMatch(html, /ops-report-destinations[\s\S]*?<article>/);
   assert.doesNotMatch(html, /Begin review/i);
   assert.doesNotMatch(html, /data-report-begin-review/);
   assert.doesNotMatch(client, /Add an optional private note for this status change/i);
@@ -274,6 +289,9 @@ test("the report review drawer is responsive and keeps evidence constrained", ()
   const css = read("css/ops.css");
   assert.match(css, /\.ops-report-dialog__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\)/s);
   assert.match(css, /\.ops-report-evidence img\s*\{[^}]*max-width:\s*100%/s);
+  assert.match(css, /\.ops-report-destination\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(css, /\.ops-report-destination:has\(input:checked\)/);
+  assert.match(css, /@media\s*\(max-width:\s*760px\)[\s\S]*?\.ops-report-destinations\s*\{[^}]*grid-template-columns:\s*1fr/s);
   assert.match(css, /@media\s*\(max-width:\s*820px\)[\s\S]*\.ops-report-dialog__grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
 });
 

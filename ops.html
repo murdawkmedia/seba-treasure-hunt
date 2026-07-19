@@ -366,22 +366,46 @@
           <p class="ops-kicker">Public allowlist preview</p>
           <h3 id="report-public-title" tabindex="-1">Choose public destination</h3>
           <p>Email, phone, private name and account identifiers are never included. Waypoint and submitted GPS are public game facts after approval.</p>
-          <div class="ops-report-destinations" aria-label="Publication choices">
-            <article><strong>Keep private</strong><span>No part of this report is published. Continue the audited review only.</span></article>
-            <article><strong>Publish to Case Notes</strong><span>Share a reviewed community observation. It is not an Official Update or official clue.</span></article>
-            <article><strong>Prepare an Official Update</strong><span>Create an official public source. You may save a private draft now; public release requires Verified.</span></article>
-          </div>
+          <fieldset class="ops-report-destinations" data-report-public-destinations>
+            <legend>Choose what happens next</legend>
+            <label class="ops-report-destination">
+              <input type="radio" name="reportPublicDestination" value="private" checked />
+              <span>
+                <strong>Keep private</strong>
+                <span>No part of this report is published. Continue the audited review only.</span>
+                <small data-report-destination-state="private">No public action</small>
+              </span>
+            </label>
+            <label class="ops-report-destination">
+              <input type="radio" name="reportPublicDestination" value="case_note" />
+              <span>
+                <strong>Publish to Case Notes</strong>
+                <span>Share a reviewed community observation. It is not an Official Update or official clue.</span>
+                <small data-report-destination-state="case_note">No Case Note</small>
+              </span>
+            </label>
+            <label class="ops-report-destination">
+              <input type="radio" name="reportPublicDestination" value="official_update" />
+              <span>
+                <strong>Prepare an Official Update</strong>
+                <span>Create an official public source. You may save a private draft now; public release requires Verified.</span>
+                <small data-report-destination-state="official_update">No Update draft</small>
+              </span>
+            </label>
+          </fieldset>
+          <p class="ops-report-private-outcome" data-report-private-outcome role="status" hidden>This report remains private. No public action will be taken.</p>
           <p class="ops-report-public-guidance" data-report-public-guidance role="status"></p>
           <button class="ops-button ops-button--quiet" type="button" data-report-go-to-review hidden>Go to Review workflow</button>
-          <button class="ops-button ops-button--quiet" type="button" data-report-prepare-public hidden>Prepare public outcome</button>
-          <form class="ops-form ops-form--compact" data-report-publication-form novalidate>
+          <form class="ops-form ops-form--compact" data-report-publication-form novalidate hidden>
             <div class="ops-publication-step">
               <p class="ops-publication-step__label">Step 1 of 3</p>
               <h4>Write the public version</h4>
               <p>Use only information that can safely appear on the public website.</p>
             </div>
-            <label for="report-public-title-input">Public headline</label>
-            <input id="report-public-title-input" name="title" maxlength="200" required disabled />
+            <div class="ops-report-official-copy" data-report-official-copy hidden>
+              <label for="report-public-title-input">Public headline</label>
+              <input id="report-public-title-input" name="title" maxlength="200" required disabled />
+            </div>
             <label for="report-public-body">Edited public story</label>
             <textarea id="report-public-body" name="body" rows="7" maxlength="10000" required disabled></textarea>
             <div class="ops-publication-step">
@@ -390,7 +414,7 @@
               <p class="ops-selected-count" data-report-selected-count role="status" aria-live="polite">0 of 3 images selected</p>
               <p>Submitted evidence and direct Update images share the same three-image limit. Nothing is selected automatically.</p>
             </div>
-            <fieldset class="ops-update-upload" data-report-update-upload>
+            <fieldset class="ops-update-upload" data-report-update-upload data-report-destination-panel="official_update" hidden>
               <legend>Direct Update images <span class="ops-optional">(optional, up to 3)</span></legend>
               <p id="report-update-upload-blocker">Save the Update draft first. Images are prepared in this browser, processed privately, and remain unpublished until checked below.</p>
               <input type="file" name="updateImages" accept="image/jpeg,image/png,image/webp" multiple data-report-update-files disabled />
@@ -406,7 +430,7 @@
             <div data-report-public-preview></div>
             <label for="report-publication-confirm" class="ops-confirmation"><input id="report-publication-confirm" name="confirmPublication" type="checkbox" required disabled /><span>I reviewed this exact public preview. Contact details and children&rsquo;s identities are excluded, while the shown waypoint, GPS and checked images will be public.</span></label>
             <div class="ops-publication-paths">
-              <section class="ops-publication-path" aria-labelledby="case-note-path-title">
+              <section class="ops-publication-path" aria-labelledby="case-note-path-title" data-report-destination-panel="case_note" hidden>
                 <h4 id="case-note-path-title">Community destination</h4>
                 <p>Publish the reviewed story as a Case Note. It will not be labelled as an Official Update.</p>
                 <div class="ops-action-row">
@@ -414,7 +438,7 @@
                   <button class="ops-button ops-button--danger" type="button" data-report-withdraw-case-note hidden>Withdraw Case Note</button>
                 </div>
               </section>
-              <section class="ops-publication-path" aria-labelledby="official-update-path-title">
+              <section class="ops-publication-path" aria-labelledby="official-update-path-title" data-report-destination-panel="official_update" hidden>
                 <h4 id="official-update-path-title">Official destination</h4>
                 <p>Save privately at any review stage. Scheduling and publishing require Verified.</p>
                 <p class="ops-publication-blocker" id="report-official-blocker" data-report-official-blocker role="status"></p>
