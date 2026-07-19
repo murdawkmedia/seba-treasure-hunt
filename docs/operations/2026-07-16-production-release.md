@@ -5,8 +5,9 @@
 - Canonical site: `https://www.timlostsomething.com`
 - Apex redirect: `https://timlostsomething.com` permanently preserves the path and query string when redirecting to `www`.
 - Cloudflare Pages project: `seba-treasure-hunt`
-- Production application commit: `5e01e7f`
-- Production Pages deployment: `3731fa07-9748-4be2-8c27-abc533e87554`
+- Production application commit: `a1c1e789bf914a1cd2162164ff5998a76e43a988`
+- Production Pages deployment: `4e2d9df1-12e7-4205-a4a6-b6f49c1c497e`
+- Immutable production URL: `https://4e2d9df1.seba-treasure-hunt.pages.dev`
 - D1 migrations applied through `0015_submission_ops_publication_refinement.sql`
 - Media worker version: `7cc2b2c0-15ae-49a4-899c-be878657d9c5`
 - Production database environment sentinel: `production`
@@ -14,6 +15,14 @@
 
 ## Release verification
 
+- Guided-publishing release gate: 285 JavaScript tests and 568 TypeScript
+  tests passing; 16 privacy/isolation tests and 15 environment/security tests
+  passing; exact legal artifacts, all TypeScript projects, focused QA
+  contracts, production build and diff check passing.
+- Isolated browser release audits: waiver journey passing with zero external
+  writes or public privacy findings; unified shell passing across 66
+  navigations and 102 desktop/mobile/zoom states with zero console, page,
+  request, overflow or external-write errors.
 - Complete static/legacy suite: passing.
 - TypeScript suite outside the known local Miniflare runner issue: 515 passing.
 - Focused real-D1 publication and moderation integration suite: 8 passing.
@@ -27,6 +36,32 @@
 - Turnstile: production widget active for the canonical, apex, and Pages hostnames.
 - Microsoft Graph delegated mail: accepted a self-addressed production delivery test from the configured campaign mailbox with the campaign contact as Reply-To.
 - Production crawl state: no `noindex` and no CFCW references in the live home output.
+- Production route smoke: every expected route returned HTTP 200; the hidden
+  `/sponsors` route returned 404. The anonymous 390x844 route rendered all 13
+  stops with zero exact map links and no horizontal overflow. The mobile Ops
+  route exposed only the staff gateway. No browser console warning or error
+  was observed.
+- Post-deploy D1 counts matched the pre-deploy baseline exactly: 19 players,
+  6 reports, 0 report-derived Case Notes, 2 Official Updates, 1 staff
+  principal, 73 audit events, 14 report events, 22 media rows, 34 legal
+  acceptances and 13 published waypoints. The reads wrote zero rows,
+  `changed_db` was false and the foreign-key check was clean.
+
+## Production follow-on: Guided Official Update publishing
+
+- Explicit owner approval promoted the validation-reviewed source to GitHub
+  `main` and Cloudflare Pages production on 2026-07-18.
+- Standalone and report-derived Official Updates now share a draft-first,
+  image-capable workflow with exact preview confirmation, immediate or
+  scheduled publication, visible prerequisites and clear retry/recovery
+  guidance for inexperienced operators.
+- Report-derived Official Updates remain server-blocked until the private
+  report is Verified. Private review status, Case Notes and Official Updates
+  are independent, audited outcomes. Media remains private and unchecked until
+  an operator deliberately includes it.
+- This follow-on required no D1 migration, DNS change, queue change or media
+  processor deployment. The production identity, human-verification, data and
+  media bindings were preserved.
 
 ## Validation history and promoted refinements
 
@@ -89,11 +124,11 @@
 
 ## Rollback
 
-- Current release tag: `production-submission-onboarding-2026-07-18`
-- Immediate pre-release tag: `production-pre-submission-onboarding-2026-07-18`
+- Current application release tag: `production-guided-ops-2026-07-18`
+- Immediate pre-release tag: `production-submission-onboarding-2026-07-18`
 - Immediate previous production Pages deployment:
-  `https://f917fb4f.seba-treasure-hunt.pages.dev`
-- Immediate previous production source: `2fdefe6`
+  `https://3731fa07.seba-treasure-hunt.pages.dev`
+- Immediate previous production source: `5e01e7f`
 
 - Git tag: `production-pre-hunter-platform-2026-07-16`
 - Tagged source: `5552a57668417aef2fbd97d63e819807e2ee92dc`

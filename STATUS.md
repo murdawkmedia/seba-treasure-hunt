@@ -13,6 +13,44 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-18 - Guided Official Update production promotion
+
+- Murphy explicitly approved production promotion after validation review. The
+  exact application source `a1c1e789bf914a1cd2162164ff5998a76e43a988` is now
+  live at `https://www.timlostsomething.com`. Cloudflare Pages deployment
+  `4e2d9df1-12e7-4205-a4a6-b6f49c1c497e` is immutable at
+  `https://4e2d9df1.seba-treasure-hunt.pages.dev`.
+- The guided, draft-first Official Update workflow is live for standalone and
+  report-derived posts. Operators can prepare up to three private images,
+  preview the exact public result, publish immediately or schedule it, and see
+  explicit prerequisite and recovery guidance. Report publication remains
+  blocked until the private report is Verified; Case Notes and private review
+  remain separate outcomes.
+- Fresh release gates passed: 285 JavaScript tests, 568 TypeScript tests, all
+  TypeScript projects, exact legal artifacts, 16 privacy/isolation tests, 15
+  environment/security tests, the production build, the isolated waiver
+  browser audit, the 66-navigation/102-state unified-shell browser audit, 19
+  focused QA contracts and `git diff --check`.
+- Every expected public route returned HTTP 200; the deliberately withdrawn
+  `/sponsors` route returned 404. The bare domain permanently preserved the
+  tested path and query while redirecting to `www`. The runtime identified
+  itself as `production`, exposed 13 public waypoints, contained no validation
+  banner, CFCW reference, public `noindex` or sponsor navigation.
+- Read-only desktop and 390x844 phone browser smoke tests found no horizontal
+  overflow or console warnings/errors. The anonymous route rendered all 13
+  waypoint sections and zero exact Google Maps links. The mobile Ops route
+  showed only the protected staff gateway. Hunter Clerk, staff Clerk,
+  Turnstile and both account portals all reported configured.
+- Post-deploy production D1 counts matched the pre-deploy baseline exactly: 19
+  players, 6 private reports, 0 report-derived Case Notes, 2 Official Updates,
+  1 staff principal, 73 audit events, 14 report events, 22 media rows, 34 legal
+  acceptances and 13 published waypoints. Both read-only checks wrote zero
+  rows, `changed_db` was false and the foreign-key check was clean.
+- No migration, DNS change, queue change or media-worker deployment was needed.
+  The previous live source remains tagged
+  `production-submission-onboarding-2026-07-18` at `5e01e7f`; the previous
+  immutable Pages deployment is `https://3731fa07.seba-treasure-hunt.pages.dev`.
+
 ## Update 2026-07-18 - Guided Official Update publishing validation
 
 - Completed the approved guided Official Update workflow through source commit
