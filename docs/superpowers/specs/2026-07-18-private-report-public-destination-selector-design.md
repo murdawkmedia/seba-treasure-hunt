@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-18
 
-**Status:** Interaction design approved; written specification awaiting owner review
+**Status:** Approved; implementation plan written
 
 **Target:** Disposable validation first, then promote the exact verified artifact
 to production under the approval recorded in this task
@@ -132,7 +132,8 @@ Review Workflow fully available because private status is a separate decision.
 
 Show:
 
-- the reviewed public headline and story fields;
+- the reviewed public story field (Case Notes are body-only in the established
+  public contract and must not show a false headline preview);
 - eligible submitted-evidence cards;
 - an explicit `N of 3 images selected` counter;
 - the Case Note public preview;
@@ -188,7 +189,9 @@ The selector explains authoritative availability rather than granting it.
   guards.
 - Official Update drafting follows the existing draft rules; scheduling and
   publishing require Verified.
-- A disabled destination remains visible and states the exact prerequisite.
+- A destination choice remains selectable so the operator can inspect its
+  workflow. Unavailable final actions stay disabled and state the exact
+  prerequisite beside them.
 - If a Case Note or Official Update already exists, its destination card shows
   the current public state and opens the corresponding management controls.
 - Existing withdrawal and reversible-review rules remain separate and
