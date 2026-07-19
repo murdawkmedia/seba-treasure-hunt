@@ -74,6 +74,10 @@ const statusEnvelope = {
     version: 1,
   },
 };
+const qaPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=",
+  "base64",
+);
 const reportWorkflowEndpoint = "/api/v1/ops/reports/report-workflow-qa-001";
 const reportWorkflowScenarioNames = [
   "received-to-reviewing assignment",
@@ -81,6 +85,7 @@ const reportWorkflowScenarioNames = [
   "rejected/resolved reopen",
   "unassign without status change",
   "stale response recovery",
+  "public destination selection is write-free",
   "active-publication guards",
   "hunter-safe Dashboard projection",
   "zero Moderation Queue mutation",
@@ -166,7 +171,12 @@ function createReportWorkflowFixture(workflowMutationLedger) {
     longitude: -114.737,
     details: "Private evidence sentinel that must never reach hunter output.",
     assignedTo,
-    media: [],
+    media: [1, 2, 3].map((index) => ({
+      id: `qa-report-media-${index}`,
+      contentType: "image/png",
+      size: 68,
+      status: "ready",
+    })),
     history,
   });
 
@@ -357,6 +367,14 @@ async function installQaBoundary(context, origin, networkLedger, { reportWorkflo
     const isLocal = url.origin === origin;
 
     if (isLocal && url.pathname.startsWith("/api/")) {
+      if (
+        reportWorkflowFixture &&
+        /^\/api\/v1\/ops\/reports\/report-workflow-qa-001\/media\/qa-report-media-[1-3]$/.test(url.pathname)
+      ) {
+        networkLedger.localApiMocks.push({ method, pathname: url.pathname });
+        await route.fulfill({ status: 200, contentType: "image/png", body: qaPng });
+        return;
+      }
       if (reportWorkflowFixture && url.pathname === reportWorkflowEndpoint) {
         if (method === "GET") {
           networkLedger.localApiMocks.push({ method, pathname: url.pathname });
@@ -953,7 +971,7 @@ async function exposeLocalOpsWorkspace(page) {
         '<td><time datetime="2026-07-14T16:00:00.000Z">Jul 14, 2026</time></td>',
         '<td><span class="ops-chip">find</span></td>',
         '<td>Stop 11 · The Driving Range &amp; the Digger Café</td>',
-        '<td>0 files</td>',
+        '<td>3 files</td>',
         '<td>received</td>',
         '<td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-report-review data-report-id="report-workflow-qa-001">Review report</button></div></td>',
       ].join("");
@@ -1216,6 +1234,51 @@ async function runReportWorkflowAudit({
     scenarioEvidence.push(reportWorkflowScenarioNames[4]);
     await closeLocalWorkflowReport(page);
 
+    // Public destination selection must reveal one workflow without writing.
+    qaTrace("report workflow audit: write-free public destination selection");
+    desktop.setLabel("public-destination-selection-write-free");
+    reportWorkflowFixture.reset({ nextStatus: "verified", nextAssignedTo: "QA Operator" });
+    await openLocalWorkflowReport(page);
+    const selectionBaseline = workflowMutationLedger.length;
+    const privateChoice = page.getByRole("radio", { name: /Keep private/i });
+    const caseNoteChoice = page.getByRole("radio", { name: /Publish to Case Notes/i });
+    const officialChoice = page.getByRole("radio", { name: /Prepare an Official Update/i });
+    assert.equal(await privateChoice.isChecked(), true);
+    assert.equal(await page.locator("[data-report-publication-form]").isHidden(), true);
+
+    await caseNoteChoice.check();
+    assert.equal(await page.locator('[data-report-destination-panel="case_note"]').isVisible(), true);
+    assert.equal(await page.locator('[data-report-destination-panel="official_update"]').first().isHidden(), true);
+    assert.equal(await page.locator("[data-report-official-copy]").isHidden(), true);
+    await page.waitForFunction(() => {
+      const choices = [...document.querySelectorAll('[data-report-evidence] input[name="publishMedia"]')];
+      return choices.length === 3 && choices.every((choice) => choice instanceof HTMLInputElement && !choice.disabled);
+    });
+    await page.locator("#report-public-body").fill("Reviewed public observation");
+    await page.locator('[data-report-evidence] input[name="publishMedia"]').nth(0).check();
+    await page.locator('[data-report-evidence] input[name="publishMedia"]').nth(2).check();
+    assert.match(await page.locator("[data-report-selected-count]").innerText(), /2 of 3/);
+    await page.locator("#report-publication-confirm").check();
+
+    await officialChoice.check();
+    assert.equal(await page.locator("#report-publication-confirm").isChecked(), false);
+    assert.equal(await page.locator('[data-report-destination-panel="official_update"]').first().isVisible(), true);
+    assert.equal(await page.locator('[data-report-destination-panel="case_note"]').isHidden(), true);
+    assert.equal(await page.locator("[data-report-official-copy]").isVisible(), true);
+    assert.equal(await page.locator("#report-public-body").inputValue(), "Reviewed public observation");
+    await page.locator("#report-public-title-input").fill("Official Update draft headline");
+    assert.equal(await page.locator('[data-report-evidence] input[name="publishMedia"]:checked').count(), 2);
+
+    await privateChoice.check();
+    assert.equal(await page.locator("[data-report-publication-form]").isHidden(), true);
+    await officialChoice.check();
+    assert.equal(await page.locator("#report-public-title-input").inputValue(), "Official Update draft headline");
+    assert.equal(await page.locator("#report-public-body").inputValue(), "Reviewed public observation");
+    await privateChoice.check();
+    assert.equal(workflowMutationLedger.length, selectionBaseline, "destination selection must send zero writes");
+    scenarioEvidence.push(reportWorkflowScenarioNames[5]);
+    await closeLocalWorkflowReport(page);
+
     // active-publication guards
     qaTrace("report workflow audit: publication guards");
     desktop.setLabel("active-publication-guards");
@@ -1235,7 +1298,7 @@ async function runReportWorkflowAudit({
     ]);
     assert.match(await page.locator("[data-report-next-status-help]").innerText(), /Withdraw the linked Official Update first/);
     assert.equal(workflowMutationLedger.length, guardBaseline, "active publication guards must prevent all writes");
-    scenarioEvidence.push(reportWorkflowScenarioNames[5]);
+    scenarioEvidence.push(reportWorkflowScenarioNames[6]);
     await closeLocalWorkflowReport(page);
 
     const mobile = await createPage({ width: 390, height: 844 }, "report-workflow-mobile-390x844");
@@ -1245,6 +1308,21 @@ async function runReportWorkflowAudit({
     const mobileDialog = await openLocalWorkflowReport(mobile.page);
     await assertReportDialogVerticalReachability(mobile.page, "mobile report workflow");
     await assertNoHorizontalViewportOverflow(mobile.page, "mobile report workflow");
+    const mobilePrivateChoice = mobile.page.getByRole("radio", { name: /Keep private/i });
+    const mobileCaseNoteChoice = mobile.page.getByRole("radio", { name: /Publish to Case Notes/i });
+    const mobileOfficialChoice = mobile.page.getByRole("radio", { name: /Prepare an Official Update/i });
+    for (const choice of [mobilePrivateChoice, mobileCaseNoteChoice, mobileOfficialChoice]) {
+      await choice.waitFor({ state: "visible" });
+      const card = choice.locator("xpath=ancestor::label[1]");
+      const box = await card.boundingBox();
+      assert.ok(box && box.height >= 44, "each public destination card must retain a 44px touch target");
+    }
+    await mobileCaseNoteChoice.check();
+    assert.equal(await mobile.page.locator('[data-report-destination-panel="case_note"]').isVisible(), true);
+    await mobileOfficialChoice.check();
+    assert.equal(await mobile.page.locator('[data-report-destination-panel="official_update"]').first().isVisible(), true);
+    await mobilePrivateChoice.check();
+    await assertNoHorizontalViewportOverflow(mobile.page, "mobile public destination cards");
     await assertMinimumHitTargets({
       close: mobile.page.getByRole("button", { name: "Close review", exact: true }),
       status: mobile.page.locator("[data-report-next-status]"),
@@ -1336,7 +1414,7 @@ async function runReportWorkflowAudit({
       assert.equal(serializedProjection.includes(sentinel), false, `hunter-safe Dashboard projection must exclude ${sentinel}`);
     }
     await assertNoHorizontalViewportOverflow(mobile.page, "mobile hunter Dashboard");
-    scenarioEvidence.push(reportWorkflowScenarioNames[6]);
+    scenarioEvidence.push(reportWorkflowScenarioNames[7]);
 
     assert.deepEqual(reportWorkflowFixture.moderation, reportWorkflowFixture.initialModeration, "moderation state must remain unchanged");
     assert.equal(
@@ -1345,7 +1423,7 @@ async function runReportWorkflowAudit({
       "zero Moderation Queue mutation is allowed during report workflow QA",
     );
     assert.ok(workflowMutationLedger.every((entry) => entry.method === "PATCH" && entry.pathname === reportWorkflowEndpoint));
-    scenarioEvidence.push(reportWorkflowScenarioNames[7]);
+    scenarioEvidence.push(reportWorkflowScenarioNames[8]);
     assert.deepEqual(scenarioEvidence, reportWorkflowScenarioNames, "all named reversible workflow scenarios must execute");
     const expectedStaleConsoleErrors = workflowConsoleErrors.filter((entry) =>
       entry.label.endsWith("/stale-response-recovery") &&
