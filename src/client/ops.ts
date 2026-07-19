@@ -394,6 +394,7 @@ export function reportPublicationConfirmationAfterInput(
 
 let reportReviewTrigger: HTMLButtonElement | null = null;
 let activeReportDetail: OpsReportDetail | null = null;
+let activeReportPublicDestination: ReportPublicDestination = "private";
 let reportEvidenceObjectUrls: string[] = [];
 const reportReviewGuard = createReportReviewGuard();
 let reportReviewAbortController: AbortController | null = null;
@@ -2788,6 +2789,8 @@ function isAbortError(error: unknown): boolean {
 }
 
 function reportSelectedMediaIds(): string[] {
+  if (activeReportPublicDestination === "private") return [];
+  if (activeReportPublicDestination === "case_note") return reportSelectedReportMediaIds();
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
   if (!dialog) return [];
   return [...dialog.querySelectorAll<HTMLInputElement>('input[name="publishMedia"]:checked')]
@@ -2831,6 +2834,73 @@ function reportSelectedMediaSelections(): Array<{
     });
 }
 
+function renderReportPublicDestination(detail: OpsReportDetail): void {
+  const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
+  if (!dialog) return;
+  const destination = activeReportPublicDestination;
+  const view = reportPublicDestinationView(destination);
+  const editable = detail.publicationEligible && detail.status !== "resolved" && detail.status !== "rejected";
+
+  for (const radio of dialog.querySelectorAll<HTMLInputElement>('input[name="reportPublicDestination"]')) {
+    radio.disabled = false;
+    radio.checked = radio.value === destination;
+    radio.closest<HTMLElement>(".ops-report-destination")?.toggleAttribute("data-selected", radio.checked);
+  }
+
+  const caseNoteState = detail.caseNote.status === null
+    ? "No Case Note"
+    : detail.caseNote.status === "published"
+      ? "Published"
+      : detail.caseNote.status === "hidden"
+        ? "Hidden"
+        : detail.caseNote.status === "withdrawn"
+          ? "Withdrawn"
+          : detail.caseNote.status;
+  const officialUpdateState = detail.publication.status === null
+    ? "No Update draft"
+    : detail.publication.status[0]!.toUpperCase() + detail.publication.status.slice(1);
+  const stateCopy: Record<ReportPublicDestination, string> = {
+    private: detail.caseNote.status === null && detail.publication.status === null
+      ? "No public action"
+      : "Private source retained",
+    case_note: caseNoteState,
+    official_update: officialUpdateState,
+  };
+  for (const state of dialog.querySelectorAll<HTMLElement>("[data-report-destination-state]")) {
+    const value = state.dataset.reportDestinationState;
+    if (isReportPublicDestination(value)) state.textContent = stateCopy[value];
+  }
+
+  const privateOutcome = dialog.querySelector<HTMLElement>("[data-report-private-outcome]");
+  const form = dialog.querySelector<HTMLFormElement>("[data-report-publication-form]");
+  const officialCopy = dialog.querySelector<HTMLElement>("[data-report-official-copy]");
+  if (privateOutcome) {
+    privateOutcome.hidden = destination !== "private";
+    privateOutcome.textContent = detail.caseNote.status !== null || detail.publication.status !== null
+      ? "No new public action is selected. Existing public items remain unchanged unless withdrawn separately."
+      : "This report remains private. No public action will be taken.";
+  }
+  if (form) form.hidden = !view.formVisible;
+  if (officialCopy) officialCopy.hidden = destination !== "official_update";
+  for (const panel of dialog.querySelectorAll<HTMLElement>("[data-report-destination-panel]")) {
+    panel.hidden = panel.dataset.reportDestinationPanel !== destination;
+  }
+
+  for (const checkbox of dialog.querySelectorAll<HTMLInputElement>('input[name="publishMedia"]')) {
+    const source = checkbox.hasAttribute("data-update-upload-select") ? "update" : "report";
+    const selectable = editable
+      && checkbox.dataset.previewReady === "true"
+      && reportMediaSelectableForDestination(destination, source);
+    checkbox.disabled = !selectable;
+    for (const field of checkbox.closest<HTMLElement>(".ops-report-evidence__item")
+      ?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-update-media-alt], [data-update-media-caption]") ?? []) {
+      field.disabled = !selectable || !checkbox.checked;
+    }
+  }
+  const evidenceHelp = dialog.querySelector<HTMLElement>("[data-report-evidence-help]");
+  if (evidenceHelp) evidenceHelp.textContent = `${view.evidenceLabel}. Nothing is selected automatically.`;
+}
+
 function updateReportPublicationPreview(publisherName?: string | null): void {
   if (!activeReportDetail) return;
   const dialog = document.querySelector<HTMLDialogElement>("[data-report-review-dialog]");
@@ -2842,7 +2912,7 @@ function updateReportPublicationPreview(publisherName?: string | null): void {
     title,
     body,
     ...(publisherName === undefined ? {} : { publisherName })
-  });
+  }, activeReportPublicDestination);
   const selected = reportSelectedMediaIds();
   if (selected.length === 0) return;
   const gallery = document.createElement("div");
@@ -2914,13 +2984,7 @@ async function hydrateReportEvidence(
       trigger.href = objectUrl;
       trigger.dataset.mediaCaption = image.alt;
       placeholder.hidden = true;
-      const publicOutcomeEditable = detail.publicationEligible && detail.status !== "resolved" && detail.status !== "rejected";
-      checkbox.disabled = !publicOutcomeEditable;
-      for (const field of item.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
-        "[data-update-media-alt], [data-update-media-caption]"
-      )) {
-        field.disabled = !publicOutcomeEditable || !checkbox.checked;
-      }
+      checkbox.dataset.previewReady = "true";
     } catch (error) {
       if (!reportReviewIsLive(intent, dialog) || signal.aborted || isAbortError(error)) return;
       image.removeAttribute("src");
@@ -2928,9 +2992,11 @@ async function hydrateReportEvidence(
       placeholder.textContent = "Private evidence preview unavailable";
       checkbox.checked = false;
       checkbox.disabled = true;
+      delete checkbox.dataset.previewReady;
     }
   }));
   if (!reportReviewIsLive(intent, dialog) || signal.aborted) return;
+  renderReportPublicDestination(detail);
   updateReportPublicationPreview();
   updateReportSelectedMediaCount();
 }
@@ -2968,7 +3034,6 @@ function renderReportWorkflow(detail: OpsReportDetail, selected = ""): void {
   const refresh = dialog.querySelector<HTMLButtonElement>("[data-report-refresh]");
   const history = dialog.querySelector<HTMLOListElement>("[data-report-history]");
   const publicGuidance = dialog.querySelector<HTMLElement>("[data-report-public-guidance]");
-  const preparePublic = dialog.querySelector<HTMLButtonElement>("[data-report-prepare-public]");
   const officialBlocker = dialog.querySelector<HTMLElement>("[data-report-official-blocker]");
   const goToReview = dialog.querySelector<HTMLButtonElement>("[data-report-go-to-review]");
   const model = reportWorkflowControls(detail, selected);
@@ -3009,7 +3074,6 @@ function renderReportWorkflow(detail: OpsReportDetail, selected = ""): void {
   if (refresh) refresh.disabled = false;
   if (history) history.innerHTML = renderReportHistory(detail.history);
   if (publicGuidance) publicGuidance.textContent = reportPublicOutcomeGuidance(detail, selected);
-  if (preparePublic) preparePublic.hidden = detail.status !== "verified";
   if (officialBlocker) {
     officialBlocker.textContent = !detail.publicationEligible
       ? "Official Update publishing is blocked until this report has current legal and profile eligibility."
@@ -3126,6 +3190,7 @@ function renderReportDialog(
     publishCaseNote.disabled = !publicOutcomeEditable;
   }
   if (withdrawCaseNote) withdrawCaseNote.hidden = !destinations.showWithdrawCaseNote;
+  renderReportPublicDestination(detail);
   updateReportSelectedMediaCount();
   updateReportPublicationPreview();
   const eligibility = detail.status === "resolved"
@@ -3156,6 +3221,7 @@ async function openReportDetail(reportId: string, trigger: HTMLButtonElement): P
   const { intent, signal } = beginReportReview(reportId);
   reportReviewTrigger = trigger;
   activeReportDetail = null;
+  activeReportPublicDestination = "private";
   dialog.dataset.reportId = reportId;
   dialog.querySelector<HTMLElement>("[data-report-private-detail]")?.replaceChildren();
   dialog.querySelector<HTMLElement>("[data-report-evidence]")?.replaceChildren();
@@ -3163,10 +3229,14 @@ async function openReportDetail(reportId: string, trigger: HTMLButtonElement): P
   dialog.querySelector<HTMLElement>("[data-report-history]")?.replaceChildren();
   const form = dialog.querySelector<HTMLFormElement>("[data-report-publication-form]");
   form?.reset();
+  if (form) form.hidden = true;
+  const privateOutcome = dialog.querySelector<HTMLElement>("[data-report-private-outcome]");
+  if (privateOutcome) privateOutcome.hidden = true;
+  for (const radio of dialog.querySelectorAll<HTMLInputElement>('input[name="reportPublicDestination"]')) {
+    radio.disabled = true;
+  }
   const workflowNote = dialog.querySelector<HTMLTextAreaElement>("[data-report-status-note]");
   if (workflowNote) workflowNote.value = "";
-  const preparePublic = dialog.querySelector<HTMLButtonElement>("[data-report-prepare-public]");
-  if (preparePublic) preparePublic.hidden = true;
   for (const control of dialog.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>("[data-report-status-actions] button, [data-report-status-actions] select, [data-report-status-actions] textarea, [data-report-publication-form] input, [data-report-publication-form] textarea, [data-report-publication-form] button")) {
     control.disabled = true;
   }
@@ -3181,6 +3251,7 @@ async function openReportDetail(reportId: string, trigger: HTMLButtonElement): P
   try {
     const detail = await fetchReportDetail(reportId, signal);
     if (!reportReviewIsLive(intent, dialog) || signal.aborted) return;
+    activeReportPublicDestination = defaultReportPublicDestination(detail);
     renderReportDialog(detail, intent, signal);
   } catch (error) {
     if (!reportReviewIsLive(intent, dialog) || signal.aborted || isAbortError(error)) return;
@@ -4395,9 +4466,6 @@ function setupWorkspace(): void {
       if (reportReviewIsLive(intent, reportDialog)) button.disabled = false;
     }
   });
-  reportDialog?.querySelector("[data-report-prepare-public]")?.addEventListener("click", () => {
-    reportDialog.querySelector<HTMLElement>("#report-public-title")?.focus({ preventScroll: false });
-  });
   reportDialog?.querySelector("[data-report-go-to-review]")?.addEventListener("click", () => {
     const workflow = reportDialog.querySelector<HTMLElement>("#report-workflow-title");
     workflow?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -4412,11 +4480,39 @@ function setupWorkspace(): void {
   reportDialog?.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+    if (
+      target instanceof HTMLInputElement &&
+      target.name === "reportPublicDestination" &&
+      isReportPublicDestination(target.value) &&
+      activeReportDetail
+    ) {
+      activeReportPublicDestination = target.value;
+      const confirmation = reportDialog.querySelector<HTMLInputElement>(
+        '[data-report-publication-form] [name="confirmPublication"]'
+      );
+      if (confirmation) {
+        confirmation.checked = reportPublicationConfirmationAfterInput(
+          confirmation.checked,
+          "reportPublicDestination"
+        );
+      }
+      renderReportPublicDestination(activeReportDetail);
+      updateReportSelectedMediaCount();
+      updateReportPublicationPreview();
+      setReportPublicationResult(
+        target.value === "private"
+          ? "Keep private selected. Nothing was published and existing public items were not changed."
+          : target.value === "case_note"
+            ? "Case Notes selected. Review the public story, choose submitted images, and confirm the final preview."
+            : "Official Update selected. Saving a draft is private; scheduling or publishing requires Verified."
+      );
+      return;
+    }
     if (target instanceof HTMLInputElement && target.name === "publishMedia") {
       const selected = reportSelectedMediaIds();
       if (selected.length > 3) {
         target.checked = false;
-        setReportPublicationResult("Official Updates can include no more than three images.", "error");
+        setReportPublicationResult("A public post can include no more than three images.", "error");
       } else {
         setReportPublicationResult("");
       }
@@ -4542,7 +4638,7 @@ function setupWorkspace(): void {
         const link = document.createElement("a");
         link.href = `/clue-board#${encodeURIComponent(asString(published.id))}`;
         link.textContent = "Open the public Case Note";
-        result.replaceChildren(document.createTextNode("Reviewed Case Note published and audited. "), link);
+        result.replaceChildren(document.createTextNode("Case Note published. It did not create an Official Update. "), link);
         result.dataset.kind = "normal";
       }
     } catch (error) {
@@ -4755,11 +4851,16 @@ function setupWorkspace(): void {
     closeReportReview();
     revokeReportEvidenceUrls();
     activeReportDetail = null;
+    activeReportPublicDestination = "private";
     reportDialog.dataset.reportId = "";
     reportDialog.querySelector<HTMLElement>("[data-report-private-detail]")?.replaceChildren();
     reportDialog.querySelector<HTMLElement>("[data-report-evidence]")?.replaceChildren();
     reportDialog.querySelector<HTMLElement>("[data-report-public-preview]")?.replaceChildren();
     reportDialog.querySelector<HTMLElement>("[data-report-history]")?.replaceChildren();
+    const publicationForm = reportDialog.querySelector<HTMLFormElement>("[data-report-publication-form]");
+    if (publicationForm) publicationForm.hidden = true;
+    const privateOutcome = reportDialog.querySelector<HTMLElement>("[data-report-private-outcome]");
+    if (privateOutcome) privateOutcome.hidden = true;
     setReportPublicationResult("");
     setReportWorkflowResult("");
     setReportReviewState("Choose Review report to load one private submission.");
