@@ -387,7 +387,9 @@ export function reportPublicationConfirmationAfterInput(
   confirmed: boolean,
   controlName: string
 ): boolean {
-  return ["title", "body", "publishMedia", "scheduledFor"].includes(controlName) ? false : confirmed;
+  return ["title", "body", "publishMedia", "scheduledFor", "reportPublicDestination"].includes(controlName)
+    ? false
+    : confirmed;
 }
 
 let reportReviewTrigger: HTMLButtonElement | null = null;
@@ -1558,7 +1560,8 @@ export function renderReportEvidence(detail: OpsReportDetail): string {
 
 export function renderReportPublicationPreview(
   detail: OpsReportDetail,
-  draft: { title: string; body: string; publisherName?: string | null }
+  draft: { title: string; body: string; publisherName?: string | null },
+  destination: ReportPublicDestination = "official_update"
 ): string {
   const title = draft.title.trim() || "Public headline preview";
   const body = draft.body.trim() || "The operator-edited public story will appear here.";
@@ -1568,7 +1571,7 @@ export function renderReportPublicationPreview(
     : "Not eligible for publication";
   return `<article class="ops-report-public-card" data-public-preview>
     <p class="ops-kicker">Approved hunter report</p>
-    <h4>${escapeOpsHtml(title)}</h4>
+    ${destination === "official_update" ? `<h4>${escapeOpsHtml(title)}</h4>` : ""}
     <p>${escapeOpsHtml(body)}</p>
     <dl><div><dt>Hunter</dt><dd>${escapeOpsHtml(attributionLabel)}</dd></div><div><dt>Waypoint</dt><dd>${escapeOpsHtml(reportWaypointLabel(detail))}</dd></div><div><dt>GPS</dt><dd class="ops-mono">${escapeOpsHtml(reportCoordinateLabel(detail))}</dd></div></dl>
   </article>`;
@@ -1803,6 +1806,48 @@ export function reportDestinationControls(detail: OpsReportDetail): {
     showWithdrawCaseNote: detail.caseNote.status === "published",
     updatePublished: detail.publication.published,
   };
+}
+
+export type ReportPublicDestination = "private" | "case_note" | "official_update";
+
+export function isReportPublicDestination(value: unknown): value is ReportPublicDestination {
+  return value === "private" || value === "case_note" || value === "official_update";
+}
+
+export function defaultReportPublicDestination(
+  detail: Pick<OpsReportDetail, "publication" | "caseNote">
+): ReportPublicDestination {
+  if (detail.publication.status !== null && detail.publication.status !== "withdrawn") {
+    return "official_update";
+  }
+  if (detail.caseNote.status !== null) return "case_note";
+  return "private";
+}
+
+export function reportPublicDestinationView(destination: ReportPublicDestination): {
+  formVisible: boolean;
+  caseNoteVisible: boolean;
+  officialUpdateVisible: boolean;
+  evidenceLabel: string;
+} {
+  return {
+    formVisible: destination !== "private",
+    caseNoteVisible: destination === "case_note",
+    officialUpdateVisible: destination === "official_update",
+    evidenceLabel: destination === "case_note"
+      ? "Choose ready submitted images for Case Notes"
+      : destination === "official_update"
+        ? "Choose ready submitted or direct images for the Official Update"
+        : "Private evidence; no image will be published",
+  };
+}
+
+export function reportMediaSelectableForDestination(
+  destination: ReportPublicDestination,
+  source: "report" | "update"
+): boolean {
+  if (destination === "private") return false;
+  return source === "report" || destination === "official_update";
 }
 
 const reportStateLabel = (state: string): string => isReportReviewState(state)

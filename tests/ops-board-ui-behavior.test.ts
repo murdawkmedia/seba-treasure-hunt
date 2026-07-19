@@ -24,6 +24,9 @@ import {
   moderationAttentionCount,
   normalizeOpsReportDetail,
   reportDestinationControls,
+  defaultReportPublicDestination,
+  reportPublicDestinationView,
+  reportMediaSelectableForDestination,
   reportPublicationActions,
   reportPublicOutcomeGuidance,
   reportReviewControls,
@@ -599,6 +602,102 @@ test("report review controls follow the actual linked public post, not private v
     updatePublished: false,
   });
   assert.match(renderReportPrivateDetail(hidden), /Hidden by moderation/);
+});
+
+test("report public destinations default safely and restore durable work", () => {
+  const base = normalizeOpsReportDetail({ data: {
+    id: "destination-report",
+    type: "find",
+    hunterSubject: "hunter-adult",
+    name: "Private Reporter",
+    email: "private@example.test",
+    phone: null,
+    publicAttribution: "Hunter D48E",
+    publicationEligible: true,
+    publicationEligibilityReason: "eligible",
+    publication: { published: false, updateId: null, status: null, scheduledFor: null, title: null, body: null, mediaIds: [], uploads: [] },
+    caseNote: { published: false, noteId: null, status: null },
+    waypointId: "8",
+    waypointRouteOrder: 9,
+    waypointName: "Vista Lands",
+    locationDescription: "Private location",
+    latitude: null,
+    longitude: null,
+    details: "Private details",
+    status: "verified",
+    assignedTo: null,
+    createdAt: "2026-07-18T18:54:31.625Z",
+    updatedAt: "2026-07-18T18:54:31.625Z",
+    media: [],
+    history: [],
+  }});
+  assert.ok(base);
+  assert.equal(defaultReportPublicDestination(base), "private");
+  assert.equal(defaultReportPublicDestination({ ...base, caseNote: { published: true, noteId: "note-1", status: "published" } }), "case_note");
+  assert.equal(defaultReportPublicDestination({ ...base, publication: { ...base.publication, updateId: "update-1", status: "draft" } }), "official_update");
+  assert.equal(defaultReportPublicDestination({
+    ...base,
+    publication: { ...base.publication, updateId: "update-1", status: "published", published: true },
+    caseNote: { published: true, noteId: "note-1", status: "published" },
+  }), "official_update");
+  assert.equal(defaultReportPublicDestination({ ...base, publication: { ...base.publication, updateId: "update-1", status: "withdrawn" } }), "private");
+});
+
+test("report destination view reveals one workflow and scopes selectable media", () => {
+  assert.deepEqual(reportPublicDestinationView("private"), {
+    formVisible: false,
+    caseNoteVisible: false,
+    officialUpdateVisible: false,
+    evidenceLabel: "Private evidence; no image will be published",
+  });
+  assert.equal(reportPublicDestinationView("case_note").caseNoteVisible, true);
+  assert.equal(reportPublicDestinationView("official_update").officialUpdateVisible, true);
+  assert.equal(reportMediaSelectableForDestination("private", "report"), false);
+  assert.equal(reportMediaSelectableForDestination("case_note", "report"), true);
+  assert.equal(reportMediaSelectableForDestination("case_note", "update"), false);
+  assert.equal(reportMediaSelectableForDestination("official_update", "report"), true);
+  assert.equal(reportMediaSelectableForDestination("official_update", "update"), true);
+});
+
+test("changing a public destination invalidates exact-preview confirmation", () => {
+  assert.equal(reportPublicationConfirmationAfterInput(true, "reportPublicDestination"), false);
+});
+
+test("Case Note preview omits the Official Update-only headline", () => {
+  const detail = normalizeOpsReportDetail({ data: {
+    id: "case-note-preview-report",
+    type: "tip",
+    hunterSubject: "hunter-adult",
+    name: "Private Reporter",
+    email: "private@example.test",
+    phone: null,
+    publicAttribution: "Hunter D48E",
+    publicationEligible: true,
+    publicationEligibilityReason: "eligible",
+    publication: { published: false, updateId: null, status: null, scheduledFor: null, title: null, body: null, mediaIds: [], uploads: [] },
+    caseNote: { published: false, noteId: null, status: null },
+    waypointId: "8",
+    waypointRouteOrder: 9,
+    waypointName: "Vista Lands",
+    locationDescription: "Private location",
+    latitude: null,
+    longitude: null,
+    details: "Private details",
+    status: "verified",
+    assignedTo: null,
+    createdAt: "2026-07-18T18:54:31.625Z",
+    updatedAt: "2026-07-18T18:54:31.625Z",
+    media: [],
+    history: [],
+  }});
+  assert.ok(detail);
+  const preview = renderReportPublicationPreview(
+    detail,
+    { title: "Official-only headline", body: "Reviewed observation" },
+    "case_note"
+  );
+  assert.doesNotMatch(preview, /Official-only headline/);
+  assert.match(preview, /Reviewed observation/);
 });
 
 test("guided report workflow normalizes staff history and builds explicit reversible mutations", () => {
