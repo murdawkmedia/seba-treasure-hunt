@@ -5,9 +5,9 @@
 - Canonical site: `https://www.timlostsomething.com`
 - Apex redirect: `https://timlostsomething.com` permanently preserves the path and query string when redirecting to `www`.
 - Cloudflare Pages project: `seba-treasure-hunt`
-- Production application commit: `a1c1e789bf914a1cd2162164ff5998a76e43a988`
-- Production Pages deployment: `4e2d9df1-12e7-4205-a4a6-b6f49c1c497e`
-- Immutable production URL: `https://4e2d9df1.seba-treasure-hunt.pages.dev`
+- Production application commit: `1d21fe556ba3e2c1f6a29bf0f8d4545199224c67`
+- Production Pages deployment: `cb2ad1cd-f5ce-45e8-a2c8-4b1d232ba45e`
+- Immutable production URL: `https://cb2ad1cd.seba-treasure-hunt.pages.dev`
 - D1 migrations applied through `0015_submission_ops_publication_refinement.sql`
 - Media worker version: `7cc2b2c0-15ae-49a4-899c-be878657d9c5`
 - Production database environment sentinel: `production`
@@ -62,6 +62,35 @@
 - This follow-on required no D1 migration, DNS change, queue change or media
   processor deployment. The production identity, human-verification, data and
   media bindings were preserved.
+
+## Production follow-on: Selectable Private Report destinations
+
+- Each opened Private Report now exposes three native selectable destination
+  cards: Keep private, Publish to Case Notes, and Prepare an Official Update.
+  Selection is a local, zero-write UI decision and only reveals the matching
+  composer; publication remains a separate confirmed server action.
+- Case Notes expose eligible submitted report media only. Official Updates may
+  combine eligible submitted media with direct Update uploads. Selections and
+  typed copy survive destination switching, while exact-preview confirmation
+  is deliberately cleared. No image starts selected.
+- The exact 137-file artifact was validated at
+  `https://47ecee3e.seba-treasure-hunt.pages.dev` and promoted byte-for-byte to
+  production. The gate passed 572 automated tests, all TypeScript projects,
+  exact legal artifacts, 16 privacy/isolation tests, 15
+  environment/security tests, the production build, focused destination
+  contracts, `git diff --check`, and the 66-navigation/102-state isolated
+  browser audit.
+- Live desktop and 390-pixel phone checks found no horizontal overflow or
+  validation banner. The homepage, protected Ops entry, Updates, Case Notes
+  and Report pages returned HTTP 200, and the bare-domain redirect preserved
+  its tested path and query. Cloudflare's injected analytics beacon remains
+  blocked by the existing CSP and may log a non-application console message.
+- Production D1 remained unchanged at 19 players, 6 reports, 0 report-derived
+  Case Notes, 2 Official Updates, 2 staff principals, 88 audit events, 16
+  report events, 22 media rows, 34 legal acceptances and 13 published
+  waypoints. Post-deploy reads wrote zero rows and the foreign-key check was
+  clean. No migration, D1/R2/queue write, Clerk change, media-worker deploy or
+  DNS change was required.
 
 ## Validation history and promoted refinements
 
@@ -124,11 +153,16 @@
 
 ## Rollback
 
-- Current application release tag: `production-guided-ops-2026-07-18`
-- Immediate pre-release tag: `production-submission-onboarding-2026-07-18`
+- Current application release tag: `production-report-destinations-2026-07-18`
+- Immediate pre-release tag: `production-guided-ops-2026-07-18`
 - Immediate previous production Pages deployment:
+  `https://4e2d9df1.seba-treasure-hunt.pages.dev`
+- Immediate previous production source: `a1c1e789bf914a1cd2162164ff5998a76e43a988`
+
+- Earlier rollback tag: `production-submission-onboarding-2026-07-18`
+- Earlier immutable Pages deployment:
   `https://3731fa07.seba-treasure-hunt.pages.dev`
-- Immediate previous production source: `5e01e7f`
+- Earlier production source: `5e01e7f`
 
 - Git tag: `production-pre-hunter-platform-2026-07-16`
 - Tagged source: `5552a57668417aef2fbd97d63e819807e2ee92dc`

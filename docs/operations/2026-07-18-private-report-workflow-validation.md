@@ -207,3 +207,66 @@ Use disposable validation records only:
 
 Production promotion still requires Murphy's separate explicit approval after
 these authenticated owner checks.
+
+## Selectable public destination release
+
+### Release identity
+
+- Application source:
+  `1d21fe556ba3e2c1f6a29bf0f8d4545199224c67`
+- Validation deployment:
+  `https://47ecee3e.seba-treasure-hunt.pages.dev`
+- Production deployment:
+  `https://cb2ad1cd.seba-treasure-hunt.pages.dev`
+- Production Pages deployment ID:
+  `cb2ad1cd-f5ce-45e8-a2c8-4b1d232ba45e`
+- Rollback tag: `production-report-destinations-2026-07-18`
+- Schema migrations: none
+
+### Behavior in force
+
+The public-outcome explanation cards in an opened report are native radio
+controls. Keep private is the default. Case Notes and Official Updates reveal
+only their own matching composer and media controls. Selecting a card performs
+no request and writes nothing. Typed copy and image choices survive switching,
+but the exact-preview confirmation resets so an operator must review the newly
+selected outcome again.
+
+Case Notes may include eligible submitted report media. Official Updates may
+include eligible submitted media plus direct Update uploads. Every image starts
+private and unchecked. Existing durable Case Note or Official Update state is
+shown separately from the operator's current local choice.
+
+### Verification and promotion evidence
+
+- Complete automated suite: 572 passed, 0 failed.
+- TypeScript worker, client and test projects: passed.
+- Authoritative legal-artifact verification: passed.
+- Public-output privacy and build-isolation suite: 16 passed, 0 failed.
+- Environment, API-security and production-snapshot suite: 15 passed, 0
+  failed.
+- Production-shaped build, focused destination contracts and
+  `git diff --check`: passed.
+- Isolated unified-shell browser audit: 66 navigations and 102 states with
+  zero console errors, page errors, request failures, overflow, or local and
+  external writes. Destination selection was specifically exercised as a
+  write-free scenario at desktop, phone and zoom-equivalent sizes.
+- The frozen build contained 137 files. The validation and production
+  promotions used the byte-identical artifact for the same source commit.
+- Validation stable and immutable URLs returned HTTP 200 and the validation
+  runtime sentinel. Production routes returned HTTP 200, exposed no validation
+  banner, preserved the protected signed-out Ops gateway, and had no
+  horizontal overflow at desktop or 390-pixel phone widths.
+- Cloudflare's automatically injected analytics beacon remains outside the
+  site's existing CSP allowlist and can log a non-application console message
+  on the custom domain. This did not affect the application controls or page
+  behavior and is recorded for separate maintenance.
+
+Murphy completed owner review and explicitly approved production promotion.
+Production counts immediately before and after deployment matched exactly: 19
+players, 6 reports, 0 report-derived Case Notes, 2 Official Updates, 2 staff
+principals, 88 audit events, 16 report events, 22 media rows, 34 legal
+acceptances and 13 published waypoints. Both reads wrote zero rows,
+`changed_db` was false, and the foreign-key check was clean. No production
+record, publication, account, media object, queue, DNS, Clerk configuration or
+database schema was changed by this release.

@@ -13,6 +13,42 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-18 - Selectable report destinations in production
+
+- Murphy approved the validation-reviewed destination selector for production.
+  Exact application source `1d21fe556ba3e2c1f6a29bf0f8d4545199224c67`
+  is live at `https://www.timlostsomething.com`. Cloudflare Pages deployment
+  `cb2ad1cd-f5ce-45e8-a2c8-4b1d232ba45e` is immutable at
+  `https://cb2ad1cd.seba-treasure-hunt.pages.dev`.
+- An opened Private Report now presents three native selectable cards: Keep
+  private, Publish to Case Notes, or Prepare an Official Update. Choosing a
+  card is local and write-free; it only reveals the matching workflow. Case
+  Notes use submitted report media, while Official Updates may use submitted
+  media and direct Update uploads. Images remain private and unchecked until
+  an operator deliberately selects and confirms them.
+- The exact artifact was first deployed to validation at
+  `https://47ecee3e.seba-treasure-hunt.pages.dev`, then promoted byte-for-byte.
+  The release gate passed 572 automated tests, all TypeScript projects, exact
+  legal artifacts, 16 privacy/isolation tests, 15 environment/security tests,
+  the production build, focused destination contracts, `git diff --check`, and
+  the 66-navigation/102-state isolated browser audit with zero writes.
+- Live HTTP and browser checks covered the homepage, protected Ops entry,
+  Updates, Case Notes and Report pages at desktop and 390-pixel phone widths.
+  Every route returned HTTP 200, the apex redirect preserved path and query,
+  no validation banner or horizontal overflow appeared, and the signed-out Ops
+  workspace remained hidden. Cloudflare's injected analytics beacon continues
+  to be blocked by the existing site CSP and can log a non-application console
+  message; application behavior was unaffected.
+- Production D1 counts matched immediately before and after deployment: 19
+  players, 6 reports, 0 report-derived Case Notes, 2 Official Updates, 2 staff
+  principals, 88 audit events, 16 report events, 22 media rows, 34 legal
+  acceptances and 13 published waypoints. Both verification reads wrote zero
+  rows, `changed_db` was false, and the foreign-key check was clean.
+- No migration, D1/R2/queue write, Clerk change, media-worker deployment, DNS
+  change or public post occurred. The application rollback tag is
+  `production-report-destinations-2026-07-18`; the immediately previous Pages
+  deployment remains `https://4e2d9df1.seba-treasure-hunt.pages.dev`.
+
 ## Update 2026-07-18 - Guided Official Update production promotion
 
 - Murphy explicitly approved production promotion after validation review. The
