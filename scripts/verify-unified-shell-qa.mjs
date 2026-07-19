@@ -1025,8 +1025,8 @@ async function assertReportDialogVerticalReachability(page, label) {
 }
 
 async function closeLocalWorkflowReport(page) {
-  const close = page.getByRole("button", { name: "Close report review", exact: true });
-  await focusAndPress(page, close, "Enter", "Close report review");
+  const close = page.getByRole("button", { name: "Close review", exact: true });
+  await focusAndPress(page, close, "Enter", "Close review");
   await page.locator("[data-report-review-dialog]").waitFor({ state: "hidden" });
   await page.waitForFunction(() => {
     const dialog = document.querySelector("[data-report-review-dialog]");
@@ -1246,7 +1246,7 @@ async function runReportWorkflowAudit({
     await assertReportDialogVerticalReachability(mobile.page, "mobile report workflow");
     await assertNoHorizontalViewportOverflow(mobile.page, "mobile report workflow");
     await assertMinimumHitTargets({
-      close: mobile.page.getByRole("button", { name: "Close report review", exact: true }),
+      close: mobile.page.getByRole("button", { name: "Close review", exact: true }),
       status: mobile.page.locator("[data-report-next-status]"),
       apply: mobile.page.getByRole("button", { name: "Apply status", exact: true }),
       unassign: mobile.page.getByRole("button", { name: "Unassign report", exact: true }),
@@ -1295,7 +1295,7 @@ async function runReportWorkflowAudit({
       await assertReportDialogVerticalReachability(constrained.page, label);
       await assertNoHorizontalViewportOverflow(constrained.page, label);
       await assertMinimumHitTargets({
-        close: constrained.page.getByRole("button", { name: "Close report review", exact: true }),
+        close: constrained.page.getByRole("button", { name: "Close review", exact: true }),
         status: constrained.page.locator("[data-report-next-status]"),
         apply: constrained.page.getByRole("button", { name: "Apply status", exact: true }),
         unassign: constrained.page.getByRole("button", { name: "Unassign report", exact: true }),

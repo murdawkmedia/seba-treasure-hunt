@@ -595,6 +595,7 @@ function readMockResponse(url, fixtureState, legalDocument) {
   } });
   if (url.pathname === "/api/v1/status") return jsonResponse(statusPayload());
   if (url.pathname === "/api/v1/rules/current") return jsonResponse({ data: { id: "rules-qa", version: "qa", title: "QA rules", body: "Test-only current rules.", lastUpdatedAt: "2026-07-13T18:00:00.000Z" } });
+  if (url.pathname === "/api/v1/zones") return jsonResponse({ data: [] });
   if (url.pathname === "/api/v1/legal/waiver") return jsonResponse({ data: legalDocument });
   if (url.pathname === "/api/v1/me/dashboard") return jsonResponse(dashboardPayload(fixtureState));
   if (url.pathname === "/api/v1/me/profile") return fixtureState.dashboardProfileIncomplete === true
