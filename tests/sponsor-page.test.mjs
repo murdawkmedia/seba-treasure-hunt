@@ -242,7 +242,7 @@ test("public campaign pages do not expose sponsorship navigation or footer links
   const exposed = [];
 
   for (const name of [
-    "index.html", "route.html", "interview.html", "start.html", "dashboard.html",
+    "index.html", "route.html", "golf-balls.html", "interview.html", "start.html", "dashboard.html",
     "updates.html", "report.html", "rules.html", "privacy.html",
     "community-guidelines.html", "clue-board.html"
   ]) {

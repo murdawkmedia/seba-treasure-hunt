@@ -35,8 +35,9 @@ test("unified-shell QA is a durable isolated command with the exact route-state 
   assert.match(script, /statesAudited/);
   assert.match(script, /consoleErrorCount/);
   assert.match(script, /pageErrorCount/);
-  assert.match(script, /statesAudited,\s*102/);
-  assert.match(script, /pageNavigations,\s*66/);
+  assert.match(script, /statesAudited,\s*111/);
+  assert.match(script, /pageNavigations,\s*72/);
+  assert.match(script, /screenshotEvidence\.length,\s*21/);
   assert.doesNotMatch(script, /sponsors\.html|sponsors\.png/);
 });
 
@@ -50,6 +51,8 @@ test("unified-shell QA keeps screenshots and its JSON ledger in a unique OS temp
   assert.match(script, /artifactName/);
   assert.match(script, /sha256/);
   assert.match(script, /mobile-390x844-home\.png/);
+  assert.match(script, /mobile-390x844-golf-balls\.png/);
+  assert.match(script, /desktop-1440x1000-golf-balls\.png/);
   assert.match(script, /desktop-1440x1000-waiver\.png/);
   assert.match(script, /zoom-200-route-menu-open\.png/);
   assert.match(script, /UNIFIED_SHELL_QA_PRESERVE_ARTIFACTS/);

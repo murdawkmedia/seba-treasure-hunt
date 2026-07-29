@@ -24,6 +24,7 @@ const campaignFiles = Object.freeze([
   "index.html",
   "start.html",
   "route.html",
+  "golf-balls.html",
   "interview.html",
   "updates.html",
   "clue-board.html",
@@ -38,6 +39,7 @@ const campaignFiles = Object.freeze([
 const menuRoutes = new Set([
   "start",
   "route",
+  "golf-balls",
   "interview",
   "updates",
   "clue-board",
@@ -574,7 +576,7 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
   const browser = await chromium.launch({ headless: true });
   try {
     for (const { viewport, files } of [
-      { viewport: { width: 720, height: 500 }, files: ["index.html", "route.html", "interview.html", "clue-board.html"] },
+      { viewport: { width: 720, height: 500 }, files: ["index.html", "route.html", "golf-balls.html", "interview.html", "clue-board.html"] },
       { viewport: { width: 320, height: 500 }, files: ["clue-board.html"] },
     ]) {
       const context = await browser.newContext({ viewport });

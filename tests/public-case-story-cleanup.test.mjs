@@ -51,6 +51,15 @@ test("the public case shell uses 13 Stops and has no sponsorship destination", (
   assert.doesNotMatch(home, /Support the Search|href=["']\/?sponsors(?:\.html)?["']/i);
 });
 
+test("Casey's public page uses local-case language", () => {
+  const golfBalls = readFileSync(path.join(root, "golf-balls.html"), "utf8");
+  assert.match(golfBalls, /Casey Lost the Golf Balls/);
+  assert.doesNotMatch(
+    visibleText(golfBalls),
+    /\bcampaign\b|\boperators?\b|Support the Search/i,
+  );
+});
+
 test("the README documents 13 Stops and the withdrawn public sponsorship surface", () => {
   const readme = readFileSync(path.join(root, "README.md"), "utf8");
 
