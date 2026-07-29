@@ -5,13 +5,44 @@
 - Canonical site: `https://www.timlostsomething.com`
 - Apex redirect: `https://timlostsomething.com` permanently preserves the path and query string when redirecting to `www`.
 - Cloudflare Pages project: `seba-treasure-hunt`
-- Production application commit: `1d21fe556ba3e2c1f6a29bf0f8d4545199224c67`
-- Production Pages deployment: `cb2ad1cd-f5ce-45e8-a2c8-4b1d232ba45e`
-- Immutable production URL: `https://cb2ad1cd.seba-treasure-hunt.pages.dev`
+- Production application commit: `0db0100836368a7345e9905a71074cfe887a1c43`
+- Production Pages deployment: `1ee12c0e-f53f-4f9d-9c73-397b1e273432`
+- Immutable production URL: `https://1ee12c0e.seba-treasure-hunt.pages.dev`
 - D1 migrations applied through `0015_submission_ops_publication_refinement.sql`
 - Media worker version: `7cc2b2c0-15ae-49a4-899c-be878657d9c5`
 - Production database environment sentinel: `production`
 - Production route: 13 waypoints, with separate Seniors Centre and Derby's General Store records.
+
+## Production promotion: Casey's golf-ball search and growing cash story
+
+- Murphy approved the exact validation candidate for production on
+  2026-07-29. Tim remains the primary case; Casey's marked In the Woods golf
+  balls are presented as a distinct side search at `/golf-balls`.
+- Roughly $5,000 is described as the search's starting amount and the current
+  estimate as approaching $10,000 without an exact guarantee. Tim's ID and
+  both diamond-ring baggies remain missing.
+- Only balls with the official In the Woods logo qualify. The current wording
+  is one qualifying ball for one festival ticket, the ball must be returned,
+  and Casey is the sole redemption contact.
+- Fresh release checks passed exact legal-artifact verification, all
+  TypeScript projects, the complete 572-test suite, the production build,
+  49-file output privacy scanning, additional credential/path/fixture scans
+  and read-only desktop/mobile browser smoke checks.
+- Live HTTP checks covered the homepage, Golf Balls, Route, Updates, Case
+  Notes, Report and Ops routes. The runtime reports `production`, the apex
+  redirect preserves path and query, and no validation banner or horizontal
+  overflow appeared.
+- Production D1 counts matched exactly before and after deployment: 56
+  players, 21 reports, 13 report-derived Case Notes, 4 Official Updates,
+  2 staff principals, 343 audit events, 79 report events, 48 media rows,
+  106 legal acceptances and 13 waypoints. Both reads wrote zero rows,
+  `changed_db` was false and the foreign-key check was clean.
+- No migration, D1/R2/queue write, Clerk or account change, media-worker
+  deployment, DNS change or public post occurred.
+- Rollback tag: `production-casey-golf-balls-2026-07-29`. The immediately
+  previous production deployment is
+  `cb2ad1cd-f5ce-45e8-a2c8-4b1d232ba45e` at
+  `https://cb2ad1cd.seba-treasure-hunt.pages.dev`.
 
 ## Release verification
 

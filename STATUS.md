@@ -13,6 +13,37 @@ are active in production.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-07-29 - Casey golf-ball search promoted to production
+
+- Murphy approved the validation-reviewed Casey golf-ball search and growing
+  cash story for production. Exact application source
+  `0db0100836368a7345e9905a71074cfe887a1c43` is live at
+  `https://www.timlostsomething.com`.
+- Cloudflare Pages deployment
+  `1ee12c0e-f53f-4f9d-9c73-397b1e273432` is immutable at
+  `https://1ee12c0e.seba-treasure-hunt.pages.dev`.
+- The production release gate passed exact legal-artifact verification, all
+  TypeScript projects, the 572-test complete suite, the production build,
+  49-file output privacy scanning, additional credential/path/fixture scans
+  and read-only desktop/mobile browser smoke checks.
+- Live verification covered the homepage, Golf Balls, Route, Updates, Case
+  Notes, Report and Ops routes. The custom domain and immutable deployment
+  return HTTP 200, the apex redirect preserves path and query, the runtime
+  reports `production`, and the live pages have no validation banner or
+  horizontal overflow.
+- Production D1 counts were identical immediately before and after deployment:
+  56 players, 21 reports, 13 report-derived Case Notes, 4 Official Updates,
+  2 staff principals, 343 audit events, 79 report events, 48 media rows,
+  106 legal acceptances and 13 waypoints. Both reads wrote zero rows,
+  `changed_db` was false and the foreign-key check was clean.
+- No migration, D1/R2/queue write, Clerk or account change, media-worker
+  deployment, DNS change or public post occurred.
+- The application rollback tag is
+  `production-casey-golf-balls-2026-07-29`. The immediately previous Pages
+  deployment remains
+  `cb2ad1cd-f5ce-45e8-a2c8-4b1d232ba45e` at
+  `https://cb2ad1cd.seba-treasure-hunt.pages.dev`.
+
 ## Update 2026-07-29 - Casey golf-ball search validation candidate
 
 - Completed the approved Casey golf-ball side search and Tim growing-cash
@@ -40,8 +71,8 @@ validation accounts, submissions, or credentials into production.
   deployment, DNS change, production Pages deployment or public post occurred.
   A read-only production comparison confirmed the live site still has neither
   the new route nor the new Casey story.
-- Next decision: Murphy approves this exact candidate for production or
-  requests revisions. Full evidence and the owner checklist are in
+- Murphy approved this exact candidate and it was promoted byte-for-byte to
+  production. Full validation evidence and the owner checklist are in
   `docs/operations/2026-07-29-casey-golf-ball-search-validation.md`.
 
 ## Update 2026-07-18 - Selectable report destinations in production

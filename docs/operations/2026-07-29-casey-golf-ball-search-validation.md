@@ -12,7 +12,8 @@ Date: 2026-07-29
   `https://codex-validation.seba-treasure-hunt.pages.dev/golf-balls?release=0db0100`
 - Cloudflare runtime: `deploymentEnvironment: validation`
 
-This is a validation-only candidate. Production has not been promoted.
+This candidate was reviewed in validation and subsequently approved by Murphy
+for byte-for-byte production promotion.
 
 ## Included Story Changes
 
@@ -81,5 +82,26 @@ This is a validation-only candidate. Production has not been promoted.
 9. Test the Casey email, festival website and Rules links.
 10. Confirm normal and enlarged-text readability.
 
-Production promotion requires a new explicit Murphy approval and must use this
-exact source candidate unless a revision is requested and retested.
+## Production Promotion
+
+- Murphy explicitly approved this exact candidate for production on
+  2026-07-29.
+- Exact application source:
+  `0db0100836368a7345e9905a71074cfe887a1c43`.
+- Production Pages deployment:
+  `1ee12c0e-f53f-4f9d-9c73-397b1e273432`.
+- Immutable production URL:
+  `https://1ee12c0e.seba-treasure-hunt.pages.dev`.
+- Canonical production URL: `https://www.timlostsomething.com`.
+- The production release gate again passed the complete 572-test suite, all
+  TypeScript projects, exact legal artifacts, the production build, output
+  privacy scanning and read-only desktop/mobile browser checks.
+- Production D1 was unchanged by the release. Pre- and post-deploy counts
+  matched exactly, both reads wrote zero rows, `changed_db` was false and the
+  foreign-key check was clean.
+- No migration, D1/R2/queue write, Clerk change, media-worker deployment, DNS
+  change or public post occurred.
+- Rollback tag: `production-casey-golf-balls-2026-07-29`.
+- Immediately previous production deployment:
+  `cb2ad1cd-f5ce-45e8-a2c8-4b1d232ba45e`
+  (`https://cb2ad1cd.seba-treasure-hunt.pages.dev`).
