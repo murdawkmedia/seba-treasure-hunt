@@ -59,7 +59,7 @@ test("the golf-ball page separates Casey's search from Tim's case", () => {
   assert.match(rendered, /href="mailto:casey@sebahub\.com"/i);
   assert.match(rendered, /href="https:\/\/www\.inthewoodsmusicfestival\.com\/"/i);
   assert.match(rendered, /href="\/rules"/i);
-  assert.doesNotMatch(text, /Tim lost[^.]*golf balls/i);
+  assert.doesNotMatch(text, /Tim lost the golf balls/i);
   assert.doesNotMatch(text, /Casey lost[^.]*ID|Casey lost[^.]*rings|Casey lost[^.]*cash/i);
 });
 

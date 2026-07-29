@@ -633,12 +633,12 @@ test("light surfaces select dark focus while dark campaign chrome stays gold", (
   );
   assert.match(
     publicCss,
-    /\.answer-block,\s*\.campaign-prop,\s*\.rules,\s*\.legend,\s*\.islands,\s*\.card,\s*\.howto,\s*\.step,\s*\.evidence,\s*\.found,\s*\.longgame,\s*\.fineprint,\s*\.hunt-faq,\s*\.interview-section,\s*details\.qa,\s*\.lookfor,\s*\.stops-intro,\s*\.stop\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
+    /\.answer-block,\s*\.campaign-prop,\s*\.rules,\s*\.legend,\s*\.islands,\s*\.card,\s*\.howto,\s*\.step,\s*\.evidence,\s*\.found,\s*\.longgame,\s*\.fineprint,\s*\.hunt-faq,\s*\.interview-section,\s*details\.qa,\s*\.lookfor,\s*\.stops-intro,\s*\.stop,\s*\.golf-ball-steps\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-dark\);[^}]*\}/s,
     "public light and parchment roots systematically select dark focus",
   );
   assert.match(
     publicCss,
-    /\.hero,\s*\.prize,\s*\.festival,\s*\.mapsection,\s*\.gallery,\s*\.route-teaser,\s*\.contact-card,\s*\.hours-banner,\s*\.checklist,\s*\.route-hero,\s*\.routevideo,\s*\.route-footnote,\s*\.evidence-section,\s*\.final-cta\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
+    /\.hero,\s*\.prize,\s*\.festival,\s*\.mapsection,\s*\.gallery,\s*\.route-teaser,\s*\.contact-card,\s*\.hours-banner,\s*\.checklist,\s*\.route-hero,\s*\.routevideo,\s*\.route-footnote,\s*\.evidence-section,\s*\.final-cta,\s*\.golf-ball-hero,\s*\.golf-ball-contact,\s*\.golf-ball-teaser\s*\{[^}]*--campaign-focus:\s*var\(--campaign-focus-light\);[^}]*\}/s,
     "public forest surfaces pin gold focus, including dark cards nested in paper sections",
   );
 });

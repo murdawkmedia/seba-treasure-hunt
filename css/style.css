@@ -66,7 +66,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; line-height: 1.
 details.qa,
 .lookfor,
 .stops-intro,
-.stop {
+.stop,
+.golf-ball-steps {
   --campaign-focus: var(--campaign-focus-dark);
 }
 
@@ -83,7 +84,10 @@ details.qa,
 .routevideo,
 .route-footnote,
 .evidence-section,
-.final-cta {
+.final-cta,
+.golf-ball-hero,
+.golf-ball-contact,
+.golf-ball-teaser {
   --campaign-focus: var(--campaign-focus-light);
 }
 
@@ -497,6 +501,24 @@ section { padding: 70px 0; position: relative; }
 .latest-update .official-note .provenance { color: var(--rust-600); }
 .latest-update a { color: var(--gold-300); }
 .follow-case { margin-top: 24px; }
+
+/* ---------- Casey's golf-ball search ---------- */
+.golf-ball-hero {
+  color: var(--cream-100);
+  background:
+    linear-gradient(90deg, rgba(7, 31, 28, .98), rgba(7, 31, 28, .78)),
+    url("../assets/photos/hero-aerial.jpg") center 42% / cover no-repeat;
+}
+.golf-ball-hero .wrap { max-width: 940px; text-align: left; }
+.golf-ball-hero .sub { max-width: 760px; margin-inline: 0; }
+.golf-ball-steps { background: var(--cream-100); }
+.golf-ball-contact {
+  color: var(--cream-100);
+  background: var(--green-950);
+}
+.golf-ball-contact .section-title { color: var(--gold-300); }
+.golf-ball-contact .section-lead { color: var(--cream-100); }
+.golf-ball-contact .cta-row { justify-content: center; }
 
 /* ---------- validation environment ---------- */
 .validation-environment-notice {
