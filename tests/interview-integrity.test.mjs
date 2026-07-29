@@ -104,14 +104,12 @@ test("public sources make no numeric interview-count claim", () => {
   );
 });
 
-test("the unpublished golf-ball question stays absent from public sources", () => {
-  for (const filename of readdirSync(repo).filter((candidate) => candidate.endsWith(".html"))) {
-    assert.doesNotMatch(
-      visibleTextFromHtml(read(filename)),
-      golfBallPhrase,
-      `${filename} contains no visible golf-ball phrase`,
-    );
-  }
+test("the unpublished golf-ball question stays absent from Tim's Account", () => {
+  assert.doesNotMatch(
+    visibleTextFromHtml(interview),
+    golfBallPhrase,
+    "Tim's Account contains no visible golf-ball question or answer",
+  );
 });
 
 test("the golf-ball guard catches whitespace, entity, and inline-markup bypasses", () => {

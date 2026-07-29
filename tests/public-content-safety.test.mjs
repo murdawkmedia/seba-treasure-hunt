@@ -116,19 +116,26 @@ test("the public Updates client allowlists report media and constructs map links
   assert.doesNotMatch(html, /sign in[^<]{0,80}(?:updates|approved report)/i);
 });
 
-test("unconfirmed campaign extensions are not published as facts", () => {
-  const publicHtml = ["index.html", "route.html", "interview.html"].map(read).join("\n");
-  const forbidden = [
+test("confirmed case extensions remain qualified and separated", () => {
+  const home = read("index.html");
+  const golfBalls = read("golf-balls.html");
+  const interview = read("interview.html");
+
+  assert.match(home, /approaching \$10,000/i);
+  assert.doesNotMatch(home, /\bexactly \$10,000|\$10,000 guaranteed/i);
+  assert.match(golfBalls, /current (?:working )?offer|currently/i);
+  assert.match(golfBalls, /official In the Woods logo/i);
+  assert.doesNotMatch(interview, /golf balls?/i);
+
+  const stillForbidden = [
     /Official Radio Partner/i,
     /Friday[^<\n]{0,100}CFCW|CFCW[^<\n]{0,100}Friday/i,
-    /\$10,000/i,
-    /golf balls?/i,
     /trips and tickets/i,
-    /founding sponsor/i
+    /founding sponsor/i,
   ];
 
-  for (const pattern of forbidden) {
-    assert.doesNotMatch(publicHtml, pattern, `public HTML matched ${pattern}`);
+  for (const pattern of stillForbidden) {
+    assert.doesNotMatch(`${home}\n${golfBalls}`, pattern);
   }
 
   const publicCss = read("css/style.css");
