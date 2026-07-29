@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-07-18
+Last updated: 2026-07-29
 
 ## Current state
 
@@ -12,6 +12,37 @@ are active in production.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-07-29 - Casey golf-ball search validation candidate
+
+- Completed the approved Casey golf-ball side search and Tim growing-cash
+  story through exact source commit
+  `0db0100836368a7345e9905a71074cfe887a1c43`.
+- Deployed only to the Cloudflare Pages `codex-validation` branch. The
+  immutable candidate is `https://87076691.seba-treasure-hunt.pages.dev`; the
+  stable owner-review pages are
+  `https://codex-validation.seba-treasure-hunt.pages.dev/?release=0db0100` and
+  `https://codex-validation.seba-treasure-hunt.pages.dev/golf-balls?release=0db0100`.
+- Tim remains the homepage lead. Roughly $5,000 is the starting amount, the
+  current estimate is approaching $10,000 without a guarantee, and his ID and
+  both diamond-ring baggies remain missing. Casey's separate page explains
+  official In the Woods logo balls, the current one-ball/one-ticket offer,
+  ball return, Casey-only redemption and the festival link.
+- Fresh gates passed 572 automated tests, all TypeScript projects, exact legal
+  artifacts, 26 focused public-content tests, the production-shaped build,
+  49-file output privacy scanning, additional credential/path/fixture scans,
+  and a 72-navigation/111-state/21-screenshot isolated browser audit with zero
+  errors or writes.
+- Validation caught and corrected an omitted Worker clean-route registration
+  before handoff. The final immutable and stable homepage and `/golf-balls`
+  routes return HTTP 200, and the runtime reports `validation`.
+- No migration, D1/R2/queue write, Clerk or account change, media-worker
+  deployment, DNS change, production Pages deployment or public post occurred.
+  A read-only production comparison confirmed the live site still has neither
+  the new route nor the new Casey story.
+- Next decision: Murphy approves this exact candidate for production or
+  requests revisions. Full evidence and the owner checklist are in
+  `docs/operations/2026-07-29-casey-golf-ball-search-validation.md`.
 
 ## Update 2026-07-18 - Selectable report destinations in production
 
