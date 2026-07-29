@@ -37,6 +37,7 @@ const clientEntryNames = Object.freeze([
 const staticFiles = [
   "index.html",
   "route.html",
+  "golf-balls.html",
   "interview.html",
   "start.html",
   "dashboard.html",
