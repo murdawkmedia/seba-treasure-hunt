@@ -193,7 +193,7 @@ test("shell link validation handles every attribute form and rejects bypasses", 
       /shell link|root-relative|expected/i,
     );
   }
-  assert.throws(() => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/rules"[^>]*>Rules<\/a>/, ""), "route.html"), /expected 16 shell links/i);
+  assert.throws(() => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/rules"[^>]*>Rules<\/a>/, ""), "route.html"), /expected 17 shell links/i);
 });
 
 test("imported builds use owned temporary outputs without touching repository dist", async () => {
