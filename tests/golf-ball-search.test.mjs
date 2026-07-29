@@ -35,6 +35,18 @@ test("Casey's golf-ball search is one registered public route", () => {
     CAMPAIGN_MENU.filter((item) => item.route === "golf-balls").length,
     1,
   );
+
+  const worker = read("src/server/app.ts");
+  assert.match(
+    worker,
+    /\["\/golf-balls",\s*"\/golf-balls\.html"\]/,
+    "the Pages worker must allow the clean public route",
+  );
+  assert.match(
+    worker,
+    /!\["\/",\s*"\/route",\s*"\/golf-balls",\s*"\/interview"\]\.includes\(path\)/,
+    "the public page must remain available on the Pages fallback host",
+  );
 });
 
 test("the golf-ball page separates Casey's search from Tim's case", () => {

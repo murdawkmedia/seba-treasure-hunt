@@ -58,6 +58,7 @@ const sameOriginFrameContentSecurityPolicy = contentSecurityPolicy.replace(
 const cleanRoutes = new Map([
   ["/", "/index.html"],
   ["/route", "/route.html"],
+  ["/golf-balls", "/golf-balls.html"],
   ["/interview", "/interview.html"],
   ["/start", "/start.html"],
   ["/dashboard", "/dashboard.html"],
@@ -75,7 +76,11 @@ const staticHtmlPaths = new Set(cleanRoutes.values());
 const legalFrameablePaths = new Set(["/privacy", "/privacy.html", "/waiver", "/waiver.html"]);
 const privateReportMediaPath =
   /^\/api\/v1\/ops\/(?:production-snapshot\/)?reports\/[^/]+\/media\/[^/]+$/;
-const appPaths = new Set([...cleanRoutes.keys()].filter((path) => !["/", "/route", "/interview"].includes(path)));
+const appPaths = new Set(
+  [...cleanRoutes.keys()].filter(
+    (path) => !["/", "/route", "/golf-balls", "/interview"].includes(path)
+  )
+);
 const validImageTypes = REPORT_IMAGE_TYPES;
 const validSponsorSupportTypes = new Set<SponsorSupportType>([
   "community",
