@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "c92e5984500e0e4de1307b01364fbb4a26f2ab84",
+  "baseCommit": "b9a47ef75f2c73a396dd132ec33efd0a9b1ef644",
   "normalizationVersion": "campaign-shell-v2",
   "pages": {
     "index.html": {
-      "headSha256": "b4e465949470bcd781bb507f19aa0950cc8cef8334a4f5e43638bd6057bdc6f9",
-      "scriptsSha256": "bf880c081d1091b5887be4cedf2980fcf1660145073a7d61ebf42b33dce36507",
-      "bodySha256": "49d21ce93b37f356ccde06665cb50bb5b2d0906cfd03ce607aec4e10efe3ffe1"
+      "headSha256": "6836be7e5a80ee0d0665b18257f3151d6ba26b07bc253baaa399b4eea2f75c56",
+      "scriptsSha256": "294c7c80b46b5c8bcf67acdad563670042521fdb33e4782ab92f25ad0ab4f4b2",
+      "bodySha256": "1e0f96e64ab25c1d74eeaf8dc099a7b70b68895ef89665e16086b10af89e8bb5"
     },
     "start.html": {
       "headSha256": "bae80f0e35b31a49d97d640c04c9edbaf9e3fe52866683412755e62d83999bea",
@@ -14,9 +14,14 @@
       "bodySha256": "fdc460806381a5bb82088c8fb071f01057fa5f8a75ecfa6aa8a73ca2cbe0e513"
     },
     "route.html": {
-      "headSha256": "f7fab961b9b53c2121e6d9fe6a2ea5deeba33c4f43c6d4c58124369838461152",
-      "scriptsSha256": "e8f8a920883ffa3d79d6ed6ae279fddff65bc98b4ed5223533f55367a4e7f511",
-      "bodySha256": "a4a31adfe4455ecf691f8ed44c441ca979a825b5ac5b372b3949462b05474ccc"
+      "headSha256": "fbb279df3ea9429335e705e4fbeabb967ce291477072dcf7ea66eff382737503",
+      "scriptsSha256": "27d8a781676fb2b147f522b1a2f9cce8e4929e473405d2152399cbf03339f5e2",
+      "bodySha256": "f749c96dc8910e61f5f83ad5bba29089960bba77e0255deee9c5e643a8926b55"
+    },
+    "golf-balls.html": {
+      "headSha256": "b0382bc41b0bc52c0c3a0f3a02718e9d4fb45c99757d8d20bfb7274eaab05afa",
+      "scriptsSha256": "69e75c0cd762a4611b2365ace93cf30e580264cdcce162088f8da814c228f637",
+      "bodySha256": "f9b0f7255a331c15b6f4c2a73e16f2e0f16358cf0b3a69ac780c31778ecb21a8"
     },
     "interview.html": {
       "headSha256": "d56dac9491bcb977890116887364b1f33db72a8ea52b493d89272dbda6f2a298",

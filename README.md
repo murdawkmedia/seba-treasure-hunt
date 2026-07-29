@@ -8,6 +8,7 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 |---|---|
 | `/` | Documentary case overview, real evidence and current status |
 | `/route` | 13 Stops waypoint stories; signed-in hunters receive exact route controls |
+| `/golf-balls` | Casey's separate search for marked In the Woods golf balls and current festival-ticket redemption details |
 | `/interview` | Tim’s Account, organized as the before, along-route, and after-discovery record |
 | `/updates` | Official updates and approved community reports |
 | `/report` | Private find, tip, and safety reporting |
@@ -30,6 +31,10 @@ and draft/scheduled Official Update outcomes, supports direct Update media,
 and uses one scoped approved-media viewer across Updates, Case Notes, Ops and
 the 13 Stops route. Mobile signup and password flows return to explicit,
 restartable recovery states when the identity provider does not answer.
+
+Tim's original roughly $5,000 cash loss remains the starting point of the
+case. As he continues retracing the route looking for his still-missing ID, the
+current amount believed to be in the search area is approaching $10,000.
 
 ## Guided private-report workflow
 

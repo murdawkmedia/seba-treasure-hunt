@@ -107,7 +107,10 @@ test("the homepage presents the case in the approved documentary order", () => {
   const html = read("index.html");
   assert.match(html, /2026 search · Seba Beach, Alberta/);
   assert.match(html, /<h1>Tim lost his ID\.<\/h1>/);
-  assert.match(visibleText(html), /side-by-side tour[^.]{0,80}roughly \$5,000[^.]{0,80}two diamond rings/i);
+  assert.match(
+    visibleText(html),
+    /search began with roughly \$5,000[^.]{0,180}approaching \$10,000/i,
+  );
   for (const [href, label] of [
     ["start.html", "Start here"],
     ["report.html", "Report something"],
@@ -115,7 +118,17 @@ test("the homepage presents the case in the approved documentary order", () => {
     ["rules.html", "Rules and safety"],
   ]) assert.match(html, new RegExp(`href="${href}"[^>]*>${label}<`));
 
-  const ids = ["what-is-tim-lost-something", "evidence", "account", "route-overview", "latest-update", "participate", "report", "hunt-faq"];
+  const ids = [
+    "what-is-tim-lost-something",
+    "evidence",
+    "account",
+    "route-overview",
+    "latest-update",
+    "casey-search",
+    "participate",
+    "report",
+    "hunt-faq",
+  ];
   let previous = -1;
   for (const id of ids) {
     const current = html.indexOf(`id="${id}"`);
@@ -204,8 +217,13 @@ test("the dormant sponsor source uses the real aerial photograph and no retired 
 
 test("the sitemap dates every materially rebranded public page to this release", () => {
   const sitemap = read("sitemap.xml");
-  const rebrandedPaths = ["/", "/route", "/updates", "/rules", "/clue-board", "/interview", "/community-guidelines"];
-  for (const route of rebrandedPaths) {
+  const currentPaths = ["/", "/route", "/golf-balls"];
+  for (const route of currentPaths) {
+    const escapedUrl = `https://www.timlostsomething.com${route}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(sitemap, new RegExp(`<loc>${escapedUrl}</loc>\\s*<lastmod>2026-07-29</lastmod>`), route);
+  }
+  const preservedPaths = ["/updates", "/rules", "/clue-board", "/interview", "/community-guidelines"];
+  for (const route of preservedPaths) {
     const escapedUrl = `https://www.timlostsomething.com${route}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     assert.match(sitemap, new RegExp(`<loc>${escapedUrl}</loc>\\s*<lastmod>2026-07-16</lastmod>`), route);
   }

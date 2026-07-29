@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { CAMPAIGN_PAGES } from "../scripts/campaign-shell.mjs";
 
-const baseCommit = "c92e5984500e0e4de1307b01364fbb4a26f2ab84";
+const baseCommit = "b9a47ef75f2c73a396dd132ec33efd0a9b1ef644";
 const manifest = JSON.parse(
   readFileSync(
     new URL("./fixtures/campaign-page-preservation.json", import.meta.url),

@@ -519,6 +519,12 @@ section { padding: 70px 0; position: relative; }
 .golf-ball-contact .section-title { color: var(--gold-300); }
 .golf-ball-contact .section-lead { color: var(--cream-100); }
 .golf-ball-contact .cta-row { justify-content: center; }
+.golf-ball-teaser {
+  color: var(--cream-100);
+  background: var(--green-900);
+}
+.golf-ball-teaser .section-title { color: var(--gold-300); }
+.golf-ball-teaser .section-lead { color: var(--cream-100); }
 
 /* ---------- validation environment ---------- */
 .validation-environment-notice {
