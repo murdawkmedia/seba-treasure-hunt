@@ -23,6 +23,7 @@ const clientEntryNames = Object.freeze([
   "account",
   "board",
   "dashboard",
+  "items",
   "legal-embed",
   "ops",
   "report",

@@ -146,7 +146,7 @@ test("approved reports preserve stable ID 13 and display Derby as public Waypoin
   assert.doesNotMatch(JSON.stringify(page.items), /must-not-leak|private-waypoint/);
 });
 
-test("approved report waypoint labels use public order and published names", async () => {
+test("approved report place labels use public order and published names", async () => {
   const updatesModule = await import("../src/client/updates") as Record<string, unknown>;
   assert.equal(typeof updatesModule.approvedReportWaypointLabel, "function");
   if (typeof updatesModule.approvedReportWaypointLabel !== "function") return;
@@ -155,7 +155,7 @@ test("approved report waypoint labels use public order and published names", asy
       waypointRouteOrder: 5,
       waypointName: "Derby's Lakeview General Store",
     }),
-    "Waypoint 5 — Derby's Lakeview General Store",
+    "Place 5 — Derby's Lakeview General Store",
   );
   assert.equal(
     updatesModule.approvedReportWaypointLabel({ waypointRouteOrder: null, waypointName: null }),

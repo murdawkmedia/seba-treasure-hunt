@@ -16,23 +16,20 @@ const extractRegion = (source, tag, context) => {
 };
 
 test("the first public screen exposes the live case state and primary actions", () => {
-  const heroEnd = html.indexOf("<!-- ===================== DIRECT ANSWER");
-  const sourceFirstScreen = html.slice(0, heroEnd);
-  const renderedHtml = rendered();
-  const renderedFirstScreen = renderedHtml.slice(0, renderedHtml.indexOf("<!-- ===================== DIRECT ANSWER"));
+  const sourceFirstScreen = extractRegion(html, "section", "homepage evidence wall");
+  const renderedFirstScreen = rendered();
 
   assert.match(renderedFirstScreen, /data-case-status/i);
   assert.match(renderedFirstScreen, /Status unavailable/i);
   assert.match(html, /assets\/app\/status\.js/i);
-  assert.match(sourceFirstScreen, /href="start\.html"/i);
-  assert.match(sourceFirstScreen, /href="report\.html"/i);
-  assert.match(sourceFirstScreen, /href="updates\.html"/i);
-  assert.match(sourceFirstScreen, /href="rules\.html"/i);
+  assert.match(sourceFirstScreen, /href="\/route"/i);
+  assert.match(sourceFirstScreen, /href="\/report"/i);
+  assert.match(renderedFirstScreen, /href="\/dashboard"/i);
 });
 
 test("homepage navigation reaches the living campaign surfaces without sponsorship", () => {
   for (const target of [
-    "/start",
+    "/route",
     "/dashboard",
     "/updates",
     "/report",

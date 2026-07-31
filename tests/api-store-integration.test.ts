@@ -260,7 +260,8 @@ const operatorAlertMigrationFiles = [
   "0010_graph_transactional_email.sql",
   "0011_report_publication_and_participation.sql",
   "0012_lucky_13_waypoints.sql",
-  "0015_submission_ops_publication_refinement.sql"
+  "0015_submission_ops_publication_refinement.sql",
+  "0016_dynamic_case_items.sql"
 ] as const;
 
 const createOperatorAlertDatabase = async (t: { after(callback: () => unknown): void }) => {
@@ -277,6 +278,102 @@ const createOperatorAlertDatabase = async (t: { after(callback: () => unknown): 
   }
   return db;
 };
+
+test("case items use public-safe projections, optimistic updates, private media, and draft announcements", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const store = new D1DataStore(db);
+
+  const seeded = await store.listPublicCaseItems();
+  assert.deepEqual(seeded.map((item) => item.slug), [
+    "tims-id",
+    "cash",
+    "diamond-rings",
+    "camera",
+    "apple-watch",
+    "purse",
+    "golf-balls"
+  ]);
+  assert.equal(seeded[0]?.status, "found");
+  assert.equal("version" in seeded[0]!, false);
+
+  const created = await store.createCaseItem({
+    slug: "test-binoculars",
+    owner: "tim",
+    category: "prize",
+    title: "A pair of binoculars",
+    description: "A private draft item.",
+    finderKeeps: true,
+    status: "draft",
+    displayOrder: 20
+  }, "staff-items");
+  assert.equal(created.version, 1);
+  assert.equal((await store.listPublicCaseItems()).some((item) => item.slug === "test-binoculars"), false);
+
+  const uploaded = await store.addCaseItemUploads(String(created.id), [{
+    id: "case-item-media-1",
+    key: "originals/2026-07-31/case_item/case-item-media-1",
+    contentType: "image/jpeg",
+    size: 1200,
+    status: "processing"
+  }], "staff-items");
+  assert.equal((uploaded?.uploads as Array<Record<string, unknown>>).length, 1);
+  await db.prepare(
+    `UPDATE case_item_uploads SET status = 'ready', derivative_object_key = ? WHERE id = ?`
+  ).bind("derivatives/case-item-media-1.webp", "case-item-media-1").run();
+
+  const visible = await store.updateCaseItem(String(created.id), {
+    slug: "test-binoculars",
+    owner: "tim",
+    category: "prize",
+    title: "A pair of binoculars",
+    description: "A pair of binoculars is out there.",
+    finderKeeps: true,
+    status: "out_there",
+    displayOrder: 20,
+    expectedVersion: 1,
+    mediaSelections: [{
+      id: "case-item-media-1",
+      altText: "A pair of binoculars prepared for the search",
+      caption: null
+    }]
+  }, "staff-items");
+  assert.equal(visible?.version, 2);
+  assert.equal((await store.listPublicCaseItems()).some((item) => item.slug === "test-binoculars"), true);
+  assert.deepEqual(await store.getPublicMedia("case-item-media-1"), {
+    key: "derivatives/case-item-media-1.webp",
+    contentType: "image/jpeg",
+    cacheControl: "no-store"
+  });
+
+  await assert.rejects(
+    () => store.updateCaseItem(String(created.id), {
+      slug: "test-binoculars",
+      owner: "tim",
+      category: "prize",
+      title: "Stale",
+      description: "Stale edit.",
+      finderKeeps: true,
+      status: "found",
+      displayOrder: 20,
+      expectedVersion: 1,
+      mediaSelections: []
+    }, "staff-items"),
+    (error: unknown) => error instanceof ApiError && error.code === "case_item_stale"
+  );
+
+  const draft = await store.createCaseItemAnnouncementDraft(String(created.id), "staff-items");
+  assert.equal(draft?.status, "draft");
+  assert.equal((await store.listUpdates()).items.some((update) => update.id === draft?.id), false);
+
+  const event = await db.prepare(
+    "SELECT id FROM case_item_events WHERE item_id = ? ORDER BY occurred_at DESC LIMIT 1"
+  ).bind(created.id).first<{ id: string }>();
+  assert.ok(event?.id);
+  await assert.rejects(
+    () => db.prepare("UPDATE case_item_events SET action = 'tampered' WHERE id = ?").bind(event!.id).run(),
+    /append-only/i
+  );
+});
 
 test("standalone Official Updates use a private draft-first audited lifecycle", async (t) => {
   const db = await createOperatorAlertDatabase(t);

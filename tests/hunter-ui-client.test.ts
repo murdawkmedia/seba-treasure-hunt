@@ -353,8 +353,8 @@ test("dashboard route rows and record labels use public order without guessing h
     { id: 14, routeOrder: 13, name: "Invalid", description: "No", zoneState: "open", exactUrl: null },
   ]) as Array<{ id: number; routeOrder: number }>;
   assert.deepEqual(normalized.map((row) => [row.id, row.routeOrder]), [[13, 5], [5, 6]]);
-  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 13, waypointRouteOrder: 5, waypointName: "Derby's Lakeview General Store" }), "Waypoint 5 — Derby's Lakeview General Store");
-  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 5, waypointRouteOrder: null, waypointName: null }), "Waypoint details unavailable");
+  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 13, waypointRouteOrder: 5, waypointName: "Derby's Lakeview General Store" }), "Stop 5 — Derby's Lakeview General Store");
+  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 5, waypointRouteOrder: null, waypointName: null }), "Stop details unavailable");
 });
 
 test("report request headers authenticate signed-in hunters without gating public reporters", () => {

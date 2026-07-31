@@ -1036,7 +1036,7 @@ async function exerciseMinorSignupGate(page, fixtureState, legalDocument) {
   }
   assert.equal(await signup.getAttribute("data-waiver-version"), "2026.2");
   assert.equal(await waiverAcceptance.isEnabled(), true);
-  await waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to account setup" }).click();
+  await waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to signup" }).click();
   await waiverDialog.waitFor({ state: "hidden" });
   assert.equal(await waiverReview.evaluate((element) => element === document.activeElement), true, "bottom Done restores focus to the Waiver review trigger");
   await assertAcceptanceUnchanged("after bottom Done");
@@ -1109,7 +1109,7 @@ async function exerciseResumableMobileSignup(page, origin, fixtureState) {
   assert.ok(legalScroll.height > legalScroll.viewport && legalScroll.y > 0, "iPhone legal review must support reading through the document");
   await assertMinimumTargetSize(privacyDialog.locator("button:visible, a[href]:visible"), "44 pixel legal dialog controls");
   await assertDialogFocusTrap(page, privacyDialog, "Privacy legal dialog");
-  await privacyDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to account setup" }).click();
+  await privacyDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to signup" }).click();
   await privacyDialog.waitFor({ state: "hidden" });
   assert.equal(await privacyReview.evaluate((element) => document.activeElement === element), true, "Done restores focus during iPhone signup");
 
@@ -1279,7 +1279,7 @@ async function exerciseDashboard(page, legalSource, viewportName, evidence) {
   await page.locator("[data-dashboard-content]").waitFor({ state: "visible" });
   await page.locator("[data-waiver-panel]").waitFor({ state: "visible" });
   assert.equal(await page.locator('[data-dashboard-waypoints] a:has-text("Open approved directions")').count(), 1, "progress and waypoint boundaries expose only the open approved link");
-  assert.match(await page.locator("[data-dashboard-waypoints]").innerText(), /Exact directions locked/i);
+  assert.match(await page.locator("[data-dashboard-waypoints]").innerText(), /Exact directions are locked/i);
   if (viewportName !== "desktop") {
     await page.locator("[data-waiver-receipt]").waitFor({ state: "visible" });
     const expected = viewportName === "iphone" ? "sent" : "failed";
@@ -1360,7 +1360,7 @@ async function exerciseBoardBoundaries(page) {
 }
 
 async function fillReportBase(page) {
-  await page.locator('[name="type"]').selectOption("find");
+  await page.locator('[data-report-intake-choice][data-report-type="find"]').check();
   await page.locator('[name="name"]').fill(privateFixtures.adultName);
   await page.locator('[name="email"]').fill(privateFixtures.email);
   await page.locator('[name="locationDescription"]').fill("Near the marked public waypoint.");
@@ -1382,8 +1382,8 @@ async function exerciseReportBoundaries(page) {
 }
 
 async function exerciseRoute(page) {
-  await page.locator("[data-route-member-state]").filter({ hasText: /Signed in\. All thirteen waypoints/i }).waitFor();
-  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps waypoint")');
+  await page.locator("[data-route-member-state]").filter({ hasText: /Signed in\. All thirteen places/i }).waitFor();
+  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps directions")');
   const routeStories = page.locator(".stop .stop-quote");
   const routePhotos = page.locator('.stop-gallery .photo img[src*="assets/route/stop-"]');
   assert.equal(await exactWaypointLinks.count(), 13, "thirteen authenticated exact links must hydrate without exposing them signed out");
@@ -1401,7 +1401,7 @@ async function exerciseRoute(page) {
 
 async function exerciseSignedOutRoute(page) {
   await page.locator("[data-route-signed-out]").waitFor();
-  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps waypoint")');
+  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps directions")');
   assert.equal(await exactWaypointLinks.count(), 0, "signed-out route must contain zero exact-link anchors");
   const hrefValues = await page.locator("[href]").evaluateAll((elements) =>
     elements.map((element) => element.getAttribute("href")).filter((href) => href !== null));
@@ -1445,7 +1445,7 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     );
     assert.equal(actualReportOptions.length, 15, "thirteen waypoints plus two fallback choices must remain available");
     assert.deepEqual(actualReportOptions, expectedReportOptions, "report waypoint choices must preserve exact values and meaningful labels");
-    await reportPage.page.locator('[name="type"]').selectOption("find");
+    await reportPage.page.locator('[data-report-intake-choice][data-report-type="find"]').check();
     await reportPage.page.locator('[name="phone"]').fill(privateFixtures.childPhone);
     await reportPage.page.locator('[name="waypointId"]').selectOption(String(reportFixture.waypointId));
     await reportPage.page.locator('[name="locationDescription"]').fill("Near the signed waypoint marker.");
@@ -1482,6 +1482,7 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     for (const expected of [privateFixtures.minorName, privateFixtures.email, privateFixtures.childPhone, String(reportFixture.waypointId), String(reportFixture.latitude), privateFixtures.reportEvidence]) {
       assert.ok(privateDetail.includes(expected), `Staff report detail must include ${expected}`);
     }
+    await dialog.locator('input[name="reportPublicDestination"][value="official_update"]').check();
     const mediaChoices = dialog.locator('input[name="publishMedia"]');
     assert.equal(await mediaChoices.count(), 2);
     await opsPage.page.waitForFunction(() => [...document.querySelectorAll('input[name="publishMedia"]')].every((input) => !input.disabled));
@@ -1508,7 +1509,7 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     const publicPost = updatesPage.page.locator('[data-updates-list] .official-note--report');
     await publicPost.waitFor();
     const publicText = await publicPost.innerText();
-    for (const expected of ["Young Hunter", "Waypoint 8 — The Lodge Trails", String(reportFixture.latitude), String(reportFixture.longitude), reportFixture.title]) {
+    for (const expected of ["Young Hunter", "Place 8 — The Lodge Trails", String(reportFixture.latitude), String(reportFixture.longitude), reportFixture.title]) {
       assert.ok(publicText.toLowerCase().includes(expected.toLowerCase()), `public signed-out approved report must include ${expected}; rendered ${JSON.stringify(publicText)}`);
     }
     const publicHtml = await updatesPage.page.content();

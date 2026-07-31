@@ -6,14 +6,14 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 
 | Route | Purpose |
 |---|---|
-| `/` | Documentary case overview, real evidence and current status |
-| `/route` | 13 Stops waypoint stories; signed-in hunters receive exact route controls |
+| `/` | Full investigation board, real evidence and current item status |
+| `/route` | Where to Look: 13 public place stories; signed-in hunters receive exact directions and a private checklist |
 | `/golf-balls` | Casey's separate search for marked In the Woods golf balls and current festival-ticket redemption details |
-| `/interview` | Tim’s Account, organized as the before, along-route, and after-discovery record |
-| `/updates` | Official updates and approved community reports |
-| `/report` | Private find, tip, and safety reporting |
-| `/clue-board` | Moderated community Case Notes; the stable route remains unchanged |
-| `/rules` | Versioned search and safety rules |
+| `/interview` | Tim's Story, preserving the 19-entry account recorded before the ID was found |
+| `/updates` | Latest News and approved public reports |
+| `/report` | I Found Something: guest-friendly private find, observation and safety intake |
+| `/clue-board` | What People Found: moderated public observations; the stable route remains unchanged |
+| `/rules` | Rules & Safety, with versioned search rules |
 | `/privacy` | Privacy Policy & Media Notice |
 | `/waiver` | Participation Acknowledgement, Waiver and Release |
 
@@ -21,20 +21,22 @@ Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and a
 
 Public sponsorship is withdrawn. The dormant `sponsors.html` source remains in the repository for possible future review, but it is not built or routed publicly and no public submission form is available. Existing sponsor inquiry records remain private in the Ops Sponsors ledger.
 
-The Documentary Case File public-page transition, Submission, Ops and
-Publication Refinement, and resilient mobile account onboarding are live in
-production on the identifiers recorded in the operations handoff.
+The current source candidate advances the public experience to the approved B2
+Full Investigation Board while retaining the production authentication,
+legal, reporting, moderation, media and rollback contracts.
 
-The current release distinguishes public Case Notes from private reports, adds
-report-time public attribution, gives operators independent private, Case Note
-and draft/scheduled Official Update outcomes, supports direct Update media,
-and uses one scoped approved-media viewer across Updates, Case Notes, Ops and
-the 13 Stops route. Mobile signup and password flows return to explicit,
-restartable recovery states when the identity provider does not answer.
+The interface distinguishes What People Found from private reports, gives
+staff independent private, public-observation and draft/scheduled Latest News
+outcomes, supports direct news media, and uses one scoped approved-media viewer
+across public feeds, Ops and the 13-place route. Mobile signup and password
+flows return to explicit, restartable recovery states when the identity
+provider does not answer.
 
-Tim's original roughly $5,000 cash loss remains the starting point of the
-case. As he continues retracing the route looking for his still-missing ID, the
-current amount believed to be in the search area is approaching $10,000.
+Tim's ID is found. The original roughly $5,000 cash loss remains the starting
+point of the case; the current estimate is approaching $10,000 without being a
+guarantee. The rings, camera, Apple Watch, purse and qualifying golf balls begin
+as Out there and are maintained by staff through the audited What's Out There
+board rather than source-code edits.
 
 ## Guided private-report workflow
 
@@ -65,7 +67,7 @@ are recorded in
 
 ## Design source
 
-[`DESIGN.md`](DESIGN.md) records the approved Documentary Case File direction, shared typography and media rules, and the legal, authentication, route and reporting invariants that future public campaign work must preserve.
+[`DESIGN.md`](DESIGN.md) records the approved B2 Full Investigation Board direction, shared typography and media rules, and the legal, authentication, route and reporting invariants that future public work must preserve.
 
 ## Development
 

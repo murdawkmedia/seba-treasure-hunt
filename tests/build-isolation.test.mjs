@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { buildSite } from "../scripts/build.mjs";
 import {
   CAMPAIGN_MENU,
+  CAMPAIGN_MORE_MENU,
   CAMPAIGN_PAGES,
   renderCampaignPage,
   scanCampaignHtmlStartTags,
@@ -52,6 +53,7 @@ const expectedShellLinks = Object.freeze([
   "/updates",
   "/",
   ...CAMPAIGN_MENU.map((item) => item.href),
+  ...CAMPAIGN_MORE_MENU.map((item) => item.href),
   "https://www.sebastays.com/guarantee",
   "/privacy",
   "/waiver",
@@ -104,7 +106,7 @@ function assertCanonicalShellLinks(html, filename) {
 }
 
 function expectedCurrentCount(filename) {
-  if (filename === "index.html") return 0;
+  if (["index.html", "start.html", "golf-balls.html"].includes(filename)) return 0;
   if (filename === "rules.html") return 2;
   return 1;
 }
@@ -193,7 +195,10 @@ test("shell link validation handles every attribute form and rejects bypasses", 
       /shell link|root-relative|expected/i,
     );
   }
-  assert.throws(() => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/rules"[^>]*>Rules<\/a>/, ""), "route.html"), /expected 17 shell links/i);
+  assert.throws(
+    () => assertCanonicalShellLinks(rendered.replace(/<a[^>]+href="\/rules"[^>]*>Rules<\/a>/, ""), "route.html"),
+    new RegExp(`expected ${expectedShellLinks.length} shell links`, "i"),
+  );
 });
 
 test("imported builds use owned temporary outputs without touching repository dist", async () => {
@@ -219,7 +224,7 @@ test("imported builds use owned temporary outputs without touching repository di
       );
       assert.equal(
         (primaryNav(html).match(/aria-current="page"/g) ?? []).length,
-        CAMPAIGN_MENU.some((item) => item.route === CAMPAIGN_PAGES[filename]) ? 1 : 0,
+        [...CAMPAIGN_MENU, ...CAMPAIGN_MORE_MENU].some((item) => item.route === CAMPAIGN_PAGES[filename]) ? 1 : 0,
         `${filename} primary navigation has only its matching current state`,
       );
     }

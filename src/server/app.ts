@@ -16,6 +16,10 @@ import { ApiError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument, publicLegalState } from "./legal-documents";
 import type {
   ApiDependencies,
+  CaseItemInput,
+  CaseItemMutation,
+  CaseItemOwner,
+  CaseItemStatus,
   CaseState,
   PagesEnv,
   Principal,
@@ -82,6 +86,14 @@ const appPaths = new Set(
   )
 );
 const validImageTypes = REPORT_IMAGE_TYPES;
+const validCaseItemOwners = new Set<CaseItemOwner>(["tim", "casey"]);
+const validCaseItemStatuses = new Set<CaseItemStatus>([
+  "draft",
+  "out_there",
+  "found",
+  "paused",
+  "archived"
+]);
 const validSponsorSupportTypes = new Set<SponsorSupportType>([
   "community",
   "lead",
@@ -350,6 +362,98 @@ const publicationInput = (body: Record<string, unknown>) => {
     action,
     scheduledFor
   };
+};
+
+const caseItemInput = (
+  body: Record<string, unknown>,
+  mutation: boolean
+): CaseItemInput | CaseItemMutation => {
+  const allowed = new Set([
+    "slug",
+    "owner",
+    "category",
+    "title",
+    "description",
+    "finderKeeps",
+    "status",
+    "displayOrder",
+    ...(mutation ? ["expectedVersion", "mediaSelections"] : [])
+  ]);
+  const forbidden = Object.keys(body).find((key) => !allowed.has(key));
+  if (forbidden) {
+    throw new ApiError(422, "validation_failed", "Item fields are invalid.", { field: forbidden });
+  }
+  const slug = requiredString(body, "slug", { max: 80 });
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    throw new ApiError(422, "validation_failed", "Use a lowercase item slug with words separated by hyphens.", {
+      field: "slug"
+    });
+  }
+  const owner = body.owner;
+  if (typeof owner !== "string" || !validCaseItemOwners.has(owner as CaseItemOwner)) {
+    throw new ApiError(422, "validation_failed", "Choose Tim or Casey as the item owner.", { field: "owner" });
+  }
+  const status = body.status;
+  if (typeof status !== "string" || !validCaseItemStatuses.has(status as CaseItemStatus)) {
+    throw new ApiError(422, "validation_failed", "Choose a valid item status.", { field: "status" });
+  }
+  if (typeof body.finderKeeps !== "boolean") {
+    throw new ApiError(422, "validation_failed", "Choose whether the finder keeps this item.", {
+      field: "finderKeeps"
+    });
+  }
+  const displayOrder = body.displayOrder;
+  if (!Number.isInteger(displayOrder) || Number(displayOrder) < 0 || Number(displayOrder) > 999) {
+    throw new ApiError(422, "validation_failed", "Display order must be a whole number from 0 to 999.", {
+      field: "displayOrder"
+    });
+  }
+  const base: CaseItemInput = {
+    slug,
+    owner: owner as CaseItemOwner,
+    category: requiredString(body, "category", { max: 80 }),
+    title: requiredString(body, "title", { max: 160 }),
+    description: requiredString(body, "description", { max: 1_000 }),
+    finderKeeps: body.finderKeeps,
+    status: status as CaseItemStatus,
+    displayOrder: Number(displayOrder)
+  };
+  if (!mutation) return base;
+  const expectedVersion = body.expectedVersion;
+  if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+    throw new ApiError(422, "validation_failed", "The item version is invalid. Refresh and try again.", {
+      field: "expectedVersion"
+    });
+  }
+  const rawSelections = body.mediaSelections ?? [];
+  if (!Array.isArray(rawSelections) || rawSelections.length > 3) {
+    throw new ApiError(422, "validation_failed", "Choose up to three item images.", {
+      field: "mediaSelections"
+    });
+  }
+  const mediaSelections = rawSelections.map((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new ApiError(422, "validation_failed", "Item image details are invalid.", {
+        field: "mediaSelections"
+      });
+    }
+    const selection = candidate as Record<string, unknown>;
+    if (Object.keys(selection).some((key) => !["id", "altText", "caption"].includes(key))) {
+      throw new ApiError(422, "validation_failed", "Item image details are invalid.", {
+        field: "mediaSelections"
+      });
+    }
+    const id = requiredString(selection, "id", { max: 200 });
+    const altText = requiredString(selection, "altText", { max: 200 });
+    const caption = optionalString(selection, "caption", 500);
+    return { id, altText, caption };
+  });
+  if (new Set(mediaSelections.map((selection) => selection.id)).size !== mediaSelections.length) {
+    throw new ApiError(422, "validation_failed", "Choose each item image only once.", {
+      field: "mediaSelections"
+    });
+  }
+  return { ...base, expectedVersion: Number(expectedVersion), mediaSelections };
 };
 
 const email = (body: Record<string, unknown>, key: string) => {
@@ -1488,6 +1592,9 @@ export const createApi = (deps: ApiDependencies) => {
     await requireStaff(deps, c.req.raw);
     return success(c, await deps.store.getOpsDashboard());
   });
+  app.get("/api/v1/items", async (c) => {
+    return success(c, await deps.store.listPublicCaseItems());
+  });
   const productionSnapshot = async (request: Request) => {
     await requireStaff(deps, request);
     if (!deps.productionSnapshot) {
@@ -1633,6 +1740,97 @@ export const createApi = (deps: ApiDependencies) => {
       cursor: c.req.query("cursor") ?? null
     });
     return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.get("/api/v1/ops/items", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    return success(c, await deps.store.listOpsCaseItems());
+  });
+  app.post("/api/v1/ops/items", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { body } = await requestBody(c.req.raw);
+    return success(c, await deps.store.createCaseItem(
+      caseItemInput(body, false) as CaseItemInput,
+      staff.subject
+    ), 201);
+  });
+  app.patch("/api/v1/ops/items/:id", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { body } = await requestBody(c.req.raw);
+    const item = await deps.store.updateCaseItem(
+      c.req.param("id"),
+      caseItemInput(body, true) as CaseItemMutation,
+      staff.subject
+    );
+    if (!item) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    return success(c, item);
+  });
+  app.post("/api/v1/ops/items/:id/media", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { files } = await requestBody(c.req.raw);
+    await validateImages(files);
+    if (files.length < 1 || files.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three item images.");
+    }
+    const existing = await deps.store.listOpsCaseItems();
+    const item = existing.find((candidate) => candidate.id === c.req.param("id"));
+    if (!item) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    const activeCount = uploads.filter((upload) => upload.status !== "deleted" && upload.status !== "rejected").length;
+    if (activeCount + files.length > 3) {
+      throw new ApiError(422, "validation_failed", "An item can have no more than three images.");
+    }
+    const media = await deps.uploads.save(files, { kind: "case_item", subject: staff.subject });
+    const updated = await deps.store.addCaseItemUploads(c.req.param("id"), media, staff.subject);
+    if (!updated) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    return success(c, updated, 201);
+  });
+  app.get("/api/v1/ops/items/:id/media/:mediaId", async (c) => {
+    const staff = await requireStaff(deps, c.req.raw);
+    const authorized = await deps.store.getCaseItemMedia(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!authorized) throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    const object = await deps.uploads.read(authorized.key);
+    if (!object || !validImageTypes.has(authorized.contentType) || !validImageTypes.has(object.contentType)) {
+      throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    }
+    return new Response(object.body, {
+      headers: {
+        "content-type": object.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "cross-origin-resource-policy": "same-origin"
+      }
+    });
+  });
+  app.delete("/api/v1/ops/items/:id/media/:mediaId", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const removed = await deps.store.removeCaseItemUpload(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!removed) throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    return success(c, removed);
+  });
+  app.post("/api/v1/ops/items/:id/announcement-draft", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw, "Announcement drafts accept application/json only.");
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length || Object.keys(body).length > 0) {
+      throw new ApiError(422, "validation_failed", "Announcement draft creation does not accept fields.");
+    }
+    const draft = await deps.store.createCaseItemAnnouncementDraft(c.req.param("id"), staff.subject);
+    if (!draft) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    return success(c, draft, 201);
   });
   app.post("/api/v1/ops/updates", async (c) => {
     sameOrigin(c.req.raw);

@@ -235,10 +235,10 @@ export function validateReply(body: string): string | null {
 
 export function validateFieldNote(waypointId: string, body: string, files: readonly File[]): string[] {
   const errors: string[] = [];
-  if (parseWaypointId(waypointId) === null) errors.push("Choose one of the 13 waypoints.");
+  if (parseWaypointId(waypointId) === null) errors.push("Choose one of the 13 places.");
   const note = body.trim();
   if (!note) errors.push("Describe what you observed.");
-  if (note.length > 1200) errors.push("Case Notes must be 1,200 characters or fewer.");
+  if (note.length > 1200) errors.push("Your observation must be 1,200 characters or fewer.");
   if (files.length > REPORT_IMAGE_MAX_COUNT) errors.push("Choose no more than 3 images.");
   return errors;
 }
@@ -304,7 +304,7 @@ export function renderBoardFeed(state: BoardViewState): string {
     return `<div class="board-state board-state--unavailable"><h3>Board unavailable</h3><p>${escapeHtml(state.detail)}</p><p>Your private report can still be sent from the report page.</p></div>`;
   }
   if (state.notes.length === 0) {
-    return `<div class="board-state board-state--empty"><h3>No approved Case Notes here yet</h3><p>Try another waypoint or return after moderators have reviewed new observations.</p></div>`;
+    return `<div class="board-state board-state--empty"><h3>Nothing has been shared here yet</h3><p>Try another place or return after moderators have reviewed new observations.</p></div>`;
   }
   return state.notes.map((note) => renderNote(note, state.canReply)).join("");
 }
@@ -414,7 +414,7 @@ export async function initialiseBoard(): Promise<void> {
     const container = noteForm.querySelector<HTMLElement>("[data-note-turnstile]");
     const state = noteForm.querySelector<HTMLElement>("[data-note-turnstile-state]");
     if (!container || !turnstileApi || !turnstileSiteKey) {
-      disableNoteHumanCheck("Human check unavailable. Case Notes cannot be submitted until it is restored.");
+      disableNoteHumanCheck("Human check unavailable. Public observations cannot be submitted until it is restored.");
       return;
     }
     if (!boardTurnstileLifecycle.beginRender("field_note")) return;
@@ -431,7 +431,7 @@ export async function initialiseBoard(): Promise<void> {
         boardTurnstileLifecycle.recordReset("field_note", "expired");
         disableNoteHumanCheck("Human check expired. Complete it again before submitting.");
       },
-      "error-callback": () => disableNoteHumanCheck("Human check unavailable. Case Notes cannot be submitted until it is restored."),
+      "error-callback": () => disableNoteHumanCheck("Human check unavailable. Public observations cannot be submitted until it is restored."),
     });
   };
 

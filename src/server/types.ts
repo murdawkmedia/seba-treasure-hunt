@@ -19,6 +19,30 @@ export type ReportWorkflowMutation =
 export type CaseState = "open" | "paused" | "found";
 export type ZoneState = "open" | "restricted" | "hazardous" | "temporarily_closed";
 export type DeploymentEnvironment = "validation" | "production";
+export type CaseItemOwner = "tim" | "casey";
+export type CaseItemStatus = "draft" | "out_there" | "found" | "paused" | "archived";
+
+export interface CaseItemMediaSelection {
+  id: string;
+  altText: string;
+  caption: string | null;
+}
+
+export interface CaseItemInput {
+  slug: string;
+  owner: CaseItemOwner;
+  category: string;
+  title: string;
+  description: string;
+  finderKeeps: boolean;
+  status: CaseItemStatus;
+  displayOrder: number;
+}
+
+export interface CaseItemMutation extends CaseItemInput {
+  expectedVersion: number;
+  mediaSelections: CaseItemMediaSelection[];
+}
 
 export interface CaseStatus {
   state: CaseState;
@@ -287,6 +311,7 @@ export interface DataStore {
   listZones(): Promise<Record<string, unknown>[]>;
   listWaypoints(): Promise<Record<string, unknown>[]>;
   listBoard(waypointId: number | null, options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  listPublicCaseItems(): Promise<Record<string, unknown>[]>;
   getPublicMedia(id: string): Promise<{
     key: string;
     contentType: string;
@@ -387,6 +412,32 @@ export interface DataStore {
   ): Promise<Record<string, unknown> | null>;
   isActiveStaff(subject: string, normalizedEmail: string | null): Promise<boolean>;
   getOpsDashboard(): Promise<Record<string, unknown>>;
+  listOpsCaseItems(): Promise<Record<string, unknown>[]>;
+  createCaseItem(input: CaseItemInput, actorSubject: string): Promise<Record<string, unknown>>;
+  updateCaseItem(
+    id: string,
+    input: CaseItemMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  addCaseItemUploads(
+    id: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  getCaseItemMedia(
+    id: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null>;
+  removeCaseItemUpload(
+    id: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  createCaseItemAnnouncementDraft(
+    id: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
   updateStatus(input: Record<string, unknown>, actorSubject: string): Promise<CaseStatus>;
   listOpsUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   getOpsUpdateDetail(id: string, actorSubject: string): Promise<Record<string, unknown> | null>;
@@ -500,7 +551,7 @@ export interface WebhookVerifier {
 }
 
 export interface UploadStorage {
-  save(files: File[], context: { kind: "field_note" | "report" | "official_update"; subject: string | null }): Promise<StoredMedia[]>;
+  save(files: File[], context: { kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }): Promise<StoredMedia[]>;
   read(key: string): Promise<{
     body: ReadableStream;
     contentType: string;
@@ -511,7 +562,7 @@ export interface UploadStorage {
 export interface MediaJob {
   mediaId: string;
   key: string;
-  ownerKind: "field_note" | "report" | "official_update";
+  ownerKind: "field_note" | "report" | "official_update" | "case_item";
 }
 
 export interface PublicRuntimeConfig {

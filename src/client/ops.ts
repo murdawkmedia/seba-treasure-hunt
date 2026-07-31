@@ -17,8 +17,9 @@ import {
   officialUpdateGuidance,
   type OfficialUpdateStatus,
 } from "../shared/official-update-workflow";
+import { loadOpsItems, setupOpsItems } from "./ops-items";
 
-type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
+type OpsView = "command" | "updates" | "reports" | "items" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
 type OpsSponsorState = "new" | "contacted" | "qualified" | "accepted" | "closed";
 type OpsSponsorSupportType = "community" | "lead" | "prize_in_kind" | "other";
@@ -309,7 +310,7 @@ export interface ProductionSnapshotReport {
   createdAt: string;
 }
 
-const views: readonly OpsView[] = ["command", "updates", "reports", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit", "production-snapshot"];
+const views: readonly OpsView[] = ["command", "updates", "reports", "items", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit", "production-snapshot"];
 const sponsorStates: readonly OpsSponsorState[] = ["new", "contacted", "qualified", "accepted", "closed"];
 const visibleSponsorMetricStates = ["new", "contacted", "qualified", "accepted"] as const;
 const sponsorSupportTypes: readonly OpsSponsorSupportType[] = ["community", "lead", "prize_in_kind", "other"];
@@ -333,6 +334,7 @@ let productionSnapshotTrigger: HTMLButtonElement | null = null;
 let productionSnapshotObjectUrls: string[] = [];
 let updatesLoaded = false;
 let updatesLoading = false;
+let itemsLoaded = false;
 let standaloneUpdateObjectUrls: string[] = [];
 interface StandaloneUpdateEditor {
   updateId: string | null;
@@ -2110,6 +2112,19 @@ async function opsRequest(url: string, init: RequestInit = {}): Promise<{ respon
   return { response, payload };
 }
 
+async function opsBinaryRequest(url: string): Promise<Response> {
+  return fetch(url, {
+    headers: await opsHeaders({ Accept: "image/avif,image/webp,image/png,image/jpeg" }),
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+}
+
+async function loadItemsView(): Promise<void> {
+  await loadOpsItems();
+  itemsLoaded = true;
+}
+
 function setText(selector: string, value: string): void {
   const element = document.querySelector<HTMLElement>(selector);
   if (element) element.textContent = value;
@@ -2156,6 +2171,7 @@ function switchView(view: OpsView, focus = true): void {
   if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
   if (focus) document.querySelector<HTMLElement>("#ops-main")?.focus();
   if (view === "sponsors" && !sponsorsLoaded) void loadSponsors();
+  if (view === "items" && !itemsLoaded) void loadItemsView();
   if (view === "updates" && !updatesLoaded && !updatesLoading) void loadOpsUpdates();
   if (view === "subscribers" && !subscribersLoaded && !subscribersLoading) void loadSubscribers();
   if (view === "production-snapshot" && !productionSnapshotLoaded && !productionSnapshotLoading) {
@@ -4005,6 +4021,15 @@ function setupAuthForms(): void {
 }
 
 function setupWorkspace(): void {
+  setupOpsItems({
+    request: opsRequest,
+    fetchBinary: opsBinaryRequest,
+    onAnnouncementDraft: async () => {
+      await loadOpsUpdates();
+      switchView("updates");
+      setOfficialUpdateResult("A private Latest News draft was created from the item. Review and edit it before any release.");
+    },
+  });
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view]")) {
     button.addEventListener("click", () => switchView(resolveOpsView(button.dataset.view ?? "")));
   }
@@ -4019,7 +4044,7 @@ function setupWorkspace(): void {
     sidebar?.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", String(open));
   });
-  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit(), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit(), ...(itemsLoaded ? [loadItemsView()] : []), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view-retry]")) {
     button.addEventListener("click", async () => {
       const view = resolveOpsView(button.dataset.viewRetry ?? "");
@@ -4028,6 +4053,7 @@ function setupWorkspace(): void {
         if (view === "command") await loadDashboard();
         else if (view === "updates") await loadOpsUpdates();
         else if (view === "reports") await loadReports();
+        else if (view === "items") await loadItemsView();
         else if (view === "moderation") await loadModeration();
         else if (view === "zones") await loadZones();
         else if (view === "rules") await loadRules();

@@ -108,7 +108,8 @@ test("signup legal dialogs have labelled top close controls and sticky completio
   for (const kind of ["privacy-media", "waiver"]) {
     const dialog = html.match(new RegExp(`<dialog\\b(?=[^>]*data-signup-dialog="${kind}")[^>]*>[\\s\\S]*?<\\/dialog>`))?.[0] ?? "";
     assert.match(dialog, /signup-legal-dialog__header[\s\S]*?<button\b(?=[^>]*data-signup-dialog-close)(?=[^>]*aria-label="Close [^"]+")[^>]*>/);
-    assert.match(dialog, /signup-legal-dialog__footer[\s\S]*?<button\b[^>]*data-signup-dialog-close[^>]*>Done &mdash; back to account setup<\/button>/);
+    assert.match(dialog, /signup-legal-dialog__footer[\s\S]*?<button\b[^>]*data-signup-dialog-accept[^>]*>Accept &amp; back to signup<\/button>/);
+    assert.match(dialog, /signup-legal-dialog__footer[\s\S]*?<button\b[^>]*data-signup-dialog-close[^>]*>Done &mdash; back to signup<\/button>/);
     assert.match(dialog, /data-signup-dialog-status[^>]*role="status"/);
   }
 });

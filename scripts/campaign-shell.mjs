@@ -1,13 +1,14 @@
 export const CAMPAIGN_MENU = Object.freeze([
-  Object.freeze({ route: "start", label: "Start", href: "/start" }),
-  Object.freeze({ route: "route", label: "13 Stops", href: "/route" }),
-  Object.freeze({ route: "golf-balls", label: "Golf Balls", href: "/golf-balls" }),
-  Object.freeze({ route: "interview", label: "Tim's Account", href: "/interview" }),
-  Object.freeze({ route: "updates", label: "Updates", href: "/updates" }),
-  Object.freeze({ route: "clue-board", label: "Case Notes", href: "/clue-board" }),
-  Object.freeze({ route: "report", label: "Report", href: "/report" }),
-  Object.freeze({ route: "rules", label: "Rules", href: "/rules" }),
-  Object.freeze({ route: "dashboard", label: "Dashboard", href: "/dashboard" }),
+  Object.freeze({ route: "route", label: "Where to Look", href: "/route" }),
+  Object.freeze({ route: "report", label: "I Found Something", href: "/report" }),
+  Object.freeze({ route: "dashboard", label: "My Hunt", href: "/dashboard" }),
+]);
+
+export const CAMPAIGN_MORE_MENU = Object.freeze([
+  Object.freeze({ route: "updates", label: "Latest News", href: "/updates" }),
+  Object.freeze({ route: "clue-board", label: "What People Found", href: "/clue-board" }),
+  Object.freeze({ route: "interview", label: "Tim's Story", href: "/interview" }),
+  Object.freeze({ route: "rules", label: "Rules & Safety", href: "/rules" }),
 ]);
 
 export const CAMPAIGN_PAGES = Object.freeze({
@@ -104,6 +105,10 @@ function renderLink(item, route, className = "") {
 
 function renderCampaignShell({ route, skipLabel, skipTarget }) {
   const navigation = CAMPAIGN_MENU.map((item) => renderLink(item, route)).join("\n        ");
+  const moreNavigation = CAMPAIGN_MORE_MENU.map((item) => renderLink(item, route)).join("\n            ");
+  const moreCurrent = CAMPAIGN_MORE_MENU.some((item) => item.route === route)
+    ? ' class="campaign-more campaign-more--current"'
+    : ' class="campaign-more"';
 
   return `<a class="skip-link" href="#${skipTarget}">${escapeHtml(skipLabel)}</a>
 <section class="case-strip" data-case-status data-status="unavailable" role="status" aria-live="polite" aria-atomic="true">
@@ -113,19 +118,25 @@ function renderCampaignShell({ route, skipLabel, skipTarget }) {
     <span class="case-strip__detail" data-status-detail>Live status could not be confirmed. Exact directions stay locked; reporting remains available.</span>
     <span class="case-strip__next" data-status-next hidden></span>
   </span>
-  <a class="case-strip__link" href="/updates">Official updates</a>
+  <a class="case-strip__link" href="/updates">Latest News</a>
 </section>
 <header class="campaign-header">
   <div class="campaign-header__inner">
-    <a class="campaign-brand" href="/">Tim Lost Something?<span>Tim lost his ID</span></a>
+    <a class="campaign-brand" href="/">Tim Lost Something?<span>Tim found his ID. The rest is still out there.</span></a>
     <button class="campaign-menu-toggle" type="button" aria-expanded="false" aria-controls="campaign-nav"><span class="sr-only">Toggle case menu</span><span aria-hidden="true">&#9776;</span></button>
     <nav class="campaign-nav" id="campaign-nav" aria-label="Case">
         ${navigation}
+        <details${moreCurrent}>
+          <summary>More</summary>
+          <div class="campaign-more__menu">
+            ${moreNavigation}
+          </div>
+        </details>
         <div class="campaign-account" data-campaign-account>
           <button class="campaign-account__signin" type="button" data-campaign-account-sign-in>Sign in</button>
           <button class="campaign-account__toggle" type="button" data-campaign-account-toggle aria-expanded="false" aria-controls="campaign-account-menu" hidden><span class="campaign-account__avatar" data-campaign-account-avatar aria-hidden="true">?</span><span data-campaign-account-handle>Hunter</span></button>
           <div class="campaign-account__menu" id="campaign-account-menu" data-campaign-account-menu hidden>
-            <button type="button" data-campaign-account-destination="/dashboard">Dashboard</button>
+            <button type="button" data-campaign-account-destination="/dashboard">My Hunt</button>
             <button type="button" data-campaign-account-destination="/dashboard#profile">Edit profile</button>
             <button type="button" data-campaign-sign-out>Sign out</button>
           </div>

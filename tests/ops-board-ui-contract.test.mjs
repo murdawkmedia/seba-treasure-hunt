@@ -18,7 +18,7 @@ test("the clue board and operations console entry points exist", () => {
   }
 });
 
-test("public Case Notes are an accessible, moderated community surface", () => {
+test("What People Found is an accessible, moderated community surface", () => {
   const html = read("clue-board.html");
   const client = read("src/client/board.ts");
 
@@ -40,7 +40,7 @@ test("public Case Notes are an accessible, moderated community surface", () => {
   assert.match(client, /\/api\/v1\/board\?waypoint=/);
   assert.match(client, /Community observation/);
   assert.match(client, /Board unavailable/i);
-  assert.match(client, /No approved Case Notes/i);
+  assert.match(client, /Nothing has been shared here yet/i);
   assert.match(client, /Report .*for review/i);
   assert.match(client, /action:\s*"field_note"/);
   assert.match(client, /action:\s*"reply"/);
@@ -72,10 +72,10 @@ test("the case-room console exposes every approved ledger and safe account contr
 
   for (const label of [
     "Command Desk",
-    "Official Updates",
+    "Latest News",
     "Private Reports",
     "Sponsors",
-    "Moderation Queue",
+    "Public Contributions",
     "Search Zones",
     "Rules Ledger",
     "Players",
@@ -84,6 +84,7 @@ test("the case-room console exposes every approved ledger and safe account contr
   ]) {
     assert.match(html, new RegExp(label.replace("&", "&amp;")));
   }
+  assert.match(html, /What(?:&rsquo;|’|')s Out There/);
 
   assert.match(html, /Send recovery instructions/i);
   assert.match(html, /Revoke sessions/i);

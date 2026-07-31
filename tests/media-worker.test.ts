@@ -131,6 +131,24 @@ test("updates only the dedicated Official Update upload row", async () => {
   assert.doesNotMatch(statements.at(-1)?.sql ?? "", /UPDATE media_uploads/);
 });
 
+test("updates only the dedicated case-item upload row", async () => {
+  const itemMessage: MediaMessage = {
+    mediaId: "media-item-1",
+    key: "originals/2026-07-31/case_item/media-item-1",
+    ownerKind: "case_item",
+  };
+  const { env, statements } = makeEnv(
+    "image/jpeg",
+    undefined,
+    "validation",
+    4,
+    itemMessage.key,
+  );
+  assert.equal((await processMediaMessage(itemMessage, env as never)).status, "ready");
+  assert.match(statements.at(-1)?.sql ?? "", /UPDATE case_item_uploads/);
+  assert.doesNotMatch(statements.at(-1)?.sql ?? "", /UPDATE media_uploads/);
+});
+
 test("accepts exactly 20 MB and rejects one byte more", async () => {
   const accepted = makeEnv("image/jpeg", undefined, "validation", 20_000_000);
   assert.equal((await processMediaMessage(message, accepted.env as never)).status, "ready");

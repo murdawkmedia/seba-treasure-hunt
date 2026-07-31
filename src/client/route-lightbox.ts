@@ -10,7 +10,7 @@ export { swipePhotoDelta };
 export function initializeRouteLightbox(): void {
   for (const stop of document.querySelectorAll<HTMLElement>(".stop[data-waypoint-id]")) {
     const gallery = stop.querySelector<HTMLElement>(".stop-gallery");
-    const waypointName = stop.querySelector<HTMLElement>(".stop-name")?.textContent?.trim() ?? "Waypoint photos";
+    const waypointName = stop.querySelector<HTMLElement>(".stop-name")?.textContent?.trim() ?? "Place photos";
     if (!gallery) continue;
     gallery.setAttribute("data-media-gallery", "");
     gallery.dataset.mediaGalleryTitle = waypointName;

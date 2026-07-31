@@ -103,10 +103,10 @@ test("public information pages provide parseable AEO metadata without inventing 
 
 test("start and dashboard explain the member tool without pretending historical map data is secret", () => {
   const start = read("start.html");
-  assert.match(start, /13 waypoints/i);
+  assert.match(start, /13 public places/i);
   assert.doesNotMatch(start, /route video/i);
   assert.match(start, /member map tools/i);
-  assert.match(start, /not secret/i);
+  assert.match(start, /approved exact directions/i);
   assert.match(start, /href="\/dashboard"/);
   assert.match(start, /href="\/route"/);
   assert.match(start, /href="\/report"/);
@@ -157,7 +157,6 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   const client = read("src/client/report.ts");
   const css = read("css/hunter.css");
   for (const id of [
-    "report-type",
     "report-name",
     "report-email",
     "report-phone",
@@ -169,9 +168,11 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
     assert.match(html, new RegExp(`<label[^>]*for="${id}"`), `${id} has a label`);
     assert.match(html, new RegExp(`id="${id}"`), `${id} has a control`);
   }
-  assert.match(html, /value="find"/);
-  assert.match(html, /value="tip"/);
-  assert.match(html, /value="safety"/);
+  assert.match(html, /<fieldset class="report-intake"[^>]*>[\s\S]*?<legend>Choose the closest answer<\/legend>/);
+  assert.match(html, /<input id="report-type" name="type" type="hidden"/);
+  assert.match(html, /data-report-type="find"/);
+  assert.match(html, /data-report-type="tip"/);
+  assert.match(html, /data-report-type="safety"/);
   assert.match(html, /data-report-use-location/);
   assert.match(html, /Location sharing is optional/i);
   assert.match(html, /data-turnstile/);
@@ -216,7 +217,7 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
   assert.match(html, /data-report-reference/);
   assert.match(html, /data-report-receipt-message/);
   assert.match(html, /It is not public/i);
-  assert.match(html, /an edited Case Note or Official Update/i);
+  assert.match(html, /What People Found or a story in Latest News/i);
   assert.match(html, /email, phone number and private details will not be published/i);
   for (const status of ["Received", "Under review", "Verified", "Closed"]) assert.match(html, new RegExp(status, "i"));
   assert.match(html, /never publishes automatically/i);
@@ -247,13 +248,11 @@ test("report form is accessible, human-checked, and keeps geolocation optional",
 test("public hunter UI contains no staff allowlist or deferred campaign claims", () => {
   const html = Object.keys(pages).map(read).join("\n");
   const sebaHubEmails = [...html.matchAll(/[\w.+-]+@sebahub\.com/gi)].map((match) => match[0].toLowerCase());
-  assert.ok(sebaHubEmails.every((email) => email === "info@sebahub.com"));
+  assert.ok(sebaHubEmails.every((email) => ["info@sebahub.com", "casey@sebahub.com"].includes(email)));
   for (const unsafe of [
     /[\w.+-]+@businessasaforceforgood\.ca/i,
     /official radio partner/i,
     /CFCW/i,
-    /golf ball/i,
-    /\$10,000/i,
     /Inspector Clouseau/i,
   ]) {
     assert.doesNotMatch(html, unsafe);
@@ -268,7 +267,7 @@ test("hunter page menus expose one labelled toggle and retain campaign destinati
     assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/, `${file} toggle semantics`);
     assert.match(html, /<span class="sr-only">Toggle case menu<\/span>/, `${file} toggle label`);
     assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Case")[^>]*>/, `${file} case nav`);
-    for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard"]) {
+    for (const href of ["/route", "/report", "/dashboard", "/updates", "/clue-board", "/interview", "/rules"]) {
       assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `${file} retains ${href}`);
     }
     assert.match(read(file), /<script src="\/js\/site\.js"><\/script>/, `${file} loads shared menu behavior`);
@@ -285,10 +284,10 @@ test("the clue board uses the canonical shell without becoming a navigation exce
   assert.equal((html.match(/\bclass="campaign-menu-toggle"/g) ?? []).length, 1, "clue-board.html has one menu toggle");
   assert.match(html, /<button\b(?=[^>]*class="campaign-menu-toggle")(?=[^>]*type="button")(?=[^>]*aria-expanded="false")(?=[^>]*aria-controls="campaign-nav")[^>]*>/);
   assert.match(html, /<nav\b(?=[^>]*class="campaign-nav")(?=[^>]*id="campaign-nav")(?=[^>]*aria-label="Case")[^>]*>/);
-  for (const href of ["/start", "/route", "/updates", "/clue-board", "/report", "/rules", "/dashboard"]) {
+  for (const href of ["/route", "/report", "/dashboard", "/updates", "/clue-board", "/interview", "/rules"]) {
     assert.match(html, new RegExp(`href=["']${href.replaceAll("/", "\\/")}["']`), `clue-board.html retains ${href}`);
   }
-  assert.doesNotMatch(html, />Interview<\/a>/);
+  assert.match(html, />Tim's Story<\/a>/);
   assert.match(source, /<script src="\/js\/site\.js"><\/script>/);
   assert.match(html, /<section\b(?=[^>]*class="case-strip")(?=[^>]*role="status")(?=[^>]*aria-live="polite")[^>]*>/);
   assert.match(html, /data-case-status/);
@@ -307,7 +306,7 @@ test("the clue board uses the canonical shell without becoming a navigation exce
   assert.match(shell, /@media\s*\(max-width:\s*760px\)[\s\S]*\.campaign-menu-toggle\s*\{[^}]*display:\s*inline-flex/s);
 });
 
-test("route stories and photos are public while exact waypoint controls stay session-aware", () => {
+test("route stories and photos are public while exact place controls stay session-aware", () => {
   const route = read("route.html");
   const renderedRoute = readRenderedCampaignPage("route.html");
   const client = read("src/client/route.ts");
@@ -369,8 +368,8 @@ test("route stories and photos are public while exact waypoint controls stay ses
     .find((item) => item["@type"] === "ItemList");
   assert.equal(routeItemList?.numberOfItems, 13);
   assert.deepEqual(routeItemList?.itemListElement.map((item) => item.position), Array.from({ length: 13 }, (_, index) => index + 1));
-  assert.match(route, /13 Stops · a documentary route record/);
-  assert.match(read("index.html"), /13 waypoints · 61 public-safe photos/i);
+  assert.match(route, /13 Places · the route Tim took/);
+  assert.match(read("index.html"), /13 places · 61 public-safe photos/i);
   assert.match(route, /stories and photos are public/i);
   assert.match(route, /exact Google Maps links require a Hunter account/i);
   assert.match(route, /data-route-member-state/);
@@ -402,7 +401,7 @@ test("static community and reporting fallbacks preserve stable waypoint ids in p
   }
 });
 
-test("signup legal review is optional, focus-safe, and never controls acceptance", () => {
+test("signup legal review is optional, focus-safe, and offers explicit acceptance", () => {
   const dashboard = read("dashboard.html");
   const client = read("src/client/dashboard.ts");
   const setup = client.match(/function setupSignupLegalReview[\s\S]*?\r?\n}\r?\n\r?\nasync function saveSignupProfileAndPrivacy/)?.[0] ?? "";
@@ -418,7 +417,9 @@ test("signup legal review is optional, focus-safe, and never controls acceptance
   assert.match(setup, /addEventListener\("cancel"/);
   assert.match(client, /event\.origin\s*!==\s*window\.location\.origin/);
   assert.match(client, /event\.source\s*!==\s*viewer\.contentWindow/);
-  assert.doesNotMatch(setup, /input\.disabled\s*=|input\.checked\s*=/);
+  assert.doesNotMatch(setup, /input\.disabled\s*=/);
+  assert.match(client, /function acceptSignupLegalDocument[\s\S]*?input\.checked\s*=\s*true/);
+  assert.match(setup, /\[data-signup-dialog-accept\]/);
 });
 
 test("signup legal embeds preserve legal mains while suppressing page-only chrome", () => {
@@ -441,7 +442,7 @@ test("signup legal embeds preserve legal mains while suppressing page-only chrom
   assert.doesNotMatch(build, /readdir\(clientDirectory/);
 });
 
-test("Case Notes and private reports explain their different routes before submission", () => {
+test("What People Found and private reports explain their different routes before submission", () => {
   const board = read("clue-board.html");
   const report = read("report.html");
   assert.match(board, /public community observation/i);
@@ -449,7 +450,7 @@ test("Case Notes and private reports explain their different routes before submi
   assert.match(board, /data-note-reference/);
   assert.match(board, /nothing is public until a representative from SebaHub approves it/i);
   assert.match(report, /private report/i);
-  assert.match(report, /does not appear in Case Notes automatically/i);
+  assert.match(report, /Your report never publishes automatically/i);
 });
 
 test("Case Notes use the shared accessible photo-preparation guidance", () => {

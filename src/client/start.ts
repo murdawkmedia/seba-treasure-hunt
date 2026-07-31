@@ -97,8 +97,8 @@ function applyStatusGate(status: CaseStatus): void {
   const usable = status.state === "open";
   entry.setAttribute("aria-disabled", usable ? "false" : "true");
   entry.title = usable
-    ? "Open the signed-in Hunter Dashboard"
-    : "Dashboard remains available, but exact directions are locked by the current case status.";
+    ? "Open My Hunt"
+    : "My Hunt remains available, but exact directions are locked by the current case status.";
 }
 
 async function renderWaypoints(): Promise<void> {
@@ -136,13 +136,13 @@ async function renderWaypoints(): Promise<void> {
       fragment.appendChild(item);
     }
     list.replaceChildren(fragment);
-    state.textContent = `${waypoints.length} public waypoint access states retrieved.`;
+    state.textContent = `${waypoints.length} public place access states retrieved.`;
   } catch {
     list.replaceChildren();
     state.className = "system-message";
     state.dataset.kind = "error";
     state.textContent =
-      "Live waypoint access states are unavailable. Do not enter an area unless the current route clearly marks it open.";
+      "Live place access states are unavailable. Do not enter an area unless the current route clearly marks it open.";
   }
 }
 

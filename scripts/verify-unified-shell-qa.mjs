@@ -1396,7 +1396,7 @@ async function runReportWorkflowAudit({
         type: "find",
         hunterStatus: "Under review",
         createdAt: "2026-07-14T16:00:00.000Z",
-        publications: [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }],
+        publications: [{ kind: "case_note", label: "Published in What People Found", href: "/clue-board" }],
         rawStatus: "contacted-private-sentinel",
         privateReason: "private-reason-sentinel",
         staffActor: "staff-actor-sentinel",
@@ -1411,7 +1411,7 @@ async function runReportWorkflowAudit({
       type: "find",
       hunterStatus: "Under review",
       createdAt: "2026-07-14T16:00:00.000Z",
-      publications: [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }],
+      publications: [{ kind: "case_note", label: "Published in What People Found", href: "/clue-board" }],
     }]);
     const serializedProjection = JSON.stringify(hunterProjection);
     for (const sentinel of ["private-reason", "staff-actor", "private-email", "private-phone", "private-evidence", "private-child"]) {

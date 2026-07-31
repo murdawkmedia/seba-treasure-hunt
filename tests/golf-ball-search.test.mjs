@@ -27,14 +27,8 @@ const visibleText = (html) =>
 
 test("Casey's golf-ball search is one registered public route", () => {
   assert.equal(CAMPAIGN_PAGES["golf-balls.html"], "golf-balls");
-  assert.deepEqual(
-    CAMPAIGN_MENU.find((item) => item.route === "golf-balls"),
-    { route: "golf-balls", label: "Golf Balls", href: "/golf-balls" },
-  );
-  assert.equal(
-    CAMPAIGN_MENU.filter((item) => item.route === "golf-balls").length,
-    1,
-  );
+  assert.equal(CAMPAIGN_MENU.some((item) => item.route === "golf-balls"), false);
+  assert.match(read("index.html"), /href="\/golf-balls"/);
 
   const worker = read("src/server/app.ts");
   assert.match(
@@ -78,16 +72,16 @@ test("the golf-ball page separates Casey's search from Tim's case", () => {
 test("the homepage keeps Tim primary and introduces Casey second", () => {
   const home = read("index.html");
   const text = visibleText(home);
-  const timHeading = home.indexOf("<h1>Tim lost his ID.</h1>");
+  const timHeading = home.indexOf("Tim found his ID.");
   const caseyHeading = home.indexOf("Casey lost something too.");
 
   assert.ok(timHeading >= 0);
   assert.ok(caseyHeading > timHeading);
-  assert.match(text, /search began with roughly \$5,000/i);
+  assert.match(text, /roughly \$5,000 was the initial amount|search began with roughly \$5,000/i);
   assert.match(text, /approaching \$10,000/i);
-  assert.match(text, /Tim keeps retracing his steps/i);
-  assert.match(text, /ID[^.]*still missing/i);
-  assert.match(text, /two diamond rings[^.]*still missing/i);
+  assert.match(text, /Tim[^.]*retrac(?:es|ing) (?:his steps|the same 13 places)/i);
+  assert.match(text, /ID[^.]*found|Tim has his ID back/i);
+  assert.match(text, /two diamond rings[^.]*?(?:still out there|remain missing)/i);
   assert.match(home, /href="\/golf-balls"[^>]*>Follow Casey(?:'|&#39;)s golf-ball search<\/a>/i);
 });
 
@@ -109,7 +103,7 @@ test("the production build contains the new canonical page", async () => {
     const builtPath = path.join(output.dist, "golf-balls.html");
     assert.equal(existsSync(builtPath), true);
     const built = readFileSync(builtPath, "utf8");
-    assert.match(built, /aria-current="page"[^>]*>Golf Balls<\/a>/);
+    assert.match(built, /<link rel="canonical" href="https:\/\/www\.timlostsomething\.com\/golf-balls"/);
     assert.match(built, /class="campaign-footer"/);
   } finally {
     await output.cleanup();

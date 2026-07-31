@@ -145,7 +145,7 @@ export function approvedReportWaypointLabel(
   update: Pick<ApprovedReportUpdate, "waypointRouteOrder" | "waypointName">,
 ): string | null {
   return update.waypointRouteOrder !== null && update.waypointName
-    ? `Waypoint ${update.waypointRouteOrder} — ${update.waypointName}`
+    ? `Place ${update.waypointRouteOrder} — ${update.waypointName}`
     : null;
 }
 

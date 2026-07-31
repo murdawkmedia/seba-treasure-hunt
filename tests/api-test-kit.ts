@@ -1,4 +1,6 @@
 import type {
+  CaseItemInput,
+  CaseItemMutation,
   CaseStatus,
   IdentityLifecycleEvent,
   OperatorAlertRecipientClaim,
@@ -194,6 +196,53 @@ export class FakeStore {
     }
   ];
   board: Array<Record<string, unknown>> = [];
+  caseItems: Array<Record<string, unknown>> = [
+    {
+      id: "item-id",
+      slug: "tims-id",
+      owner: "tim",
+      category: "identity",
+      title: "Tim's ID",
+      description: "Tim wanted this one back.",
+      finderKeeps: false,
+      status: "found",
+      displayOrder: 1,
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+      uploads: []
+    },
+    {
+      id: "item-camera",
+      slug: "camera",
+      owner: "tim",
+      category: "prize",
+      title: "A camera",
+      description: "A camera is now somewhere in the search area.",
+      finderKeeps: true,
+      status: "out_there",
+      displayOrder: 4,
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+      uploads: []
+    },
+    {
+      id: "item-private",
+      slug: "private-draft",
+      owner: "tim",
+      category: "prize",
+      title: "Private draft",
+      description: "This must not leave Ops.",
+      finderKeeps: true,
+      status: "draft",
+      displayOrder: 99,
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+      uploads: []
+    }
+  ];
   profiles = new Map<string, Record<string, unknown>>();
   accounts = new Map<string, Record<string, unknown>>();
   legalEvents: Array<Record<string, unknown>> = [];
@@ -321,6 +370,133 @@ export class FakeStore {
       })),
       nextCursor: null
     };
+  }
+
+  async listPublicCaseItems() {
+    return this.caseItems
+      .filter((item) => item.status === "out_there" || item.status === "found" || item.status === "paused")
+      .sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder))
+      .map(({ uploads, version: _version, ...item }) => ({
+        ...item,
+        media: (Array.isArray(uploads) ? uploads : [])
+          .filter((upload) => upload.status === "ready" && upload.position !== null)
+          .map((upload) => ({
+            id: upload.id,
+            url: `/api/v1/media/${upload.id}`,
+            alt: upload.altText,
+            caption: upload.caption ?? null
+          }))
+      }));
+  }
+
+  async listOpsCaseItems() {
+    return this.caseItems;
+  }
+
+  async createCaseItem(input: CaseItemInput, actorSubject: string) {
+    const timestamp = "2026-07-31T13:00:00.000Z";
+    const item = {
+      id: `item-${this.caseItems.length + 1}`,
+      ...input,
+      version: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      uploads: []
+    };
+    this.caseItems.push(item);
+    this.audits.push({ action: "case_item.created", actorSubject, targetId: item.id });
+    return item;
+  }
+
+  async updateCaseItem(
+    id: string,
+    input: CaseItemMutation,
+    actorSubject: string
+  ) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    if (item.version !== input.expectedVersion) {
+      throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+    }
+    const { expectedVersion: _expectedVersion, mediaSelections, ...changes } = input;
+    const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    if (Array.isArray(mediaSelections)) {
+      for (const upload of uploads) {
+        upload.position = null;
+        upload.altText = null;
+        upload.caption = null;
+        this.publicMedia.delete(String(upload.id));
+      }
+      for (const [position, selection] of mediaSelections.entries()) {
+        const upload = uploads.find((candidate) => candidate.id === selection.id && candidate.status === "ready");
+        if (!upload || !selection.altText.trim()) {
+          throw new ApiError(422, "case_item_media_invalid", "Choose ready images and add alt text.");
+        }
+        upload.position = position;
+        upload.altText = selection.altText.trim();
+        upload.caption = selection.caption?.trim() || null;
+        if (changes.status === "out_there" || changes.status === "found" || changes.status === "paused") {
+          this.publicMedia.set(String(upload.id), {
+            key: String(upload.key),
+            contentType: String(upload.contentType),
+            cacheControl: "no-store"
+          });
+        }
+      }
+    }
+    Object.assign(item, changes, {
+      version: Number(item.version) + 1,
+      updatedAt: "2026-07-31T13:05:00.000Z"
+    });
+    this.audits.push({ action: "case_item.updated", actorSubject, targetId: id });
+    return item;
+  }
+
+  async addCaseItemUploads(id: string, media: StoredMedia[], actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    uploads.push(...media.map((upload) => ({
+      ...upload,
+      altText: null,
+      caption: null,
+      position: null
+    })));
+    item.uploads = uploads;
+    this.audits.push({ action: "case_item.media_uploaded", actorSubject, targetId: id });
+    return item;
+  }
+
+  async getCaseItemMedia(id: string, mediaId: string, actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    const uploads = Array.isArray(item?.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    const media = uploads.find((candidate) => candidate.id === mediaId && candidate.status === "ready");
+    const key = typeof media?.key === "string" ? media.key : "";
+    if (!key.startsWith("derivatives/") || key === "derivatives/") return null;
+    this.audits.push({ action: "case_item.media_viewed", actorSubject, targetId: id, mediaId });
+    return { key, contentType: String(media?.contentType ?? "application/octet-stream") };
+  }
+
+  async removeCaseItemUpload(id: string, mediaId: string, actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    const uploads = Array.isArray(item?.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    const media = uploads.find((candidate) => candidate.id === mediaId && candidate.status !== "deleted");
+    if (!item || !media) return null;
+    media.status = "deleted";
+    media.position = null;
+    this.publicMedia.delete(mediaId);
+    this.audits.push({ action: "case_item.media_removed", actorSubject, targetId: id, mediaId });
+    return { id: mediaId, itemId: id, status: "deleted" };
+  }
+
+  async createCaseItemAnnouncementDraft(id: string, actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    const verb = item.status === "found" ? "has been found" : "is now out there";
+    return this.createUpdate({
+      title: `${item.title} ${verb}`,
+      body: `${item.description}\n\nCheck Where to Look before heading out.`
+    }, actorSubject);
   }
 
   async getPublicMedia(id: string) {
@@ -2019,11 +2195,11 @@ export class FakeTurnstile {
 
 export class FakeUploads {
   saved: Array<{ name: string; type: string; size: number }> = [];
-  contexts: Array<{ kind: "field_note" | "report" | "official_update"; subject: string | null }> = [];
+  contexts: Array<{ kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }> = [];
 
   async save(
     files: File[],
-    context: { kind: "field_note" | "report" | "official_update"; subject: string | null }
+    context: { kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }
   ): Promise<StoredMedia[]> {
     this.contexts.push(context);
     const saved = files.map((file, index) => {
@@ -2038,7 +2214,7 @@ export class FakeUploads {
   }
 
   async read(key: string) {
-    if (!new Set(["derivatives/media-ready.webp", "derivatives/media-selected.webp"]).has(key)) {
+    if (!new Set(["derivatives/media-ready.webp", "derivatives/media-selected.webp", "derivatives/camera.webp"]).has(key)) {
       return null;
     }
     return {

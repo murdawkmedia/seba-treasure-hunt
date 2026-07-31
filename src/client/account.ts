@@ -115,7 +115,12 @@ async function initializeCampaignAccount(): Promise<void> {
   if (!root || root.dataset.campaignAccountBound === "true") return;
   root.dataset.campaignAccountBound = "true";
   const signIn = root.querySelector<HTMLButtonElement>("[data-campaign-account-sign-in]");
-  signIn?.addEventListener("click", () => navigateTo("/dashboard?intent=signin"));
+  signIn?.addEventListener("click", () => {
+    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const query = new URLSearchParams({ intent: "signin" });
+    if (window.location.pathname !== "/dashboard") query.set("returnTo", returnTo);
+    navigateTo(`/dashboard?${query.toString()}`);
+  });
 
   const toggle = root.querySelector<HTMLButtonElement>("[data-campaign-account-toggle]");
   const menu = root.querySelector<HTMLElement>("[data-campaign-account-menu]");

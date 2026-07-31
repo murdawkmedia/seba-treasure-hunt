@@ -5,7 +5,7 @@ import type { DeploymentEnvironment } from "./server/types";
 export interface MediaMessage {
   mediaId: string;
   key: string;
-  ownerKind: "field_note" | "report" | "official_update";
+  ownerKind: "field_note" | "report" | "official_update" | "case_item";
 }
 
 export interface MediaEnv {
@@ -30,7 +30,10 @@ const safeRasterFormats = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function assertMessage(message: MediaMessage): void {
   if (!message || !idPattern.test(message.mediaId)) throw new InvalidMediaMessageError();
-  if (message.ownerKind !== "field_note" && message.ownerKind !== "report" && message.ownerKind !== "official_update") {
+  if (
+    message.ownerKind !== "field_note" && message.ownerKind !== "report" &&
+    message.ownerKind !== "official_update" && message.ownerKind !== "case_item"
+  ) {
     throw new InvalidMediaMessageError();
   }
 
@@ -44,7 +47,11 @@ function assertMessage(message: MediaMessage): void {
 }
 
 const uploadTable = (ownerKind: MediaMessage["ownerKind"]) =>
-  ownerKind === "official_update" ? "official_update_uploads" : "media_uploads";
+  ownerKind === "official_update"
+    ? "official_update_uploads"
+    : ownerKind === "case_item"
+      ? "case_item_uploads"
+      : "media_uploads";
 
 async function rejectMedia(message: MediaMessage, env: MediaEnv): Promise<MediaResult> {
   const update = await env.DB.prepare(

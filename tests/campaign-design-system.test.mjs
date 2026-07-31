@@ -440,10 +440,11 @@ test("the private Case Room uses the same documentary identity without pirate-er
   assert.match(css, /\.ops-page\s+:focus-visible\s*\{/);
 });
 
-test("DESIGN.md records the approved documentary case-file source of truth", () => {
+test("DESIGN.md records the approved B2 investigation-board source of truth", () => {
   const design = read("DESIGN.md");
   for (const required of [
-    /Documentary Case File/i,
+    /B2 Full Investigation Board/i,
+    /evidence wall/i,
     /genuine local mystery/i,
     /SebaHub.*host.*not.*subject/i,
     /dark forest.*cream.*gold/i,

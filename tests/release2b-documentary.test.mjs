@@ -105,20 +105,20 @@ test("the documentary vocabulary guard catches whitespace, entities, and inline 
 
 test("the homepage presents the case in the approved documentary order", () => {
   const html = read("index.html");
-  assert.match(html, /2026 search · Seba Beach, Alberta/);
-  assert.match(html, /<h1>Tim lost his ID\.<\/h1>/);
+  assert.match(html, /Seba Beach open case/);
+  assert.match(html, /<h1[^>]*>Tim found his ID\.[\s\S]*The rest is still out there\./);
   assert.match(
     visibleText(html),
-    /search began with roughly \$5,000[^.]{0,180}approaching \$10,000/i,
+    /roughly \$5,000 was the initial amount[\s\S]{0,220}approaching \$10,000/i,
   );
   for (const [href, label] of [
-    ["start.html", "Start here"],
-    ["report.html", "Report something"],
-    ["updates.html", "Read official updates"],
-    ["rules.html", "Rules and safety"],
-  ]) assert.match(html, new RegExp(`href="${href}"[^>]*>${label}<`));
+    ["/route", "Where to Look"],
+    ["/report", "I Found Something"],
+    ["/dashboard", "My Hunt"],
+  ]) assert.match(html, new RegExp(`href="${href}"[^>]*>[\\s\\S]{0,100}${label}`, "i"));
 
   const ids = [
+    "top",
     "what-is-tim-lost-something",
     "evidence",
     "account",
@@ -140,14 +140,14 @@ test("the homepage presents the case in the approved documentary order", () => {
   assert.doesNotMatch(html, /This Is Just Year One/i);
 });
 
-test("real evidence is primary and the fictional ID appears once sitewide after it", () => {
+test("real evidence is authoritative and the ID reference appears once with FOUND status", () => {
   const source = publicPages.map((name) => read(name)).join("\n");
   const image = "assets/photos/tim-lost-id-campaign-prop.webp";
   assert.equal(source.split(image).length - 1, 1);
   const home = read("index.html");
-  assert.ok(home.indexOf("assets/photos/evidence-cash.jpg") < home.indexOf(image));
-  assert.match(home, /<figcaption>A visual representation of what Tim’s I\.D\. could look like\.<\/figcaption>/);
-  assert.match(home, /alt="Visual representation of a possible version of Tim's ID card on a dark counter"/);
+  assert.match(home, /alt="A visual representation of what Tim's ID could look like"/);
+  assert.match(home, /aria-label="Status: found"[^>]*>FOUND<\/span>/);
+  assert.match(home, /assets\/photos\/evidence-cash\.jpg/);
   assert.doesNotMatch(home, /Campaign reference|fictional reference image|fictional[^.]*not Tim(?:'|’|&rsquo;)s real ID/i);
   assert.match(home, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/evidence-cash\.jpg"/);
   assert.match(home, /<meta name="twitter:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/evidence-cash\.jpg"/);
@@ -190,13 +190,13 @@ test("the latest update card keeps its timestamp readable on the cream surface",
   assert.ok(contrast >= 4.5, `update timestamp contrast ${contrast.toFixed(2)}:1 meets WCAG AA`);
 });
 
-test("public naming is Case Notes while sponsorship remains withdrawn", () => {
+test("public naming is What People Found while sponsorship remains withdrawn", () => {
   const namedPages = ["clue-board.html", "community-guidelines.html", "updates.html", "start.html", "dashboard.html", "report.html"];
   for (const filename of namedPages) {
     assert.doesNotMatch(visibleText(read(filename)), /\bClue Board\b/i, filename);
   }
-  assert.match(read("clue-board.html"), /Case Notes/);
-  assert.match(readRenderedCampaignPage("index.html"), /href="\/clue-board"[^>]*>Case Notes<\/a>/);
+  assert.match(read("clue-board.html"), /What People Found/);
+  assert.match(readRenderedCampaignPage("index.html"), /href="\/clue-board"[^>]*>What People Found<\/a>/);
   assert.doesNotMatch(publicPages.map((name) => read(name)).join("\n"), /\/case-notes/i);
   const renderedHome = readRenderedCampaignPage("index.html");
   assert.doesNotMatch(renderedHome, /Support the Search|href="\/sponsors"/i);

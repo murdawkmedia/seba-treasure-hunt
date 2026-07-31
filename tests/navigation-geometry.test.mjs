@@ -37,9 +37,7 @@ const campaignFiles = Object.freeze([
 ]);
 
 const menuRoutes = new Set([
-  "start",
   "route",
-  "golf-balls",
   "interview",
   "updates",
   "clue-board",
@@ -572,7 +570,7 @@ test("stacked geometry remains live without ResizeObserver", { timeout: 30_000 }
   }
 });
 
-test("short mobile viewports can scroll the full campaign menu into focus", { timeout: 60_000 }, async () => {
+test("short mobile viewports keep the primary campaign actions in focus", { timeout: 60_000 }, async () => {
   const browser = await chromium.launch({ headless: true });
   try {
     for (const { viewport, files } of [
@@ -634,11 +632,7 @@ test("short mobile viewports can scroll the full campaign menu into focus", { ti
         assert.equal(metrics.navOverflowY, "auto", `${file} menu scroll is operable`);
         assert.ok(metrics.navScrollWidth <= metrics.navClientWidth, `${file} menu has no horizontal overflow`);
         assert.equal(metrics.navScrollLeft, 0, `${file} Tab traversal needs no horizontal scrolling`);
-        assert.ok(
-          metrics.navScrollHeight > metrics.navClientHeight,
-          `${file} constrained menu has vertical overflow (${metrics.navScrollHeight} > ${metrics.navClientHeight})`,
-        );
-        assert.ok(metrics.navScrollTop > initialScrollTop, `${file} Tab traversal scrolls the menu vertically`);
+        assert.ok(metrics.navScrollTop >= initialScrollTop, `${file} Tab traversal does not reverse menu scroll`);
         assert.ok(metrics.dashboardLeft >= metrics.navLeft + metrics.focusSpace - 1, `${file} Dashboard focus left is visible`);
         assert.ok(metrics.dashboardRight <= metrics.navRight - metrics.focusSpace + 1, `${file} Dashboard focus right is visible`);
         assert.ok(metrics.dashboardTop >= metrics.navTop + metrics.focusSpace - 1, `${file} Dashboard focus top is visible`);

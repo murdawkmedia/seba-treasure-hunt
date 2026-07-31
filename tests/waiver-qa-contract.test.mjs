@@ -145,14 +145,15 @@ test("signup legal QA covers success controls and deterministic failure recovery
   const runner = await readRunner();
 
   assert.equal((dashboard.match(/data-signup-dialog-close/g) ?? []).length, 4);
-  assert.equal((dashboard.match(/Done &mdash; back to account setup/g) ?? []).length, 2);
+  assert.equal((dashboard.match(/Done &mdash; back to signup/g) ?? []).length, 2);
+  assert.equal((dashboard.match(/data-signup-dialog-accept/g) ?? []).length, 2);
   assert.equal((dashboard.match(/data-signup-dialog-status/g) ?? []).length, 2);
   assert.equal((dashboard.match(/data-signup-dialog-fallback/g) ?? []).length, 2);
   assert.match(client, /tim-lost:legal-embed-ready/);
   assert.match(client, /event\.origin\s*!==\s*window\.location\.origin/);
   assert.match(client, /The embedded legal document could not be displayed/);
   assert.match(runner, /signup-legal-dialog__header["']\)\.getByRole\(["']button["'],\s*\{\s*name:\s*["']Close Privacy Policy and Media Notice["']/);
-  assert.match(runner, /signup-legal-dialog__footer["']\)\.getByRole\(["']button["'],\s*\{\s*name:\s*["']Done — back to account setup["']/);
+  assert.match(runner, /signup-legal-dialog__footer["']\)\.getByRole\(["']button["'],\s*\{\s*name:\s*["']Done — back to signup["']/);
   assert.match(runner, /keyboard\.press\(["']Escape["']\)/);
   assert.match(runner, /data-signup-dialog-status/);
   assert.match(runner, /data-signup-dialog-fallback/);
@@ -325,7 +326,7 @@ test("waiver QA scans private fixture values across source and served public out
   assert.match(script, /media-selected-qa-public-001/);
   assert.match(script, /waypointRouteOrder:\s*reportWaypoint\.routeOrder/);
   assert.match(script, /waypointName:\s*reportWaypoint\.name/);
-  assert.match(script, /Waypoint 8 — The Lodge Trails/);
+  assert.match(script, /Place 8 — The Lodge Trails/);
 });
 
 test("waiver QA compares protected route links without value-bearing assertions", async () => {

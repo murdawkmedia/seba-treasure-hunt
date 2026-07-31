@@ -12,6 +12,8 @@ import {
 import { publicHunterIdentity } from "../shared/public-identity";
 import type {
   CaseStatus,
+  CaseItemInput,
+  CaseItemMutation,
   DataStore,
   IdentityLifecycleEvent,
   OperatorAlertErrorCode,
@@ -72,6 +74,29 @@ const opsUpdateFromRow = (
   updatedAt: nullable(row.updated_at),
   uploadCount: Number(row.upload_count ?? uploads?.length ?? 0),
   ...(uploads ? { uploads } : {})
+});
+const caseItemFromRow = (
+  row: Row,
+  media: Record<string, unknown>[],
+  includePrivate: boolean,
+  uploads: Record<string, unknown>[] = media
+): Record<string, unknown> => ({
+  id: value(row.id),
+  slug: value(row.slug),
+  owner: value(row.owner),
+  category: value(row.category),
+  title: value(row.title),
+  description: value(row.description),
+  finderKeeps: row.finder_keeps === 1,
+  status: value(row.status),
+  displayOrder: Number(row.display_order),
+  media,
+  ...(includePrivate ? {
+    version: Number(row.version),
+    createdAt: value(row.created_at),
+    updatedAt: value(row.updated_at),
+    uploads
+  } : {})
 });
 const json = (input: unknown) => JSON.stringify(input ?? null);
 const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -431,6 +456,53 @@ export class D1DataStore implements DataStore {
     };
   }
 
+  async listPublicCaseItems(): Promise<Record<string, unknown>[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT id, slug, owner, category, title, description, finder_keeps,
+                status, display_order, version, created_at, updated_at
+         FROM case_items
+         WHERE status IN ('out_there', 'found', 'paused')
+         ORDER BY display_order, id`
+      )
+      .all<Row>();
+    const itemIds = result.results.map((row) => value(row.id));
+    const mediaByItem = new Map<string, Record<string, unknown>[]>();
+    if (itemIds.length > 0) {
+      const placeholders = itemIds.map(() => "?").join(",");
+      const mediaResult = await this.db
+        .prepare(
+          `SELECT selected.item_id, upload.id, upload.content_type,
+                  selected.position, selected.alt_text, selected.caption
+           FROM case_item_media selected
+           JOIN case_item_uploads upload ON upload.id = selected.upload_id
+           WHERE selected.item_id IN (${placeholders})
+             AND upload.status = 'ready'
+             AND upload.derivative_object_key IS NOT NULL
+           ORDER BY selected.position, upload.id`
+        )
+        .bind(...itemIds)
+        .all<Row>();
+      for (const media of mediaResult.results) {
+        const itemId = value(media.item_id);
+        const entries = mediaByItem.get(itemId) ?? [];
+        entries.push({
+          id: value(media.id),
+          url: `/api/v1/media/${value(media.id)}`,
+          contentType: value(media.content_type),
+          alt: value(media.alt_text),
+          ...(nullable(media.caption) ? { caption: media.caption } : {})
+        });
+        mediaByItem.set(itemId, entries);
+      }
+    }
+    return result.results.map((row) => caseItemFromRow(
+      row,
+      mediaByItem.get(value(row.id)) ?? [],
+      false
+    ));
+  }
+
   async getCurrentRules(): Promise<Record<string, unknown> | null> {
     const row = await this.db
       .prepare(
@@ -673,6 +745,31 @@ export class D1DataStore implements DataStore {
         )
         .bind(mediaId, now(), now())
         .first<Row>();
+    }
+    if (!row) {
+      try {
+        row = await this.db
+          .prepare(
+            `SELECT upload.derivative_object_key, upload.content_type,
+                    'case_item' AS owner_kind
+             FROM case_item_uploads upload
+             JOIN case_item_media selected ON selected.upload_id = upload.id
+             JOIN case_items item ON item.id = selected.item_id
+             WHERE upload.id = ? AND upload.status = 'ready'
+               AND upload.derivative_object_key IS NOT NULL
+               AND item.status IN ('out_there', 'found', 'paused')
+             LIMIT 1`
+          )
+          .bind(mediaId)
+          .first<Row>();
+      } catch (error) {
+        if (!(error instanceof Error) || !/no such table:\s*(?:main\.)?case_item_(?:uploads|media|items)\b/i.test(error.message)) {
+          throw error;
+        }
+        // Existing report and Update media must remain readable while the additive
+        // item-board migration is being applied. Item media stays unavailable.
+        row = null;
+      }
     }
     if (!row || !value(row.derivative_object_key).startsWith("derivatives/")) return null;
     return {
@@ -3119,6 +3216,233 @@ export class D1DataStore implements DataStore {
     return this.getStatus();
   }
 
+  async listOpsCaseItems(): Promise<Record<string, unknown>[]> {
+    const result = await this.db.prepare(
+      `SELECT id, slug, owner, category, title, description, finder_keeps,
+              status, display_order, version, created_at, updated_at, updated_by
+       FROM case_items ORDER BY display_order, id`
+    ).all<Row>();
+    return Promise.all(result.results.map(async (row) => {
+      const uploads = await this.caseItemUploads(value(row.id));
+      const selectedMedia = uploads
+        .filter((upload) => typeof upload.position === "number")
+        .sort((left, right) => Number(left.position) - Number(right.position));
+      return {
+        ...caseItemFromRow(row, selectedMedia, true, uploads),
+        updatedBy: value(row.updated_by),
+        history: await this.caseItemHistory(value(row.id))
+      };
+    }));
+  }
+
+  async createCaseItem(input: CaseItemInput, actorSubject: string): Promise<Record<string, unknown>> {
+    const itemId = id();
+    const timestamp = now();
+    try {
+      await this.db.batch([
+        this.db.prepare(
+          `INSERT INTO case_items
+           (id, slug, owner, category, title, description, finder_keeps, status,
+            display_order, version, created_at, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+        ).bind(itemId, input.slug, input.owner, input.category, input.title, input.description,
+          input.finderKeeps ? 1 : 0, input.status, input.displayOrder, timestamp, timestamp, actorSubject),
+        this.db.prepare(
+          `INSERT INTO case_item_events
+           (id, item_id, actor_subject, action, from_status, to_status,
+            item_version, details_json, occurred_at)
+           VALUES (?, ?, ?, 'case_item.created', NULL, ?, 1, ?, ?)`
+        ).bind(id(), itemId, actorSubject, input.status, json({ slug: input.slug }), timestamp),
+        this.db.prepare(
+          `INSERT INTO audit_events
+           (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+           VALUES (?, ?, 'case_item.created', 'case_item', ?, ?, ?)`
+        ).bind(id(), actorSubject, itemId, json({ status: input.status, slug: input.slug }), timestamp)
+      ]);
+    } catch (error) {
+      if (error instanceof Error && /UNIQUE constraint failed:\s*case_items\.slug/i.test(error.message)) {
+        throw new ApiError(409, "case_item_slug_conflict", "Another item already uses that slug.");
+      }
+      throw error;
+    }
+    const created = await this.caseItemById(itemId);
+    if (!created) throw new Error("created case item could not be loaded");
+    return created;
+  }
+
+  async updateCaseItem(
+    itemId: string,
+    input: CaseItemMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.db.prepare("SELECT status, version FROM case_items WHERE id = ? LIMIT 1")
+      .bind(itemId).first<Row>();
+    if (!existing) return null;
+    if (Number(existing.version) !== input.expectedVersion) {
+      throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+    }
+    if (input.mediaSelections.length > 0) {
+      const mediaIds = input.mediaSelections.map((selection) => selection.id);
+      const placeholders = mediaIds.map(() => "?").join(",");
+      const ready = await this.db.prepare(
+        `SELECT id FROM case_item_uploads
+         WHERE item_id = ? AND id IN (${placeholders})
+           AND status = 'ready' AND derivative_object_key IS NOT NULL
+           AND content_type IN ('image/jpeg', 'image/png', 'image/webp')`
+      ).bind(itemId, ...mediaIds).all<Row>();
+      if (ready.results.length !== mediaIds.length) {
+        throw new ApiError(422, "case_item_media_invalid", "Choose only ready images belonging to this item.");
+      }
+    }
+    const timestamp = now();
+    const nextVersion = input.expectedVersion + 1;
+    const markerExists = `EXISTS (
+      SELECT 1 FROM case_items marker
+      WHERE marker.id = ? AND marker.version = ? AND marker.updated_at = ?
+    )`;
+    const statements = [
+      this.db.prepare(
+        `UPDATE case_items
+         SET slug = ?, owner = ?, category = ?, title = ?, description = ?, finder_keeps = ?,
+             status = ?, display_order = ?, version = version + 1, updated_at = ?, updated_by = ?
+         WHERE id = ? AND version = ?`
+      ).bind(input.slug, input.owner, input.category, input.title, input.description,
+        input.finderKeeps ? 1 : 0, input.status, input.displayOrder, timestamp,
+        actorSubject, itemId, input.expectedVersion),
+      this.db.prepare(`DELETE FROM case_item_media WHERE item_id = ? AND ${markerExists}`)
+        .bind(itemId, itemId, nextVersion, timestamp),
+      ...input.mediaSelections.map((selection, position) => this.db.prepare(
+        `INSERT INTO case_item_media
+         (item_id, upload_id, selected_by, selected_at, position, alt_text, caption)
+         SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${markerExists}`
+      ).bind(itemId, selection.id, actorSubject, timestamp, position, selection.altText,
+        selection.caption, itemId, nextVersion, timestamp)),
+      this.db.prepare(
+        `INSERT INTO case_item_events
+         (id, item_id, actor_subject, action, from_status, to_status,
+          item_version, details_json, occurred_at)
+         SELECT ?, ?, ?, 'case_item.updated', ?, ?, ?, ?, ? WHERE ${markerExists}`
+      ).bind(id(), itemId, actorSubject, value(existing.status), input.status, nextVersion,
+        json({ mediaIds: input.mediaSelections.map((selection) => selection.id) }), timestamp,
+        itemId, nextVersion, timestamp),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         SELECT ?, ?, 'case_item.updated', 'case_item', ?, ?, ? WHERE ${markerExists}`
+      ).bind(id(), actorSubject, itemId,
+        json({ previousStatus: existing.status, status: input.status, version: nextVersion }),
+        timestamp, itemId, nextVersion, timestamp)
+    ];
+    try {
+      const results = await this.db.batch(statements);
+      if (!results[0]?.meta.changes) {
+        throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+      }
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if (error instanceof Error && /UNIQUE constraint failed:\s*case_items\.slug/i.test(error.message)) {
+        throw new ApiError(409, "case_item_slug_conflict", "Another item already uses that slug.");
+      }
+      throw error;
+    }
+    return this.caseItemById(itemId);
+  }
+
+  async addCaseItemUploads(
+    itemId: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    if (!await this.db.prepare("SELECT id FROM case_items WHERE id = ? LIMIT 1").bind(itemId).first<Row>()) {
+      return null;
+    }
+    if (media.length < 1 || media.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three item images.");
+    }
+    const count = await this.db.prepare(
+      `SELECT COUNT(*) AS upload_count FROM case_item_uploads
+       WHERE item_id = ? AND status NOT IN ('deleted', 'rejected')`
+    ).bind(itemId).first<Row>();
+    if (Number(count?.upload_count ?? 0) + media.length > 3) {
+      throw new ApiError(422, "validation_failed", "An item can have no more than three images.");
+    }
+    const timestamp = now();
+    await this.db.batch([
+      ...media.map((upload) => this.db.prepare(
+        `INSERT INTO case_item_uploads
+         (id, item_id, uploader_subject, private_object_key, content_type,
+          byte_size, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(upload.id, itemId, actorSubject, upload.key,
+        upload.contentType ?? "application/octet-stream", upload.size ?? 0, upload.status, timestamp)),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'case_item.media_uploaded', 'case_item', ?, ?, ?)`
+      ).bind(id(), actorSubject, itemId, json({ mediaIds: media.map((upload) => upload.id) }), timestamp)
+    ]);
+    return this.caseItemById(itemId);
+  }
+
+  async getCaseItemMedia(
+    itemId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null> {
+    const row = await this.db.prepare(
+      `SELECT derivative_object_key, content_type FROM case_item_uploads
+       WHERE id = ? AND item_id = ? AND status = 'ready'
+         AND derivative_object_key IS NOT NULL LIMIT 1`
+    ).bind(mediaId, itemId).first<Row>();
+    const key = value(row?.derivative_object_key);
+    if (!row || !key.startsWith("derivatives/") || key === "derivatives/") return null;
+    await this.audit(actorSubject, "case_item.media_viewed", "case_item", itemId, { mediaId });
+    return { key, contentType: value(row.content_type) };
+  }
+
+  async removeCaseItemUpload(
+    itemId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.db.prepare(
+      "SELECT id FROM case_item_uploads WHERE id = ? AND item_id = ? AND status != 'deleted' LIMIT 1"
+    ).bind(mediaId, itemId).first<Row>();
+    if (!existing) return null;
+    const timestamp = now();
+    await this.db.batch([
+      this.db.prepare("DELETE FROM case_item_media WHERE item_id = ? AND upload_id = ?").bind(itemId, mediaId),
+      this.db.prepare(
+        `UPDATE case_item_uploads SET status = 'deleted', processed_at = ?
+         WHERE id = ? AND item_id = ? AND status != 'deleted'`
+      ).bind(timestamp, mediaId, itemId),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'case_item.media_removed', 'case_item', ?, ?, ?)`
+      ).bind(id(), actorSubject, itemId, json({ mediaId }), timestamp)
+    ]);
+    return { id: mediaId, itemId, status: "deleted" };
+  }
+
+  async createCaseItemAnnouncementDraft(
+    itemId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const item = await this.db.prepare(
+      "SELECT title, description, status FROM case_items WHERE id = ? LIMIT 1"
+    ).bind(itemId).first<Row>();
+    if (!item) return null;
+    const verb = item.status === "found" ? "has been found" : "is now out there";
+    const draft = await this.createUpdate({
+      title: `${value(item.title)} ${verb}`,
+      body: `${value(item.description)}\n\nCheck Where to Look before heading out.`
+    }, actorSubject);
+    await this.audit(actorSubject, "case_item.announcement_drafted", "case_item", itemId, {
+      updateId: draft.id
+    });
+    return draft;
+  }
+
   async listOpsUpdates(
     options: { limit?: number; cursor?: string | null } = {}
   ): Promise<Page> {
@@ -5499,6 +5823,62 @@ export class D1DataStore implements DataStore {
         media.status,
         now()
       );
+  }
+
+  private async caseItemById(itemId: string): Promise<Record<string, unknown> | null> {
+    const row = await this.db.prepare(
+      `SELECT id, slug, owner, category, title, description, finder_keeps,
+              status, display_order, version, created_at, updated_at, updated_by
+       FROM case_items WHERE id = ? LIMIT 1`
+    ).bind(itemId).first<Row>();
+    if (!row) return null;
+    const uploads = await this.caseItemUploads(itemId);
+    const selectedMedia = uploads
+      .filter((upload) => typeof upload.position === "number")
+      .sort((left, right) => Number(left.position) - Number(right.position));
+    return {
+      ...caseItemFromRow(row, selectedMedia, true, uploads),
+      updatedBy: value(row.updated_by),
+      history: await this.caseItemHistory(itemId)
+    };
+  }
+
+  private async caseItemUploads(itemId: string): Promise<Record<string, unknown>[]> {
+    const result = await this.db.prepare(
+      `SELECT upload.id, upload.content_type, upload.byte_size, upload.status,
+              selected.alt_text, selected.caption, selected.position
+       FROM case_item_uploads upload
+       LEFT JOIN case_item_media selected
+         ON selected.item_id = upload.item_id AND selected.upload_id = upload.id
+       WHERE upload.item_id = ? AND upload.status != 'deleted'
+       ORDER BY upload.created_at, upload.id`
+    ).bind(itemId).all<Row>();
+    return result.results.map((upload) => ({
+      id: value(upload.id),
+      contentType: value(upload.content_type),
+      size: Number(upload.byte_size ?? 0),
+      status: value(upload.status),
+      altText: nullable(upload.alt_text),
+      caption: nullable(upload.caption),
+      position: numberOrNull(upload.position)
+    }));
+  }
+
+  private async caseItemHistory(itemId: string): Promise<Record<string, unknown>[]> {
+    const result = await this.db.prepare(
+      `SELECT id, actor_subject, action, from_status, to_status, item_version, occurred_at
+       FROM case_item_events WHERE item_id = ?
+       ORDER BY occurred_at DESC, id DESC LIMIT 20`
+    ).bind(itemId).all<Row>();
+    return result.results.map((event) => ({
+      id: value(event.id),
+      actor: value(event.actor_subject),
+      action: value(event.action),
+      fromStatus: nullable(event.from_status),
+      toStatus: nullable(event.to_status),
+      version: Number(event.item_version),
+      occurredAt: value(event.occurred_at)
+    }));
   }
 
   private async officialUpdateUploads(updateId: string): Promise<Record<string, unknown>[]> {

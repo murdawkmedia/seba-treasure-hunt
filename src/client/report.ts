@@ -463,7 +463,7 @@ async function loadWaypointOptions(): Promise<void> {
       credentials: "same-origin",
       signal: AbortSignal.timeout(8_000),
     });
-    if (!response.ok) throw new Error("waypoints unavailable");
+    if (!response.ok) throw new Error("places unavailable");
     const envelope: unknown = await response.json();
     const existingChoices = Array.from(
       select.querySelectorAll<HTMLOptionElement>("option[data-report-waypoint]"),
@@ -488,10 +488,10 @@ async function loadWaypointOptions(): Promise<void> {
       select.insertBefore(option, differentLocation);
     }
     state.textContent = refreshed.length > 0
-      ? `${waypoints.length} waypoint choices available; ${refreshed.length} labels refreshed.`
-      : `${waypoints.length} numbered waypoint choices remain available.`;
+      ? `${waypoints.length} place choices available; ${refreshed.length} labels refreshed.`
+      : `${waypoints.length} numbered place choices remain available.`;
   } catch {
-    state.textContent = "Waypoint list unavailable; describe the location instead.";
+    state.textContent = "Place list unavailable; describe the location instead.";
   }
 }
 
@@ -564,7 +564,7 @@ function initializeLocationCapture(): void {
 }
 
 function initializeTypeBehavior(): void {
-  const type = document.querySelector("[name=type]") as HTMLSelectElement | null;
+  const type = document.querySelector<HTMLInputElement>("[name=type]");
   const photo = document.querySelector<HTMLInputElement>("[name=images]");
   const copy = document.querySelector<HTMLElement>("[data-photo-required-copy]");
   if (!type || !photo || !copy) return;
@@ -575,6 +575,28 @@ function initializeTypeBehavior(): void {
   };
   type.addEventListener("change", update);
   update();
+}
+
+function initializeReportIntake(): void {
+  const type = document.querySelector<HTMLInputElement>('[name="type"]');
+  const publicOption = document.querySelector<HTMLElement>("[data-report-public-option]");
+  const keepPrivate = document.querySelector<HTMLButtonElement>("[data-report-continue-private]");
+  if (!type) return;
+  for (const choice of document.querySelectorAll<HTMLInputElement>("[data-report-intake-choice]")) {
+    choice.addEventListener("change", () => {
+      if (!choice.checked) return;
+      const nextType = choice.dataset.reportType;
+      type.value = nextType === "find" || nextType === "safety" ? nextType : "tip";
+      type.dispatchEvent(new Event("change", { bubbles: true }));
+      if (publicOption) publicOption.hidden = choice.value !== "noticed";
+      clearFieldError("type");
+      pendingIdempotencyKey = undefined;
+    });
+  }
+  keepPrivate?.addEventListener("click", () => {
+    if (publicOption) publicOption.hidden = true;
+    document.querySelector<HTMLInputElement>('[name="name"]')?.focus();
+  });
 }
 
 function renderPhotoStatuses(messages: readonly string[], kind: "normal" | "error" = "normal"): void {
@@ -778,6 +800,7 @@ function initializeReport(): void {
   const receipt = document.querySelector<HTMLElement>("[data-report-receipt]");
   const another = document.querySelector<HTMLButtonElement>("[data-report-another]");
   initializeLocationCapture();
+  initializeReportIntake();
   initializeTypeBehavior();
   initializePhotoPreparation();
   void initializeTurnstile();
@@ -809,9 +832,11 @@ function initializeReport(): void {
       locationButton.disabled = false;
     }
     if (locationState) locationState.textContent = locationReset.stateText;
-    form.querySelector<HTMLSelectElement>('[name="type"]')?.dispatchEvent(new Event("change"));
+    form.querySelector<HTMLInputElement>('[name="type"]')?.dispatchEvent(new Event("change"));
+    const publicOption = form.querySelector<HTMLElement>("[data-report-public-option]");
+    if (publicOption) publicOption.hidden = true;
     if (cachedProfilePrefill) applyProfilePrefill(cachedProfilePrefill);
-    form.querySelector<HTMLElement>("input, select, textarea")?.focus();
+    form.querySelector<HTMLElement>("[data-report-intake-choice]")?.focus();
   });
 }
 

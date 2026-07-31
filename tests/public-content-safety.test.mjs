@@ -88,7 +88,7 @@ test("public pages do not disclose gated coordinates or unsafe route directions"
     assert.doesNotMatch(publicSource, pattern, `public source matched ${pattern}`);
   }
 
-  assert.match(read("route.html"), /sign in[\s\S]{0,160}Hunter Dashboard/i);
+  assert.match(read("route.html"), /sign in[\s\S]{0,160}(?:My Hunt|private checklist)/i);
 });
 
 test("the signed-out route publishes every story stop without embedding protected directions", () => {
