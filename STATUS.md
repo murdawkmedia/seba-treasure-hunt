@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-07-29
+Last updated: 2026-07-31
 
 ## Current state
 
@@ -12,6 +12,47 @@ are active in production.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-07-31 - Unhinged Evidence Wall validation candidate
+
+- Completed the approved B2 Full Investigation Board rebuild and froze the
+  application source at commit `084234cc08960552c2088ee1cff49dac49f6055a`.
+- Deployed only to the Cloudflare Pages `codex-validation` branch. The
+  immutable candidate is `https://25925500.seba-treasure-hunt.pages.dev`; the
+  stable owner-review URL is
+  `https://codex-validation.seba-treasure-hunt.pages.dev/?release=084234c`.
+- Applied `0016_dynamic_case_items.sql` only to
+  `tim-lost-hunter-platform-validation`. The new public-safe item board contains
+  seven versioned items and seven append-only seed events: Tim's ID is Found;
+  cash, rings, camera, Apple Watch, purse and qualifying golf balls are Out
+  there.
+- Deployed only the validation media worker. Validation worker version
+  `632e9e96-f616-4057-a9ad-7dded5e6cbe9` uses the validation D1, R2 and queue
+  bindings.
+- The public experience now uses one accessible evidence wall, three primary
+  actions, the simplified four-choice I Found Something flow, plain visitor
+  terminology and a mobile stacked-card fallback. My Hunt reuses the existing
+  private per-hunter progress records as a 13-place checklist.
+- Ops now exposes the audited What's Out There item editor, item media and
+  announcement-draft workflow. Announcement actions create private Official
+  Update drafts only and never publish automatically.
+- Release gates passed 299 MJS/static tests, 546 non-D1 TypeScript tests and
+  all 27 real-D1 integration tests in bounded groups, plus full TypeScript,
+  legal-artifact, production-build, credential-scan, output-privacy and
+  whitespace checks. The isolated browser QA passed 72 navigations, 111 states
+  and 21 screenshots with zero writes or application errors.
+- Deployed desktop and 390-pixel mobile checks found no horizontal overflow.
+  The validation API returns all seven public-safe items, the ID has the
+  accessible reversible Found treatment, and exact route links remain gated.
+  The only browser warning is Clerk's expected development-key notice in the
+  validation environment.
+- Production remains at runtime `production`; it has no validation banner and
+  does not contain the new evidence-wall copy. No production Pages deployment,
+  migration, D1/R2/queue write, Clerk change, DNS change or public post
+  occurred.
+- Owner review and eventual production promotion remain separate. Full release
+  evidence and the checklist are in
+  `docs/operations/2026-07-31-unhinged-evidence-wall-validation.md`.
 
 ## Update 2026-07-29 - Casey golf-ball search promoted to production
 
