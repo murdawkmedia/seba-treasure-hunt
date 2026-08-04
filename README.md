@@ -21,7 +21,7 @@ Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and a
 
 Public sponsorship is withdrawn. The dormant `sponsors.html` source remains in the repository for possible future review, but it is not built or routed publicly and no public submission form is available. Existing sponsor inquiry records remain private in the Ops Sponsors ledger.
 
-The current source candidate advances the public experience to the approved B2
+The current production release advances the public experience to the approved B2
 Full Investigation Board while retaining the production authentication,
 legal, reporting, moderation, media and rollback contracts.
 
@@ -40,7 +40,7 @@ Out There board rather than source-code edits.
 
 ## Guided private-report workflow
 
-The next Private Reports workflow is available on validation for owner review.
+The Private Reports workflow is active in production.
 It keeps the private review state separate from every public outcome and uses
 this audited state graph:
 
@@ -61,9 +61,9 @@ Case Note or Official Update.
 
 Hunters see only **Received**, **Under review**, **Verified**, or **Closed**.
 Any edited public use is shown separately as **Published in Case Notes** or
-**Used in an Official Update**. The validation candidate and known owner checks
+**Used in an Official Update**. Production verification and rollback evidence
 are recorded in
-[`docs/operations/2026-07-18-private-report-workflow-validation.md`](docs/operations/2026-07-18-private-report-workflow-validation.md).
+[`docs/operations/2026-07-16-production-release.md`](docs/operations/2026-07-16-production-release.md).
 
 ## Design source
 

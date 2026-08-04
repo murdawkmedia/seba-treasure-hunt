@@ -5,13 +5,45 @@
 - Canonical site: `https://www.timlostsomething.com`
 - Apex redirect: `https://timlostsomething.com` permanently preserves the path and query string when redirecting to `www`.
 - Cloudflare Pages project: `seba-treasure-hunt`
-- Production application commit: `0db0100836368a7345e9905a71074cfe887a1c43`
-- Production Pages deployment: `1ee12c0e-f53f-4f9d-9c73-397b1e273432`
-- Immutable production URL: `https://1ee12c0e.seba-treasure-hunt.pages.dev`
-- D1 migrations applied through `0015_submission_ops_publication_refinement.sql`
+- Production application commit: `64d303f197f22bbb451fefd417ca2bdecad85b25`
+- Production Pages deployment: `a6dc3b9c-4339-4ff9-8e73-8ec64b53db88`
+- Immutable production URL: `https://a6dc3b9c.seba-treasure-hunt.pages.dev`
+- D1 migrations applied through `0022_mark_apple_watch_found.sql`
 - Media worker version: `7cc2b2c0-15ae-49a4-899c-be878657d9c5`
 - Production database environment sentinel: `production`
 - Production route: 13 waypoints, with separate Seniors Centre and Derby's General Store records.
+
+## Production promotion: Ops access and item-status release
+
+- The reviewed release was squash-merged and pushed to GitHub `main` as
+  `64d303f197f22bbb451fefd417ca2bdecad85b25`. The private feature-branch
+  history was not published.
+- Ops now supports direct staff invitations, D1-first suspension/reactivation,
+  and versioned, reversible item-status controls. The public evidence wall and
+  find flow use the authoritative case-item ledger; the Apple Watch is found.
+- The merged result passed 632/632 tests, all TypeScript projects, exact legal
+  verification, the production build, 53 served-file privacy checks, and 111
+  browser states across 13 routes with zero console, page, request, overflow,
+  local-write, or external-write failures.
+- Pre-migration D1 counts were 81 players, 35 private reports, 27 reviewed Case
+  Notes, 5 Official Updates, 2 staff principals, 73 media rows, 8 case items,
+  11 item events, and 576 audit events. The same counts were observed after
+  migration.
+- The pre-migration private export is
+  `tim-lost-production-pre-64d303f-20260804T202554Z.sql` (869,441 bytes,
+  SHA-256 `2E9770190821897D7D3E074FC3E1AA9109552C48434A8B3C64349250A7A49609`).
+- Only `0022_mark_apple_watch_found.sql` was pending and applied. The watch was
+  already found through Ops; the migration reconciled its public description,
+  left its version and protected counts unchanged, and passed a clean
+  foreign-key check. No migrations remain.
+- Deployment `a6dc3b9c-4339-4ff9-8e73-8ec64b53db88` is immutable at
+  `https://a6dc3b9c.seba-treasure-hunt.pages.dev` and live at the canonical
+  domain. Eight key routes returned HTTP 200 on both hosts; production config,
+  signed-out Ops denial, the found watch, and path/query-preserving apex
+  redirect were verified.
+- Code rollback tag: `production-pre-ops-items-2026-08-04`, pointing to
+  `8683a26651987482db57f2db9c7eb5fe12688a13`. Data rollback is separate and
+  uses the private export or Cloudflare D1 Time Travel only when required.
 
 ## Production promotion: Casey's golf-ball search and growing cash story
 

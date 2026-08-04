@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-08-02
+Last updated: 2026-08-04
 
 ## Current state
 
@@ -10,8 +10,40 @@ accounts, company-domain Ops access, private reports, moderated Case Notes,
 13 Stops route, participation waiver, transactional email, and operator alerts
 are active in production.
 
+The live Ops console now supports audited direct staff invitations, immediate
+D1-first access suspension/reactivation, and reversible item-status controls.
+The public evidence wall is data-driven, and the Apple Watch is marked found.
+
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-08-04 - ops access and item-status production release
+
+- Squash-merged the reviewed release to GitHub `main` as
+  `64d303f197f22bbb451fefd417ca2bdecad85b25` without publishing the private
+  feature-branch history. The prior production source is preserved by the
+  annotated tag `production-pre-ops-items-2026-08-04`.
+- Verified the release on the actual merged `main`: 632/632 tests, every
+  TypeScript project, exact legal artifacts, production build, 53 served-file
+  privacy checks, and 111 Playwright states across 13 routes. Browser QA
+  recorded zero console, page, request, overflow, local-write, or
+  external-write failures.
+- Exported production D1 before migration to the private local backup
+  `tim-lost-production-pre-64d303f-20260804T202554Z.sql` (869,441 bytes,
+  SHA-256 `2E9770190821897D7D3E074FC3E1AA9109552C48434A8B3C64349250A7A49609`).
+- Applied only `0022_mark_apple_watch_found.sql`. Production had already
+  recorded the watch as found through Ops, so the migration reconciled its
+  public description without changing protected row counts or replacing the
+  operator event. No migrations remain and `PRAGMA foreign_key_check` is
+  clean.
+- Cloudflare Pages deployment
+  `a6dc3b9c-4339-4ff9-8e73-8ec64b53db88` is immutable at
+  `https://a6dc3b9c.seba-treasure-hunt.pages.dev` and promoted at
+  `https://www.timlostsomething.com`.
+- Live smoke checks passed for Home, Route, Ops, Report, What People Found,
+  Latest News, Dashboard, and Golf Balls on both hosts. Runtime identity is
+  `production`; signed-out Ops returns 401; the apex redirect preserves path
+  and query; and the public Apple Watch state is `found`.
 
 ## Update 2026-08-04 - ops access and item-status validation
 
