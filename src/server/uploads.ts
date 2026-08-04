@@ -3,6 +3,13 @@ import type { MediaJob, StoredMedia, UploadStorage } from "./types";
 
 const objectDate = () => new Date().toISOString().slice(0, 10);
 
+const sha256 = async (file: File): Promise<string> => {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
 export class R2UploadStorage implements UploadStorage {
   constructor(
     private readonly bucket: R2Bucket | null,
@@ -11,7 +18,7 @@ export class R2UploadStorage implements UploadStorage {
 
   async save(
     files: File[],
-    context: { kind: "field_note" | "report" | "official_update"; subject: string | null }
+    context: { kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }
   ): Promise<StoredMedia[]> {
     if (files.length === 0) return [];
     if (!this.bucket || !this.queue) {
@@ -23,6 +30,7 @@ export class R2UploadStorage implements UploadStorage {
       for (const file of files) {
         const id = crypto.randomUUID();
         const key = `originals/${objectDate()}/${context.kind}/${id}`;
+        const sourceSha256 = context.kind === "case_item" ? await sha256(file) : undefined;
         await this.bucket.put(key, file.stream(), {
           httpMetadata: { contentType: file.type }
         });
@@ -31,6 +39,7 @@ export class R2UploadStorage implements UploadStorage {
           key,
           contentType: file.type,
           size: file.size,
+          ...(sourceSha256 ? { sourceSha256 } : {}),
           status: "processing"
         });
         await this.queue.send({ mediaId: id, key, ownerKind: context.kind });

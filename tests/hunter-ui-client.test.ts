@@ -16,6 +16,7 @@ import {
   normalizeReportWaypoints,
   reportErrorSelector,
   reportLocationResetModel,
+  normalizeReportCaseItemChoices,
   reportProfilePrefill,
   reportSuccessModel,
   validateReportDraft,
@@ -274,6 +275,10 @@ const baseReport: ReportDraft = {
   coordinates: null,
   accuracy: true,
   publicAttributionKind: "hunter_handle",
+  caseItemId: "",
+  customItemName: "",
+  publicationPreference: "share_after_review",
+  sharingAcknowledgementAccepted: true,
 };
 
 test("report waypoints preserve stable IDs while sorting and labeling by public route order", () => {
@@ -353,8 +358,8 @@ test("dashboard route rows and record labels use public order without guessing h
     { id: 14, routeOrder: 13, name: "Invalid", description: "No", zoneState: "open", exactUrl: null },
   ]) as Array<{ id: number; routeOrder: number }>;
   assert.deepEqual(normalized.map((row) => [row.id, row.routeOrder]), [[13, 5], [5, 6]]);
-  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 13, waypointRouteOrder: 5, waypointName: "Derby's Lakeview General Store" }), "Waypoint 5 — Derby's Lakeview General Store");
-  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 5, waypointRouteOrder: null, waypointName: null }), "Waypoint details unavailable");
+  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 13, waypointRouteOrder: 5, waypointName: "Derby's Lakeview General Store" }), "Stop 5 — Derby's Lakeview General Store");
+  assert.equal(dashboardModule.dashboardRecordWaypointLabel({ waypointId: 5, waypointRouteOrder: null, waypointName: null }), "Stop details unavailable");
 });
 
 test("report request headers authenticate signed-in hunters without gating public reporters", () => {
@@ -443,19 +448,18 @@ test("report profile prefill preserves anything already typed", () => {
   assert.equal(applyPrefill("", "Profile Name"), "Profile Name");
 });
 
-test("successful private reports retain an explicit receipt reference", () => {
-  const message = "Your report was sent privately to the SebaHub case team. It is not public. " +
-    "We may contact you to verify details. After review, a representative from SebaHub may publish " +
-    "an edited Case Note or Official Update. Your email, phone number and private details will not be published.";
-  assert.deepEqual(reportSuccessModel({ data: { id: "report-123" } }), {
+test("successful finder reports explain the selected sharing path and retain a reference", () => {
+  const shareMessage = "Your report is private while a representative from SebaHub reviews it. Nothing publishes automatically. " +
+    "If approved, an edited, contact-free version may appear in What People Found. Photos are published only when staff separately select them.";
+  assert.deepEqual(reportSuccessModel({ data: { id: "report-123" } }, "share_after_review"), {
     reference: "report-123",
-    heading: "Report received privately",
-    message,
+    heading: "We got it",
+    message: shareMessage,
   });
-  assert.deepEqual(reportSuccessModel({}), {
+  assert.deepEqual(reportSuccessModel({}, "private"), {
     reference: "recorded",
-    heading: "Report received privately",
-    message,
+    heading: "We got it",
+    message: "Your report was sent privately to the SebaHub case team. It will not be published. We may contact you to verify the details.",
   });
 });
 
@@ -464,6 +468,8 @@ test("hunter report history accepts only safe statuses and exact public destinat
     {
       id: "report-received",
       type: "find",
+      caseItemId: "camera-drop",
+      caseItemTitle: "A camera",
       hunterStatus: "Received",
       createdAt: "2026-07-18T10:00:00.000Z",
       publications: [],
@@ -511,7 +517,9 @@ test("hunter report history accepts only safe statuses and exact public destinat
     ["report-verified", "Verified", ["official_update"]],
     ["report-closed", "Closed", ["case_note", "official_update"]],
   ]);
-  assert.deepEqual(Object.keys(reports[0]!).sort(), ["createdAt", "hunterStatus", "id", "publications", "type"]);
+  assert.equal(reports[0]?.caseItemId, "camera-drop");
+  assert.equal(reports[0]?.caseItemTitle, "A camera");
+  assert.deepEqual(Object.keys(reports[0]!).sort(), ["caseItemId", "caseItemTitle", "createdAt", "hunterStatus", "id", "publications", "type"]);
   const projection = JSON.stringify(reports);
   for (const privateSentinel of ["PRIVATE REASON", "STAFF SUBJECT", "private@example", "555-555", "private/evidence", "PRIVATE CHILD", "evil.example", "/ops"]) {
     assert.doesNotMatch(projection, new RegExp(privateSentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
@@ -527,24 +535,61 @@ test("report payload omits non-waypoint fallback choices", () => {
   assert.equal("waypointId" in buildReportPayload({ ...baseReport, waypointId: "14" }), false);
 });
 
-test("find reports require an image while tips and safety reports do not", () => {
+test("photos are optional for finds, tips, and safety reports", () => {
   assert.deepEqual(validateReportDraft(baseReport), {});
-  assert.equal(
-    validateReportDraft({ ...baseReport, type: "find" }).photo,
-    "Add a clear photo for a find claim.",
-  );
+  assert.deepEqual(validateReportDraft({ ...baseReport, type: "find", customItemName: "A mystery item" }), {});
   assert.deepEqual(validateReportDraft({ ...baseReport, type: "safety" }), {});
 });
 
-test("report payload carries the required attribution choice but never a public label", () => {
+test("report payload carries versioned sharing consent and requires attribution only when sharing", () => {
   const payload = buildReportPayload({ ...baseReport, publicAttributionKind: "display_name" });
   assert.equal(payload.publicAttributionKind, "display_name");
+  assert.equal(payload.publicationPreference, "share_after_review");
+  assert.equal(payload.sharingNoticeVersion, "2026.1");
+  assert.equal(payload.sharingAcknowledgementAccepted, true);
   assert.equal("publicAttribution" in payload, false);
   assert.equal(
     validateReportDraft({ ...baseReport, publicAttributionKind: "" as ReportDraft["publicAttributionKind"] })
       .publicAttributionKind,
     "Choose how this report may be credited if a representative from SebaHub publishes it.",
   );
+  assert.deepEqual(validateReportDraft({
+    ...baseReport,
+    publicationPreference: "private",
+    publicAttributionKind: "",
+  }), {});
+});
+
+test("report payload accepts either a known item or a custom item name", () => {
+  const known = buildReportPayload({ ...baseReport, caseItemId: "case-item-camera" });
+  assert.equal(known.caseItemId, "case-item-camera");
+  assert.equal("customItemName" in known, false);
+
+  const custom = buildReportPayload({ ...baseReport, customItemName: "  A mystery trinket  " });
+  assert.equal(custom.customItemName, "A mystery trinket");
+  assert.equal("caseItemId" in custom, false);
+
+  assert.equal(
+    validateReportDraft({ ...baseReport, caseItemId: "case-item-camera", customItemName: "Another camera" }).customItemName,
+    "Choose a known item or enter your own item name, not both.",
+  );
+  assert.equal(
+    validateReportDraft({ ...baseReport, type: "find", caseItemId: "", customItemName: "" }).customItemName,
+    "Choose a known item or name what you found.",
+  );
+});
+
+test("public reportable items become safe current choices", () => {
+  assert.deepEqual(normalizeReportCaseItemChoices({ data: [
+    { id: "case-item-camera", title: " A camera ", status: "out_there", reportable: true },
+    { id: "case-item-golf-balls", title: "Casey's marked golf balls", status: "paused", reportable: true },
+    { id: "case-item-id", title: "Tim's ID", status: "found", reportable: true },
+    { id: "case-item-private", title: "Private", status: "out_there", reportable: false },
+    { id: "bad id", title: "Bad", status: "out_there", reportable: true },
+  ] }), [
+    { id: "case-item-camera", title: "A camera" },
+    { id: "case-item-golf-balls", title: "Casey's marked golf balls" },
+  ]);
 });
 
 test("report form data uses browser-prepared upload files", () => {

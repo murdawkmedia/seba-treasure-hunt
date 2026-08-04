@@ -63,6 +63,6 @@ test("signed-out route data cannot carry exact links into public placeholders", 
 test("Lucky 13 labels stay concise while stable waypoint IDs remain separate", () => {
   assert.equal(stopName(4, "Seba Beach Seniors Centre"), "Seniors Centre");
   assert.equal(stopName(5, "Derby's Lakeview General Store"), "Derby's General Store");
-  assert.equal(stopLabel(11, "The Driving Range & the Digger Café"), "Stop 11 · Driving Range / Digger Café");
+  assert.equal(stopLabel(11, "The Driving Range & Brewing at Seba"), "Stop 11 · Driving Range / Brewing at Seba");
   assert.equal(stopLabel(13, "Old Seba Beach School — SebaHub"), "Stop 13 · Old Seba Beach School / SebaHub");
 });

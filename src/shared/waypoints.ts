@@ -11,7 +11,7 @@ const STOP_NAMES = [
   "Lodge Trails",
   "Vista Lands",
   "Cliff-Edge Slope",
-  "Driving Range / Digger Café",
+  "Driving Range / Brewing at Seba",
   "Kokanee Springs Front Gate",
   "Old Seba Beach School / SebaHub",
 ] as const;

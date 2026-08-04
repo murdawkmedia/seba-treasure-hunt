@@ -100,3 +100,53 @@ test("approved-report privacy fixtures fail closed while selected public media r
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("Fresh Drops source identities and private storage fields fail the served-output privacy gate", async () => {
+  const { scanBuiltOutputPrivacy, defaultPrivateFixtureValues } = await import("../scripts/qa-output-privacy.mjs");
+  const root = await mkdtemp(path.join(os.tmpdir(), "tim-lost-fresh-drops-output-scan-test-"));
+  const privateValues = [
+    "IMG_5645",
+    "IMG_5647",
+    "image000001",
+    "IMG_5630",
+    "IMG_5610",
+    "source-media",
+    "fresh-drops-2026-07-31",
+    "D:\\Users\\",
+    "private_object_key",
+    "source_sha256",
+  ];
+
+  try {
+    await mkdir(path.join(root, "assets", "app"), { recursive: true });
+    await writeFile(
+      path.join(root, "dashboard.html"),
+      `<main>${privateValues.slice(0, 5).join("|")}</main>`,
+      "utf8",
+    );
+    await writeFile(
+      path.join(root, "assets", "app", "dashboard.js"),
+      `// ${privateValues.slice(5).join("|")}\nconst privateSource = true;`,
+      "utf8",
+    );
+    await writeFile(
+      path.join(root, "_worker.js"),
+      `const serverOnly = ${JSON.stringify(privateValues.join("|"))};`,
+      "utf8",
+    );
+
+    for (const fixture of privateValues) assert.equal(defaultPrivateFixtureValues.includes(fixture), true);
+    const result = await scanBuiltOutputPrivacy({ distRoot: root });
+    assert.deepEqual(
+      [...new Set(result.publicSurfaceOutputs.privacyFindings.map(({ fixture }) => fixture))].sort(),
+      [...privateValues].sort(),
+    );
+    assert.deepEqual(result.privateBundleOutputs.files, ["_worker.js"]);
+    assert.ok(
+      result.privateBundleOutputs.privacyFindings.length >= privateValues.length - 1,
+      "the server-only bundle remains classified separately from served public files",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

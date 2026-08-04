@@ -21,6 +21,16 @@ export const defaultPrivateFixtureValues = Object.freeze([
   "private/report-minor-qa-001/original-private.jpg",
   "birth year 2014",
   '"birthYear":2014',
+  "IMG_5645",
+  "IMG_5647",
+  "image000001",
+  "IMG_5630",
+  "IMG_5610",
+  "source-media",
+  "fresh-drops-2026-07-31",
+  "D:\\Users\\",
+  "private_object_key",
+  "source_sha256",
 ]);
 
 function relativeOutputPath(distRoot, file) {

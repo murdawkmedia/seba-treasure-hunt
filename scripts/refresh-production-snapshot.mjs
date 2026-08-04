@@ -42,6 +42,10 @@ export const SNAPSHOT_TABLES = Object.freeze([
   "sponsor_inquiry_events",
   "official_updates",
   "official_update_media",
+  "case_items",
+  "case_item_events",
+  "case_item_uploads",
+  "case_item_media",
 ]);
 
 export const SNAPSHOT_RESET_ONLY_TABLES = Object.freeze([
@@ -66,6 +70,8 @@ const immutableSnapshotTriggers = Object.freeze([
   "trg_waiver_account_participants_immutable_delete",
   "trg_notification_delivery_events_immutable",
   "trg_notification_delivery_events_immutable_delete",
+  "trg_case_item_events_no_update",
+  "trg_case_item_events_no_delete",
 ]);
 
 const sqlIdentifier = (value) => `"${String(value).replaceAll('"', '""')}"`;
@@ -163,6 +169,7 @@ export function buildSnapshotSql({
     ...orderSnapshotInsertStatements(insertStatements)
       .map((statement) => statement.trim().replace(/;?$/, ";")),
     `UPDATE media_uploads SET private_object_key = ${sqlString(prefix)} || private_object_key, derivative_object_key = CASE WHEN derivative_object_key IS NULL THEN NULL ELSE ${sqlString(prefix)} || derivative_object_key END;`,
+    `UPDATE case_item_uploads SET private_object_key = ${sqlString(prefix)} || private_object_key, derivative_object_key = CASE WHEN derivative_object_key IS NULL THEN NULL ELSE ${sqlString(prefix)} || derivative_object_key END;`,
     "DELETE FROM snapshot_refresh_metadata;",
     `INSERT INTO snapshot_refresh_metadata (id, kind, status, snapshot_id, source_environment, verified_at, source_updated_at, report_count, player_count, staff_count, audit_count, media_count) VALUES (1, 'production-snapshot', 'verified', ${sqlString(snapshotId)}, 'production', ${sqlString(verifiedAt)}, ${sqlString(sourceUpdatedAt)}, ${counts.reports}, ${counts.players}, ${counts.staff}, ${counts.audit}, ${counts.media});`,
     "",
@@ -335,10 +342,10 @@ async function main() {
     ]);
     const insertStatements = exportedInsertStatements(await readFile(exportPath, "utf8"));
     const [counts] = await d1Rows(resources.sourceDatabase,
-      "SELECT (SELECT COUNT(*) FROM private_reports) AS reports, (SELECT COUNT(*) FROM player_accounts) AS players, (SELECT COUNT(*) FROM staff_principals) AS staff, (SELECT COUNT(*) FROM audit_events) AS audit, (SELECT COUNT(*) FROM media_uploads WHERE status = 'ready') AS media, (SELECT updated_at FROM case_status WHERE id = 1) AS source_updated_at", null, "production count read");
+      "SELECT (SELECT COUNT(*) FROM private_reports) AS reports, (SELECT COUNT(*) FROM player_accounts) AS players, (SELECT COUNT(*) FROM staff_principals) AS staff, (SELECT COUNT(*) FROM audit_events) AS audit, ((SELECT COUNT(*) FROM media_uploads WHERE status = 'ready') + (SELECT COUNT(*) FROM case_item_uploads WHERE status = 'ready')) AS media, (SELECT updated_at FROM case_status WHERE id = 1) AS source_updated_at", null, "production count read");
     if (!counts) throw new Error("Production snapshot counts are unavailable.");
     const mediaRows = await d1Rows(resources.sourceDatabase,
-      "SELECT private_object_key, derivative_object_key, content_type, byte_size FROM media_uploads WHERE private_object_key IS NOT NULL OR derivative_object_key IS NOT NULL ORDER BY id", null, "production media inventory read");
+      "SELECT id, private_object_key, derivative_object_key, content_type, byte_size FROM media_uploads WHERE private_object_key IS NOT NULL OR derivative_object_key IS NOT NULL UNION ALL SELECT id, private_object_key, derivative_object_key, content_type, byte_size FROM case_item_uploads WHERE private_object_key IS NOT NULL OR derivative_object_key IS NOT NULL ORDER BY id", null, "production media inventory read");
     const objects = [];
     for (const row of mediaRows) {
       for (const sourceKey of [row.private_object_key, row.derivative_object_key]) {

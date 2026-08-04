@@ -1,4 +1,9 @@
 import type { ReportReviewState } from "../shared/report-workflow";
+import type {
+  CaseItemAudience,
+  CaseItemCollection,
+  CaseItemMediaAudience
+} from "../shared/case-items";
 import type { TransactionalMailAcceptance } from "./transactional-mail";
 
 export type ReportWorkflowMutation =
@@ -19,6 +24,45 @@ export type ReportWorkflowMutation =
 export type CaseState = "open" | "paused" | "found";
 export type ZoneState = "open" | "restricted" | "hazardous" | "temporarily_closed";
 export type DeploymentEnvironment = "validation" | "production";
+export type CaseItemOwner = "tim" | "casey";
+export type CaseItemStatus = "draft" | "out_there" | "found" | "paused" | "archived";
+export type StaffAccessAction = "suspend" | "reactivate";
+
+export interface CaseItemMediaSelection {
+  id: string;
+  altText: string;
+  caption: string | null;
+  audience?: CaseItemMediaAudience;
+}
+
+export interface CaseItemInput {
+  slug: string;
+  owner: CaseItemOwner;
+  category: string;
+  title: string;
+  description: string;
+  finderKeeps: boolean;
+  closeOnFind: boolean;
+  status: CaseItemStatus;
+  displayOrder: number;
+  collection?: CaseItemCollection;
+  collectionOrder?: number | null;
+  audience?: CaseItemAudience;
+  showOnBoard?: boolean;
+  teaserOrder?: 1 | 2 | null;
+  reportable?: boolean;
+}
+
+export interface CaseItemMutation extends CaseItemInput {
+  expectedVersion: number;
+  mediaSelections: CaseItemMediaSelection[];
+}
+
+export interface CaseItemStatusMutation {
+  expectedVersion: number;
+  status: "out_there" | "found";
+  confirmed: true;
+}
 
 export interface CaseStatus {
   state: CaseState;
@@ -255,6 +299,7 @@ export interface StoredMedia {
   key: string;
   contentType?: string;
   size?: number;
+  sourceSha256?: string;
   status: "processing" | "ready" | "quarantined";
 }
 
@@ -287,6 +332,15 @@ export interface DataStore {
   listZones(): Promise<Record<string, unknown>[]>;
   listWaypoints(): Promise<Record<string, unknown>[]>;
   listBoard(waypointId: number | null, options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  listPublicCaseItems(): Promise<Record<string, unknown>[]>;
+  listHunterFreshDrops(): Promise<Record<string, unknown>[]>;
+  getHunterCaseItemMedia(mediaId: string): Promise<{ key: string; contentType: string } | null>;
+  getReportableFreshDrop(id: string): Promise<{ id: string; title: string } | null>;
+  getReportableCaseItem(id: string): Promise<{
+    id: string;
+    title: string;
+    audience: "public" | "hunter_only";
+  } | null>;
   getPublicMedia(id: string): Promise<{
     key: string;
     contentType: string;
@@ -387,6 +441,37 @@ export interface DataStore {
   ): Promise<Record<string, unknown> | null>;
   isActiveStaff(subject: string, normalizedEmail: string | null): Promise<boolean>;
   getOpsDashboard(): Promise<Record<string, unknown>>;
+  listOpsCaseItems(): Promise<Record<string, unknown>[]>;
+  createCaseItem(input: CaseItemInput, actorSubject: string): Promise<Record<string, unknown>>;
+  updateCaseItem(
+    id: string,
+    input: CaseItemMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  updateCaseItemStatus(
+    id: string,
+    input: CaseItemStatusMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  addCaseItemUploads(
+    id: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  getCaseItemMedia(
+    id: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null>;
+  removeCaseItemUpload(
+    id: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  createCaseItemAnnouncementDraft(
+    id: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
   updateStatus(input: Record<string, unknown>, actorSubject: string): Promise<CaseStatus>;
   listOpsUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   getOpsUpdateDetail(id: string, actorSubject: string): Promise<Record<string, unknown> | null>;
@@ -469,7 +554,7 @@ export interface DataStore {
     actorSubject: string
   ): Promise<{ key: string; contentType: string } | null>;
   moderateNote(id: string, decision: string, reason: string | null, actorSubject: string): Promise<Record<string, unknown> | null>;
-  listStaff(): Promise<Record<string, unknown>[]>;
+  listStaff(actorSubject?: string): Promise<Record<string, unknown>[]>;
   listSubscribers(options?: { limit?: number; cursor?: string | null }): Promise<{
     counts: { totalProfiles: number; huntEmail: number; marketing: number };
     items: Record<string, unknown>[];
@@ -481,7 +566,21 @@ export interface DataStore {
     nextCursor: string | null;
   }>;
   listAudit(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
+  inviteStaff(
+    normalizedEmail: string,
+    actorSubject: string
+  ): Promise<{ record: Record<string, unknown>; created: boolean }>;
   getStaffPrincipal(id: string): Promise<Record<string, unknown> | null>;
+  changeStaffAccess(
+    id: string,
+    action: StaffAccessAction,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null>;
+  recordStaffProviderWarning(
+    operation: "invitation" | "revoke-sessions" | "suspend" | "reactivate",
+    target: string,
+    actorSubject: string
+  ): Promise<void>;
   recordStaffAction(action: string, target: string, actorSubject: string): Promise<Record<string, unknown>>;
   recordPlayerAction(action: string, target: string, actorSubject: string): Promise<Record<string, unknown>>;
 }
@@ -500,7 +599,7 @@ export interface WebhookVerifier {
 }
 
 export interface UploadStorage {
-  save(files: File[], context: { kind: "field_note" | "report" | "official_update"; subject: string | null }): Promise<StoredMedia[]>;
+  save(files: File[], context: { kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }): Promise<StoredMedia[]>;
   read(key: string): Promise<{
     body: ReadableStream;
     contentType: string;
@@ -511,7 +610,7 @@ export interface UploadStorage {
 export interface MediaJob {
   mediaId: string;
   key: string;
-  ownerKind: "field_note" | "report" | "official_update";
+  ownerKind: "field_note" | "report" | "official_update" | "case_item";
 }
 
 export interface PublicRuntimeConfig {

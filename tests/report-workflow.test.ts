@@ -9,6 +9,7 @@ import {
   reportTransitionRequiresConfirmation,
   reportTransitionRequiresReason,
 } from "../src/shared/report-workflow";
+import { freshDropReportContext } from "../src/client/report";
 
 test("defines the complete guided and reversible transition graph", () => {
   assert.deepEqual(REPORT_REVIEW_STATES, [
@@ -60,4 +61,25 @@ test("requires reasons and confirmations for corrections and terminal decisions"
   assert.equal(reportTransitionRequiresConfirmation("reviewing", "rejected"), true);
   assert.equal(reportTransitionRequiresConfirmation("verified", "resolved"), true);
   assert.equal(reportTransitionRequiresConfirmation("reviewing", "verified"), false);
+});
+
+test("Fresh Drops prefill trusts only a stable ID and a server-provided title", () => {
+  const items = [{
+    id: "case-item-wallet",
+    slug: "wallet",
+    category: "accessory",
+    title: "A wallet",
+    description: "Out there",
+    owner: "tim",
+    status: "out_there",
+    reportable: true,
+    collectionOrder: 7,
+    media: [],
+  }];
+  assert.deepEqual(
+    freshDropReportContext("?item=case-item-wallet&source=fresh-drops&title=Attacker", items),
+    { id: "case-item-wallet", title: "A wallet" },
+  );
+  assert.equal(freshDropReportContext("?item=../../private&source=fresh-drops", items), null);
+  assert.equal(freshDropReportContext("?item=case-item-wallet&source=elsewhere", items), null);
 });

@@ -5,6 +5,7 @@ import {
   type HunterAuthSessionCoordinator,
 } from "./hunter-auth-session";
 import { managePageLifecycleSubscription } from "./page-lifecycle-subscription";
+import { clearFreshDrops, initializeFreshDrops, showFreshDropsLocked } from "./fresh-drops";
 import {
   createHunterSignupResume,
   browserHunterSignupResumeStore,
@@ -29,11 +30,13 @@ export interface HunterAuthHook {
 export interface HunterDashboardReport {
   id: string;
   type: "find" | "tip" | "safety";
+  caseItemId: string | null;
+  caseItemTitle: string | null;
   hunterStatus: "Received" | "Under review" | "Verified" | "Closed";
   createdAt: string;
   publications: Array<
-    | { kind: "case_note"; label: "Published in Case Notes"; href: "/clue-board" }
-    | { kind: "official_update"; label: "Used in an Official Update"; href: "/updates" }
+    | { kind: "case_note"; label: "Published in What People Found"; href: "/clue-board" }
+    | { kind: "official_update"; label: "Used in Latest News"; href: "/updates" }
   >;
 }
 
@@ -603,6 +606,7 @@ const unavailableConfig = (): PublicConfig => ({
 
 let hunterClerk: Clerk | null = null;
 let hunterAuthSession: HunterAuthSessionCoordinator | null = null;
+let activeHunterAuthHook: HunterAuthHook | null = null;
 let invalidateAccountOperations: (() => void) | null = null;
 let explicitHunterSignOutPending = false;
 let signInAttempt: SignInResource | null = null;
@@ -847,6 +851,7 @@ function capturePristineDashboardContent(): void {
 }
 
 function clearPrivateDashboard(): void {
+  clearFreshDrops();
   const content = document.querySelector<HTMLElement>("[data-dashboard-content]");
   if (!content) return;
   capturePristineDashboardContent();
@@ -877,8 +882,8 @@ function showSignedOut(reason: "signed-out" | "unavailable"): void {
   message(
     reason === "signed-out" ? "info" : "error",
     reason === "signed-out"
-      ? "Sign in to retrieve your private Hunter Dashboard."
-      : "Hunter Dashboard data cannot be verified right now. Public pages and private reporting remain available.",
+      ? "Sign in to retrieve My Hunt."
+      : "Your private My Hunt data cannot be verified right now. Public pages and private reporting remain available.",
   );
 }
 
@@ -943,27 +948,73 @@ export function normalizeDashboardWaypoints(value: unknown): DashboardWaypoint[]
 }
 
 export function dashboardRecordWaypointLabel(value: unknown): string {
-  if (!isRecord(value)) return "Waypoint not specified";
+  if (!isRecord(value)) return "Stop not specified";
   const stableId = waypointId(value.waypointId);
   const order = routeOrder(value.waypointRouteOrder);
   const name = text(value.waypointName, "").trim();
-  if (stableId !== null && order !== null && name) return `Waypoint ${order} — ${name}`;
-  return stableId === null ? "Waypoint not specified" : "Waypoint details unavailable";
+  if (stableId !== null && order !== null && name) return `Stop ${order} — ${name}`;
+  return stableId === null ? "Stop not specified" : "Stop details unavailable";
 }
 
-function renderWaypoints(waypoints: unknown, status: unknown): void {
+function progressByWaypoint(value: unknown): Map<number, string> {
+  const progress = new Map<number, string>();
+  if (!Array.isArray(value)) return progress;
+  for (const record of value) {
+    if (!isRecord(record)) continue;
+    const id = waypointId(record.waypointId);
+    const state = typeof record.state === "string" ? record.state : "";
+    if (id !== null && ["saved", "visited", "searched"].includes(state)) progress.set(id, state);
+  }
+  return progress;
+}
+
+async function savePrivatePlaceCheck(
+  waypoint: DashboardWaypoint,
+  checkbox: HTMLInputElement,
+  status: HTMLElement,
+): Promise<void> {
+  const desired = checkbox.checked;
+  checkbox.disabled = true;
+  status.textContent = "Saving…";
+  try {
+    const headers = await authHeaders(activeHunterAuthHook);
+    headers.set("Content-Type", "application/json");
+    const response = await protectedFetch(`/api/v1/progress/${waypoint.id}`, {
+      method: "PUT",
+      headers,
+      credentials: "same-origin",
+      body: JSON.stringify({ state: desired ? "searched" : "saved" }),
+      signal: requestSignal(10_000),
+    });
+    if (!response.ok) throw new Error("The checklist change could not be saved.");
+    status.textContent = desired ? "Saved privately as searched" : "Removed from searched places";
+  } catch (error) {
+    checkbox.checked = !desired;
+    status.textContent = error instanceof Error ? error.message : "The checklist change could not be saved.";
+  } finally {
+    checkbox.disabled = false;
+  }
+}
+
+function renderWaypoints(
+  waypoints: unknown,
+  status: unknown,
+  progress: unknown,
+  participationUnlocked: boolean,
+): void {
   const list = document.querySelector<HTMLOListElement>("[data-dashboard-waypoints]");
   if (!list) return;
   list.replaceChildren();
   const normalized = normalizeDashboardWaypoints(waypoints);
   if (normalized.length === 0) {
     const item = document.createElement("li");
-    item.textContent = "No approved member waypoints are available.";
+    item.textContent = "No approved places are available.";
     list.appendChild(item);
     return;
   }
 
   const caseOpen = isRecord(status) && status.state === "open";
+  const privateProgress = progressByWaypoint(progress);
   for (const raw of normalized) {
     const item = document.createElement("li");
     const copy = document.createElement("div");
@@ -971,13 +1022,37 @@ function renderWaypoints(waypoints: unknown, status: unknown): void {
     const description = document.createElement("p");
     const state = zoneState(raw.zoneState);
     const badge = document.createElement("span");
-    heading.textContent = `Waypoint ${raw.routeOrder} — ${raw.name}`;
+    heading.textContent = `Stop ${String(raw.routeOrder).padStart(2, "0")} · ${raw.name}`;
     description.textContent = raw.description;
     badge.className = "zone-state";
     badge.dataset.zone = state;
     badge.textContent = state.replaceAll("_", " ");
     copy.appendChild(heading);
     copy.appendChild(description);
+
+    const checklist = document.createElement("label");
+    checklist.className = "place-check";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = ["visited", "searched"].includes(privateProgress.get(raw.id) ?? "");
+    checkbox.disabled = !participationUnlocked;
+    checkbox.setAttribute("aria-describedby", `place-check-status-${raw.id}`);
+    const checklistCopy = document.createElement("span");
+    checklistCopy.textContent = "I searched this place";
+    checklist.append(checkbox, checklistCopy);
+    const checklistStatus = document.createElement("span");
+    checklistStatus.className = "place-check__status";
+    checklistStatus.id = `place-check-status-${raw.id}`;
+    checklistStatus.setAttribute("aria-live", "polite");
+    checklistStatus.textContent = !participationUnlocked
+      ? "Finish registration to save private progress"
+      : checkbox.checked
+        ? "Saved privately as searched"
+        : "Only you can see this checklist";
+    if (participationUnlocked) {
+      checkbox.addEventListener("change", () => { void savePrivatePlaceCheck(raw, checkbox, checklistStatus); });
+    }
+    copy.append(checklist, checklistStatus);
 
     const exactUrl = safeHttpsUrl(raw.exactUrl);
     if (caseOpen && state === "open" && exactUrl) {
@@ -991,7 +1066,7 @@ function renderWaypoints(waypoints: unknown, status: unknown): void {
     } else {
       const locked = document.createElement("span");
       locked.className = "field-hint";
-      locked.textContent = "Exact directions locked by current case or access state.";
+      locked.textContent = "Exact directions are locked by the current case or access state.";
       copy.appendChild(locked);
     }
     item.appendChild(copy);
@@ -1031,6 +1106,8 @@ export function normalizeHunterReports(value: unknown): HunterDashboardReport[] 
     const type = candidate.type;
     const hunterStatus = candidate.hunterStatus;
     const createdAt = typeof candidate.createdAt === "string" ? candidate.createdAt.trim() : "";
+    const caseItemId = typeof candidate.caseItemId === "string" ? candidate.caseItemId.trim() : "";
+    const caseItemTitle = typeof candidate.caseItemTitle === "string" ? candidate.caseItemTitle.trim() : "";
     if (
       !id || !types.has(type as HunterDashboardReport["type"]) ||
       !statuses.has(hunterStatus as HunterDashboardReport["hunterStatus"]) ||
@@ -1043,23 +1120,27 @@ export function normalizeHunterReports(value: unknown): HunterDashboardReport[] 
       if (!isRecord(publication) || seen.has(String(publication.kind))) continue;
       if (
         publication.kind === "case_note" &&
-        publication.label === "Published in Case Notes" &&
+        typeof publication.label === "string" &&
+        ["Published in Case Notes", "Published in What People Found"].includes(publication.label) &&
         publication.href === "/clue-board"
       ) {
-        publications.push({ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" });
+        publications.push({ kind: "case_note", label: "Published in What People Found", href: "/clue-board" });
         seen.add("case_note");
       } else if (
         publication.kind === "official_update" &&
-        publication.label === "Used in an Official Update" &&
+        typeof publication.label === "string" &&
+        ["Used in an Official Update", "Used in Latest News"].includes(publication.label) &&
         publication.href === "/updates"
       ) {
-        publications.push({ kind: "official_update", label: "Used in an Official Update", href: "/updates" });
+        publications.push({ kind: "official_update", label: "Used in Latest News", href: "/updates" });
         seen.add("official_update");
       }
     }
     return [{
       id,
       type: type as HunterDashboardReport["type"],
+      caseItemId: /^[A-Za-z0-9_-]{1,128}$/.test(caseItemId) && caseItemTitle ? caseItemId : null,
+      caseItemTitle: /^[A-Za-z0-9_-]{1,128}$/.test(caseItemId) && caseItemTitle ? caseItemTitle : null,
       hunterStatus: hunterStatus as HunterDashboardReport["hunterStatus"],
       createdAt,
       publications,
@@ -1100,7 +1181,7 @@ function renderHunterReports(selector: string, values: unknown, empty: string): 
     const reference = document.createElement("p");
     const received = document.createElement("p");
     const time = document.createElement("time");
-    heading.textContent = typeLabels[report.type];
+    heading.textContent = report.caseItemTitle ?? typeLabels[report.type];
     reference.textContent = `Reference ${report.id}`;
     reference.className = "report-history-reference";
     time.dateTime = report.createdAt;
@@ -1174,17 +1255,21 @@ function renderDashboard(data: Record<string, unknown>): void {
   setDashboardContentVisible(true);
   renderProfile(data.profile);
   renderLatestUpdate(data.latestUpdate);
-  renderWaypoints(data.waypoints, data.status);
+  const participationUnlocked = data.participationUnlocked === true;
+  renderWaypoints(data.waypoints, data.status, data.progress, participationUnlocked);
   renderHunterReports("[data-dashboard-reports]", data.reports, "No private reports yet.");
-  renderRecords("[data-dashboard-notes]", data.notes, "No Case Notes yet.");
+  renderRecords("[data-dashboard-notes]", data.notes, "Nothing from you has appeared in What People Found yet.");
   const waiverPanel = document.querySelector<HTMLElement>("[data-waiver-panel]");
   if (waiverPanel) waiverPanel.hidden = !isRecord(data.profile) || data.privacyMediaRequired === true;
   message(
-    isRecord(data.profile) ? "success" : "info",
-    isRecord(data.profile)
-      ? "Your private Hunter Dashboard is up to date."
-      : "You are signed in. Complete the private profile to unlock approved exact directions and community tools.",
+    participationUnlocked ? "success" : "info",
+    participationUnlocked
+      ? "My Hunt is up to date."
+      : data.privacyMediaRequired === true
+        ? "You are signed in. Complete the private profile to unlock registered hunter tools."
+        : "You are signed in. Review and accept the current waiver to unlock registered hunter tools.",
   );
+  if (data.participationUnlocked === true) returnToPromptedAction();
 }
 
 function profileInput<T extends HTMLInputElement | HTMLSelectElement>(
@@ -2210,6 +2295,34 @@ function showProvisioningProgress(_elapsedMilliseconds: number, nextAttempt: num
   );
 }
 
+function returnToPromptedAction(): void {
+  const parameters = new URLSearchParams(window.location.search);
+  const candidate = parameters.get("returnTo");
+  if (!candidate || !candidate.startsWith("/") || candidate.startsWith("//")) return;
+  try {
+    const destination = new URL(candidate, window.location.origin);
+    if (destination.origin !== window.location.origin) return;
+    if (
+      destination.pathname === "/dashboard" &&
+      destination.search === "" &&
+      destination.hash === "#fresh-drops"
+    ) {
+      parameters.delete("returnTo");
+      const query = parameters.toString();
+      window.history.replaceState(null, "", `/dashboard${query ? `?${query}` : ""}#fresh-drops`);
+      const heading = document.getElementById("fresh-drops-title");
+      heading?.scrollIntoView({ block: "start" });
+      heading?.focus({ preventScroll: true });
+      return;
+    }
+    if (destination.pathname === "/dashboard") return;
+    parameters.delete("returnTo");
+    window.location.assign(`${destination.pathname}${destination.search}${destination.hash}`);
+  } catch {
+    // Stay in My Hunt when the stored return destination is malformed.
+  }
+}
+
 function browserSignupResumeStore(config: PublicConfig): HunterSignupResumeStore {
   return browserHunterSignupResumeStore(config.deploymentEnvironment);
 }
@@ -2545,6 +2658,24 @@ async function loadSignedInDashboard(
   if (!isRecord(envelope) || !isRecord(envelope.data)) throw new Error("Your dashboard could not be loaded.");
   throwIfAborted(signal);
   renderDashboard(envelope.data);
+  if (envelope.data.participationUnlocked === true) {
+    initializeFreshDrops({
+      request: async (path) => protectedFetch(path, {
+        headers: await authHeaders(auth),
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: requestSignal(10_000, signal),
+      }, signal),
+      requestImage: async (path) => protectedFetch(path, {
+        headers: await authHeaders(auth),
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: requestSignal(15_000, signal),
+      }, signal),
+    });
+  } else {
+    showFreshDropsLocked(envelope.data.privacyMediaRequired === true ? "#profile" : "#waiver");
+  }
   await initializeProfileForm(
     auth,
     envelope.data.profile,
@@ -2656,6 +2787,37 @@ function storeSignupLegalIdentity(
   }
   form.dataset[`${prefix}Version`] = identity.version;
   form.dataset[`${prefix}Hash`] = identity.hash;
+  updateSignupConsentStatus(form, kind);
+}
+
+function signupAcceptanceInput(
+  form: HTMLFormElement,
+  kind: SignupLegalDocumentKind,
+): HTMLInputElement | null {
+  const name = kind === "privacy-media" ? "privacyMediaAccepted" : "waiverAccepted";
+  return form.querySelector<HTMLInputElement>(`[name="${name}"]`);
+}
+
+function updateSignupConsentStatus(form: HTMLFormElement, kind: SignupLegalDocumentKind): void {
+  const status = form.querySelector<HTMLElement>(`[data-signup-consent-status="${kind}"]`);
+  const input = signupAcceptanceInput(form, kind);
+  if (!status || !input) return;
+  status.textContent = input.checked ? "Accepted" : "Not accepted yet";
+  status.dataset.state = input.checked ? "accepted" : "pending";
+}
+
+function acceptSignupLegalDocument(form: HTMLFormElement, kind: SignupLegalDocumentKind): boolean {
+  const prefix = kind === "privacy-media" ? "privacyMedia" : "waiver";
+  const identity = {
+    version: form.dataset[`${prefix}Version`],
+    hash: form.dataset[`${prefix}Hash`],
+  };
+  const input = signupAcceptanceInput(form, kind);
+  if (!input || !isLegalDocumentIdentity(identity)) return false;
+  input.checked = true;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  updateSignupConsentStatus(form, kind);
+  return true;
 }
 
 function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): void {
@@ -2672,6 +2834,14 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
     for (const close of dialog.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-close]")) {
       close.addEventListener("click", () => dialog.close());
     }
+    for (const accept of dialog.querySelectorAll<HTMLButtonElement>("[data-signup-dialog-accept]")) {
+      accept.addEventListener("click", () => {
+        const kind = accept.dataset.signupDialogAccept;
+        if ((kind === "privacy-media" || kind === "waiver") && acceptSignupLegalDocument(form, kind)) {
+          dialog.close();
+        }
+      });
+    }
     dialog.addEventListener("cancel", () => {
       dialog.dataset.signupDialogCloseReason = "escape";
     });
@@ -2681,6 +2851,17 @@ function setupSignupLegalReview(form: HTMLFormElement, config: PublicConfig): vo
       const trigger = restoreFocus.get(dialog);
       restoreFocus.delete(dialog);
       if (trigger?.isConnected) trigger.focus();
+    });
+  }
+
+  for (const kind of ["privacy-media", "waiver"] as const) {
+    signupAcceptanceInput(form, kind)?.addEventListener("change", () => updateSignupConsentStatus(form, kind));
+    updateSignupConsentStatus(form, kind);
+  }
+  for (const button of form.querySelectorAll<HTMLButtonElement>("[data-signup-accept]")) {
+    button.addEventListener("click", () => {
+      const kind = button.dataset.signupAccept;
+      if (kind === "privacy-media" || kind === "waiver") acceptSignupLegalDocument(form, kind);
     });
   }
 
@@ -2756,7 +2937,7 @@ async function saveSignupProfileAndPrivacy(
     body: JSON.stringify({
       ...buildProfilePayload({
       fullName: draft.fullName,
-      publicDisplayName: "",
+      publicDisplayName: draft.fullName,
       townArea: "",
       interests: [],
       discoverySource: "",
@@ -2911,7 +3092,7 @@ function setupAccountForms(
     const retry = document.querySelector<HTMLButtonElement>("[data-signup-retry]");
     const resend = document.querySelector<HTMLButtonElement>("[data-signup-resend]");
     const finishingRetry = document.querySelector<HTMLButtonElement>("[data-signup-finishing-retry]");
-    if (create) { create.disabled = false; create.textContent = "Create account"; }
+    if (create) { create.disabled = false; create.textContent = "Create my account"; }
     if (retry) { retry.disabled = false; retry.textContent = "Retry sending the code"; }
     if (resend) { resend.disabled = false; resend.textContent = "Resend code"; }
     if (finishingRetry) finishingRetry.disabled = false;
@@ -3330,7 +3511,7 @@ function setupAccountForms(
         clearResume: clearSignupResume,
       });
       signUpAttempt = null;
-      setSignupVerificationStatus("Email verified. Your Hunter Dashboard is ready.", "success");
+      setSignupVerificationStatus("Email verified. My Hunt is ready.", "success");
     } catch (error) {
       if (!signupOperationIsCurrent(operationGeneration)) return;
       if (error instanceof SignupLegalDocumentsChangedError) {
@@ -3740,6 +3921,7 @@ async function initializeDashboard(): Promise<void> {
   capturePristineDashboardContent();
   const config = await loadPublicConfig();
   const auth = await initializeManagedAuth(config);
+  activeHunterAuthHook = auth;
   if (!auth || !hunterAuthSession) {
     showSignedOut("unavailable");
     authMessage("Hunter identity is not configured in this build. No password is accepted locally.", "error");

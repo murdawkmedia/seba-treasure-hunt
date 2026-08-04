@@ -119,6 +119,7 @@ function createCoordinator(
   let principalVersion = 0;
   let principalUserId: string | null = null;
   let principalSessionId: string | null = null;
+  let tokenRequest: { sessionId: string; promise: Promise<string | null> } | null = null;
   let lifecycleGeneration = 0;
   let disposed = false;
   const listeners = new Set<(snapshot: HunterAuthSessionSnapshot) => void>();
@@ -220,10 +221,16 @@ function createCoordinator(
       publish();
     },
     async getToken() {
+      const session = clerk?.session ?? null;
+      const sessionId = session?.id ?? null;
+      if (!session || !sessionId) return null;
+      if (tokenRequest?.sessionId === sessionId) return tokenRequest.promise;
+      const promise = session.getToken().catch(() => null);
+      tokenRequest = { sessionId, promise };
       try {
-        return await clerk?.session?.getToken() ?? null;
-      } catch {
-        return null;
+        return await promise;
+      } finally {
+        if (tokenRequest?.promise === promise) tokenRequest = null;
       }
     },
     async activate(sessionId) {
@@ -302,6 +309,7 @@ function createCoordinator(
       status = "idle";
       principalUserId = null;
       principalSessionId = null;
+      tokenRequest = null;
       current = Object.freeze({ status, principal: null, profile });
     },
   };

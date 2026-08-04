@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hunter Dashboard | Tim Lost Something?</title>
+  <title>My Hunt | Tim Lost Something?</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/assets/favicon-32x32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <meta name="description" content="Signed-in searchers can view approved directions, record waypoint progress, follow official updates, and track private reports." />
+  <meta name="description" content="Signed-in searchers can open approved directions, privately check off the 13 places, follow Latest News, and track private reports." />
   <meta name="robots" content="noindex,nofollow" />
   <link rel="canonical" href="https://www.timlostsomething.com/dashboard" />
   <meta property="og:site_name" content="Tim Lost Something?" />
-  <meta property="og:title" content="Hunter Dashboard | Tim Lost Something?" />
+  <meta property="og:title" content="My Hunt | Tim Lost Something?" />
   <meta property="og:description" content="Optional member tools for the Seba Beach search." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://www.timlostsomething.com/dashboard" />
@@ -24,27 +24,29 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/hunter.css" />
+  <link rel="stylesheet" href="/css/fresh-drops.css" />
+  <link rel="stylesheet" href="/css/route-lightbox.css" />
   <link rel="stylesheet" href="/css/campaign-shell.css" />
 </head>
 <body class="campaign-page campaign-page--workspace hunter-page" data-campaign-route="dashboard">
-  <!-- CAMPAIGN_SHELL {"route":"dashboard","skipLabel":"Skip to Hunter Dashboard","skipTarget":"main"} -->
+  <!-- CAMPAIGN_SHELL {"route":"dashboard","skipLabel":"Skip to My Hunt","skipTarget":"main"} -->
 
   <main id="main" tabindex="-1">
     <section class="hunter-hero" aria-labelledby="dashboard-title">
       <div class="hunter-hero__inner">
         <p class="hunter-kicker">Optional member tools</p>
-        <h1 id="dashboard-title">Hunter Dashboard</h1>
-        <p class="hunter-hero__lead">Approved directions, progress, Case Notes, and private report history in one field-ready ledger.</p>
+        <h1 id="dashboard-title">My Hunt</h1>
+        <p class="hunter-hero__lead">Approved directions, your private checklist, public observations, and private report history in one place.</p>
       </div>
     </section>
 
     <div class="hunter-main">
-      <div class="system-message" data-dashboard-message role="status" aria-live="polite">Checking your Hunter Dashboard access…</div>
+      <div class="system-message" data-dashboard-message role="status" aria-live="polite">Checking your My Hunt access…</div>
 
       <section class="field-panel field-panel--full" data-dashboard-state="signed-out" aria-labelledby="dashboard-access-title" style="margin-top: 22px">
         <p class="field-label">Member access</p>
-        <h2 id="dashboard-access-title">Sign in to use Hunter Dashboard</h2>
-        <p>Your public route remains available without an account. Sign-in unlocks approved exact map links, progress tracking, Case Notes, and your private report history.</p>
+        <h2 id="dashboard-access-title">Sign in to use My Hunt</h2>
+        <p>Everyone can browse the public story and 13-place overview. Sign in for approved exact directions, your private checklist, comments, and your report history.</p>
         <p><strong>Exact directions stay locked</strong> whenever live status is unavailable, the hunt is paused or found, or an area is not approved as open.</p>
         <div class="system-message" data-auth-message role="status" aria-live="polite">Preparing secure account access&hellip;</div>
         <form id="hunter-sign-in-form" class="auth-form" novalidate>
@@ -56,30 +58,38 @@
         </form>
         <form id="hunter-sign-up-form" class="auth-form" novalidate hidden>
           <div class="form-grid">
-            <div class="form-field"><label for="hunter-sign-up-name">Participant name</label><input id="hunter-sign-up-name" name="fullName" type="text" autocomplete="name" maxlength="100" required /></div>
+            <div class="form-field"><label for="hunter-sign-up-name">Display name</label><input id="hunter-sign-up-name" name="fullName" type="text" autocomplete="name" maxlength="100" required /><span class="field-hint">This is what other hunters may see when you choose to share publicly. Minors are shown without a personal name.</span></div>
             <div class="form-field"><label for="hunter-sign-up-email">Email</label><input id="hunter-sign-up-email" name="email" type="email" autocomplete="email" required /></div>
             <div class="form-field"><label for="hunter-sign-up-password">Create password</label><input id="hunter-sign-up-password" name="password" type="password" autocomplete="new-password" minlength="12" required /><span class="field-hint">Use at least 12 characters. Passwords and recovery codes are managed by our identity provider, not this website.</span></div>
             <div class="form-field"><label for="hunter-sign-up-confirm">Confirm password</label><input id="hunter-sign-up-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></div>
           </div>
           <fieldset class="signup-legal">
-            <legend>Required legal acceptance</legend>
-            <p>You can review either current document here or in a full page. Opening a document is optional; acceptance is your separate required action and is stored against your verified account after email verification.</p>
-            <div class="signup-legal__actions">
-              <button class="hunter-button hunter-button--quiet" type="button" data-signup-review="privacy-media">View Privacy Policy &amp; Media Notice</button>
-              <button class="hunter-button hunter-button--quiet" type="button" data-signup-review="waiver">View Participation Waiver</button>
+            <legend>Two things to accept</legend>
+            <p>View either document if you want the details, then choose Accept. We store each acceptance separately after your email is verified.</p>
+            <div class="signup-consent-grid">
+              <article class="signup-consent-card" data-signup-consent-card="privacy-media">
+                <div><h3>Privacy &amp; Media</h3><p>How account information and media are collected, protected, and used.</p></div>
+                <div class="signup-consent-card__actions action-group"><button class="hunter-button hunter-button--quiet" type="button" data-signup-review="privacy-media">View</button><button class="hunter-button" type="button" data-signup-accept="privacy-media">Accept</button></div>
+                <label class="check-row"><input name="privacyMediaAccepted" type="checkbox" required /><span>I accept the current <a href="/privacy#media-notice" target="_blank" rel="noopener">Privacy Policy &amp; Media Notice</a>.</span></label>
+                <p class="signup-consent-card__status" data-signup-consent-status="privacy-media" aria-live="polite">Not accepted yet</p>
+              </article>
+              <article class="signup-consent-card" data-signup-consent-card="waiver">
+                <div><h3>Participation Waiver</h3><p>The participation, safety, assumption-of-risk, and release terms.</p></div>
+                <div class="signup-consent-card__actions action-group"><button class="hunter-button hunter-button--quiet" type="button" data-signup-review="waiver">View</button><button class="hunter-button" type="button" data-signup-accept="waiver">Accept</button></div>
+                <label class="check-row"><input name="waiverAccepted" type="checkbox" required /><span>I accept the current <a href="/waiver" target="_blank" rel="noopener">Participation Waiver</a>.</span></label>
+                <p class="signup-consent-card__status" data-signup-consent-status="waiver" aria-live="polite">Not accepted yet</p>
+              </article>
             </div>
             <fieldset class="check-group">
               <legend>Who is creating this account?</legend>
               <label class="check-row"><input name="participationBasis" type="radio" value="adult" required /><span>I am 18 or older.</span></label>
-              <label class="check-row"><input name="participationBasis" type="radio" value="minor_guardian_permission" required /><span>I am under 18.</span></label>
+              <label class="check-row"><input name="participationBasis" type="radio" value="minor_guardian_permission" required /><span>I am under 18 and have my parent or guardian's permission.</span></label>
               <label class="check-row" data-guardian-permission hidden><input name="guardianPermissionAttested" type="checkbox" /><span>My parent or legal guardian reviewed these documents with me, gave permission, and will supervise my participation.</span></label>
             </fieldset>
-            <label class="check-row"><input name="privacyMediaAccepted" type="checkbox" required /><span>I have read and agree to the current <a href="/privacy#media-notice" target="_blank" rel="noopener">Privacy Policy &amp; Media Notice</a>.</span></label>
-            <label class="check-row"><input name="waiverAccepted" type="checkbox" required /><span>I have read and accept the current <a href="/waiver" target="_blank" rel="noopener">Participation Waiver</a>.</span></label>
             <div class="field-error" data-signup-errors role="alert" hidden></div>
           </fieldset>
           <div id="clerk-captcha"></div>
-          <div class="action-row"><button class="hunter-button" type="submit">Create account</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-back-to-sign-in>Back to sign in</button></div>
+          <div class="action-row"><button class="hunter-button" type="submit">Create my account</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-back-to-sign-in>Back to sign in</button></div>
         </form>
         <form id="hunter-verify-form" class="auth-form" novalidate hidden>
           <div class="signup-verification">
@@ -136,7 +146,7 @@
           <p id="signup-privacy-status" class="signup-legal-dialog__status" data-signup-dialog-status role="status">Loading the current notice&hellip;</p>
           <iframe title="Current Privacy Policy and Media Notice"></iframe>
         </div>
-        <div class="signup-legal-dialog__footer"><a data-signup-dialog-fallback href="/privacy#media-notice" target="_blank" rel="noopener">Open the full notice in a new tab</a><button class="hunter-button" type="button" data-signup-dialog-close>Done &mdash; back to account setup</button></div>
+        <div class="signup-legal-dialog__footer action-group"><a data-signup-dialog-fallback href="/privacy#media-notice" target="_blank" rel="noopener">Open the full notice in a new tab</a><button class="hunter-button" type="button" data-signup-dialog-accept="privacy-media">Accept &amp; back to signup</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-dialog-close>Done &mdash; back to signup</button></div>
       </dialog>
 
       <dialog class="signup-legal-dialog" data-signup-dialog="waiver" aria-labelledby="signup-waiver-title" aria-describedby="signup-waiver-status">
@@ -145,10 +155,10 @@
           <p id="signup-waiver-status" class="signup-legal-dialog__status" data-signup-dialog-status role="status">Loading the current waiver&hellip;</p>
           <iframe title="Current Participation Waiver"></iframe>
         </div>
-        <div class="signup-legal-dialog__footer"><a data-signup-dialog-fallback href="/waiver" target="_blank" rel="noopener">Open the full waiver in a new tab</a><button class="hunter-button" type="button" data-signup-dialog-close>Done &mdash; back to account setup</button></div>
+        <div class="signup-legal-dialog__footer action-group"><a data-signup-dialog-fallback href="/waiver" target="_blank" rel="noopener">Open the full waiver in a new tab</a><button class="hunter-button" type="button" data-signup-dialog-accept="waiver">Accept &amp; back to signup</button><button class="hunter-button hunter-button--quiet" type="button" data-signup-dialog-close>Done &mdash; back to signup</button></div>
       </dialog>
 
-      <section class="dashboard-grid" data-dashboard-content hidden aria-label="Your Hunter Dashboard" style="margin-top: 22px">
+      <section class="dashboard-grid" data-dashboard-content hidden aria-label="My Hunt" style="margin-top: 22px">
         <aside class="dashboard-sidebar">
           <article class="field-panel">
             <p class="field-label">Hunter profile</p>
@@ -165,10 +175,20 @@
         </aside>
 
         <div class="dashboard-content">
+          <section class="fresh-drops field-panel field-panel--full" id="fresh-drops" aria-labelledby="fresh-drops-title" data-fresh-drops>
+            <p class="field-label">Signed-in case file</p>
+            <h2 id="fresh-drops-title" tabindex="-1">Fresh Drops</h2>
+            <p>Tim went back out. The pile grew. These photographs and item details are available to registered hunters.</p>
+            <p data-fresh-drops-state role="status" aria-live="polite">Loading the latest item file&hellip;</p>
+            <div data-fresh-drops-story></div>
+            <ol class="fresh-drops__items" data-fresh-drops-items></ol>
+            <button class="hunter-button hunter-button--quiet" type="button" data-fresh-drops-retry hidden>Try Fresh Drops again</button>
+          </section>
+
           <section class="field-panel field-panel--full" aria-labelledby="dashboard-waypoints-title">
             <p class="field-label">Member route ledger</p>
-            <h2 id="dashboard-waypoints-title">Waypoints and progress</h2>
-            <p>Exact links appear only when the case and waypoint are both approved as open. No fallback coordinates are embedded in this page.</p>
+            <h2 id="dashboard-waypoints-title">Private 13-place checklist</h2>
+            <p>Check off places for yourself as you search. Your checklist is private. Exact links appear only when the case and place are both approved as open.</p>
             <ol class="waypoint-ledger" data-dashboard-waypoints></ol>
           </section>
 
@@ -182,9 +202,9 @@
             </article>
             <article class="field-panel">
               <p class="field-label">Community</p>
-              <h2>Your Case Notes</h2>
+              <h2>Your public observations</h2>
               <ul class="record-list" data-dashboard-notes></ul>
-              <p class="field-panel__action"><a href="/clue-board">Visit Case Notes →</a></p>
+              <p class="field-panel__action"><a href="/clue-board">See What People Found →</a></p>
             </article>
           </section>
 

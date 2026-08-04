@@ -41,22 +41,14 @@ export class ManagedStaffAccounts implements StaffAccountManager {
         throw new ApiError(409, "staff_account_not_activated", "This staff invitation has not been activated yet.");
       }
 
-      if (action === "revoke-sessions") {
-        const sessions = await this.clerk.sessions.getSessionList({ userId: subject, limit: 100 });
-        await Promise.all(sessions.data.map((session) => this.clerk!.sessions.revokeSession(session.id)));
-        return { status: "sessions_revoked", count: sessions.data.length };
-      }
+      if (action === "revoke-sessions") return await this.revokeSessions(subject);
       if (action === "suspend") {
-        await this.clerk.users.banUser(subject);
-        return { status: "suspended" };
+        const revoked = await this.revokeSessions(subject);
+        return { ...revoked, status: "suspended" };
       }
       if (action === "reactivate") {
         await this.clerk.users.unbanUser(subject);
         return { status: "active" };
-      }
-      if (action === "reset-mfa") {
-        await this.clerk.users.disableUserMFA(subject);
-        return { status: "mfa_reset" };
       }
       throw new ApiError(404, "staff_action_not_found", "Staff action not found.");
     } catch (error) {
@@ -109,6 +101,12 @@ export class ManagedStaffAccounts implements StaffAccountManager {
         : {})
     });
     return { status: "invitation_sent" };
+  }
+
+  private async revokeSessions(subject: string) {
+    const sessions = await this.clerk!.sessions.getSessionList({ userId: subject, limit: 100 });
+    await Promise.all(sessions.data.map((session) => this.clerk!.sessions.revokeSession(session.id)));
+    return { status: "sessions_revoked", count: sessions.data.length };
   }
 
   private unavailable() {

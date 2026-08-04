@@ -17,8 +17,9 @@ import {
   officialUpdateGuidance,
   type OfficialUpdateStatus,
 } from "../shared/official-update-workflow";
+import { loadOpsItems, setupOpsItems } from "./ops-items";
 
-type OpsView = "command" | "updates" | "reports" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
+type OpsView = "command" | "updates" | "reports" | "items" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
 type OpsSponsorState = "new" | "contacted" | "qualified" | "accepted" | "closed";
 type OpsSponsorSupportType = "community" | "lead" | "prize_in_kind" | "other";
@@ -51,6 +52,7 @@ export function moderationAttentionCount(
 }
 
 interface OpsStaffRecord {
+  id: string;
   subject: string;
   email: string;
   displayName: string;
@@ -59,12 +61,16 @@ interface OpsStaffRecord {
   lastLoginAt: string;
   sessionCount: number | null;
   actions: string[];
+  isCurrent: boolean;
+  suspendBlockedReason: string;
 }
 
 export interface OpsReportRecord {
   id: string;
   createdAt: string;
   type: string;
+  caseItemId: string | null;
+  caseItemTitle: string | null;
   waypointId: string;
   waypointRouteOrder: number | null;
   waypointName: string | null;
@@ -77,6 +83,17 @@ export interface OpsReportMedia {
   contentType: string;
   size: number;
   status: string;
+}
+
+function normalizeReportedCaseItem(value: Record<string, unknown>): {
+  caseItemId: string | null;
+  caseItemTitle: string | null;
+} {
+  const caseItemId = asString(value.caseItemId).trim();
+  const caseItemTitle = asString(value.caseItemTitle).trim();
+  return /^[A-Za-z0-9_-]{1,128}$/.test(caseItemId) && caseItemTitle && caseItemTitle.length <= 160
+    ? { caseItemId, caseItemTitle }
+    : { caseItemId: null, caseItemTitle: null };
 }
 
 export interface OpsUpdateUpload extends OpsReportMedia {
@@ -130,6 +147,10 @@ export interface OpsReportDetail extends OpsReportRecord {
   email: string;
   phone: string | null;
   publicAttribution: string | null;
+  customItemName: string | null;
+  publicationPreference: "share_after_review" | "private";
+  sharingNoticeVersion: string | null;
+  sharingNoticeAcceptedAt: string | null;
   publicationEligible: boolean;
   publicationEligibilityReason: string;
   publication: {
@@ -309,7 +330,7 @@ export interface ProductionSnapshotReport {
   createdAt: string;
 }
 
-const views: readonly OpsView[] = ["command", "updates", "reports", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit", "production-snapshot"];
+const views: readonly OpsView[] = ["command", "updates", "reports", "items", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit", "production-snapshot"];
 const sponsorStates: readonly OpsSponsorState[] = ["new", "contacted", "qualified", "accepted", "closed"];
 const visibleSponsorMetricStates = ["new", "contacted", "qualified", "accepted"] as const;
 const sponsorSupportTypes: readonly OpsSponsorSupportType[] = ["community", "lead", "prize_in_kind", "other"];
@@ -324,6 +345,7 @@ let subscribersLoaded = false;
 let subscribersLoading = false;
 let sponsorsLoaded = false;
 let sponsorLoadVersion = 0;
+const staffLoadGate = createStaffLoadGate();
 const sponsorMutations = new Set<string>();
 let productionSnapshotLoaded = false;
 let productionSnapshotLoading = false;
@@ -333,6 +355,7 @@ let productionSnapshotTrigger: HTMLButtonElement | null = null;
 let productionSnapshotObjectUrls: string[] = [];
 let updatesLoaded = false;
 let updatesLoading = false;
+let itemsLoaded = false;
 let standaloneUpdateObjectUrls: string[] = [];
 interface StandaloneUpdateEditor {
   updateId: string | null;
@@ -528,19 +551,19 @@ export function normalizeProductionSnapshotReports(payload: unknown): Production
 export function normalizeOpsStaff(payload: unknown): OpsStaffRecord[] {
   return asArray(envelopeData(payload)).flatMap((value) => {
     if (!isRecord(value)) return [];
-    const subject = asString(value.id) || asString(value.subject);
+    const id = asString(value.id);
+    const subject = asString(value.subject);
     const email = asString(value.email);
     const status = asString(value.status);
-    if (!subject || !email || !["invited", "active", "suspended", "revoked"].includes(status)) return [];
-    const providedActions = asArray(value.actions).filter((action): action is string => typeof action === "string");
-    const defaultActions: Record<string, string[]> = {
-      invited: ["resend-invitation"],
-      active: ["recovery", "revoke-sessions", "suspend"],
-      suspended: ["recovery", "reactivate"],
-      revoked: [],
-    };
-    const actionList = providedActions.length ? providedActions : (defaultActions[status] ?? []);
+    if (!id || !email || !["invited", "active", "suspended", "revoked"].includes(status)) return [];
+    if (["active", "suspended"].includes(status) && !subject) return [];
+    const actionList = Array.isArray(value.actions) && value.actions.every((action) =>
+      typeof action === "string" && ["resend-invitation", "recovery", "revoke-sessions", "suspend", "reactivate"].includes(action)
+    )
+      ? value.actions
+      : [];
     return [{
+      id,
       subject,
       email,
       displayName: asString(value.displayName) || "Invited operator",
@@ -549,6 +572,8 @@ export function normalizeOpsStaff(payload: unknown): OpsStaffRecord[] {
       lastLoginAt: asString(value.lastLoginAt),
       sessionCount: asNumber(value.sessionCount),
       actions: actionList,
+      isCurrent: asBoolean(value.isCurrent) === true,
+      suspendBlockedReason: asString(value.suspendBlockedReason),
     }];
   });
 }
@@ -582,12 +607,70 @@ export function normalizeReports(payload: unknown): OpsReportRecord[] {
       id,
       createdAt: asString(value.createdAt),
       type,
+      ...normalizeReportedCaseItem(value),
       waypointId: normalizeWaypointId(value.waypointId),
       ...normalizeWaypointMetadata(value),
       mediaCount: asNumber(value.mediaCount) ?? asArray(value.media).length,
       status: asString(value.status) || "received",
     }];
   });
+}
+
+export function staffInvitationResult(payload: unknown): { created: boolean; delivery: "sent" | "failed" | "not_sent"; message: string } | null {
+  const data = envelopeData(payload);
+  if (!isRecord(data)) return null;
+  const created = asBoolean(data.created);
+  const delivery = asString(data.delivery);
+  if (created === null || !["sent", "failed", "not_sent"].includes(delivery)) return null;
+  return {
+    created,
+    delivery: delivery as "sent" | "failed" | "not_sent",
+    message: delivery === "sent"
+      ? "Invitation sent"
+      : delivery === "failed"
+        ? "Invitation saved; email delivery needs retry"
+        : "Invitation already saved; use Resend invitation to send another email",
+  };
+}
+
+export function shouldClearStaffInviteEmail(delivery: unknown): boolean {
+  return delivery === "sent";
+}
+
+export function createStaffLoadGate(): { begin: () => number; isCurrent: (version: number) => boolean } {
+  let latest = 0;
+  return {
+    begin: () => ++latest,
+    isCurrent: (version) => version === latest,
+  };
+}
+
+export async function handleStaffActionResponse(
+  payload: unknown,
+  context: {
+    clerk: Pick<Clerk, "signOut"> | null;
+    reload: () => void;
+    reloadLedgers: () => Promise<void>;
+    focusAfterRefresh: () => void;
+    showProviderWarning: (warning: string) => void;
+  },
+): Promise<void> {
+  const data = envelopeData(payload);
+  if (isRecord(data) && data.selfSuspended === true) {
+    try {
+      await context.clerk?.signOut();
+    } catch {
+      // The authoritative D1 suspension must still end this privileged page.
+    } finally {
+      context.reload();
+    }
+    return;
+  }
+  await context.reloadLedgers();
+  if (isRecord(data) && data.providerWarning === true) {
+    context.showProviderWarning("D1 access change is saved; provider session/account cleanup needs retry.");
+  }
+  context.focusAfterRefresh();
 }
 
 function normalizeUpdateUploads(value: unknown): OpsUpdateUpload[] {
@@ -757,6 +840,16 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
   const publicAttribution = rawAttribution && rawAttribution.length <= 80 && !rawAttribution.includes("@")
     ? rawAttribution
     : null;
+  const customItemName = asString(value.customItemName).trim() || null;
+  const rawPublicationPreference = asString(value.publicationPreference).trim();
+  const publicationPreference = rawPublicationPreference === "share_after_review"
+    ? "share_after_review"
+    : "private";
+  const sharingNoticeVersion = asString(value.sharingNoticeVersion).trim() || null;
+  const rawSharingNoticeAcceptedAt = asString(value.sharingNoticeAcceptedAt).trim();
+  const sharingNoticeAcceptedAt = rawSharingNoticeAcceptedAt && !Number.isNaN(new Date(rawSharingNoticeAcceptedAt).valueOf())
+    ? rawSharingNoticeAcceptedAt
+    : null;
   if (
     publicationEligible === null || !publicationEligibilityReason || published === null || caseNotePublished === null ||
     (publicationStatus === null ? publicationUpdateId !== null : !publicationUpdateId) ||
@@ -806,6 +899,7 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     status,
     createdAt,
     updatedAt: asString(value.updatedAt),
+    ...normalizeReportedCaseItem(value),
     waypointId: normalizeWaypointId(value.waypointId),
     ...normalizeWaypointMetadata(value),
     mediaCount: media.length,
@@ -814,6 +908,10 @@ export function normalizeOpsReportDetail(payload: unknown): OpsReportDetail | nu
     email,
     phone: asString(value.phone).trim() || null,
     publicAttribution,
+    customItemName,
+    publicationPreference,
+    sharingNoticeVersion,
+    sharingNoticeAcceptedAt,
     publicationEligible,
     publicationEligibilityReason,
     publication: {
@@ -1151,18 +1249,18 @@ export function renderStaffRows(records: readonly OpsStaffRecord[]): string {
   if (records.length === 0) return `<tr><td colspan="6"><span class="ops-table-empty">No staff records are available from the private source.</span></td></tr>`;
   return records.map((record) => {
     const action = (name: string, label: string, style = "quiet"): string => record.actions.includes(name)
-      ? `<button class="ops-button ops-button--${style}" type="button" data-staff-action="${escapeOpsHtml(name)}" data-staff-id="${escapeOpsHtml(record.subject)}">${escapeOpsHtml(label)}</button>`
+      ? `<button class="ops-button ops-button--${style}" type="button" data-staff-action="${escapeOpsHtml(name)}" data-staff-id="${escapeOpsHtml(record.id)}">${escapeOpsHtml(label)}</button>`
       : "";
     const accessAction = record.status === "suspended"
       ? action("reactivate", "Reactivate access")
       : action("suspend", "Suspend access", "danger");
     return `<tr>
-      <td><strong>${escapeOpsHtml(record.displayName)}</strong><br /><span class="ops-mono">${escapeOpsHtml(record.email)}</span></td>
+      <td><strong>${escapeOpsHtml(record.displayName)}</strong>${record.isCurrent ? ` <span class="ops-chip">You</span>` : ""}<br /><span class="ops-mono">${escapeOpsHtml(record.email)}</span></td>
       <td>${escapeOpsHtml(record.status === "invited" ? "Pending" : "Accepted")}</td>
       <td><time datetime="${escapeOpsHtml(record.lastLoginAt)}">${escapeOpsHtml(record.lastLoginAt ? formatOpsTime(record.lastLoginAt) : "Never")}</time></td>
       <td>${record.sessionCount === null ? "--" : escapeOpsHtml(record.sessionCount)}</td>
       <td><span class="ops-chip">${escapeOpsHtml(record.status)}</span></td>
-      <td><div class="ops-row-actions">${action("resend-invitation", "Resend invitation")}${action("recovery", "Send recovery instructions")}${action("revoke-sessions", "Revoke sessions")}${accessAction}</div></td>
+      <td><div class="ops-row-actions">${action("resend-invitation", "Resend invitation")}${action("recovery", "Send recovery instructions")}${action("revoke-sessions", "Revoke sessions")}${accessAction}${record.status === "active" && !record.actions.includes("suspend") && record.suspendBlockedReason ? `<span class="ops-staff-action-note">${escapeOpsHtml(record.suspendBlockedReason)}</span>` : ""}</div></td>
     </tr>`;
   }).join("");
 }
@@ -1172,7 +1270,7 @@ export function renderReportRows(records: readonly OpsReportRecord[]): string {
   return records.map((record) => `<tr>
     <td><time datetime="${escapeOpsHtml(record.createdAt)}">${escapeOpsHtml(formatOpsTime(record.createdAt))}</time></td>
     <td><span class="ops-chip">${escapeOpsHtml(record.type)}</span></td>
-    <td>${escapeOpsHtml(reportWaypointLabel(record))}</td>
+    <td>${record.caseItemTitle ? `<strong>${escapeOpsHtml(record.caseItemTitle)}</strong><br />` : ""}${escapeOpsHtml(reportWaypointLabel(record))}</td>
     <td>${escapeOpsHtml(record.mediaCount)} ${record.mediaCount === 1 ? "file" : "files"}</td>
     <td>${escapeOpsHtml(record.status)}</td>
     <td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-report-review data-report-id="${escapeOpsHtml(record.id)}">Review report</button></div></td>
@@ -1482,10 +1580,14 @@ export function renderReportPrivateDetail(detail: OpsReportDetail): string {
   const account = detail.hunterSubject
     ? detail.publicAttribution === "Young Hunter"
       ? "Signed-in minor account; guardian permission recorded"
-      : detail.publicationEligible
+      : detail.publicAttribution
         ? "Signed-in adult account"
         : "Signed-in Hunter; publication eligibility needs attention"
     : "Report submitted without a Hunter account";
+  const caseNoteCredit = detail.publicAttribution ?? "No privacy-safe public credit recorded";
+  const sharingChoice = detail.publicationPreference === "share_after_review"
+    ? "Share after staff review"
+    : "Keep private — public publishing locked";
   return `<dl class="ops-report-facts">
     <div><dt>Reference</dt><dd class="ops-mono">${escapeOpsHtml(detail.id)}</dd></div>
     <div><dt>Type</dt><dd>${escapeOpsHtml(detail.type)}</dd></div>
@@ -1512,6 +1614,14 @@ export function renderReportPrivateDetail(detail: OpsReportDetail): string {
     <div><dt>Email</dt><dd class="ops-mono">${escapeOpsHtml(detail.email)}</dd></div>
     <div><dt>Phone</dt><dd class="ops-mono">${escapeOpsHtml(detail.phone ?? "Not supplied")}</dd></div>
     <div><dt>Hunter / account</dt><dd>${escapeOpsHtml(account)}</dd></div>
+    <div><dt>Case Note credit</dt><dd>${escapeOpsHtml(caseNoteCredit)}</dd></div>
+    <div><dt>Reported item</dt><dd>${escapeOpsHtml(detail.caseItemTitle ?? detail.customItemName ?? "No item specified")}</dd></div>
+    <div><dt>Hunter sharing choice</dt><dd>${escapeOpsHtml(sharingChoice)}</dd></div>
+    <div><dt>Finder sharing notice</dt><dd>${escapeOpsHtml(
+      detail.sharingNoticeVersion && detail.sharingNoticeAcceptedAt
+        ? `Version ${detail.sharingNoticeVersion} accepted ${formatOpsTime(detail.sharingNoticeAcceptedAt)}`
+        : "Legacy report; no versioned acknowledgement recorded"
+    )}</dd></div>
     <div><dt>Waypoint</dt><dd>${escapeOpsHtml(reportWaypointLabel(detail))}</dd></div>
     <div><dt>Location description</dt><dd>${escapeOpsHtml(detail.locationDescription || "Not supplied")}</dd></div>
     <div><dt>Submitted GPS</dt><dd class="ops-mono">${escapeOpsHtml(reportCoordinateLabel(detail))}</dd></div>
@@ -1544,7 +1654,9 @@ export function renderReportEvidence(detail: OpsReportDetail): string {
       ? "Reopen this report to select ready images."
       : detail.status === "rejected"
         ? "Rejected reports cannot publish images."
-        : "Image selection is locked until this report's legal and public-attribution requirements are complete."
+        : detail.publicationEligibilityReason === "hunter_requested_private"
+          ? "Image selection is locked because the hunter chose to keep this report private."
+          : "Image selection is locked until this report's legal and public-attribution requirements are complete."
     : "";
   const evidence = detail.media.map((media, index) => {
     const ready = media.status === "ready" && ["image/jpeg", "image/png", "image/webp"].includes(media.contentType);
@@ -1951,6 +2063,9 @@ export function reportPublicOutcomeGuidance(detail: OpsReportDetail, selected: s
   if (detail.status === "resolved" || detail.status === "rejected") {
     return "Reopen this report for review before preparing a new public outcome.";
   }
+  if (detail.publicationEligibilityReason === "hunter_requested_private") {
+    return "The hunter chose to keep this report private. Case Notes and Official Updates are locked unless the hunter records new consent.";
+  }
   if (detail.status === "verified") {
     return "Facts are verified. Choose and review a public outcome; nothing publishes automatically.";
   }
@@ -2110,6 +2225,19 @@ async function opsRequest(url: string, init: RequestInit = {}): Promise<{ respon
   return { response, payload };
 }
 
+async function opsBinaryRequest(url: string): Promise<Response> {
+  return fetch(url, {
+    headers: await opsHeaders({ Accept: "image/avif,image/webp,image/png,image/jpeg" }),
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+}
+
+async function loadItemsView(): Promise<void> {
+  await loadOpsItems();
+  itemsLoaded = true;
+}
+
 function setText(selector: string, value: string): void {
   const element = document.querySelector<HTMLElement>(selector);
   if (element) element.textContent = value;
@@ -2156,6 +2284,7 @@ function switchView(view: OpsView, focus = true): void {
   if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
   if (focus) document.querySelector<HTMLElement>("#ops-main")?.focus();
   if (view === "sponsors" && !sponsorsLoaded) void loadSponsors();
+  if (view === "items" && !itemsLoaded) void loadItemsView();
   if (view === "updates" && !updatesLoaded && !updatesLoading) void loadOpsUpdates();
   if (view === "subscribers" && !subscribersLoaded && !subscribersLoading) void loadSubscribers();
   if (view === "production-snapshot" && !productionSnapshotLoaded && !productionSnapshotLoading) {
@@ -3076,7 +3205,9 @@ function renderReportWorkflow(detail: OpsReportDetail, selected = ""): void {
   if (publicGuidance) publicGuidance.textContent = reportPublicOutcomeGuidance(detail, selected);
   if (officialBlocker) {
     officialBlocker.textContent = !detail.publicationEligible
-      ? "Official Update publishing is blocked until this report has current legal and profile eligibility."
+      ? detail.publicationEligibilityReason === "hunter_requested_private"
+        ? "Official Update publishing is locked because the hunter chose to keep this report private."
+        : "Official Update publishing is blocked until this report has current legal and profile eligibility."
       : publicationActions.blocker ?? "Verified: this Official Update may be scheduled or published after the exact preview is confirmed.";
     officialBlocker.dataset.kind = detail.publicationEligible && publicationActions.canPublish ? "ready" : "blocked";
   }
@@ -3199,7 +3330,9 @@ function renderReportDialog(
       ? "This report was rejected and cannot be published."
       : detail.publicationEligible
         ? "This report is eligible for a deliberate public preview and publication."
-        : `Publication is blocked (${detail.publicationEligibilityReason.replaceAll("_", " ")}). Private review remains available.`;
+        : detail.publicationEligibilityReason === "hunter_requested_private"
+          ? "The hunter chose to keep this report private. Public publishing is locked; private review remains available."
+          : `Publication is blocked (${detail.publicationEligibilityReason.replaceAll("_", " ")}). Private review remains available.`;
   setReportReviewState(`Private report loaded. ${eligibility}${controls.guidance ? ` ${controls.guidance}` : ""}`);
   void hydrateReportEvidence(detail, intent, signal);
 }
@@ -3520,9 +3653,11 @@ async function loadSponsors(): Promise<void> {
 }
 
 async function loadStaff(): Promise<void> {
+  const version = staffLoadGate.begin();
   setViewGuide("access", { state: "Loading access ledger", next: "Wait before changing sessions or account access.", kind: "loading" });
   try {
     const { response, payload } = await opsRequest("/api/v1/ops/staff");
+    if (!staffLoadGate.isCurrent(version)) return;
     if (!response.ok) throw new Error(apiError(payload, "Staff access records are unavailable."));
     const records = normalizeOpsStaff(payload);
     setTable("#staff-table", renderStaffRows(records));
@@ -3530,6 +3665,7 @@ async function loadStaff(): Promise<void> {
       ? { state: `${records.length} operator ${records.length === 1 ? "record" : "records"} loaded`, next: "Recovery, session and access actions are separate and audited.", kind: "ready" }
       : { state: "No operator records", next: "Refresh Access before assuming no operators exist.", kind: "empty" });
   } catch {
+    if (!staffLoadGate.isCurrent(version)) return;
     setTable("#staff-table", `<tr><td colspan="6"><span class="ops-table-empty">Staff access records are unavailable from the private source.</span></td></tr>`);
     setViewGuide("access", { state: "Access ledger unavailable", next: "Choose Refresh Access. No account action was taken.", kind: "error" });
   }
@@ -3729,6 +3865,20 @@ function setWaiverDetailState(message: string, kind: "normal" | "error" = "norma
   if (!state) return;
   state.textContent = message;
   state.dataset.kind = kind;
+}
+
+function setStaffInviteResult(message: string, kind: "normal" | "error" = "normal"): void {
+  const result = document.querySelector<HTMLElement>("[data-staff-invite-result]");
+  if (!result) return;
+  result.textContent = message;
+  result.dataset.state = kind;
+}
+
+function focusAccessGuide(): void {
+  const guide = document.querySelector<HTMLElement>('[data-ops-guide="access"]');
+  if (!guide) return;
+  guide.tabIndex = -1;
+  guide.focus();
 }
 
 async function openWaiverDetail(subject: string): Promise<void> {
@@ -4005,6 +4155,15 @@ function setupAuthForms(): void {
 }
 
 function setupWorkspace(): void {
+  setupOpsItems({
+    request: opsRequest,
+    fetchBinary: opsBinaryRequest,
+    onAnnouncementDraft: async () => {
+      await loadOpsUpdates();
+      switchView("updates");
+      setOfficialUpdateResult("A private Latest News draft was created from the item. Review and edit it before any release.");
+    },
+  });
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view]")) {
     button.addEventListener("click", () => switchView(resolveOpsView(button.dataset.view ?? "")));
   }
@@ -4019,7 +4178,7 @@ function setupWorkspace(): void {
     sidebar?.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", String(open));
   });
-  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit(), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit(), ...(itemsLoaded ? [loadItemsView()] : []), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view-retry]")) {
     button.addEventListener("click", async () => {
       const view = resolveOpsView(button.dataset.viewRetry ?? "");
@@ -4028,6 +4187,7 @@ function setupWorkspace(): void {
         if (view === "command") await loadDashboard();
         else if (view === "updates") await loadOpsUpdates();
         else if (view === "reports") await loadReports();
+        else if (view === "items") await loadItemsView();
         else if (view === "moderation") await loadModeration();
         else if (view === "zones") await loadZones();
         else if (view === "rules") await loadRules();
@@ -4052,6 +4212,38 @@ function setupWorkspace(): void {
   document.querySelector("#subscriber-export")?.addEventListener("click", exportLoadedSubscribers);
   document.querySelector("#moderation-replies-load-more")?.addEventListener("click", () => void loadModerationReplies(true));
   document.querySelector("#moderation-flags-load-more")?.addEventListener("click", () => void loadContentFlags(true));
+  const staffInviteForm = document.querySelector<HTMLFormElement>("#staff-invite-form");
+  staffInviteForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const emailInput = staffInviteForm.querySelector<HTMLInputElement>("#staff-invite-email");
+    const submit = staffInviteForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const email = emailInput?.value.trim().toLowerCase() ?? "";
+    if (!email) {
+      setStaffInviteResult("Enter an operator email address before sending an invitation.", "error");
+      emailInput?.focus();
+      return;
+    }
+    const label = submit?.textContent ?? "Send invitation";
+    if (submit) { submit.disabled = true; submit.textContent = "Sending invitation…"; }
+    setStaffInviteResult("Saving operator invitation...");
+    try {
+      const { response, payload } = await opsRequest("/api/v1/ops/staff/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!response.ok) throw new Error(apiError(payload, "The operator invitation was not saved."));
+      const outcome = staffInvitationResult(payload);
+      if (!outcome) throw new Error("The operator invitation response was incomplete.");
+      if (emailInput && shouldClearStaffInviteEmail(outcome.delivery)) emailInput.value = "";
+      setStaffInviteResult(outcome.message, outcome.delivery === "failed" ? "error" : "normal");
+      await Promise.all([loadStaff(), loadAudit()]);
+    } catch (error) {
+      setStaffInviteResult(error instanceof Error ? error.message : "The operator invitation was not saved.", "error");
+    } finally {
+      if (submit) { submit.disabled = false; submit.textContent = label; }
+    }
+  });
   document.querySelector("#moderation-replies-table")?.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -4965,7 +5157,17 @@ function setupWorkspace(): void {
     try {
       const { response, payload } = await opsRequest(`/api/v1/ops/staff/${encodeURIComponent(button.dataset.staffId)}/${encodeURIComponent(action)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) });
       if (!response.ok) throw new Error(apiError(payload, "The access action was not completed."));
-      await Promise.all([loadStaff(), loadAudit()]);
+      await handleStaffActionResponse(payload, {
+        clerk: staffClerk,
+        reload: () => location.reload(),
+        reloadLedgers: async () => { await Promise.all([loadStaff(), loadAudit()]); },
+        focusAfterRefresh: focusAccessGuide,
+        showProviderWarning: (warning) => setViewGuide("access", {
+          state: "D1 access change saved",
+          next: warning,
+          kind: "ready",
+        }),
+      });
     } catch (error) {
       button.disabled = false;
       showPageError(error instanceof Error ? error.message : "The access action was not completed.");

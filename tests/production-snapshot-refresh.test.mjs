@@ -70,6 +70,10 @@ test("snapshot defaults and allowlists are immutable and exclude operational sec
     "waiver_account_participants",
     "staff_principals",
     "audit_events",
+    "case_items",
+    "case_item_events",
+    "case_item_uploads",
+    "case_item_media",
   ]) assert.equal(SNAPSHOT_TABLES.includes(required), true, required);
 });
 
@@ -123,6 +127,7 @@ test("generated replacement SQL is atomic, allowlisted and marks only a verified
   assert.match(sql, /DROP TRIGGER IF EXISTS "trg_waiver_acceptance_participants_immutable_delete"/);
   assert.match(sql, /DROP TRIGGER IF EXISTS "trg_notification_delivery_events_immutable_delete"/);
   assert.match(sql, /UPDATE media_uploads SET private_object_key = 'snapshots\/snapshot-20260716\/'/);
+  assert.match(sql, /UPDATE case_item_uploads SET private_object_key = 'snapshots\/snapshot-20260716\/'/);
   assert.match(sql, /'production-snapshot', 'verified'/);
   assert.match(sql, /DELETE FROM "notification_jobs"/);
   assert.match(sql, /DELETE FROM "oauth_provider_state"/);

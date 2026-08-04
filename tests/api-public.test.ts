@@ -32,6 +32,24 @@ const makeApp = (store = new FakeStore(), turnstile = new FakeTurnstile()) => {
   return { app, store, uploads, rateLimits, operatorAlerts };
 };
 
+const privateFinderSharing = {
+  publicationPreference: "private" as const,
+  sharingNoticeVersion: "2026.1",
+  sharingAcknowledgementAccepted: true,
+};
+
+const reviewedFinderSharing = {
+  publicationPreference: "share_after_review" as const,
+  sharingNoticeVersion: "2026.1",
+  sharingAcknowledgementAccepted: true,
+};
+
+const addFinderSharing = (form: FormData, preference: "private" | "share_after_review" = "private") => {
+  form.set("publicationPreference", preference);
+  form.set("sharingNoticeVersion", "2026.1");
+  form.set("sharingAcknowledgementAccepted", "true");
+};
+
 test("serves public case data without leaking exact waypoint navigation", async () => {
   const { app } = makeApp();
 
@@ -51,6 +69,43 @@ test("serves public case data without leaking exact waypoint navigation", async 
   const waypointBody = await responseJson(waypointsResponse);
   assert.equal(waypointBody.data[0].name, "Waypoint One");
   assert.equal("exactUrl" in waypointBody.data[0], false);
+});
+
+test("fake store mirrors the hunter-private publication lock", async () => {
+  const store = new FakeStore();
+  store.reports.push({
+    id: "report-private-consent",
+    type: "find",
+    hunterSubject: null,
+    name: "Private Reporter",
+    email: "private@example.test",
+    phone: null,
+    publicAttribution: "Community Hunter",
+    attributionKind: "community",
+    publicationPreference: "private",
+    sharingNoticeVersion: "2026.1",
+    sharingNoticeAcceptedAt: "2026-08-04T12:00:00.000Z",
+    locationDescription: "Private location",
+    details: "Private report",
+    status: "reviewing",
+    createdAt: "2026-08-04T12:00:00.000Z",
+    updatedAt: "2026-08-04T12:00:00.000Z",
+    media: [],
+  });
+
+  const detail = await store.getReportDetail("report-private-consent", "staff-reviewer");
+  assert.equal(detail?.publicationEligible, false);
+  assert.equal(detail?.publicationEligibilityReason, "hunter_requested_private");
+  await assert.rejects(
+    store.publishReportToCaseNotes(
+      "report-private-consent",
+      { body: "Must remain private.", mediaIds: [] },
+      "staff-reviewer"
+    ),
+    (error: unknown) =>
+      typeof error === "object" && error !== null &&
+      "code" in error && error.code === "report_publication_ineligible"
+  );
 });
 
 test("serves the public Update publisher projection without changing the stored legacy value", async () => {
@@ -255,6 +310,7 @@ test("publishes only the approved minor-safe report projection and selected deri
     latitude: 53.123,
     longitude: -114.456,
     status: "verified",
+    publicationPreference: "share_after_review",
     media: [
       {
         id: "media-selected",
@@ -371,6 +427,7 @@ test("publishes only snapshotted adult and forced anonymous report attribution",
       status: "verified",
       publicAttribution: "Hunter A7F3",
       attributionKind: "hunter_handle",
+      publicationPreference: "share_after_review",
       media: []
     },
     {
@@ -378,6 +435,7 @@ test("publishes only snapshotted adult and forced anonymous report attribution",
       hunterSubject: null,
       waypointId: null,
       status: "verified",
+      publicationPreference: "share_after_review",
       media: []
     }
   );
@@ -426,6 +484,7 @@ test("fails closed when official status is unavailable", async () => {
 test("requires Turnstile and idempotency before capturing a private report", async () => {
   const { app, store, rateLimits, operatorAlerts } = makeApp();
   const report = {
+    ...privateFinderSharing,
     type: "tip",
     name: "A Hunter",
     email: "hunter@example.test",
@@ -502,6 +561,7 @@ test("a background operator-alert failure never changes a successful report resp
     method: "POST",
     ...json(
       {
+        ...privateFinderSharing,
         type: "tip",
         name: "A Hunter",
         email: "hunter@example.test",
@@ -531,6 +591,7 @@ test("rate limits report capture and returns a retry interval", async () => {
     environment: new FakeEnvironment()
   });
   const report = {
+    ...privateFinderSharing,
     type: "tip",
     name: "A Hunter",
     email: "hunter@example.test",
@@ -568,6 +629,7 @@ test("fails closed on report writes when rate-limit protection is not configured
     method: "POST",
     ...json(
       {
+        ...privateFinderSharing,
         type: "tip",
         name: "A Hunter",
         email: "hunter@example.test",
@@ -603,7 +665,7 @@ test("rejects an oversized JSON request before human-verification work", async (
   assert.equal((await responseJson(response)).error.code, "request_too_large");
 });
 
-test("requires an image for find reports and stores accepted uploads privately", async () => {
+test("accepts optional find photos and stores supplied uploads privately", async () => {
   const { app, uploads } = makeApp();
   const missingPhoto = new FormData();
   missingPhoto.set("type", "find");
@@ -611,9 +673,11 @@ test("requires an image for find reports and stores accepted uploads privately",
   missingPhoto.set("email", "hunter@example.test");
   missingPhoto.set("locationDescription", "Near waypoint one");
   missingPhoto.set("details", "I found an item.");
+  missingPhoto.set("customItemName", "A mystery item");
   missingPhoto.set("cfTurnstileResponse", "human-token");
+  addFinderSharing(missingPhoto);
 
-  const rejected = await app.request("https://www.timlostsomething.com/api/v1/reports", {
+  const withoutPhoto = await app.request("https://www.timlostsomething.com/api/v1/reports", {
     method: "POST",
     headers: {
       "idempotency-key": "find-key-1",
@@ -621,8 +685,8 @@ test("requires an image for find reports and stores accepted uploads privately",
     },
     body: missingPhoto
   });
-  assert.equal(rejected.status, 422);
-  assert.equal((await responseJson(rejected)).error.code, "photo_required");
+  assert.equal(withoutPhoto.status, 201);
+  assert.equal(uploads.saved.length, 0);
 
   const withPhoto = new FormData();
   for (const [key, value] of missingPhoto.entries()) withPhoto.append(key, value);
@@ -666,6 +730,7 @@ test("snapshots safe report attribution from the stored profile instead of clien
   });
   const { app } = makeApp(store);
   const base = {
+    ...reviewedFinderSharing,
     type: "tip",
     name: "Private Legal Name",
     email: "private@example.ca",
@@ -745,6 +810,7 @@ test("enforces decimal 20 MB per-image and 30 MB combined report limits", async 
     form.set("locationDescription", "Near waypoint one");
     form.set("details", "Large image boundary test.");
     form.set("cfTurnstileResponse", "human-token");
+    addFinderSharing(form);
     for (const image of images) form.append("images", image, image.name);
     return form;
   };
@@ -780,6 +846,9 @@ test("dispatches multipart reports by media type essence and preserves case-sens
   const { app } = makeApp();
   const boundary = "AaB03xWebKitBoundary";
   const fields = {
+    publicationPreference: "private",
+    sharingNoticeVersion: "2026.1",
+    sharingAcknowledgementAccepted: "true",
     type: "tip",
     name: "A Hunter",
     email: "hunter@example.test",

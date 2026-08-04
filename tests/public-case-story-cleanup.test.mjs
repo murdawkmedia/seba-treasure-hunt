@@ -37,17 +37,17 @@ function publicSiteBlurbs(source) {
   return [...source.matchAll(/\bblurb:\s*"([^"]*)"/g)].map((match) => match[1]);
 }
 
-test("the public case shell uses 13 Stops and has no sponsorship destination", () => {
+test("the public case shell uses plain hunt actions and has no sponsorship destination", () => {
   assert.equal(Object.hasOwn(CAMPAIGN_PAGES, "sponsors.html"), false);
   assert.deepEqual(CAMPAIGN_MENU.find((item) => item.route === "route"), {
     route: "route",
-    label: "13 Stops",
+    label: "Where to Look",
     href: "/route",
   });
   assert.equal(CAMPAIGN_MENU.some((item) => item.route === "sponsors"), false);
 
   const home = renderCampaignPage(readFileSync(path.join(root, "index.html"), "utf8"), "index.html");
-  assert.match(home, /Tim Lost Something\?<span>Tim lost his ID<\/span>/);
+  assert.match(home, /Tim Lost Something\?<span>Tim found his ID\. The rest is still out there\.<\/span>/);
   assert.doesNotMatch(home, /Support the Search|href=["']\/?sponsors(?:\.html)?["']/i);
 });
 
@@ -60,10 +60,10 @@ test("Casey's public page uses local-case language", () => {
   );
 });
 
-test("the README documents 13 Stops and the withdrawn public sponsorship surface", () => {
+test("the README documents 13 places and the withdrawn public sponsorship surface", () => {
   const readme = readFileSync(path.join(root, "README.md"), "utf8");
 
-  assert.match(readme, /\| `\/route` \| 13 Stops waypoint stories;/);
+  assert.match(readme, /\| `\/route` \| Where to Look: 13 public place stories;/);
   assert.doesNotMatch(readme, /Lucky 13|\| `\/sponsors` \||submitted through `\/sponsors`/i);
   assert.match(readme, /Public sponsorship is withdrawn\./);
   assert.match(readme, /`sponsors\.html` source remains in the repository/);
@@ -112,19 +112,14 @@ test("all non-legal public pages use current local-case vocabulary in rendered a
   }
 });
 
-test("the homepage presents the fictional ID as one accurately described figure", () => {
+test("the homepage presents the ID reference once with an accessible FOUND treatment", () => {
   const home = readFileSync(path.join(root, "index.html"), "utf8");
-  const caption = "A visual representation of what Tim’s I.D. could look like.";
-  const presentation = home.match(/<aside class="campaign-prop"[^>]*>[\s\S]*?<\/aside>/)?.[0];
+  const presentation = home.match(/<li\b(?=[^>]*data-case-item="tims-id")[^>]*>[\s\S]*?<\/li>/)?.[0];
 
-  assert.ok(presentation, "the fictional ID presentation is present");
-  assert.equal(visibleText(home).split(caption).length - 1, 1);
-  assert.equal((presentation.match(/<figure>/g) ?? []).length, 1);
-  assert.equal((presentation.match(/<figcaption>/g) ?? []).length, 1);
-  assert.match(presentation, new RegExp(`<figcaption>${caption.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\\/figcaption>`));
-  assert.match(presentation, /alt="Visual representation of a possible version of Tim's ID card on a dark counter"/);
-  assert.doesNotMatch(home, /This image is fictional, not Tim(?:'|’)s real ID, and not an exact picture of the missing card\./i);
-  assert.doesNotMatch(home, /Campaign reference|A fictional reference image/i);
+  assert.ok(presentation, "the ID reference presentation is present");
+  assert.equal((home.match(/tim-lost-id-campaign-prop\.webp/g) ?? []).length, 1);
+  assert.match(presentation, /alt="A visual representation of what Tim's ID could look like"/);
+  assert.match(presentation, /aria-label="Status: found"[^>]*>FOUND<\/span>/);
 });
 
 test("visitor-facing copy identifies SebaHub representatives without operator language", () => {

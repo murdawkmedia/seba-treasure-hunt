@@ -12,6 +12,9 @@ import {
 import { publicHunterIdentity } from "../shared/public-identity";
 import type {
   CaseStatus,
+  CaseItemInput,
+  CaseItemMutation,
+  CaseItemStatusMutation,
   DataStore,
   IdentityLifecycleEvent,
   OperatorAlertErrorCode,
@@ -29,6 +32,7 @@ import type {
   SponsorInquiryRecord,
   SponsorInquiryState,
   SponsorSupportType,
+  StaffAccessAction,
   StoredMedia,
   WaiverAcceptanceInput,
   WaiverAcceptanceRecord,
@@ -56,6 +60,13 @@ const publicUpdatePublisherName = (input: unknown): string => {
 };
 const numberOrNull = (input: unknown): number | null =>
   typeof input === "number" && Number.isFinite(input) ? input : null;
+const staffCapabilities = (status: string, activeCount: number): string[] => status === "invited"
+  ? ["resend-invitation"]
+  : status === "active"
+    ? ["recovery", "revoke-sessions", ...(activeCount > 1 ? ["suspend"] : [])]
+    : status === "suspended"
+      ? ["recovery", "reactivate"]
+      : [];
 
 const opsUpdateFromRow = (
   row: Row,
@@ -72,6 +83,36 @@ const opsUpdateFromRow = (
   updatedAt: nullable(row.updated_at),
   uploadCount: Number(row.upload_count ?? uploads?.length ?? 0),
   ...(uploads ? { uploads } : {})
+});
+const caseItemFromRow = (
+  row: Row,
+  media: Record<string, unknown>[],
+  includePrivate: boolean,
+  uploads: Record<string, unknown>[] = media
+): Record<string, unknown> => ({
+  id: value(row.id),
+  slug: value(row.slug),
+  owner: value(row.owner),
+  category: value(row.category),
+  title: value(row.title),
+  description: value(row.description),
+  finderKeeps: row.finder_keeps === 1,
+  closeOnFind: row.close_on_find === 1,
+  status: value(row.status),
+  displayOrder: Number(row.display_order),
+  collection: value(row.collection) || "case",
+  collectionOrder: numberOrNull(row.collection_order),
+  audience: value(row.audience) || "public",
+  showOnBoard: row.show_on_board !== 0,
+  teaserOrder: numberOrNull(row.teaser_order),
+  reportable: row.reportable !== 0,
+  media,
+  ...(includePrivate ? {
+    version: Number(row.version),
+    createdAt: value(row.created_at),
+    updatedAt: value(row.updated_at),
+    uploads
+  } : {})
 });
 const json = (input: unknown) => JSON.stringify(input ?? null);
 const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -431,6 +472,126 @@ export class D1DataStore implements DataStore {
     };
   }
 
+  async listPublicCaseItems(): Promise<Record<string, unknown>[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT id, slug, owner, category, title, description, finder_keeps, close_on_find,
+                status, display_order, collection, collection_order, audience,
+                show_on_board, teaser_order, reportable, version, created_at, updated_at
+         FROM case_items
+         WHERE audience = 'public'
+           AND status IN ('out_there', 'found', 'paused')
+         ORDER BY display_order, id`
+      )
+      .all<Row>();
+    const itemIds = result.results.map((row) => value(row.id));
+    const mediaByItem = new Map<string, Record<string, unknown>[]>();
+    if (itemIds.length > 0) {
+      const placeholders = itemIds.map(() => "?").join(",");
+      const mediaResult = await this.db
+        .prepare(
+          `SELECT selected.item_id, upload.id, upload.content_type,
+                  selected.position, selected.alt_text, selected.caption
+           FROM case_item_media selected
+           JOIN case_item_uploads upload ON upload.id = selected.upload_id
+           WHERE selected.item_id IN (${placeholders})
+             AND selected.audience = 'public'
+             AND upload.status = 'ready'
+             AND upload.derivative_object_key IS NOT NULL
+           ORDER BY selected.position, upload.id`
+        )
+        .bind(...itemIds)
+        .all<Row>();
+      for (const media of mediaResult.results) {
+        const itemId = value(media.item_id);
+        const entries = mediaByItem.get(itemId) ?? [];
+        entries.push({
+          id: value(media.id),
+          url: `/api/v1/media/${value(media.id)}`,
+          contentType: value(media.content_type),
+          alt: value(media.alt_text),
+          ...(nullable(media.caption) ? { caption: media.caption } : {})
+        });
+        mediaByItem.set(itemId, entries);
+      }
+    }
+    return result.results.map((row) => {
+      const projected = caseItemFromRow(
+        row,
+        mediaByItem.get(value(row.id)) ?? [],
+        false
+      );
+      const { collectionOrder: _collectionOrder, audience: _audience, ...publicItem } = projected;
+      return publicItem;
+    });
+  }
+
+  async listHunterFreshDrops(): Promise<Record<string, unknown>[]> {
+    const result = await this.db.prepare(
+      `SELECT id, slug, owner, category, title, description, finder_keeps, close_on_find,
+              status, display_order, collection, collection_order, audience,
+              show_on_board, teaser_order, reportable, version, created_at, updated_at
+       FROM case_items
+       WHERE collection = 'fresh_drops'
+         AND status IN ('out_there', 'found', 'paused')
+       ORDER BY collection_order, id`
+    ).all<Row>();
+    const itemIds = result.results.map((row) => value(row.id));
+    const mediaByItem = await this.selectedCaseItemMedia(itemIds, "hunter");
+    return result.results.map((row) => caseItemFromRow(
+      row,
+      mediaByItem.get(value(row.id)) ?? [],
+      false
+    ));
+  }
+
+  async getHunterCaseItemMedia(mediaId: string): Promise<{ key: string; contentType: string } | null> {
+    const row = await this.db.prepare(
+      `SELECT upload.derivative_object_key, upload.content_type
+       FROM case_item_uploads upload
+       JOIN case_item_media selected ON selected.upload_id = upload.id
+       JOIN case_items item ON item.id = selected.item_id
+       WHERE upload.id = ?
+         AND upload.status = 'ready'
+         AND upload.derivative_object_key IS NOT NULL
+         AND item.collection = 'fresh_drops'
+         AND item.status IN ('out_there', 'found', 'paused')
+       LIMIT 1`
+    ).bind(mediaId).first<Row>();
+    const key = value(row?.derivative_object_key);
+    return row && key.startsWith("derivatives/") && key !== "derivatives/"
+      ? { key, contentType: value(row.content_type) }
+      : null;
+  }
+
+  async getReportableFreshDrop(itemId: string): Promise<{ id: string; title: string } | null> {
+    const row = await this.db.prepare(
+      `SELECT id, title FROM case_items
+       WHERE id = ? AND collection = 'fresh_drops' AND reportable = 1
+         AND status IN ('out_there', 'found', 'paused')
+       LIMIT 1`
+    ).bind(itemId).first<Row>();
+    return row ? { id: value(row.id), title: value(row.title) } : null;
+  }
+
+  async getReportableCaseItem(itemId: string): Promise<{
+    id: string;
+    title: string;
+    audience: "public" | "hunter_only";
+  } | null> {
+    const row = await this.db.prepare(
+      `SELECT id, title, audience FROM case_items
+       WHERE id = ? AND reportable = 1
+         AND status IN ('out_there', 'found', 'paused')
+       LIMIT 1`
+    ).bind(itemId).first<Row>();
+    return row ? {
+      id: value(row.id),
+      title: value(row.title),
+      audience: row.audience === "hunter_only" ? "hunter_only" : "public",
+    } : null;
+  }
+
   async getCurrentRules(): Promise<Record<string, unknown> | null> {
     const row = await this.db
       .prepare(
@@ -674,6 +835,33 @@ export class D1DataStore implements DataStore {
         .bind(mediaId, now(), now())
         .first<Row>();
     }
+    if (!row) {
+      try {
+        row = await this.db
+          .prepare(
+            `SELECT upload.derivative_object_key, upload.content_type,
+                    'case_item' AS owner_kind
+             FROM case_item_uploads upload
+             JOIN case_item_media selected ON selected.upload_id = upload.id
+             JOIN case_items item ON item.id = selected.item_id
+             WHERE upload.id = ? AND upload.status = 'ready'
+               AND upload.derivative_object_key IS NOT NULL
+               AND item.audience = 'public'
+               AND selected.audience = 'public'
+               AND item.status IN ('out_there', 'found', 'paused')
+             LIMIT 1`
+          )
+          .bind(mediaId)
+          .first<Row>();
+      } catch (error) {
+        if (!(error instanceof Error) || !/no such table:\s*(?:main\.)?case_item_(?:uploads|media|items)\b/i.test(error.message)) {
+          throw error;
+        }
+        // Existing report and Update media must remain readable while the additive
+        // item-board migration is being applied. Item media stays unavailable.
+        row = null;
+      }
+    }
     if (!row || !value(row.derivative_object_key).startsWith("derivatives/")) return null;
     return {
       key: value(row.derivative_object_key),
@@ -720,8 +908,10 @@ export class D1DataStore implements DataStore {
           `INSERT INTO private_reports
            (id, report_type, hunter_subject, reporter_name, reporter_email, reporter_phone,
             waypoint_id, location_description, latitude, longitude, details, public_attribution,
-            attribution_kind, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?)`
+            attribution_kind, case_item_id, case_item_title_snapshot, custom_item_name,
+            publication_preference, sharing_notice_version, sharing_notice_accepted_at,
+            status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?)`
         )
         .bind(
           reportId,
@@ -737,6 +927,12 @@ export class D1DataStore implements DataStore {
           input.details,
           input.publicAttribution ?? null,
           input.attributionKind ?? null,
+          input.caseItemId ?? null,
+          input.caseItemTitle ?? null,
+          input.customItemName ?? null,
+          input.publicationPreference ?? "private",
+          input.sharingNoticeVersion ?? null,
+          input.sharingNoticeAcceptedAt ?? null,
           createdAt,
           createdAt
         ),
@@ -2134,6 +2330,7 @@ export class D1DataStore implements DataStore {
       this.db
         .prepare(
           `SELECT r.id, r.report_type, r.status, r.created_at,
+                  r.case_item_id, r.case_item_title_snapshot,
                   note.id AS case_note_id, note.status AS case_note_status,
                   published_update.id AS update_id, published_update.status AS update_status,
                   published_update.scheduled_for AS update_scheduled_for
@@ -2209,6 +2406,8 @@ export class D1DataStore implements DataStore {
         return [{
           id: row.id,
           type: row.report_type,
+          caseItemId: nullable(row.case_item_id),
+          caseItemTitle: nullable(row.case_item_title_snapshot),
           hunterStatus: hunterReportState(row.status),
           createdAt: row.created_at,
           publications
@@ -3119,6 +3318,345 @@ export class D1DataStore implements DataStore {
     return this.getStatus();
   }
 
+  async listOpsCaseItems(): Promise<Record<string, unknown>[]> {
+    const result = await this.db.prepare(
+      `SELECT id, slug, owner, category, title, description, finder_keeps, close_on_find,
+              status, display_order, collection, collection_order, audience,
+              show_on_board, teaser_order, reportable, version, created_at, updated_at, updated_by
+       FROM case_items ORDER BY display_order, id`
+    ).all<Row>();
+    return Promise.all(result.results.map(async (row) => {
+      const uploads = await this.caseItemUploads(value(row.id));
+      const selectedMedia = uploads
+        .filter((upload) => typeof upload.position === "number")
+        .sort((left, right) => Number(left.position) - Number(right.position));
+      return {
+        ...caseItemFromRow(row, selectedMedia, true, uploads),
+        updatedBy: value(row.updated_by),
+        history: await this.caseItemHistory(value(row.id))
+      };
+    }));
+  }
+
+  async createCaseItem(input: CaseItemInput, actorSubject: string): Promise<Record<string, unknown>> {
+    const itemId = id();
+    const timestamp = now();
+    const collection = input.collection ?? "case";
+    const collectionOrder = input.collectionOrder ?? null;
+    const audience = input.audience ?? "public";
+    const showOnBoard = input.showOnBoard ?? true;
+    const teaserOrder = input.teaserOrder ?? null;
+    const reportable = input.reportable ?? true;
+    if (audience === "hunter_only" && (showOnBoard || teaserOrder !== null)) {
+      throw new ApiError(422, "case_item_private_placement", "Hunter-only items cannot appear on a public surface.");
+    }
+    if (audience === "public" && ["out_there", "found", "paused"].includes(input.status) &&
+        (showOnBoard || teaserOrder !== null)) {
+      throw new ApiError(422, "case_item_public_media_required", "Upload and select a public image before placing this item publicly.");
+    }
+    if (teaserOrder !== null) await this.assertTeaserSlotAvailable(teaserOrder, null);
+    try {
+      await this.db.batch([
+        this.db.prepare(
+          `INSERT INTO case_items
+           (id, slug, owner, category, title, description, finder_keeps, close_on_find, status,
+            display_order, collection, collection_order, audience, show_on_board,
+            teaser_order, reportable, version, created_at, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+        ).bind(itemId, input.slug, input.owner, input.category, input.title, input.description,
+          input.finderKeeps ? 1 : 0, input.closeOnFind ? 1 : 0, input.status, input.displayOrder, collection,
+          collectionOrder, audience, showOnBoard ? 1 : 0, teaserOrder, reportable ? 1 : 0,
+          timestamp, timestamp, actorSubject),
+        this.db.prepare(
+          `INSERT INTO case_item_events
+           (id, item_id, actor_subject, action, from_status, to_status,
+            item_version, details_json, occurred_at)
+           VALUES (?, ?, ?, 'case_item.created', NULL, ?, 1, ?, ?)`
+        ).bind(id(), itemId, actorSubject, input.status, json({
+          slug: input.slug,
+          collection,
+          audience,
+          showOnBoard,
+          teaserOrder,
+          reportable
+        }), timestamp),
+        this.db.prepare(
+          `INSERT INTO audit_events
+           (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+           VALUES (?, ?, 'case_item.created', 'case_item', ?, ?, ?)`
+        ).bind(id(), actorSubject, itemId, json({ status: input.status, slug: input.slug }), timestamp)
+      ]);
+    } catch (error) {
+      if (error instanceof Error && /UNIQUE constraint failed:\s*case_items\.slug/i.test(error.message)) {
+        throw new ApiError(409, "case_item_slug_conflict", "Another item already uses that slug.");
+      }
+      throw error;
+    }
+    const created = await this.caseItemById(itemId);
+    if (!created) throw new Error("created case item could not be loaded");
+    return created;
+  }
+
+  async updateCaseItem(
+    itemId: string,
+    input: CaseItemMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.db.prepare(
+      `SELECT status, version, collection, collection_order, audience,
+              show_on_board, teaser_order, reportable
+       FROM case_items WHERE id = ? LIMIT 1`
+    )
+      .bind(itemId).first<Row>();
+    if (!existing) return null;
+    if (Number(existing.version) !== input.expectedVersion) {
+      throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+    }
+    const collection = input.collection ?? (value(existing.collection) || "case");
+    const collectionOrder = input.collectionOrder === undefined
+      ? numberOrNull(existing.collection_order)
+      : input.collectionOrder;
+    const audience = input.audience ?? (value(existing.audience) || "public");
+    const showOnBoard = input.showOnBoard ?? existing.show_on_board !== 0;
+    const teaserOrder = input.teaserOrder === undefined
+      ? numberOrNull(existing.teaser_order)
+      : input.teaserOrder;
+    const reportable = input.reportable ?? existing.reportable !== 0;
+    if (audience === "hunter_only" && (showOnBoard || teaserOrder !== null)) {
+      throw new ApiError(422, "case_item_private_placement", "Hunter-only items cannot appear on a public surface.");
+    }
+    if (input.mediaSelections.some((selection) => (selection.audience ?? audience) === "public") && audience !== "public") {
+      throw new ApiError(422, "case_item_media_audience", "Public images require a public item.");
+    }
+    const publicSelectionCount = input.mediaSelections.filter(
+      (selection) => (selection.audience ?? audience) === "public"
+    ).length;
+    if (audience === "public" && ["out_there", "found", "paused"].includes(input.status) &&
+        (showOnBoard || teaserOrder !== null) && publicSelectionCount === 0) {
+      throw new ApiError(422, "case_item_public_media_required", "Select a public image before placing this item on the evidence wall or homepage teaser.");
+    }
+    if (teaserOrder !== null) await this.assertTeaserSlotAvailable(teaserOrder, itemId);
+    if (input.mediaSelections.length > 0) {
+      const mediaIds = input.mediaSelections.map((selection) => selection.id);
+      const placeholders = mediaIds.map(() => "?").join(",");
+      const ready = await this.db.prepare(
+        `SELECT id FROM case_item_uploads
+         WHERE item_id = ? AND id IN (${placeholders})
+           AND status = 'ready' AND derivative_object_key IS NOT NULL
+           AND content_type IN ('image/jpeg', 'image/png', 'image/webp')`
+      ).bind(itemId, ...mediaIds).all<Row>();
+      if (ready.results.length !== mediaIds.length) {
+        throw new ApiError(422, "case_item_media_invalid", "Choose only ready images belonging to this item.");
+      }
+    }
+    const timestamp = now();
+    const nextVersion = input.expectedVersion + 1;
+    const markerExists = `EXISTS (
+      SELECT 1 FROM case_items marker
+      WHERE marker.id = ? AND marker.version = ? AND marker.updated_at = ?
+    )`;
+    const statements = [
+      this.db.prepare(
+         `UPDATE case_items
+         SET slug = ?, owner = ?, category = ?, title = ?, description = ?, finder_keeps = ?, close_on_find = ?,
+             status = ?, display_order = ?, collection = ?, collection_order = ?, audience = ?,
+             show_on_board = ?, teaser_order = ?, reportable = ?,
+             version = version + 1, updated_at = ?, updated_by = ?
+         WHERE id = ? AND version = ?`
+      ).bind(input.slug, input.owner, input.category, input.title, input.description,
+        input.finderKeeps ? 1 : 0, input.closeOnFind ? 1 : 0, input.status, input.displayOrder, collection,
+        collectionOrder, audience, showOnBoard ? 1 : 0, teaserOrder, reportable ? 1 : 0,
+        timestamp, actorSubject, itemId, input.expectedVersion),
+      this.db.prepare(`DELETE FROM case_item_media WHERE item_id = ? AND ${markerExists}`)
+        .bind(itemId, itemId, nextVersion, timestamp),
+      ...input.mediaSelections.map((selection, position) => this.db.prepare(
+        `INSERT INTO case_item_media
+         (item_id, upload_id, selected_by, selected_at, position, alt_text, caption, audience)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${markerExists}`
+      ).bind(itemId, selection.id, actorSubject, timestamp, position, selection.altText,
+        selection.caption, selection.audience ?? audience, itemId, nextVersion, timestamp)),
+      this.db.prepare(
+        `INSERT INTO case_item_events
+         (id, item_id, actor_subject, action, from_status, to_status,
+          item_version, details_json, occurred_at)
+         SELECT ?, ?, ?, 'case_item.updated', ?, ?, ?, ?, ? WHERE ${markerExists}`
+      ).bind(id(), itemId, actorSubject, value(existing.status), input.status, nextVersion,
+        json({
+          mediaIds: input.mediaSelections.map((selection) => selection.id),
+          mediaAudiences: input.mediaSelections.map((selection) => selection.audience ?? audience),
+          collection,
+          audience,
+          showOnBoard,
+          teaserOrder,
+          reportable
+        }), timestamp,
+        itemId, nextVersion, timestamp),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         SELECT ?, ?, 'case_item.updated', 'case_item', ?, ?, ? WHERE ${markerExists}`
+      ).bind(id(), actorSubject, itemId,
+        json({ previousStatus: existing.status, status: input.status, version: nextVersion }),
+        timestamp, itemId, nextVersion, timestamp)
+    ];
+    try {
+      const results = await this.db.batch(statements);
+      if (!results[0]?.meta.changes) {
+        throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+      }
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if (error instanceof Error && /UNIQUE constraint failed:\s*case_items\.slug/i.test(error.message)) {
+        throw new ApiError(409, "case_item_slug_conflict", "Another item already uses that slug.");
+      }
+      throw error;
+    }
+    return this.caseItemById(itemId);
+  }
+
+  async updateCaseItemStatus(
+    itemId: string,
+    input: CaseItemStatusMutation,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.db.prepare(
+      "SELECT status, version FROM case_items WHERE id = ? LIMIT 1"
+    ).bind(itemId).first<Row>();
+    if (!existing) return null;
+    const previousStatus = value(existing.status);
+    if (Number(existing.version) !== input.expectedVersion) {
+      throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+    }
+    if (!((previousStatus === "out_there" && input.status === "found") ||
+          (previousStatus === "found" && input.status === "out_there"))) {
+      throw new ApiError(422, "case_item_status_transition", "This item can only move between Out there and Found.");
+    }
+    const timestamp = now();
+    const nextVersion = input.expectedVersion + 1;
+    const results = await this.db.batch([
+      this.db.prepare(
+        `UPDATE case_items
+         SET status = ?, version = version + 1, updated_at = ?, updated_by = ?
+         WHERE id = ? AND version = ? AND status = ?`
+      ).bind(input.status, timestamp, actorSubject, itemId, input.expectedVersion, previousStatus),
+      this.db.prepare(
+        `INSERT INTO case_item_events
+         (id, item_id, actor_subject, action, from_status, to_status,
+          item_version, details_json, occurred_at)
+         SELECT ?, ?, ?, 'case_item.status_changed', ?, ?, ?, ?, ? WHERE changes() = 1`
+      ).bind(id(), itemId, actorSubject, previousStatus, input.status, nextVersion,
+        json({ previousStatus, status: input.status, version: nextVersion }), timestamp),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         SELECT ?, ?, 'case_item.status_changed', 'case_item', ?, ?, ? WHERE changes() = 1`
+      ).bind(id(), actorSubject, itemId,
+        json({ previousStatus, status: input.status, version: nextVersion }), timestamp)
+    ]);
+    if (!results[0]?.meta.changes) {
+      const winner = await this.db.prepare("SELECT id FROM case_items WHERE id = ? LIMIT 1").bind(itemId).first<Row>();
+      if (!winner) return null;
+      throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+    }
+    return this.caseItemById(itemId);
+  }
+
+  async addCaseItemUploads(
+    itemId: string,
+    media: StoredMedia[],
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    if (!await this.db.prepare("SELECT id FROM case_items WHERE id = ? LIMIT 1").bind(itemId).first<Row>()) {
+      return null;
+    }
+    if (media.length < 1 || media.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three item images.");
+    }
+    const count = await this.db.prepare(
+      `SELECT COUNT(*) AS upload_count FROM case_item_uploads
+       WHERE item_id = ? AND status NOT IN ('deleted', 'rejected')`
+    ).bind(itemId).first<Row>();
+    if (Number(count?.upload_count ?? 0) + media.length > 3) {
+      throw new ApiError(422, "validation_failed", "An item can have no more than three images.");
+    }
+    const timestamp = now();
+    await this.db.batch([
+      ...media.map((upload) => this.db.prepare(
+        `INSERT OR IGNORE INTO case_item_uploads
+         (id, item_id, uploader_subject, private_object_key, content_type,
+          byte_size, status, created_at, source_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(upload.id, itemId, actorSubject, upload.key,
+        upload.contentType ?? "application/octet-stream", upload.size ?? 0, upload.status,
+        timestamp, upload.sourceSha256 ?? null)),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'case_item.media_uploaded', 'case_item', ?, ?, ?)`
+      ).bind(id(), actorSubject, itemId, json({ mediaIds: media.map((upload) => upload.id) }), timestamp)
+    ]);
+    return this.caseItemById(itemId);
+  }
+
+  async getCaseItemMedia(
+    itemId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<{ key: string; contentType: string } | null> {
+    const row = await this.db.prepare(
+      `SELECT derivative_object_key, content_type FROM case_item_uploads
+       WHERE id = ? AND item_id = ? AND status = 'ready'
+         AND derivative_object_key IS NOT NULL LIMIT 1`
+    ).bind(mediaId, itemId).first<Row>();
+    const key = value(row?.derivative_object_key);
+    if (!row || !key.startsWith("derivatives/") || key === "derivatives/") return null;
+    await this.audit(actorSubject, "case_item.media_viewed", "case_item", itemId, { mediaId });
+    return { key, contentType: value(row.content_type) };
+  }
+
+  async removeCaseItemUpload(
+    itemId: string,
+    mediaId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await this.db.prepare(
+      "SELECT id FROM case_item_uploads WHERE id = ? AND item_id = ? AND status != 'deleted' LIMIT 1"
+    ).bind(mediaId, itemId).first<Row>();
+    if (!existing) return null;
+    const timestamp = now();
+    await this.db.batch([
+      this.db.prepare("DELETE FROM case_item_media WHERE item_id = ? AND upload_id = ?").bind(itemId, mediaId),
+      this.db.prepare(
+        `UPDATE case_item_uploads SET status = 'deleted', processed_at = ?
+         WHERE id = ? AND item_id = ? AND status != 'deleted'`
+      ).bind(timestamp, mediaId, itemId),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'case_item.media_removed', 'case_item', ?, ?, ?)`
+      ).bind(id(), actorSubject, itemId, json({ mediaId }), timestamp)
+    ]);
+    return { id: mediaId, itemId, status: "deleted" };
+  }
+
+  async createCaseItemAnnouncementDraft(
+    itemId: string,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const item = await this.db.prepare(
+      "SELECT title, description, status FROM case_items WHERE id = ? LIMIT 1"
+    ).bind(itemId).first<Row>();
+    if (!item) return null;
+    const verb = item.status === "found" ? "has been found" : "is now out there";
+    const draft = await this.createUpdate({
+      title: `${value(item.title)} ${verb}`,
+      body: `${value(item.description)}\n\nCheck Where to Look before heading out.`
+    }, actorSubject);
+    await this.audit(actorSubject, "case_item.announcement_drafted", "case_item", itemId, {
+      updateId: draft.id
+    });
+    return draft;
+  }
+
   async listOpsUpdates(
     options: { limit?: number; cursor?: string | null } = {}
   ): Promise<Page> {
@@ -3850,7 +4388,8 @@ export class D1DataStore implements DataStore {
     }
     const report = await this.db
       .prepare(
-        `SELECT id, status, waypoint_id, latitude, longitude, public_attribution, attribution_kind
+        `SELECT id, report_type, status, waypoint_id, latitude, longitude, public_attribution,
+                attribution_kind, case_item_id
          FROM private_reports WHERE id = ? LIMIT 1`
       )
       .bind(reportId)
@@ -3914,6 +4453,13 @@ export class D1DataStore implements DataStore {
           : "hunter_handle";
     const noteId = id();
     const timestamp = now();
+    const closingItem = value(report.report_type) === "find" && nullable(report.case_item_id)
+      ? await this.db.prepare(
+          `SELECT id, status, version FROM case_items
+           WHERE id = ? AND close_on_find = 1 AND status IN ('out_there', 'paused')
+           LIMIT 1`
+        ).bind(report.case_item_id).first<Row>()
+      : null;
     const statements = [
       this.db.prepare(
         `INSERT INTO operator_reviewed_case_notes
@@ -3958,9 +4504,45 @@ export class D1DataStore implements DataStore {
         ).bind(noteId, mediaId, actorSubject, timestamp, position)
       );
     }
+    if (closingItem) {
+      const itemId = value(closingItem.id);
+      const previousStatus = value(closingItem.status);
+      const previousVersion = Number(closingItem.version);
+      const nextVersion = previousVersion + 1;
+      statements.push(
+        this.db.prepare(
+          `UPDATE case_items
+           SET status = 'found', version = version + 1, updated_at = ?, updated_by = ?
+           WHERE id = ? AND version = ? AND close_on_find = 1
+             AND status IN ('out_there', 'paused')`
+        ).bind(timestamp, actorSubject, itemId, previousVersion),
+        this.db.prepare(
+          `INSERT INTO case_item_events
+           (id, item_id, actor_subject, action, from_status, to_status,
+            item_version, details_json, occurred_at)
+           VALUES (?, ?, ?, 'case_item.found_from_case_note', ?, 'found', ?, ?, ?)`
+        ).bind(
+          id(),
+          itemId,
+          actorSubject,
+          previousStatus,
+          nextVersion,
+          json({ reportId, caseNoteId: noteId }),
+          timestamp
+        ),
+        this.db.prepare(
+          `INSERT INTO audit_events
+           (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+           VALUES (?, ?, 'case_item.found_from_case_note', 'case_item', ?, ?, ?)`
+        ).bind(id(), actorSubject, itemId, json({ reportId, caseNoteId: noteId }), timestamp)
+      );
+    }
     try {
       await this.db.batch(statements);
     } catch (error) {
+      if (error instanceof Error && /case item close-on-find version conflict/i.test(error.message)) {
+        throw new ApiError(409, "case_item_stale", "The item changed while this find was being published. Refresh and try again.");
+      }
       const winner = await this.reportCaseNoteBySource(reportId);
       if (winner) return winner;
       throw error;
@@ -4832,24 +5414,39 @@ export class D1DataStore implements DataStore {
       : null;
   }
 
-  async listStaff(): Promise<Record<string, unknown>[]> {
-    const result = await this.db
+  async listStaff(actorSubject?: string): Promise<Record<string, unknown>[]> {
+    const [count, result] = await Promise.all([
+      this.db
+        .prepare("SELECT COUNT(*) AS active_count FROM staff_principals WHERE status = 'active'")
+        .first<Row>(),
+      this.db
       .prepare(
         `SELECT id, provider_subject, normalized_email, display_name, status,
                 invited_at, activated_at, last_login_at
          FROM staff_principals ORDER BY normalized_email`
       )
-      .all<Row>();
-    return result.results.map((row) => ({
-      id: row.id,
-      subject: row.provider_subject,
-      email: row.normalized_email,
-      displayName: row.display_name,
-      status: row.status,
-      invitedAt: row.invited_at,
-      activatedAt: row.activated_at,
-      lastLoginAt: row.last_login_at
-    }));
+        .all<Row>()
+    ]);
+    const activeCount = Number(count?.active_count ?? 0);
+    return result.results.map((row) => {
+      const status = value(row.status);
+      const actions = staffCapabilities(status, activeCount);
+      return {
+        id: row.id,
+        subject: row.provider_subject,
+        email: row.normalized_email,
+        displayName: row.display_name,
+        status,
+        invitedAt: row.invited_at,
+        activatedAt: row.activated_at,
+        lastLoginAt: row.last_login_at,
+        isCurrent: Boolean(actorSubject && row.provider_subject === actorSubject),
+        actions,
+        ...(status === "active" && activeCount <= 1
+          ? { suspendBlockedReason: "At least one active operator must remain." }
+          : {})
+      };
+    });
   }
 
   async listSubscribers(options: { limit?: number; cursor?: string | null } = {}) {
@@ -5064,7 +5661,8 @@ export class D1DataStore implements DataStore {
   async getStaffPrincipal(staffId: string): Promise<Record<string, unknown> | null> {
     const row = await this.db
       .prepare(
-        `SELECT id, provider_subject, normalized_email, display_name, status
+        `SELECT id, provider_subject, normalized_email, display_name, status,
+                (SELECT COUNT(*) FROM staff_principals WHERE status = 'active') AS active_count
          FROM staff_principals WHERE id = ? LIMIT 1`
       )
       .bind(staffId)
@@ -5075,9 +5673,111 @@ export class D1DataStore implements DataStore {
           subject: row.provider_subject,
           email: row.normalized_email,
           displayName: row.display_name,
-          status: row.status
+          status: row.status,
+          actions: staffCapabilities(value(row.status), Number(row.active_count ?? 0))
         }
       : null;
+  }
+
+  async inviteStaff(
+    normalizedEmail: string,
+    actorSubject: string
+  ): Promise<{ record: Record<string, unknown>; created: boolean }> {
+    const existing = await this.db
+      .prepare(
+        `SELECT id, provider_subject, normalized_email, display_name, status
+         FROM staff_principals WHERE normalized_email = ? LIMIT 1`
+      )
+      .bind(normalizedEmail)
+      .first<Row>();
+    if (existing) return this.existingStaffInvitation(existing);
+
+    const staffId = id();
+    const timestamp = now();
+    try {
+      await this.db.batch([
+        this.db
+          .prepare(
+            `INSERT INTO staff_principals
+             (id, provider_subject, normalized_email, display_name, status, invited_at)
+             VALUES (?, NULL, ?, ?, 'invited', ?)`
+          )
+          .bind(staffId, normalizedEmail, staffDisplayName(normalizedEmail), timestamp),
+        this.auditStatement(actorSubject, "staff.invited", "staff_principal", staffId, {}, timestamp)
+      ]);
+    } catch {
+      const raced = await this.db
+        .prepare(
+          `SELECT id, provider_subject, normalized_email, display_name, status
+           FROM staff_principals WHERE normalized_email = ? LIMIT 1`
+        )
+        .bind(normalizedEmail)
+        .first<Row>();
+      if (raced) return this.existingStaffInvitation(raced);
+      throw new ApiError(503, "staff_invitation_unavailable", "The staff invitation could not be saved.");
+    }
+    const record = await this.getStaffPrincipal(staffId);
+    if (!record) throw new ApiError(503, "staff_invitation_unavailable", "The staff invitation could not be saved.");
+    return { record, created: true };
+  }
+
+  async changeStaffAccess(
+    staffId: string,
+    action: StaffAccessAction,
+    actorSubject: string
+  ): Promise<Record<string, unknown> | null> {
+    const timestamp = now();
+    const transition = action === "suspend"
+      ? this.db
+        .prepare(
+          `UPDATE staff_principals
+           SET status = 'suspended'
+           WHERE id = ? AND status = 'active'
+             AND (SELECT COUNT(*) FROM staff_principals WHERE status = 'active') > 1`
+        )
+        .bind(staffId)
+      : this.db
+        .prepare("UPDATE staff_principals SET status = 'active' WHERE id = ? AND status = 'suspended'")
+        .bind(staffId);
+    const results = await this.db.batch([
+      transition,
+      this.auditStatement(
+        actorSubject,
+        action === "suspend" ? "staff.suspended" : "staff.reactivated",
+        "staff_principal",
+        staffId,
+        {},
+        timestamp
+      )
+    ]);
+    if (Number(results[0]?.meta.changes) === 1) return this.getStaffPrincipal(staffId);
+
+    const target = await this.db
+      .prepare("SELECT status FROM staff_principals WHERE id = ? LIMIT 1")
+      .bind(staffId)
+      .first<Row>();
+    if (!target) return null;
+    if (action === "suspend" && target.status === "active") {
+      const active = await this.db
+        .prepare("SELECT COUNT(*) AS active_count FROM staff_principals WHERE status = 'active'")
+        .first<Row>();
+      if (Number(active?.active_count ?? 0) <= 1) {
+        throw new ApiError(
+          409,
+          "final_active_staff",
+          "At least one active operator must remain. Invite or reactivate another operator first."
+        );
+      }
+    }
+    throw new ApiError(409, "staff_access_conflict", "This staff access state changed. Refresh and try again.");
+  }
+
+  async recordStaffProviderWarning(
+    operation: "invitation" | "revoke-sessions" | "suspend" | "reactivate",
+    target: string,
+    actorSubject: string
+  ): Promise<void> {
+    await this.audit(actorSubject, "staff.provider_warning", "staff_principal", target, { operation });
   }
 
   async listAudit(options: { limit?: number; cursor?: string | null } = {}): Promise<Page> {
@@ -5110,14 +5810,8 @@ export class D1DataStore implements DataStore {
     target: string,
     actorSubject: string
   ): Promise<Record<string, unknown>> {
-    const allowed = new Set(["recovery", "revoke-sessions", "suspend", "reactivate", "reset-mfa", "resend-invitation"]);
+    const allowed = new Set(["recovery", "revoke-sessions", "resend-invitation"]);
     if (!allowed.has(action)) throw new ConflictError("Unsupported staff action.");
-    if (action === "suspend" || action === "reactivate") {
-      await this.db
-        .prepare("UPDATE staff_principals SET status = ? WHERE id = ?")
-        .bind(action === "suspend" ? "suspended" : "active", target)
-        .run();
-    }
     await this.audit(actorSubject, `staff.${action}.requested`, "staff_principal", target, {});
     return { action, target, status: "queued" };
   }
@@ -5218,6 +5912,29 @@ export class D1DataStore implements DataStore {
     };
   }
 
+  private existingStaffInvitation(row: Row): { record: Record<string, unknown>; created: boolean } {
+    const status = value(row.status);
+    if (status === "invited") {
+      return {
+        record: {
+          id: row.id,
+          subject: row.provider_subject,
+          email: row.normalized_email,
+          displayName: row.display_name,
+          status
+        },
+        created: false
+      };
+    }
+    if (status === "active") {
+      throw new ApiError(409, "staff_already_active", "This email already belongs to an active operator.");
+    }
+    if (status === "suspended") {
+      throw new ApiError(409, "staff_reactivation_required", "Reactivate this suspended operator instead of sending a new invitation.");
+    }
+    throw new ApiError(409, "staff_invitation_blocked", "This staff invitation is no longer eligible to be resent.");
+  }
+
   private async reportPublicationPreview(reportId: string): Promise<{
     publicAttribution: string | null;
     publicationEligible: boolean;
@@ -5244,6 +5961,7 @@ export class D1DataStore implements DataStore {
     const row = await this.db
       .prepare(
         `SELECT r.hunter_subject, r.status, r.public_attribution, r.attribution_kind,
+                r.publication_preference,
                 profile.participation_basis,
                 report_time.action AS report_time_action,
                 report_account.participation_basis AS report_time_basis,
@@ -5354,6 +6072,13 @@ export class D1DataStore implements DataStore {
         publicationEligibilityReason: "report_state_invalid"
       });
     }
+    if (nullable(row.publication_preference) !== "share_after_review") {
+      return preview({
+        publicAttribution: safeMinorAttribution ?? safeSnapshot ?? (hunterSubject ? null : "Community Hunter"),
+        publicationEligible: false,
+        publicationEligibilityReason: "hunter_requested_private"
+      });
+    }
     if (!hunterSubject) {
       return preview({
         publicAttribution: "Community Hunter",
@@ -5424,6 +6149,12 @@ export class D1DataStore implements DataStore {
       phone: row.reporter_phone,
       publicAttribution: nullable(row.public_attribution),
       attributionKind: nullable(row.attribution_kind),
+      caseItemId: nullable(row.case_item_id),
+      caseItemTitle: nullable(row.case_item_title_snapshot),
+      customItemName: nullable(row.custom_item_name),
+      publicationPreference: value(row.publication_preference) || "private",
+      sharingNoticeVersion: nullable(row.sharing_notice_version),
+      sharingNoticeAcceptedAt: nullable(row.sharing_notice_accepted_at),
       waypointId: row.waypoint_id === null ? null : Number(row.waypoint_id),
       waypointRouteOrder: numberOrNull(row.waypoint_route_order),
       waypointName: nullable(row.waypoint_name),
@@ -5499,6 +6230,118 @@ export class D1DataStore implements DataStore {
         media.status,
         now()
       );
+  }
+
+  private async assertTeaserSlotAvailable(teaserOrder: number, itemId: string | null): Promise<void> {
+    const row = await this.db.prepare(
+      `SELECT id, title FROM case_items
+       WHERE teaser_order = ? AND (? IS NULL OR id != ?)
+       LIMIT 1`
+    ).bind(teaserOrder, itemId, itemId).first<Row>();
+    if (row) {
+      throw new ApiError(
+        409,
+        "teaser_slot_occupied",
+        `Teaser slot ${teaserOrder} already shows ${value(row.title)}.`,
+        { itemId: value(row.id), title: value(row.title), teaserOrder }
+      );
+    }
+  }
+
+  private async selectedCaseItemMedia(
+    itemIds: string[],
+    projection: "public" | "hunter"
+  ): Promise<Map<string, Record<string, unknown>[]>> {
+    const mediaByItem = new Map<string, Record<string, unknown>[]>();
+    if (itemIds.length === 0) return mediaByItem;
+    const placeholders = itemIds.map(() => "?").join(",");
+    const result = await this.db.prepare(
+      `SELECT selected.item_id, upload.id, upload.content_type,
+              selected.position, selected.alt_text, selected.caption, selected.audience
+       FROM case_item_media selected
+       JOIN case_item_uploads upload ON upload.id = selected.upload_id
+       WHERE selected.item_id IN (${placeholders})
+         AND upload.status = 'ready'
+         AND upload.derivative_object_key IS NOT NULL
+         ${projection === "public" ? "AND selected.audience = 'public'" : ""}
+       ORDER BY selected.position, upload.id`
+    ).bind(...itemIds).all<Row>();
+    for (const row of result.results) {
+      const itemId = value(row.item_id);
+      const entries = mediaByItem.get(itemId) ?? [];
+      const mediaId = value(row.id);
+      entries.push({
+        id: mediaId,
+        url: projection === "public"
+          ? `/api/v1/media/${mediaId}`
+          : `/api/v1/me/fresh-drops/media/${mediaId}`,
+        contentType: value(row.content_type),
+        alt: value(row.alt_text),
+        ...(nullable(row.caption) ? { caption: row.caption } : {})
+      });
+      mediaByItem.set(itemId, entries);
+    }
+    return mediaByItem;
+  }
+
+  private async caseItemById(itemId: string): Promise<Record<string, unknown> | null> {
+    const row = await this.db.prepare(
+      `SELECT id, slug, owner, category, title, description, finder_keeps, close_on_find,
+              status, display_order, collection, collection_order, audience,
+              show_on_board, teaser_order, reportable, version, created_at, updated_at, updated_by
+       FROM case_items WHERE id = ? LIMIT 1`
+    ).bind(itemId).first<Row>();
+    if (!row) return null;
+    const uploads = await this.caseItemUploads(itemId);
+    const selectedMedia = uploads
+      .filter((upload) => typeof upload.position === "number")
+      .sort((left, right) => Number(left.position) - Number(right.position));
+    return {
+      ...caseItemFromRow(row, selectedMedia, true, uploads),
+      updatedBy: value(row.updated_by),
+      history: await this.caseItemHistory(itemId)
+    };
+  }
+
+  private async caseItemUploads(itemId: string): Promise<Record<string, unknown>[]> {
+    const result = await this.db.prepare(
+      `SELECT upload.id, upload.content_type, upload.byte_size, upload.status,
+              upload.source_sha256, selected.alt_text, selected.caption,
+              selected.position, selected.audience
+       FROM case_item_uploads upload
+       LEFT JOIN case_item_media selected
+         ON selected.item_id = upload.item_id AND selected.upload_id = upload.id
+       WHERE upload.item_id = ? AND upload.status != 'deleted'
+       ORDER BY upload.created_at, upload.id`
+    ).bind(itemId).all<Row>();
+    return result.results.map((upload) => ({
+      id: value(upload.id),
+      contentType: value(upload.content_type),
+      size: Number(upload.byte_size ?? 0),
+      status: value(upload.status),
+      sourceSha256: nullable(upload.source_sha256),
+      altText: nullable(upload.alt_text),
+      caption: nullable(upload.caption),
+      position: numberOrNull(upload.position),
+      audience: value(upload.audience) || "public"
+    }));
+  }
+
+  private async caseItemHistory(itemId: string): Promise<Record<string, unknown>[]> {
+    const result = await this.db.prepare(
+      `SELECT id, actor_subject, action, from_status, to_status, item_version, occurred_at
+       FROM case_item_events WHERE item_id = ?
+       ORDER BY occurred_at DESC, id DESC LIMIT 20`
+    ).bind(itemId).all<Row>();
+    return result.results.map((event) => ({
+      id: value(event.id),
+      actor: value(event.actor_subject),
+      action: value(event.action),
+      fromStatus: nullable(event.from_status),
+      toStatus: nullable(event.to_status),
+      version: Number(event.item_version),
+      occurredAt: value(event.occurred_at)
+    }));
   }
 
   private async officialUpdateUploads(updateId: string): Promise<Record<string, unknown>[]> {

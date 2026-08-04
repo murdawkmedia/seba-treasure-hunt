@@ -32,6 +32,10 @@ test("sponsor QA verifies public build withdrawal without weakening private-outp
   assert.match(script, /const broadPattern = \/sponsor_inquiries\|sponsor_inquiry_events\|private note\|@sebahub\\\.com\|@businessasaforceforgood\\\.ca\|CFCW\/i/);
   assert.match(script, /const correctedPattern = \/sponsor_inquiries\|sponsor_inquiry_events\|private note\|CFCW\/i/);
   assert.match(script, /dist\/assets\/app\/ops\.js/);
+  assert.match(script, /stripHeight:\s*54,\s*headerHeight:\s*68,\s*stack:\s*122/);
+  assert.match(script, /"private note":\s*new Set\(\["dist\/assets\/app\/ops\.js", "dist\/ops\.html"\]\)/);
+  assert.match(script, /casey@sebahub\.com["'],\s*new Set\(\["dist\/golf-balls\.html", "dist\/route\.html"\]\)/);
+  assert.match(script, /info@sebahub\.com["'],\s*new Set\(\["dist\/dashboard\.html", "dist\/privacy\.html"\]\)/);
 });
 
 test("sponsor QA contains no stale public sponsor-page exercise after withdrawal", async () => {

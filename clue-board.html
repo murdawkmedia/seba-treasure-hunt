@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Community Case Notes | Tim Lost Something?</title>
+  <title>What People Found | Tim Lost Something?</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/assets/favicon-32x32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <meta name="description" content="Read moderated Case Notes from the Seba Beach community and share an observation from one of the 13 public waypoints." />
+  <meta name="description" content="Read moderated observations from the Seba Beach community and share what you noticed at one of the 13 public places." />
   <meta name="robots" content="index,follow,max-image-preview:large" />
   <link rel="canonical" href="https://www.timlostsomething.com/clue-board" />
   <meta property="og:site_name" content="Tim Lost Something?" />
-  <meta property="og:title" content="Community Case Notes | Tim Lost Something?" />
+  <meta property="og:title" content="What People Found | Tim Lost Something?" />
   <meta property="og:description" content="Moderated community observations from Tim's 13-waypoint Seba Beach route." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://www.timlostsomething.com/clue-board" />
@@ -29,18 +29,18 @@
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
 </head>
 <body class="campaign-page campaign-page--ledger board-page" data-campaign-route="clue-board">
-  <!-- CAMPAIGN_SHELL {"route":"clue-board","skipLabel":"Skip to Case Notes","skipTarget":"main"} -->
+  <!-- CAMPAIGN_SHELL {"route":"clue-board","skipLabel":"Skip to What People Found","skipTarget":"main"} -->
 
   <main id="main" tabindex="-1">
     <section class="board-hero" aria-labelledby="board-title">
       <div class="board-hero__copy">
         <p class="board-eyebrow">Case file / community ledger</p>
         <h1 id="board-title">What did the other hunters notice?</h1>
-        <p class="board-hero__lead">Compare tracks, weather, landmarks and careful observations from all 13 waypoints. Every Case Note is reviewed before it appears here.</p>
+        <p class="board-hero__lead">Compare tracks, weather, landmarks and careful observations from all 13 places. Every public observation is reviewed before it appears here.</p>
       </div>
       <aside class="community-notice" aria-label="Important community-content notice">
-        <span class="community-notice__stamp" aria-hidden="true">CASE NOTE</span>
-        <p><strong>Community observation&mdash;not an official clue.</strong> Official information is always marked and appears in the case update feed.</p>
+        <span class="community-notice__stamp" aria-hidden="true">COMMUNITY</span>
+        <p><strong>Community observation&mdash;not an official clue.</strong> Official information is always marked and appears in Latest News.</p>
       </aside>
     </section>
 
@@ -48,7 +48,7 @@
       <aside class="board-rail" aria-label="Board controls">
         <section class="ledger-panel board-filter">
           <p class="ledger-label">Filter the ledger</p>
-          <label for="waypoint-filter">Waypoint</label>
+          <label for="waypoint-filter">Place</label>
           <select id="waypoint-filter" name="waypoint">
             <option value="all">All 13 stops</option>
             <option value="1">Stop 01 · Creek Property</option>
@@ -61,7 +61,7 @@
             <option value="7">Stop 08 · Lodge Trails</option>
             <option value="8">Stop 09 · Vista Lands</option>
             <option value="9">Stop 10 · Cliff-Edge Slope</option>
-            <option value="10">Stop 11 · Driving Range / Digger Café</option>
+            <option value="10">Stop 11 · Driving Range / Brewing at Seba</option>
             <option value="11">Stop 12 · Kokanee Springs Front Gate</option>
             <option value="12">Stop 13 · Old Seba Beach School / SebaHub</option>
           </select>
@@ -70,7 +70,7 @@
 
         <section class="ledger-panel board-submit" aria-labelledby="submit-note-title">
           <p class="ledger-label">Add to the case file</p>
-          <h2 id="submit-note-title">Share a Case Note</h2>
+          <h2 id="submit-note-title">Share an observation</h2>
           <p><strong>This is a public community observation after moderation.</strong> Do not use it for a possible find, private evidence, or an exact location.</p>
           <div id="board-auth-prompt">
             <p>Sign in as a hunter to submit a note or reply. Reading the board does not require an account.</p>
@@ -92,7 +92,7 @@
               <option value="7">Stop 08 · Lodge Trails</option>
               <option value="8">Stop 09 · Vista Lands</option>
               <option value="9">Stop 10 · Cliff-Edge Slope</option>
-              <option value="10">Stop 11 · Driving Range / Digger Café</option>
+              <option value="10">Stop 11 · Driving Range / Brewing at Seba</option>
               <option value="11">Stop 12 · Kokanee Springs Front Gate</option>
               <option value="12">Stop 13 · Old Seba Beach School / SebaHub</option>
             </select>
@@ -117,10 +117,10 @@
             <p class="form-result" id="note-form-result" role="status" aria-live="polite"></p>
           </form>
           <div class="form-result" data-note-receipt hidden tabindex="-1" aria-live="polite">
-            <h3>Case Note received for moderation</h3>
+            <h3>Observation received for moderation</h3>
             <p>Reference <strong data-note-reference></strong>.</p>
             <p>Nothing is public until a representative from SebaHub approves it.</p>
-            <button class="field-button field-button--quiet" type="button" data-note-another>Share another Case Note</button>
+            <button class="field-button field-button--quiet" type="button" data-note-another>Share another observation</button>
           </div>
         </section>
 
@@ -136,7 +136,7 @@
         <div class="board-heading">
           <div>
             <p class="ledger-label">Approved observations</p>
-            <h2 id="field-notes-title">Case Notes</h2>
+            <h2 id="field-notes-title">What People Found</h2>
           </div>
           <p id="board-status" role="status" aria-live="polite">Loading the public ledger&hellip;</p>
         </div>

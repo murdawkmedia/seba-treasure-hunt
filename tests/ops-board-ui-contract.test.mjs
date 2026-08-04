@@ -18,7 +18,7 @@ test("the clue board and operations console entry points exist", () => {
   }
 });
 
-test("public Case Notes are an accessible, moderated community surface", () => {
+test("What People Found is an accessible, moderated community surface", () => {
   const html = read("clue-board.html");
   const client = read("src/client/board.ts");
 
@@ -40,7 +40,7 @@ test("public Case Notes are an accessible, moderated community surface", () => {
   assert.match(client, /\/api\/v1\/board\?waypoint=/);
   assert.match(client, /Community observation/);
   assert.match(client, /Board unavailable/i);
-  assert.match(client, /No approved Case Notes/i);
+  assert.match(client, /Nothing has been shared here yet/i);
   assert.match(client, /Report .*for review/i);
   assert.match(client, /action:\s*"field_note"/);
   assert.match(client, /action:\s*"reply"/);
@@ -72,10 +72,10 @@ test("the case-room console exposes every approved ledger and safe account contr
 
   for (const label of [
     "Command Desk",
-    "Official Updates",
+    "Latest News",
     "Private Reports",
     "Sponsors",
-    "Moderation Queue",
+    "Public Contributions",
     "Search Zones",
     "Rules Ledger",
     "Players",
@@ -84,6 +84,7 @@ test("the case-room console exposes every approved ledger and safe account contr
   ]) {
     assert.match(html, new RegExp(label.replace("&", "&amp;")));
   }
+  assert.match(html, /What(?:&rsquo;|’|')s Out There/);
 
   assert.match(html, /Send recovery instructions/i);
   assert.match(html, /Revoke sessions/i);
@@ -195,6 +196,38 @@ test("the case-room console exposes every approved ledger and safe account contr
   assert.match(client, /Accepted is an internal pipeline state\. It does not publish a sponsor\./);
   assert.doesNotMatch(client, /\/api\/v1\/ops\/sponsors\/export/);
   assert.doesNotMatch(html, /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/);
+});
+
+test("operator invitations provide a labelled, live access control before the staff ledger", () => {
+  const html = read("ops.html");
+  const accessPanel = html.match(/<section[^>]+data-view-panel="access"[\s\S]*?<\/section>\s*<section[^>]+data-view-panel="audit"/)?.[0] ?? "";
+
+  assert.match(accessPanel, /<form[^>]+id="staff-invite-form"[^>]+novalidate/);
+  assert.match(accessPanel, /<label[^>]+for="staff-invite-email"/);
+  assert.match(accessPanel, /<input[^>]+id="staff-invite-email"[^>]+name="email"[^>]+type="email"[^>]+autocomplete="email"[^>]+required/);
+  assert.match(accessPanel, /data-staff-invite-result[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(accessPanel, /eligible immediately, access begins after email verification/i);
+  assert.ok(accessPanel.indexOf('id="staff-invite-form"') < accessPanel.indexOf('id="staff-table"'));
+});
+
+test("operator invitation submits only to the private staff invitation route and refreshes ledgers", () => {
+  const client = read("src/client/ops.ts");
+
+  assert.match(client, /staff-invite-form/);
+  assert.match(client, /\/api\/v1\/ops\/staff\/invitations/);
+  assert.match(client, /method:\s*"POST"/);
+  assert.match(client, /Invitation saved; email delivery needs retry/);
+  assert.match(client, /Invitation already saved; use Resend invitation to send another email/);
+  assert.match(client, /Promise\.all\(\[loadStaff\(\), loadAudit\(\)\]\)/);
+});
+
+test("operator invitation controls keep a compact token-based grid and stack below 700px", () => {
+  const css = read("css/ops.css");
+
+  assert.match(css, /\.ops-staff-invite-panel\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:/s);
+  assert.match(css, /\.ops-staff-invite-form\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:/s);
+  assert.match(css, /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.ops-staff-invite-panel\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(css, /\.ops-staff-action-note\s*\{[^}]*var\(--ops-muted\)/s);
 });
 
 test("every primary Ops workspace explains source state, recovery, and disabled controls", () => {

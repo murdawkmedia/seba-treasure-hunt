@@ -8,6 +8,15 @@ import {
 } from "../shared/publication";
 import { isReportReviewState } from "../shared/report-workflow";
 import {
+  FINDER_SHARING_NOTICE_VERSION,
+  normalizePublicationPreference,
+} from "../shared/report-sharing";
+import {
+  isCaseItemAudience,
+  isCaseItemCollection,
+  isCaseItemMediaAudience
+} from "../shared/case-items";
+import {
   REPORT_IMAGE_DIRECT_BYTES,
   REPORT_IMAGE_TOTAL_BYTES,
   REPORT_IMAGE_TYPES,
@@ -16,6 +25,11 @@ import { ApiError, StatusUnavailableError } from "./errors";
 import { participationWaiverDocument, privacyMediaDocument, publicLegalState } from "./legal-documents";
 import type {
   ApiDependencies,
+  CaseItemInput,
+  CaseItemMutation,
+  CaseItemStatusMutation,
+  CaseItemOwner,
+  CaseItemStatus,
   CaseState,
   PagesEnv,
   Principal,
@@ -82,6 +96,14 @@ const appPaths = new Set(
   )
 );
 const validImageTypes = REPORT_IMAGE_TYPES;
+const validCaseItemOwners = new Set<CaseItemOwner>(["tim", "casey"]);
+const validCaseItemStatuses = new Set<CaseItemStatus>([
+  "draft",
+  "out_there",
+  "found",
+  "paused",
+  "archived"
+]);
 const validSponsorSupportTypes = new Set<SponsorSupportType>([
   "community",
   "lead",
@@ -352,6 +374,206 @@ const publicationInput = (body: Record<string, unknown>) => {
   };
 };
 
+const caseItemInput = (
+  body: Record<string, unknown>,
+  mutation: boolean
+): CaseItemInput | CaseItemMutation => {
+  const allowed = new Set([
+    "slug",
+    "owner",
+    "category",
+    "title",
+    "description",
+    "finderKeeps",
+    "closeOnFind",
+    "status",
+    "displayOrder",
+    "collection",
+    "collectionOrder",
+    "audience",
+    "showOnBoard",
+    "teaserOrder",
+    "reportable",
+    ...(mutation ? ["expectedVersion", "mediaSelections"] : [])
+  ]);
+  const forbidden = Object.keys(body).find((key) => !allowed.has(key));
+  if (forbidden) {
+    throw new ApiError(422, "validation_failed", "Item fields are invalid.", { field: forbidden });
+  }
+  const slug = requiredString(body, "slug", { max: 80 });
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    throw new ApiError(422, "validation_failed", "Use a lowercase item slug with words separated by hyphens.", {
+      field: "slug"
+    });
+  }
+  const owner = body.owner;
+  if (typeof owner !== "string" || !validCaseItemOwners.has(owner as CaseItemOwner)) {
+    throw new ApiError(422, "validation_failed", "Choose Tim or Casey as the item owner.", { field: "owner" });
+  }
+  const status = body.status;
+  if (typeof status !== "string" || !validCaseItemStatuses.has(status as CaseItemStatus)) {
+    throw new ApiError(422, "validation_failed", "Choose a valid item status.", { field: "status" });
+  }
+  if (typeof body.finderKeeps !== "boolean") {
+    throw new ApiError(422, "validation_failed", "Choose whether the finder keeps this item.", {
+      field: "finderKeeps"
+    });
+  }
+  if (typeof body.closeOnFind !== "boolean") {
+    throw new ApiError(422, "validation_failed", "Choose whether an approved find closes this item.", {
+      field: "closeOnFind"
+    });
+  }
+  const displayOrder = body.displayOrder;
+  if (!Number.isInteger(displayOrder) || Number(displayOrder) < 0 || Number(displayOrder) > 999) {
+    throw new ApiError(422, "validation_failed", "Display order must be a whole number from 0 to 999.", {
+      field: "displayOrder"
+    });
+  }
+  const base: CaseItemInput = {
+    slug,
+    owner: owner as CaseItemOwner,
+    category: requiredString(body, "category", { max: 80 }),
+    title: requiredString(body, "title", { max: 160 }),
+    description: requiredString(body, "description", { max: 1_000 }),
+    finderKeeps: body.finderKeeps,
+    closeOnFind: body.closeOnFind,
+    status: status as CaseItemStatus,
+    displayOrder: Number(displayOrder)
+  };
+  const collection = body.collection === undefined
+    ? mutation ? undefined : "case"
+    : isCaseItemCollection(body.collection)
+      ? body.collection
+      : null;
+  if (collection === null) {
+    throw new ApiError(422, "validation_failed", "Choose the main case or Fresh Drops collection.", {
+      field: "collection"
+    });
+  }
+  const collectionOrder = body.collectionOrder === undefined
+    ? mutation ? undefined : null
+    : body.collectionOrder;
+  if (collectionOrder !== undefined && collectionOrder !== null &&
+      (!Number.isInteger(collectionOrder) || Number(collectionOrder) < 0 || Number(collectionOrder) > 999)) {
+    throw new ApiError(422, "validation_failed", "Collection order must be a whole number from 0 to 999.", {
+      field: "collectionOrder"
+    });
+  }
+  const audience = body.audience === undefined
+    ? mutation ? undefined : "public"
+    : isCaseItemAudience(body.audience)
+      ? body.audience
+      : null;
+  if (audience === null) {
+    throw new ApiError(422, "validation_failed", "Choose public or signed-in hunter visibility.", {
+      field: "audience"
+    });
+  }
+  const showOnBoard = body.showOnBoard === undefined
+    ? mutation ? undefined : true
+    : body.showOnBoard;
+  if (showOnBoard !== undefined && typeof showOnBoard !== "boolean") {
+    throw new ApiError(422, "validation_failed", "Choose whether this item appears on the public board.", {
+      field: "showOnBoard"
+    });
+  }
+  const teaserOrder = body.teaserOrder === undefined
+    ? mutation ? undefined : null
+    : body.teaserOrder;
+  if (teaserOrder !== undefined && teaserOrder !== null && teaserOrder !== 1 && teaserOrder !== 2) {
+    throw new ApiError(422, "validation_failed", "Choose teaser slot one, two, or neither.", {
+      field: "teaserOrder"
+    });
+  }
+  const reportable = body.reportable === undefined
+    ? mutation ? undefined : true
+    : body.reportable;
+  if (reportable !== undefined && typeof reportable !== "boolean") {
+    throw new ApiError(422, "validation_failed", "Choose whether hunters can report this item.", {
+      field: "reportable"
+    });
+  }
+  Object.assign(base, {
+    ...(collection !== undefined ? { collection } : {}),
+    ...(collectionOrder !== undefined ? { collectionOrder: collectionOrder as number | null } : {}),
+    ...(audience !== undefined ? { audience } : {}),
+    ...(showOnBoard !== undefined ? { showOnBoard } : {}),
+    ...(teaserOrder !== undefined ? { teaserOrder: teaserOrder as 1 | 2 | null } : {}),
+    ...(reportable !== undefined ? { reportable } : {})
+  });
+  if (audience === "hunter_only" && (showOnBoard === true || teaserOrder !== null && teaserOrder !== undefined)) {
+    throw new ApiError(422, "case_item_private_placement", "Hunter-only items cannot appear on a public surface.");
+  }
+  if (!mutation) return base;
+  const expectedVersion = body.expectedVersion;
+  if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+    throw new ApiError(422, "validation_failed", "The item version is invalid. Refresh and try again.", {
+      field: "expectedVersion"
+    });
+  }
+  const rawSelections = body.mediaSelections ?? [];
+  if (!Array.isArray(rawSelections) || rawSelections.length > 3) {
+    throw new ApiError(422, "validation_failed", "Choose up to three item images.", {
+      field: "mediaSelections"
+    });
+  }
+  const mediaSelections = rawSelections.map((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new ApiError(422, "validation_failed", "Item image details are invalid.", {
+        field: "mediaSelections"
+      });
+    }
+    const selection = candidate as Record<string, unknown>;
+    if (Object.keys(selection).some((key) => !["id", "altText", "caption", "audience"].includes(key))) {
+      throw new ApiError(422, "validation_failed", "Item image details are invalid.", {
+        field: "mediaSelections"
+      });
+    }
+    const id = requiredString(selection, "id", { max: 200 });
+    const altText = requiredString(selection, "altText", { max: 200 });
+    const caption = optionalString(selection, "caption", 500);
+    const mediaAudience = selection.audience === undefined
+      ? audience ?? "public"
+      : isCaseItemMediaAudience(selection.audience)
+        ? selection.audience
+        : null;
+    if (!mediaAudience) {
+      throw new ApiError(422, "validation_failed", "Choose public or signed-in hunter image visibility.", {
+        field: "mediaSelections"
+      });
+    }
+    if (mediaAudience === "public" && audience === "hunter_only") {
+      throw new ApiError(422, "case_item_media_audience", "Public images require a public item.");
+    }
+    return { id, altText, caption, audience: mediaAudience };
+  });
+  if (new Set(mediaSelections.map((selection) => selection.id)).size !== mediaSelections.length) {
+    throw new ApiError(422, "validation_failed", "Choose each item image only once.", {
+      field: "mediaSelections"
+    });
+  }
+  return { ...base, expectedVersion: Number(expectedVersion), mediaSelections };
+};
+
+const caseItemStatusInput = (body: Record<string, unknown>): CaseItemStatusMutation => {
+  const allowed = new Set(["expectedVersion", "status", "confirmed"]);
+  const forbidden = Object.keys(body).find((key) => !allowed.has(key));
+  if (forbidden || Object.keys(body).length !== allowed.size) {
+    throw new ApiError(422, "validation_failed", "Item status fields are invalid.", { field: forbidden ?? "status" });
+  }
+  if (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 0) {
+    throw new ApiError(422, "validation_failed", "A current item version is required.", { field: "expectedVersion" });
+  }
+  if (body.status !== "out_there" && body.status !== "found") {
+    throw new ApiError(422, "validation_failed", "Choose Out there or Found.", { field: "status" });
+  }
+  if (body.confirmed !== true) {
+    throw new ApiError(422, "validation_failed", "Deliberately confirm this item status change.", { field: "confirmed" });
+  }
+  return { expectedVersion: Number(body.expectedVersion), status: body.status, confirmed: true };
+};
+
 const email = (body: Record<string, unknown>, key: string) => {
   const candidate = requiredString(body, key, { max: 254, label: "Email" }).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
@@ -533,6 +755,9 @@ const safeSubmission = (record: Record<string, unknown>, replayed?: boolean) => 
   status: record.status,
   createdAt: record.createdAt,
   media: publicMedia(record.media),
+  ...(typeof record.caseItemId === "string" && typeof record.caseItemTitle === "string"
+    ? { caseItemId: record.caseItemId, caseItemTitle: record.caseItemTitle }
+    : {}),
   ...(replayed === undefined ? {} : { replayed })
 });
 
@@ -836,6 +1061,18 @@ const unsafeReply = (body: string) => {
 
 export const createApi = (deps: ApiDependencies) => {
   const app = new Hono<AppBindings>();
+  const requireUnlockedHunter = async (request: Request) => {
+    const hunter = await requireHunter(deps, request);
+    const access = await deps.store.getPlayerAccess(hunter.subject);
+    if (!access.participationUnlocked) {
+      throw new ApiError(
+        403,
+        "participation_locked",
+        "Complete your profile and current legal steps to open Fresh Drops."
+      );
+    }
+    return hunter;
+  };
 
   app.use("*", async (c, next) => {
     c.set("requestId", crypto.randomUUID());
@@ -981,9 +1218,6 @@ export const createApi = (deps: ApiDependencies) => {
         field: "type"
       });
     }
-    if (type === "find" && files.length === 0) {
-      throw new ApiError(422, "photo_required", "A photo is required for a find report.");
-    }
     if (type === "find") {
       try {
         if ((await deps.store.getStatus()).state === "found") {
@@ -994,17 +1228,65 @@ export const createApi = (deps: ApiDependencies) => {
         // Private reporting remains available when public status is unavailable.
       }
     }
-    if (hunter && !isRequestedPublicAttributionKind(body.publicAttributionKind)) {
+    const publicationPreference = normalizePublicationPreference(body.publicationPreference);
+    if (!publicationPreference) {
+      throw new ApiError(422, "publication_preference_required", "Choose whether staff may share this after review.", {
+        field: "publicationPreference"
+      });
+    }
+    if (body.sharingAcknowledgementAccepted !== true && body.sharingAcknowledgementAccepted !== "true") {
+      throw new ApiError(422, "sharing_acknowledgement_required", "Accept the finder sharing notice to continue.", {
+        field: "sharingAcknowledgementAccepted"
+      });
+    }
+    if (body.sharingNoticeVersion !== FINDER_SHARING_NOTICE_VERSION) {
+      throw new ApiError(409, "sharing_notice_outdated", "The finder sharing notice changed. Review it and try again.", {
+        field: "sharingNoticeVersion"
+      });
+    }
+    if (hunter && publicationPreference === "share_after_review" &&
+        !isRequestedPublicAttributionKind(body.publicAttributionKind)) {
       throw new ApiError(
         422,
         "public_attribution_required",
-        "Choose how this report may be credited if an operator publishes it.",
+        "Choose how this report may be credited if a representative from SebaHub shares it.",
         { field: "publicAttributionKind" }
       );
     }
     const requestedAttribution = isRequestedPublicAttributionKind(body.publicAttributionKind)
       ? body.publicAttributionKind
       : "community";
+    const requestedCaseItemId = optionalString(body, "caseItemId", 128);
+    const customItemName = optionalString(body, "customItemName", 160);
+    if (requestedCaseItemId !== null && customItemName !== null) {
+      throw new ApiError(422, "report_item_choice_invalid", "Choose a known item or enter a custom item, not both.");
+    }
+    if (type === "find" && requestedCaseItemId === null && customItemName === null) {
+      throw new ApiError(422, "report_item_required", "Choose a known item or name what you found.", {
+        field: "customItemName"
+      });
+    }
+    let reportedCaseItem: {
+      id: string;
+      title: string;
+      audience: "public" | "hunter_only";
+    } | null = null;
+    if (requestedCaseItemId !== null) {
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestedCaseItemId)) {
+        throw new ApiError(422, "case_item_invalid", "The selected Fresh Drops item is invalid.", {
+          field: "caseItemId"
+        });
+      }
+      reportedCaseItem = await deps.store.getReportableCaseItem(requestedCaseItemId);
+      if (!reportedCaseItem) {
+        throw new ApiError(422, "case_item_invalid", "That Fresh Drops item is not available for reporting.", {
+          field: "caseItemId"
+        });
+      }
+      if (reportedCaseItem.audience === "hunter_only") {
+        await requireUnlockedHunter(c.req.raw);
+      }
+    }
     const attribution = resolvePublicAttribution(
       hunter ? await deps.store.getProfile(hunter.subject) : null,
       requestedAttribution
@@ -1025,6 +1307,12 @@ export const createApi = (deps: ApiDependencies) => {
         latitude: numericCoordinate(body, "latitude", -90, 90),
         longitude: numericCoordinate(body, "longitude", -180, 180),
         details: requiredString(body, "details", { max: 4_000, label: "Details" }),
+        caseItemId: reportedCaseItem?.id ?? null,
+        caseItemTitle: reportedCaseItem?.title ?? null,
+        customItemName,
+        publicationPreference,
+        sharingNoticeVersion: FINDER_SHARING_NOTICE_VERSION,
+        sharingNoticeAcceptedAt: new Date().toISOString(),
         publicAttribution: attribution.label,
         attributionKind: attribution.kind,
         media
@@ -1488,6 +1776,33 @@ export const createApi = (deps: ApiDependencies) => {
     await requireStaff(deps, c.req.raw);
     return success(c, await deps.store.getOpsDashboard());
   });
+  app.get("/api/v1/items", async (c) => {
+    return success(c, await deps.store.listPublicCaseItems());
+  });
+  app.get("/api/v1/me/fresh-drops", async (c) => {
+    await requireUnlockedHunter(c.req.raw);
+    return success(c, await deps.store.listHunterFreshDrops());
+  });
+  app.get("/api/v1/me/fresh-drops/media/:mediaId", async (c) => {
+    await requireUnlockedHunter(c.req.raw);
+    const authorized = await deps.store.getHunterCaseItemMedia(c.req.param("mediaId"));
+    if (!authorized) {
+      throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    }
+    const object = await deps.uploads.read(authorized.key);
+    if (!object || !validImageTypes.has(object.contentType)) {
+      throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    }
+    return new Response(object.body, {
+      headers: {
+        "content-type": object.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "cross-origin-resource-policy": "same-origin"
+      }
+    });
+  });
   const productionSnapshot = async (request: Request) => {
     await requireStaff(deps, request);
     if (!deps.productionSnapshot) {
@@ -1633,6 +1948,111 @@ export const createApi = (deps: ApiDependencies) => {
       cursor: c.req.query("cursor") ?? null
     });
     return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.get("/api/v1/ops/items", async (c) => {
+    await requireStaff(deps, c.req.raw);
+    return success(c, await deps.store.listOpsCaseItems());
+  });
+  app.post("/api/v1/ops/items", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { body } = await requestBody(c.req.raw);
+    return success(c, await deps.store.createCaseItem(
+      caseItemInput(body, false) as CaseItemInput,
+      staff.subject
+    ), 201);
+  });
+  app.patch("/api/v1/ops/items/:id", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { body } = await requestBody(c.req.raw);
+    const item = await deps.store.updateCaseItem(
+      c.req.param("id"),
+      caseItemInput(body, true) as CaseItemMutation,
+      staff.subject
+    );
+    if (!item) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    return success(c, item);
+  });
+  app.post("/api/v1/ops/items/:id/status", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw, "Item status changes require a JSON body.");
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length) throw new ApiError(422, "validation_failed", "Item status fields are invalid.");
+    const item = await deps.store.updateCaseItemStatus(
+      c.req.param("id"),
+      caseItemStatusInput(body),
+      staff.subject
+    );
+    if (!item) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    return success(c, item);
+  });
+  app.post("/api/v1/ops/items/:id/media", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { files } = await requestBody(c.req.raw);
+    await validateImages(files);
+    if (files.length < 1 || files.length > 3) {
+      throw new ApiError(422, "validation_failed", "Choose one to three item images.");
+    }
+    const existing = await deps.store.listOpsCaseItems();
+    const item = existing.find((candidate) => candidate.id === c.req.param("id"));
+    if (!item) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    const activeCount = uploads.filter((upload) => upload.status !== "deleted" && upload.status !== "rejected").length;
+    if (activeCount + files.length > 3) {
+      throw new ApiError(422, "validation_failed", "An item can have no more than three images.");
+    }
+    const media = await deps.uploads.save(files, { kind: "case_item", subject: staff.subject });
+    const updated = await deps.store.addCaseItemUploads(c.req.param("id"), media, staff.subject);
+    if (!updated) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    return success(c, updated, 201);
+  });
+  app.get("/api/v1/ops/items/:id/media/:mediaId", async (c) => {
+    const staff = await requireStaff(deps, c.req.raw);
+    const authorized = await deps.store.getCaseItemMedia(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!authorized) throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    const object = await deps.uploads.read(authorized.key);
+    if (!object || !validImageTypes.has(authorized.contentType) || !validImageTypes.has(object.contentType)) {
+      throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    }
+    return new Response(object.body, {
+      headers: {
+        "content-type": object.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "cross-origin-resource-policy": "same-origin"
+      }
+    });
+  });
+  app.delete("/api/v1/ops/items/:id/media/:mediaId", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const removed = await deps.store.removeCaseItemUpload(
+      c.req.param("id"),
+      c.req.param("mediaId"),
+      staff.subject
+    );
+    if (!removed) throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
+    return success(c, removed);
+  });
+  app.post("/api/v1/ops/items/:id/announcement-draft", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const mediaType = requireJsonMediaType(c.req.raw, "Announcement drafts accept application/json only.");
+    const { body, files } = await requestBody(c.req.raw, mediaType);
+    if (files.length || Object.keys(body).length > 0) {
+      throw new ApiError(422, "validation_failed", "Announcement draft creation does not accept fields.");
+    }
+    const draft = await deps.store.createCaseItemAnnouncementDraft(c.req.param("id"), staff.subject);
+    if (!draft) throw new ApiError(404, "case_item_not_found", "Item not found.");
+    return success(c, draft, 201);
   });
   app.post("/api/v1/ops/updates", async (c) => {
     sameOrigin(c.req.raw);
@@ -2096,8 +2516,8 @@ export const createApi = (deps: ApiDependencies) => {
   });
 
   app.get("/api/v1/ops/staff", async (c) => {
-    await requireStaff(deps, c.req.raw);
-    return success(c, await deps.store.listStaff());
+    const staff = await requireStaff(deps, c.req.raw);
+    return success(c, await deps.store.listStaff(staff.subject));
   });
   app.get("/api/v1/ops/subscribers", async (c) => {
     await requireStaff(deps, c.req.raw);
@@ -2192,6 +2612,35 @@ export const createApi = (deps: ApiDependencies) => {
     });
     return success(c, result.items, 200, { nextCursor: result.nextCursor });
   });
+  app.post("/api/v1/ops/staff/invitations", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    if (mediaTypeEssence(c.req.raw) !== "application/json") {
+      throw new ApiError(415, "unsupported_media_type", "Staff invitations require a JSON body.");
+    }
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length || Object.keys(body).length !== 1 || !("email" in body)) {
+      throw new ApiError(422, "validation_failed", "A staff invitation requires only an email address.", { field: "email" });
+    }
+    const invitation = await deps.store.inviteStaff(email(body, "email"), staff.subject);
+    let delivery: "sent" | "failed" | "not_sent" = "not_sent";
+    if (invitation.created) {
+      delivery = "sent";
+      try {
+        if (!deps.staffAccounts) throw new Error("provider unavailable");
+        await deps.staffAccounts.execute("resend-invitation", invitation.record);
+      } catch {
+        delivery = "failed";
+        await deps.store.recordStaffProviderWarning("invitation", String(invitation.record.id), staff.subject);
+      }
+    }
+    return success(c, {
+      ...invitation.record,
+      actions: ["resend-invitation"],
+      created: invitation.created,
+      delivery
+    }, 202);
+  });
   app.post("/api/v1/ops/players/:id/:action", async (c) => {
     sameOrigin(c.req.raw);
     const staff = await requireStaff(deps, c.req.raw);
@@ -2219,10 +2668,42 @@ export const createApi = (deps: ApiDependencies) => {
       "revoke-sessions",
       "suspend",
       "reactivate",
-      "reset-mfa",
       "resend-invitation"
     ]);
     if (!providerActions.has(action)) throw new ApiError(404, "staff_action_not_found", "Staff action not found.");
+    const target = await deps.store.getStaffPrincipal(c.req.param("id"));
+    if (!target) throw new ApiError(404, "staff_not_found", "Staff account not found.");
+    if (action === "suspend" || action === "reactivate") {
+      const { body, files } = await requestBody(c.req.raw);
+      if (files.length || Object.keys(body).length !== 1 || body.confirmed !== true) {
+        throw new ApiError(422, "validation_failed", "Deliberately confirm this staff access change.", { field: "confirmed" });
+      }
+      const changed = await deps.store.changeStaffAccess(c.req.param("id"), action, staff.subject);
+      if (!changed) throw new ApiError(404, "staff_not_found", "Staff account not found.");
+      let providerWarning = false;
+      try {
+        if (!deps.staffAccounts) throw new Error("provider unavailable");
+        await deps.staffAccounts.execute(action, changed);
+      } catch {
+        providerWarning = true;
+        await deps.store.recordStaffProviderWarning(action, c.req.param("id"), staff.subject);
+      }
+      return success(c, {
+        ...changed,
+        ...(changed.subject === staff.subject && action === "suspend" ? { selfSuspended: true } : {}),
+        ...(providerWarning ? { providerWarning: true } : {})
+      }, 202);
+    }
+    const grantedActions = Array.isArray(target.actions)
+      ? target.actions.filter((candidate): candidate is string => typeof candidate === "string")
+      : [];
+    if (!grantedActions.includes(action)) {
+      throw new ApiError(
+        409,
+        "staff_action_not_available",
+        "This staff action is not available for the account's current access state. Refresh and try again."
+      );
+    }
     if (!deps.staffAccounts) {
       throw new ApiError(
         503,
@@ -2230,8 +2711,6 @@ export const createApi = (deps: ApiDependencies) => {
         "This provider-managed account action is not configured yet. Use the staff account portal."
       );
     }
-    const target = await deps.store.getStaffPrincipal(c.req.param("id"));
-    if (!target) throw new ApiError(404, "staff_not_found", "Staff account not found.");
     const result = await deps.staffAccounts.execute(action, target);
     await deps.store.recordStaffAction(action, c.req.param("id"), staff.subject);
     return success(c, result, 202);

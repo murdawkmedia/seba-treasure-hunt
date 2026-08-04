@@ -17,6 +17,12 @@ import {
   isRequestedPublicAttributionKind,
   type RequestedPublicAttributionKind,
 } from "../shared/publication";
+import { normalizeFreshDrops } from "./fresh-drops";
+import {
+  FINDER_SHARING_NOTICE_VERSION,
+  normalizePublicationPreference,
+  type PublicationPreference,
+} from "../shared/report-sharing";
 
 export type ReportType = "find" | "tip" | "safety";
 
@@ -34,6 +40,10 @@ export interface ReportDraft {
   coordinates: null | { latitude: number; longitude: number };
   accuracy: boolean;
   publicAttributionKind: RequestedPublicAttributionKind | "";
+  caseItemId: string;
+  customItemName: string;
+  publicationPreference: PublicationPreference | "";
+  sharingAcknowledgementAccepted: boolean;
 }
 
 export type ReportErrors = Partial<
@@ -47,7 +57,10 @@ export type ReportErrors = Partial<
     | "photo"
     | "turnstileToken"
     | "accuracy"
-    | "publicAttributionKind",
+    | "publicAttributionKind"
+    | "customItemName"
+    | "publicationPreference"
+    | "sharingAcknowledgementAccepted",
     string
   >
 >;
@@ -64,17 +77,26 @@ export function validateReportDraft(draft: ReportDraft): ReportErrors {
     errors.locationDescription = "Describe where this happened.";
   }
   if (!draft.details.trim()) errors.details = "Tell the review team what happened.";
-  if (draft.type === "find" && draft.photo === null) {
-    errors.photo = "Add a clear photo for a find claim.";
-  }
   if (!draft.turnstileToken) {
     errors.turnstileToken = "Complete the human check.";
   }
   if (!draft.accuracy) {
     errors.accuracy = "Confirm that you believe the report is accurate.";
   }
-  if (!isRequestedPublicAttributionKind(draft.publicAttributionKind)) {
+  if (draft.caseItemId && draft.customItemName.trim()) {
+    errors.customItemName = "Choose a known item or enter your own item name, not both.";
+  } else if (draft.type === "find" && !draft.caseItemId && !draft.customItemName.trim()) {
+    errors.customItemName = "Choose a known item or name what you found.";
+  }
+  if (!normalizePublicationPreference(draft.publicationPreference)) {
+    errors.publicationPreference = "Choose whether staff may share this after review.";
+  }
+  if (draft.publicationPreference === "share_after_review" &&
+      !isRequestedPublicAttributionKind(draft.publicAttributionKind)) {
     errors.publicAttributionKind = "Choose how this report may be credited if a representative from SebaHub publishes it.";
+  }
+  if (!draft.sharingAcknowledgementAccepted) {
+    errors.sharingAcknowledgementAccepted = "Confirm that you understand how your submission may be shared.";
   }
   return errors;
 }
@@ -102,8 +124,8 @@ function validatePhotos(draft: ReportDraft): string | undefined {
   return undefined;
 }
 
-export function buildReportPayload(draft: ReportDraft): Record<string, string | number> {
-  const payload: Record<string, string | number> = {
+export function buildReportPayload(draft: ReportDraft): Record<string, string | number | boolean> {
+  const payload: Record<string, string | number | boolean> = {
     type: draft.type,
     name: draft.name.trim(),
     email: draft.email.trim(),
@@ -111,8 +133,13 @@ export function buildReportPayload(draft: ReportDraft): Record<string, string | 
     details: draft.details.trim(),
     cfTurnstileResponse: draft.turnstileToken,
     publicAttributionKind: draft.publicAttributionKind,
+    publicationPreference: draft.publicationPreference,
+    sharingNoticeVersion: FINDER_SHARING_NOTICE_VERSION,
+    sharingAcknowledgementAccepted: true,
   };
   if (draft.phone.trim()) payload.phone = draft.phone.trim();
+  if (/^[A-Za-z0-9_-]{1,128}$/.test(draft.caseItemId)) payload.caseItemId = draft.caseItemId;
+  if (!draft.caseItemId && draft.customItemName.trim()) payload.customItemName = draft.customItemName.trim();
   const stableWaypointId = waypointId(draft.waypointId);
   if (stableWaypointId !== null) {
     payload.waypointId = String(stableWaypointId);
@@ -177,7 +204,7 @@ export interface ReportProfilePrefill {
 
 export interface ReportSuccessModel {
   reference: string;
-  heading: "Report received privately";
+  heading: "We got it";
   message: string;
 }
 
@@ -216,6 +243,43 @@ export function reportWaypointLabel(waypoint: ReportWaypoint): string {
   return stopLabel(waypoint.routeOrder, waypoint.name);
 }
 
+export interface FreshDropReportContext {
+  id: string;
+  title: string;
+}
+
+export interface ReportCaseItemChoice {
+  id: string;
+  title: string;
+}
+
+export function normalizeReportCaseItemChoices(value: unknown): ReportCaseItemChoice[] {
+  const data = isRecord(value) && Object.hasOwn(value, "data") ? value.data : value;
+  const rows = Array.isArray(data)
+    ? data
+    : isRecord(data) && Array.isArray(data.items)
+      ? data.items
+      : [];
+  const choices = new Map<string, ReportCaseItemChoice>();
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    const title = typeof row.title === "string" ? row.title.trim() : "";
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(id) || !title || row.reportable !== true) continue;
+    if (row.status !== "out_there" && row.status !== "paused") continue;
+    choices.set(id, { id, title });
+  }
+  return [...choices.values()];
+}
+
+export function freshDropReportContext(search: string, value: unknown): FreshDropReportContext | null {
+  const parameters = new URLSearchParams(search);
+  const requestedId = parameters.get("item") ?? "";
+  if (parameters.get("source") !== "fresh-drops" || !/^[A-Za-z0-9_-]{1,128}$/.test(requestedId)) return null;
+  const item = normalizeFreshDrops(value).find((candidate) => candidate.id === requestedId && candidate.reportable);
+  return item ? { id: item.id, title: item.title } : null;
+}
+
 export function mergeReportWaypointChoices(
   currentChoices: readonly ReportWaypoint[],
   payload: unknown,
@@ -244,14 +308,18 @@ export function applyPrefill(currentValue: string, profileValue: string): string
   return currentValue.length > 0 ? currentValue : profileValue;
 }
 
-export function reportSuccessModel(payload: unknown): ReportSuccessModel {
+export function reportSuccessModel(
+  payload: unknown,
+  publicationPreference: PublicationPreference = "private",
+): ReportSuccessModel {
   const data = isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
   return {
     reference: isRecord(data) && typeof data.id === "string" && data.id.trim() ? data.id.trim() : "recorded",
-    heading: "Report received privately",
-    message: "Your report was sent privately to the SebaHub case team. It is not public. " +
-      "We may contact you to verify details. After review, a representative from SebaHub may publish " +
-      "an edited Case Note or Official Update. Your email, phone number and private details will not be published.",
+    heading: "We got it",
+    message: publicationPreference === "share_after_review"
+      ? "Your report is private while a representative from SebaHub reviews it. Nothing publishes automatically. " +
+        "If approved, an edited, contact-free version may appear in What People Found. Photos are published only when staff separately select them."
+      : "Your report was sent privately to the SebaHub case team. It will not be published. We may contact you to verify the details.",
   };
 }
 
@@ -399,6 +467,10 @@ function showErrors(errors: ReportErrors): void {
     "photo",
     "turnstileToken",
     "accuracy",
+    "publicAttributionKind",
+    "customItemName",
+    "publicationPreference",
+    "sharingAcknowledgementAccepted",
   ] as const) {
     const copy = errors[key] ?? "";
     const error = document.querySelector<HTMLElement>(`[data-error-for="${key}"]`);
@@ -449,6 +521,10 @@ function readDraft(
     coordinates: hasCoordinates ? { latitude, longitude } : null,
     accuracy: data.get("accuracy") === "on",
     publicAttributionKind: String(data.get("publicAttributionKind") ?? "") as ReportDraft["publicAttributionKind"],
+    caseItemId: String(data.get("caseItemId") ?? ""),
+    customItemName: String(data.get("customItemName") ?? ""),
+    publicationPreference: String(data.get("publicationPreference") ?? "") as ReportDraft["publicationPreference"],
+    sharingAcknowledgementAccepted: data.get("sharingAcknowledgementAccepted") === "on",
   };
 }
 
@@ -463,7 +539,7 @@ async function loadWaypointOptions(): Promise<void> {
       credentials: "same-origin",
       signal: AbortSignal.timeout(8_000),
     });
-    if (!response.ok) throw new Error("waypoints unavailable");
+    if (!response.ok) throw new Error("places unavailable");
     const envelope: unknown = await response.json();
     const existingChoices = Array.from(
       select.querySelectorAll<HTMLOptionElement>("option[data-report-waypoint]"),
@@ -488,10 +564,10 @@ async function loadWaypointOptions(): Promise<void> {
       select.insertBefore(option, differentLocation);
     }
     state.textContent = refreshed.length > 0
-      ? `${waypoints.length} waypoint choices available; ${refreshed.length} labels refreshed.`
-      : `${waypoints.length} numbered waypoint choices remain available.`;
+      ? `${waypoints.length} place choices available; ${refreshed.length} labels refreshed.`
+      : `${waypoints.length} numbered place choices remain available.`;
   } catch {
-    state.textContent = "Waypoint list unavailable; describe the location instead.";
+    state.textContent = "Place list unavailable; describe the location instead.";
   }
 }
 
@@ -512,10 +588,88 @@ async function signedInReportToken(): Promise<string | null> {
   return token;
 }
 
+function clearFreshDropReportContext(updateUrl = false): void {
+  const panel = document.querySelector<HTMLElement>("[data-report-case-item]");
+  const title = document.querySelector<HTMLElement>("[data-report-case-item-title]");
+  const input = document.querySelector<HTMLSelectElement>('[name="caseItemId"]');
+  if (panel) panel.hidden = true;
+  if (title) title.textContent = "";
+  if (input) input.value = "";
+  pendingIdempotencyKey = undefined;
+  if (!updateUrl) return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("item");
+  url.searchParams.delete("source");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function applyFreshDropReportContext(context: FreshDropReportContext): void {
+  const panel = document.querySelector<HTMLElement>("[data-report-case-item]");
+  const title = document.querySelector<HTMLElement>("[data-report-case-item-title]");
+  const input = document.querySelector<HTMLSelectElement>('[name="caseItemId"]');
+  if (!panel || !title || !input) return;
+  title.textContent = `Reporting: ${context.title}`;
+  if (![...input.options].some((option) => option.value === context.id)) {
+    input.add(new Option(context.title, context.id));
+  }
+  input.value = context.id;
+  panel.hidden = false;
+  const choice = document.querySelector<HTMLInputElement>('[data-report-intake-choice][value="found"]');
+  if (choice) {
+    choice.checked = true;
+    choice.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+}
+
+async function loadReportableCaseItems(): Promise<void> {
+  const select = document.querySelector<HTMLSelectElement>('[name="caseItemId"]');
+  if (!select) return;
+  try {
+    const response = await fetch("/api/v1/items", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return;
+    const choices = normalizeReportCaseItemChoices(await response.json());
+    const selected = select.value;
+    for (const option of select.querySelectorAll<HTMLOptionElement>("option[data-report-case-item-choice]")) {
+      option.remove();
+    }
+    for (const choice of choices) {
+      const option = new Option(choice.title, choice.id);
+      option.dataset.reportCaseItemChoice = "";
+      select.add(option);
+    }
+    if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+  } catch {
+    // The custom-item field remains available when the live list cannot be refreshed.
+  }
+}
+
+async function prefillFreshDropReport(token: string): Promise<void> {
+  try {
+    const response = await fetch("/api/v1/me/fresh-drops", {
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return;
+    const envelope: unknown = await response.json();
+    const context = freshDropReportContext(window.location.search, isRecord(envelope) ? envelope.data : null);
+    if (context) applyFreshDropReportContext(context);
+  } catch {
+    // The ordinary private report choices remain available when the item file is unavailable.
+  }
+}
+
 async function prefillSignedInReporter(): Promise<void> {
   try {
     const token = await signedInReportToken();
     if (!token) return;
+    await prefillFreshDropReport(token);
     const response = await fetch("/api/v1/me/profile", {
       headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
       credentials: "same-origin",
@@ -564,17 +718,55 @@ function initializeLocationCapture(): void {
 }
 
 function initializeTypeBehavior(): void {
-  const type = document.querySelector("[name=type]") as HTMLSelectElement | null;
   const photo = document.querySelector<HTMLInputElement>("[name=images]");
   const copy = document.querySelector<HTMLElement>("[data-photo-required-copy]");
-  if (!type || !photo || !copy) return;
-  const update = (): void => {
-    const required = type.value === "find";
-    photo.required = required;
-    copy.textContent = required ? "(required for a find)" : "(optional)";
+  if (!photo || !copy) return;
+  photo.required = false;
+  copy.textContent = "(optional, but encouraged)";
+}
+
+function initializeFinderSharing(): void {
+  const attribution = document.querySelector<HTMLElement>("[data-report-attribution]");
+  const knownItem = document.querySelector<HTMLSelectElement>('[name="caseItemId"]');
+  const customItem = document.querySelector<HTMLInputElement>('[name="customItemName"]');
+  const updateAttribution = (): void => {
+    const preference = document.querySelector<HTMLInputElement>('[name="publicationPreference"]:checked')?.value;
+    if (attribution) attribution.hidden = preference !== "share_after_review";
   };
-  type.addEventListener("change", update);
-  update();
+  for (const option of document.querySelectorAll<HTMLInputElement>('[name="publicationPreference"]')) {
+    option.addEventListener("change", updateAttribution);
+  }
+  knownItem?.addEventListener("change", () => {
+    if (knownItem.value && customItem) customItem.value = "";
+    clearFieldError("customItemName");
+  });
+  customItem?.addEventListener("input", () => {
+    if (customItem.value.trim() && knownItem) knownItem.value = "";
+    clearFieldError("customItemName");
+  });
+  updateAttribution();
+}
+
+function initializeReportIntake(): void {
+  const type = document.querySelector<HTMLInputElement>('[name="type"]');
+  const publicOption = document.querySelector<HTMLElement>("[data-report-public-option]");
+  const keepPrivate = document.querySelector<HTMLButtonElement>("[data-report-continue-private]");
+  if (!type) return;
+  for (const choice of document.querySelectorAll<HTMLInputElement>("[data-report-intake-choice]")) {
+    choice.addEventListener("change", () => {
+      if (!choice.checked) return;
+      const nextType = choice.dataset.reportType;
+      type.value = nextType === "find" || nextType === "safety" ? nextType : "tip";
+      type.dispatchEvent(new Event("change", { bubbles: true }));
+      if (publicOption) publicOption.hidden = choice.value !== "noticed";
+      clearFieldError("type");
+      pendingIdempotencyKey = undefined;
+    });
+  }
+  keepPrivate?.addEventListener("click", () => {
+    if (publicOption) publicOption.hidden = true;
+    document.querySelector<HTMLInputElement>('[name="name"]')?.focus();
+  });
 }
 
 function renderPhotoStatuses(messages: readonly string[], kind: "normal" | "error" = "normal"): void {
@@ -708,7 +900,7 @@ async function submitReport(form: HTMLFormElement): Promise<void> {
 
   if (submit) {
     submit.disabled = true;
-    submit.textContent = "Sending private report…";
+    submit.textContent = "Sending your find…";
   }
   if (result) result.hidden = true;
   pendingIdempotencyKey ??= crypto.randomUUID();
@@ -741,7 +933,7 @@ async function submitReport(form: HTMLFormElement): Promise<void> {
       console.error("Private report submission rejected.", { status: response.status, errorCode });
       throw new Error(errorCopy(response.status, errorCode));
     }
-    const receiptModel = reportSuccessModel(envelope);
+    const receiptModel = reportSuccessModel(envelope, draft.publicationPreference as PublicationPreference);
     pendingIdempotencyKey = undefined;
     turnstileToken = "";
     const panel = document.querySelector<HTMLElement>("[data-report-form-panel]");
@@ -767,7 +959,7 @@ async function submitReport(form: HTMLFormElement): Promise<void> {
   } finally {
     if (submit) {
       submit.disabled = false;
-      submit.textContent = "Send private report";
+      submit.textContent = "Tell us what you found";
     }
   }
 }
@@ -778,10 +970,17 @@ function initializeReport(): void {
   const receipt = document.querySelector<HTMLElement>("[data-report-receipt]");
   const another = document.querySelector<HTMLButtonElement>("[data-report-another]");
   initializeLocationCapture();
+  initializeReportIntake();
   initializeTypeBehavior();
+  initializeFinderSharing();
   initializePhotoPreparation();
+  document.querySelector<HTMLButtonElement>("[data-report-case-item-clear]")?.addEventListener("click", () => {
+    clearFreshDropReportContext(true);
+    document.querySelector<HTMLInputElement>("[data-report-intake-choice]")?.focus();
+  });
   void initializeTurnstile();
   void loadWaypointOptions();
+  void loadReportableCaseItems();
   void prefillSignedInReporter();
   form?.addEventListener("input", () => {
     pendingIdempotencyKey = undefined;
@@ -793,6 +992,7 @@ function initializeReport(): void {
   another?.addEventListener("click", () => {
     if (!form) return;
     form.reset();
+    clearFreshDropReportContext(true);
     resetPhotoPreparation(form.querySelector<HTMLInputElement>("[name=images]"));
     form.hidden = false;
     if (panel) panel.hidden = false;
@@ -809,9 +1009,11 @@ function initializeReport(): void {
       locationButton.disabled = false;
     }
     if (locationState) locationState.textContent = locationReset.stateText;
-    form.querySelector<HTMLSelectElement>('[name="type"]')?.dispatchEvent(new Event("change"));
+    form.querySelector<HTMLInputElement>('[name="type"]')?.dispatchEvent(new Event("change"));
+    const publicOption = form.querySelector<HTMLElement>("[data-report-public-option]");
+    if (publicOption) publicOption.hidden = true;
     if (cachedProfilePrefill) applyProfilePrefill(cachedProfilePrefill);
-    form.querySelector<HTMLElement>("input, select, textarea")?.focus();
+    form.querySelector<HTMLElement>("[data-report-intake-choice]")?.focus();
   });
 }
 

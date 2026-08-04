@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-07-29
+Last updated: 2026-08-02
 
 ## Current state
 
@@ -12,6 +12,267 @@ are active in production.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-08-04 - ops access and item-status validation
+
+- Verified the committed local release range `ac429df..ce65ab0`: direct
+  invitation persistence is idempotent, self-suspension is D1-first and stops
+  privileged reloads, the final-active guard rejects safely, and focused item
+  status is reversible and audited. The Apple Watch is consistently FOUND in
+  static public copy and API-hydrated case state.
+- Final review fixes enforce the same target-state capabilities at the staff
+  action API that Ops displays, remove the unsupported MFA-reset action, and
+  prevent Fresh Drops imports from reopening an item already marked found.
+- Fresh clean detached-checkout gates passed: `npm test` 632/632 in 440.6s;
+  `npm run typecheck`, `npm run legal:verify`, and `npm run build` all passed.
+  Canonical-LF verification baselines are recorded in commits `107af70` and
+  `4e0ee44`.
+- The committed-range denylist scan found no prohibited personal identifiers,
+  absolute local paths, IPs, API-key/environment markers, or account numbers.
+  The clean built-output privacy scanner passed all 53 served static files.
+- Isolated Playwright QA passed using temporary output and local API mocks:
+  111 responsive states across 13 routes, with zero browser/page/request
+  errors, zero local writes, and zero external writes.
+- This validation was local only: no push, deploy, production migration,
+  invitation, or live access mutation occurred.
+
+## Update 2026-08-02 - Keep It, Tell Us validation candidate
+
+- Completed the approved **Keep It, Tell Us and Responsive Hunt Refinement**
+  at application source commit `5fbab68` and deployed it only to the isolated
+  Cloudflare Pages validation branch. The immutable deployment is
+  `https://a27b6f83.seba-treasure-hunt.pages.dev`; the stable owner-review URL
+  is
+  `https://codex-validation.seba-treasure-hunt.pages.dev/?release=5fbab68`.
+- The public finder message now says **Found something? Keep it. Then tell
+  us.** Ordinary finds default to moderated sharing without ever publishing
+  automatically. Guests remain supported, photographs are optional, known
+  and custom items are separate, and finder-sharing notice `2026.1` is stored
+  with the report.
+- Case Note publication can atomically mark a selected finite item Found.
+  Cash and Casey's marked golf balls stay open-ended; custom item names never
+  create or close evidence-board records. Ops can reverse an incorrect state
+  through the existing versioned, audited item workflow.
+- Stop 11 remains waypoint ID `10` and route order `11`, but every current
+  visitor-facing label now identifies **The Driving Range & Brewing at Seba**.
+  Linkable surfaces use `https://brewingatseba.com/`; the stable vanity URL
+  currently resolves successfully to the active Brewing at Seba page.
+- Verified the newest Murdawk Media SMS backup and matched its authentic purse
+  photograph to the preserved July 31 source. Public-safe WebP derivatives
+  now exist for the purse, rings, Apple Watch and camera. The validation item
+  ledger was reconciled so every one of the seven public evidence-wall cards
+  and both homepage teaser slots has selected, working image media. The
+  temporary 467 MB SMS backup and all temporary attachment extracts were
+  deleted after verification.
+- Applied migration `0018_keep_it_tell_us.sql` only to the validation D1.
+  Browser checks confirmed the seven-card evidence wall, all seven live card
+  images, the finder flow, the 13-place route, the Brewing at Seba links, and
+  no horizontal overflow at desktop or 375 px phone width. Mobile actions are
+  full-width with 48 px or larger targets.
+- Fresh verification passed 317/317 static and MJS tests, 606/606 TypeScript
+  and real-D1 tests, every TypeScript project, exact legal and waiver checks,
+  the production-shaped build, the complete responsive unified-shell matrix,
+  public-output privacy checks, and `git diff --check`.
+- Production remained unchanged and read-only: 74 players, 29 private
+  reports, 63 report-media rows, migrations 0016-0018 still unapplied, zero
+  rows written, and a clean foreign-key check. No production Pages, R2, Clerk,
+  DNS, email or database mutation occurred.
+- Full evidence and the owner checklist are in
+  `docs/operations/2026-08-02-keep-it-tell-us-validation.md`. The next action
+  is the owner's validation review; production promotion still requires separate
+  explicit approval plus a fresh production D1 backup.
+
+## Update 2026-08-01 - evidence-card media release candidate
+
+- Completed the validation-only evidence-card repair begun in the checkpoint
+  below. The Apple Watch's existing processed photograph is now public and the
+  verified two-ring jewellery-box photograph was uploaded, processed, selected
+  and made public through the audited validation Ops workflow.
+- Public validation API checks show one selected public photograph for the
+  Apple Watch and one for the two diamond rings. The purse remains text-only:
+  no genuine purse photograph could be verified locally or in the connected
+  Murdawk Media Drive, so no substitute or generated evidence was used.
+- The source manifest now keeps all public evidence-board source media public,
+  with a regression test covering the camera and Apple Watch. Fresh Drops
+  contrast and link-selector fixes keep headings, status labels and report
+  actions readable in the signed-in gallery.
+- Validation QA fixtures were brought up to the current hunter-safe report
+  projection, Fresh Drops endpoint, Ops copy and measured shared-header
+  geometry. These are test-harness corrections only; no API, schema, legal or
+  production behavior changed.
+- Fresh verification passed 312/312 static and MJS tests, 595/595 TypeScript
+  and real-D1 tests, every TypeScript project, exact legal generation, the
+  production-shaped build, unified-shell QA across 111 states and 72
+  navigations, waiver/signup QA with zero public privacy findings, sponsor
+  withdrawal QA, and `git diff --check`.
+- The former "Miniflare hang" is confirmed as a timeout misdiagnosis: the real
+  D1 integration suite completes normally in about six minutes when given an
+  appropriate command timeout.
+- Source commit `3843c5c` is deployed only to the Cloudflare Pages
+  `codex-validation` branch. The immutable deployment is
+  `https://746147da.seba-treasure-hunt.pages.dev`; the stable owner-review URL
+  is `https://codex-validation.seba-treasure-hunt.pages.dev/?release=3843c5c`.
+- Deployed desktop and mobile browser checks confirmed the rings and Watch each
+  render one real processed photograph, the purse remains honestly text-only,
+  the incomplete-waiver account receives an explicit recovery action instead
+  of an indefinite loader, and the console has no application errors. The only
+  messages are the expected Clerk development-key warnings in validation.
+- Production users, submissions, D1, R2, Clerk and Pages remain untouched. The
+  next owner action is the owner's validation review; production promotion still
+  requires separate explicit approval.
+
+## Checkpoint 2026-08-01 - evidence-card image verification
+
+- The owner asked why the public Apple Watch, diamond-rings and purse cards on the
+  validation evidence wall do not show photographs. Investigation reached a
+  safe stopping point before any upload, database write, deployment or public
+  change.
+- Verified root cause for the Apple Watch: source image
+  `source-media/fresh-drops-2026-07-31/12-IMG_5619.jpg` is already processed and
+  selected in validation, but its `case_item_media.audience` is
+  `hunter_only` while the item itself is public and shown on the main board.
+  The source manifest now marks this verified media public. A new regression
+  test was first observed failing and then passing; focused result is 7/7.
+- Verified the supplied two-ring box photograph by visual review and SHA-256.
+  A preserved ignored working copy now exists at
+  `source-media/core-evidence/IMG_5280-two-diamond-rings.jpg` with SHA-256
+  `9A7C56391EC62B54265BE2AF6EB3CDC20FEFA71701F309F336135F34134A158F`.
+  The rings item currently has no validation media row.
+- No reliable purse photograph was found in the July 31 source set or the
+  private 184-photo inventory. The owner then reported a brand-new backup that
+  may contain one. A last-five-minutes local scan was started but timed out
+  without identifying a candidate; inspect that newest backup first on resume.
+- Working tree is intentionally uncommitted on branch
+  `codex/tim-lost-production-release` at `4017c69`. Modified tracked paths are
+  `scripts/fresh-drops-manifest.mjs` and
+  `tests/fresh-drops-manifest.test.mjs`. The preserved rings source is ignored
+  by Git under `source-media/`.
+- An authenticated validation Ops item-board tab was opened, but no form was
+  submitted and no media was uploaded. The validation D1 inspection was
+  read-only. Production remained completely untouched.
+- Exact next action after restart: inspect the newest backup for a genuine
+  purse photo; then use the audited validation Ops item-media workflow to make
+  the verified Apple Watch image public and upload/select the verified rings
+  image (and purse image only if confidently matched). Verify the public API
+  and desktop/mobile evidence wall, run the full validation gate, deploy only
+  to validation, and stop for the owner's review.
+- Resume check at 13:34 MDT matched this checkpoint exactly. A targeted local
+  search found no SMS archive newer than
+  `<local SMS backup>` (last modified July 31),
+  and a read-only search of the connected Murdawk Media Drive found no SMS,
+  backup or other file modified during the reported upload window. The newest
+  backup therefore appears not to have synced into either accessible source
+  yet. Re-check both sources before assuming it is absent.
+- Focused manifest verification was rerun at 13:41 MDT: 7/7 tests passed and
+  `git diff --check` passed. No command, upload, D1/R2 write, Pages deployment
+  or production change was started during the resume window.
+
+## Update 2026-08-01 - Fresh Drops registration-gate repair
+
+- Reproduced the apparently stalled Fresh Drops section with a signed-in
+  validation hunter. The account was authenticated but had not accepted the
+  current participation waiver, so the approved `participationUnlocked` gate
+  correctly prevented the private gallery and checklist writes; the client
+  incorrectly left both surfaces looking active or permanently loading.
+- Validation now states **Finish registration to open Fresh Drops**, links
+  directly to the missing profile or waiver step, and disables private
+  checklist controls with an explicit registration message until the account
+  is unlocked. No legal gate was weakened or bypassed.
+- The shared Clerk coordinator now coalesces concurrent token requests within
+  one active session while refusing to reuse a token after a session change.
+  This removes a second failure mode found while tracing the signed-in load.
+- Final source is commit `5080a23` on top of auth repair `ab488b9`. The clean
+  validation-only deployment is
+  `https://001025e5.seba-treasure-hunt.pages.dev`; the stable owner-review URL
+  is
+  `https://codex-validation.seba-treasure-hunt.pages.dev/dashboard?release=5080a23#fresh-drops`.
+- Release gates passed 311 static/MJS tests, 595 TypeScript and real-D1 tests,
+  every TypeScript project, exact legal verification, a production-shaped
+  build, the 53-file output privacy scan and whitespace checks. The signed-in
+  browser showed the correct locked state, the waiver recovery link opened the
+  visible waiver section, and the final console contained zero errors.
+- Production was not deployed, migrated or mutated. Next owner action: accept
+  the current validation waiver personally, then confirm the 16-item Fresh
+  Drops gallery and private checklist load for the newly unlocked account.
+
+## Update 2026-08-01 - Fresh Drops validation candidate
+
+- Completed the approved public-teaser plus signed-in Fresh Drops extension at
+  exact source commit `ea29d2556aefb422f50ed63b849f981971892ba6`.
+- Deployed only to the Cloudflare Pages `codex-validation` branch. The clean
+  immutable candidate is `https://26b5382a.seba-treasure-hunt.pages.dev`; the
+  stable owner-review URL is
+  `https://codex-validation.seba-treasure-hunt.pages.dev/?release=ea29d25`.
+- Applied `0017_fresh_drops_hunter_gallery.sql` only to the validation D1 and
+  deployed validation media worker version
+  `9940977f-bcbd-43a9-a744-27cbc4734c6d` with validation D1, R2 and queue
+  bindings.
+- The guarded import created 13 records, reconciled all 16 Fresh Drops items,
+  processed 17 new source images, patched all 16 records and reported zero
+  failures. A second import pass created, patched and uploaded zero records,
+  proving the importer is idempotent.
+- Validation now contains 21 case items in total: 16 Fresh Drops items, three
+  public Fresh Drops records, 13 hunter-only records, two public teasers and
+  20 ready, selected media records. The omitted sideways duplicate remains out
+  of the public and hunter builds.
+- The temporary validation-only import path was removed before the final build
+  and the former credential returns HTTP 401. The public API exposes only the
+  three public Fresh Drops items; the full gallery endpoint returns HTTP 401 to
+  guests.
+- Release gates passed exact legal verification, all TypeScript projects, 310
+  static/MJS tests, 593 TypeScript/D1 tests, the production-shaped build,
+  public-output privacy scanning and `git diff --check`.
+- Browser checks found no console errors, no broken populated images, and no
+  horizontal overflow at 390 or 320 pixels. The signed-in Ops inventory shows
+  the Fresh Drops records; final hunter-account owner review remains the next
+  manual check.
+- Production remained unchanged: 64 players, 28 private reports, no
+  `case_items` or `case_item_media` tables, zero rows written and a clean
+  foreign-key check. No production Pages deploy, migration, D1/R2/queue write,
+  Clerk change, DNS change or public post occurred.
+- Full validation evidence and the owner checklist are in
+  `docs/operations/2026-08-01-fresh-drops-validation.md`.
+
+## Update 2026-07-31 - Unhinged Evidence Wall validation candidate
+
+- Completed the approved B2 Full Investigation Board rebuild and froze the
+  application source at commit `084234cc08960552c2088ee1cff49dac49f6055a`.
+- Deployed only to the Cloudflare Pages `codex-validation` branch. The
+  immutable candidate is `https://25925500.seba-treasure-hunt.pages.dev`; the
+  stable owner-review URL is
+  `https://codex-validation.seba-treasure-hunt.pages.dev/?release=084234c`.
+- Applied `0016_dynamic_case_items.sql` only to
+  `tim-lost-hunter-platform-validation`. The new public-safe item board contains
+  seven versioned items and seven append-only seed events: Tim's ID is Found;
+  cash, rings, camera, Apple Watch, purse and qualifying golf balls are Out
+  there.
+- Deployed only the validation media worker. Validation worker version
+  `632e9e96-f616-4057-a9ad-7dded5e6cbe9` uses the validation D1, R2 and queue
+  bindings.
+- The public experience now uses one accessible evidence wall, three primary
+  actions, the simplified four-choice I Found Something flow, plain visitor
+  terminology and a mobile stacked-card fallback. My Hunt reuses the existing
+  private per-hunter progress records as a 13-place checklist.
+- Ops now exposes the audited What's Out There item editor, item media and
+  announcement-draft workflow. Announcement actions create private Official
+  Update drafts only and never publish automatically.
+- Release gates passed 299 MJS/static tests, 546 non-D1 TypeScript tests and
+  all 27 real-D1 integration tests in bounded groups, plus full TypeScript,
+  legal-artifact, production-build, credential-scan, output-privacy and
+  whitespace checks. The isolated browser QA passed 72 navigations, 111 states
+  and 21 screenshots with zero writes or application errors.
+- Deployed desktop and 390-pixel mobile checks found no horizontal overflow.
+  The validation API returns all seven public-safe items, the ID has the
+  accessible reversible Found treatment, and exact route links remain gated.
+  The only browser warning is Clerk's expected development-key notice in the
+  validation environment.
+- Production remains at runtime `production`; it has no validation banner and
+  does not contain the new evidence-wall copy. No production Pages deployment,
+  migration, D1/R2/queue write, Clerk change, DNS change or public post
+  occurred.
+- Owner review and eventual production promotion remain separate. Full release
+  evidence and the checklist are in
+  `docs/operations/2026-07-31-unhinged-evidence-wall-validation.md`.
 
 ## Update 2026-07-29 - Casey golf-ball search promoted to production
 

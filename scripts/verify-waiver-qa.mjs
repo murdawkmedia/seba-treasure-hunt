@@ -155,7 +155,7 @@ const publicWaypointFixtures = Object.freeze([
   { routeOrder: 8, id: 7, name: "The Lodge Trails", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5500007,-114.7300007" },
   { routeOrder: 9, id: 8, name: "The Vista Lands", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5500008,-114.7300008" },
   { routeOrder: 10, id: 9, name: "The Cliff-Edge Slope", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5500009,-114.7300009" },
-  { routeOrder: 11, id: 10, name: "The Driving Range and Digger Café", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5500010,-114.7300010" },
+  { routeOrder: 11, id: 10, name: "The Driving Range and Brewing at Seba", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5500010,-114.7300010" },
   { routeOrder: 12, id: 11, name: "Kokanee Springs RV — the Front Gate", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5500011,-114.7300011" },
   { routeOrder: 13, id: 12, name: "The Old Seba Beach School (SebaHub)", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5500012,-114.7300012" },
 ]);
@@ -594,6 +594,7 @@ function readMockResponse(url, fixtureState, legalDocument) {
     waiverHash: legalDocument.hash,
   } });
   if (url.pathname === "/api/v1/status") return jsonResponse(statusPayload());
+  if (url.pathname === "/api/v1/items") return jsonResponse({ data: [] });
   if (url.pathname === "/api/v1/rules/current") return jsonResponse({ data: { id: "rules-qa", version: "qa", title: "QA rules", body: "Test-only current rules.", lastUpdatedAt: "2026-07-13T18:00:00.000Z" } });
   if (url.pathname === "/api/v1/zones") return jsonResponse({ data: [] });
   if (url.pathname === "/api/v1/legal/waiver") return jsonResponse({ data: legalDocument });
@@ -605,6 +606,18 @@ function readMockResponse(url, fixtureState, legalDocument) {
     if (fixtureState.signupWaiverAccepted) return jsonResponse(minorSignupAcceptancePayload(legalDocument));
     return fixtureState.accepted ? jsonResponse(acceptancePayload(legalDocument, fixtureState.receiptStatus)) : jsonResponse({ data: { acceptance: null, document: { waiver: legalDocument } } });
   }
+  if (url.pathname === "/api/v1/me/fresh-drops") return jsonResponse({ data: [{
+    id: "qa-fresh-drop",
+    slug: "qa-fresh-drop",
+    owner: "tim",
+    category: "object",
+    title: "Test item",
+    description: "A local-only item used to verify the signed-in gallery.",
+    status: "out_there",
+    reportable: true,
+    collectionOrder: 1,
+    media: [],
+  }] });
   if (url.pathname === "/api/v1/waypoints") return jsonResponse({ data: { items: publicWaypointFixtures.map(({ id, routeOrder, name }) => ({ id: String(id), routeOrder, name })) } });
   if (url.pathname === "/api/v1/updates") return jsonResponse({ data: fixtureState.reportPublished ? [approvedReportUpdate()] : [], page: { nextCursor: null } });
   if (url.pathname === `/api/v1/media/${reportFixture.selectedMediaId}` && fixtureState.reportPublished) {
@@ -760,7 +773,11 @@ async function assertNoDialogOverflow(page, label) {
 async function assertAxe(page, label) {
   await page.addScriptTag({ content: axeCore.source });
   const result = await page.evaluate((tags) => window.axe.run(document, { runOnly: { type: "tag", values: tags } }), axeTags);
-  assert.deepEqual(result.violations.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.length })), [], `${label} axe violations`);
+  assert.deepEqual(result.violations.map(({ id, impact, nodes }) => ({
+    id,
+    impact,
+    nodes: nodes.map(({ target }) => target),
+  })), [], `${label} axe violations`);
   return { violations: 0, passes: result.passes.length };
 }
 
@@ -1036,7 +1053,7 @@ async function exerciseMinorSignupGate(page, fixtureState, legalDocument) {
   }
   assert.equal(await signup.getAttribute("data-waiver-version"), "2026.2");
   assert.equal(await waiverAcceptance.isEnabled(), true);
-  await waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to account setup" }).click();
+  await waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to signup" }).click();
   await waiverDialog.waitFor({ state: "hidden" });
   assert.equal(await waiverReview.evaluate((element) => element === document.activeElement), true, "bottom Done restores focus to the Waiver review trigger");
   await assertAcceptanceUnchanged("after bottom Done");
@@ -1109,7 +1126,7 @@ async function exerciseResumableMobileSignup(page, origin, fixtureState) {
   assert.ok(legalScroll.height > legalScroll.viewport && legalScroll.y > 0, "iPhone legal review must support reading through the document");
   await assertMinimumTargetSize(privacyDialog.locator("button:visible, a[href]:visible"), "44 pixel legal dialog controls");
   await assertDialogFocusTrap(page, privacyDialog, "Privacy legal dialog");
-  await privacyDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to account setup" }).click();
+  await privacyDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to signup" }).click();
   await privacyDialog.waitFor({ state: "hidden" });
   assert.equal(await privacyReview.evaluate((element) => document.activeElement === element), true, "Done restores focus during iPhone signup");
 
@@ -1279,7 +1296,7 @@ async function exerciseDashboard(page, legalSource, viewportName, evidence) {
   await page.locator("[data-dashboard-content]").waitFor({ state: "visible" });
   await page.locator("[data-waiver-panel]").waitFor({ state: "visible" });
   assert.equal(await page.locator('[data-dashboard-waypoints] a:has-text("Open approved directions")').count(), 1, "progress and waypoint boundaries expose only the open approved link");
-  assert.match(await page.locator("[data-dashboard-waypoints]").innerText(), /Exact directions locked/i);
+  assert.match(await page.locator("[data-dashboard-waypoints]").innerText(), /Exact directions are locked/i);
   if (viewportName !== "desktop") {
     await page.locator("[data-waiver-receipt]").waitFor({ state: "visible" });
     const expected = viewportName === "iphone" ? "sent" : "failed";
@@ -1360,7 +1377,8 @@ async function exerciseBoardBoundaries(page) {
 }
 
 async function fillReportBase(page) {
-  await page.locator('[name="type"]').selectOption("find");
+  await page.locator('[data-report-intake-choice][data-report-type="find"]').check();
+  await page.locator('[name="customItemName"]').fill("A mystery item");
   await page.locator('[name="name"]').fill(privateFixtures.adultName);
   await page.locator('[name="email"]').fill(privateFixtures.email);
   await page.locator('[name="locationDescription"]').fill("Near the marked public waypoint.");
@@ -1371,9 +1389,7 @@ async function fillReportBase(page) {
 async function exerciseReportBoundaries(page) {
   await page.locator("[data-report-form]").waitFor();
   await fillReportBase(page);
-  await page.locator("[data-report-submit]").click();
-  assert.match(await page.locator('[data-error-for="photo"]').innerText(), /Add a clear photo/i, "private find report boundary must require evidence without writing");
-  assert.equal(await page.locator('[name="images"]').evaluate((element) => element === document.activeElement), true);
+  assert.equal(await page.locator('[data-error-for="photo"]').innerText(), "", "find photos must remain optional");
   await page.locator('[name="images"]').setInputFiles({ name: "oversize-report.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(50_000_001) });
   await page.locator('[data-error-for="photo"]').filter({ hasText: /50 MB/i }).waitFor();
   await page.locator("[data-report-submit]").click();
@@ -1382,8 +1398,8 @@ async function exerciseReportBoundaries(page) {
 }
 
 async function exerciseRoute(page) {
-  await page.locator("[data-route-member-state]").filter({ hasText: /Signed in\. All thirteen waypoints/i }).waitFor();
-  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps waypoint")');
+  await page.locator("[data-route-member-state]").filter({ hasText: /Signed in\. All thirteen places/i }).waitFor();
+  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps directions")');
   const routeStories = page.locator(".stop .stop-quote");
   const routePhotos = page.locator('.stop-gallery .photo img[src*="assets/route/stop-"]');
   assert.equal(await exactWaypointLinks.count(), 13, "thirteen authenticated exact links must hydrate without exposing them signed out");
@@ -1401,7 +1417,7 @@ async function exerciseRoute(page) {
 
 async function exerciseSignedOutRoute(page) {
   await page.locator("[data-route-signed-out]").waitFor();
-  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps waypoint")');
+  const exactWaypointLinks = page.locator('.stop-meta a:has-text("Open approved Google Maps directions")');
   assert.equal(await exactWaypointLinks.count(), 0, "signed-out route must contain zero exact-link anchors");
   const hrefValues = await page.locator("[href]").evaluateAll((elements) =>
     elements.map((element) => element.getAttribute("href")).filter((href) => href !== null));
@@ -1435,7 +1451,7 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
       { value: "7", label: "Stop 08 · Lodge Trails" },
       { value: "8", label: "Stop 09 · Vista Lands" },
       { value: "9", label: "Stop 10 · Cliff-Edge Slope" },
-      { value: "10", label: "Stop 11 · Driving Range / Digger Café" },
+      { value: "10", label: "Stop 11 · Driving Range / Brewing at Seba" },
       { value: "11", label: "Stop 12 · Kokanee Springs Front Gate" },
       { value: "12", label: "Stop 13 · Old Seba Beach School / SebaHub" },
       { value: "different_location", label: "Different location / outside the 13-stop route" },
@@ -1445,7 +1461,8 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     );
     assert.equal(actualReportOptions.length, 15, "thirteen waypoints plus two fallback choices must remain available");
     assert.deepEqual(actualReportOptions, expectedReportOptions, "report waypoint choices must preserve exact values and meaningful labels");
-    await reportPage.page.locator('[name="type"]').selectOption("find");
+    await reportPage.page.locator('[data-report-intake-choice][data-report-type="find"]').check();
+    await reportPage.page.locator('[name="customItemName"]').fill("A mystery item");
     await reportPage.page.locator('[name="phone"]').fill(privateFixtures.childPhone);
     await reportPage.page.locator('[name="waypointId"]').selectOption(String(reportFixture.waypointId));
     await reportPage.page.locator('[name="locationDescription"]').fill("Near the signed waypoint marker.");
@@ -1458,6 +1475,7 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
       { name: "private-evidence.png", mimeType: "image/png", buffer: png },
     ]);
     await reportPage.page.locator('[name="accuracy"]').check();
+    await reportPage.page.locator('[name="sharingAcknowledgementAccepted"]').check();
     await reportPage.page.locator('[data-turnstile]').filter({ hasText: /Test-only mocked human check/i }).waitFor();
     await reportPage.page.locator('[data-report-submit]:not([disabled])').waitFor();
     await reportPage.page.locator('[data-report-submit]').click();
@@ -1482,6 +1500,7 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     for (const expected of [privateFixtures.minorName, privateFixtures.email, privateFixtures.childPhone, String(reportFixture.waypointId), String(reportFixture.latitude), privateFixtures.reportEvidence]) {
       assert.ok(privateDetail.includes(expected), `Staff report detail must include ${expected}`);
     }
+    await dialog.locator('input[name="reportPublicDestination"][value="official_update"]').check();
     const mediaChoices = dialog.locator('input[name="publishMedia"]');
     assert.equal(await mediaChoices.count(), 2);
     await opsPage.page.waitForFunction(() => [...document.querySelectorAll('input[name="publishMedia"]')].every((input) => !input.disabled));
@@ -1508,7 +1527,7 @@ async function exerciseReportPublicationJourney(browser, origin, networkLedger, 
     const publicPost = updatesPage.page.locator('[data-updates-list] .official-note--report');
     await publicPost.waitFor();
     const publicText = await publicPost.innerText();
-    for (const expected of ["Young Hunter", "Waypoint 8 — The Lodge Trails", String(reportFixture.latitude), String(reportFixture.longitude), reportFixture.title]) {
+    for (const expected of ["Young Hunter", "Place 8 — The Lodge Trails", String(reportFixture.latitude), String(reportFixture.longitude), reportFixture.title]) {
       assert.ok(publicText.toLowerCase().includes(expected.toLowerCase()), `public signed-out approved report must include ${expected}; rendered ${JSON.stringify(publicText)}`);
     }
     const publicHtml = await updatesPage.page.content();

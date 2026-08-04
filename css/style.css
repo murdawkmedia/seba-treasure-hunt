@@ -434,6 +434,8 @@ section { padding: 70px 0; position: relative; }
 .contact-card .num--email { font-size: .95rem; letter-spacing: .3px; color: var(--gold-300); }
 .contact-card .note { font-size: .9rem; color: var(--cream-200); }
 .dropoff { max-width: 640px; margin: 0 auto; text-align: center; background: var(--cream-100); border: 2px dashed var(--gold-500); border-radius: 10px; padding: 14px 20px; font-size: 1.05rem; }
+.human-contact-alternatives { max-width: 720px; margin: 18px auto 24px; text-align: center; }
+.human-contact-alternatives a { font-weight: 700; text-underline-offset: 3px; }
 
 /* ---------- the long game (vision) ---------- */
 .longgame { background: linear-gradient(180deg, var(--cream-100), var(--cream-200)); }

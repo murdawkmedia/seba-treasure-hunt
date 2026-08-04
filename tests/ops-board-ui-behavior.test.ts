@@ -74,7 +74,7 @@ test("Case Note moderation renders truthful media states with publication select
     authorHandle: "Hunter A7F3",
     waypointId: 11,
     waypointRouteOrder: 11,
-    waypointName: "The Driving Range & the Digger Café",
+    waypointName: "The Driving Range & Brewing at Seba",
     body: "A photographed observation.",
     mediaCount: 3,
     media: [
@@ -380,6 +380,12 @@ test("report summaries preserve numeric waypoint identifiers and offer deliberat
   const records = normalizeReports({ data: [{
     id: "report-1",
     type: "tip",
+    caseItemId: "wallet-drop",
+    caseItemTitle: "A wallet <found>",
+    customItemName: null,
+    publicationPreference: "share_after_review",
+    sharingNoticeVersion: "2026.1",
+    sharingNoticeAcceptedAt: "2026-07-18T10:00:01.000Z",
     waypointId: 4,
     waypointRouteOrder: 4,
     waypointName: "Seba Beach Seniors Centre",
@@ -389,7 +395,11 @@ test("report summaries preserve numeric waypoint identifiers and offer deliberat
   }] });
 
   assert.equal(records[0]?.waypointId, "4");
+  assert.equal(records[0]?.caseItemId, "wallet-drop");
+  assert.equal(records[0]?.caseItemTitle, "A wallet <found>");
   const html = renderReportRows(records);
+  assert.match(html, /A wallet &lt;found&gt;/);
+  assert.doesNotMatch(html, /A wallet <found>/);
   assert.match(html, /Stop 04 · Seniors Centre/);
   assert.match(html, /Review report/);
   assert.doesNotMatch(html, />Begin review</);
@@ -604,6 +614,47 @@ test("report review controls follow the actual linked public post, not private v
   assert.match(renderReportPrivateDetail(hidden), /Hidden by moderation/);
 });
 
+test("private report detail names the safe Case Note credit and hunter publication lock", () => {
+  const detail = normalizeOpsReportDetail({ data: {
+    id: "report-private-choice",
+    type: "find",
+    hunterSubject: "hunter-private-choice",
+    name: "Private Hunter Name",
+    email: "private-hunter@example.ca",
+    phone: null,
+    publicAttribution: "Hunter A7F3",
+    publicationPreference: "private",
+    sharingNoticeVersion: "2026.1",
+    sharingNoticeAcceptedAt: "2026-08-04T12:00:00.000Z",
+    publicationEligible: false,
+    publicationEligibilityReason: "hunter_requested_private",
+    publication: { published: false, updateId: null },
+    waypointId: 9,
+    waypointRouteOrder: 9,
+    waypointName: "Vista Lands",
+    locationDescription: "By the yurts",
+    latitude: null,
+    longitude: null,
+    details: "A private report for staff review.",
+    status: "received",
+    createdAt: "2026-08-04T12:00:00.000Z",
+    updatedAt: "2026-08-04T12:00:00.000Z",
+    media: [
+      { id: "private-evidence", contentType: "image/webp", size: 2048, status: "ready" },
+    ],
+  } });
+  assert.ok(detail);
+
+  const html = renderReportPrivateDetail(detail);
+  assert.match(html, /Case Note credit/);
+  assert.match(html, /Hunter A7F3/);
+  assert.match(html, /Hunter sharing choice/);
+  assert.match(html, /Keep private[^<]*public publishing locked/);
+  assert.match(html, /Version 2026\.1 accepted/);
+  assert.match(renderReportEvidence(detail), /hunter chose to keep this report private/i);
+  assert.match(reportPublicOutcomeGuidance(detail, "reviewing"), /hunter chose to keep this report private/i);
+});
+
 test("report public destinations default safely and restore durable work", () => {
   const base = normalizeOpsReportDetail({ data: {
     id: "destination-report",
@@ -712,6 +763,12 @@ test("guided report workflow normalizes staff history and builds explicit revers
     publicationEligible: true,
     publicationEligibilityReason: "eligible",
     publication: { published: false, updateId: null },
+    caseItemId: "wallet-drop",
+    caseItemTitle: "A wallet <found>",
+    customItemName: null,
+    publicationPreference: "share_after_review",
+    sharingNoticeVersion: "2026.1",
+    sharingNoticeAcceptedAt: "2026-07-18T10:00:01.000Z",
     caseNote: { published: false, noteId: null, status: null },
     waypointId: 3,
     waypointRouteOrder: 3,
@@ -745,6 +802,16 @@ test("guided report workflow normalizes staff history and builds explicit revers
     media: [],
   } });
   assert.ok(detail);
+  assert.equal(detail.caseItemId, "wallet-drop");
+  assert.equal(detail.caseItemTitle, "A wallet <found>");
+  const privateDetail = renderReportPrivateDetail(detail);
+  assert.match(privateDetail, /Reported item/);
+  assert.match(privateDetail, /A wallet &lt;found&gt;/);
+  assert.match(privateDetail, /Hunter sharing choice/);
+  assert.match(privateDetail, /Share after staff review/);
+  assert.match(privateDetail, /Finder sharing notice/);
+  assert.match(privateDetail, /2026\.1/);
+  assert.doesNotMatch(privateDetail, /A wallet <found>/);
   assert.equal(detail.history.length, 2);
 
   const model = reportWorkflowControls(detail, "reviewing");
@@ -1358,6 +1425,7 @@ test("moderation attention counts only pending Case Notes and action-required fl
 
 test("staff actions are capability-driven and never expose peer password controls", () => {
   const html = renderStaffRows([{
+    id: "staff-record-1",
     subject: "staff_subject_1",
     email: "operator@example.test",
     displayName: "Case Operator",
@@ -1374,7 +1442,7 @@ test("staff actions are capability-driven and never expose peer password control
   assert.doesNotMatch(html, /set password|otherPassword|peerPassword/i);
 });
 
-test("invited staff remain visible before the identity provider assigns a subject", async () => {
+test("staff actions render only exact server capabilities and identify a protected current operator", async () => {
   const opsModule = await import("../src/client/ops") as Record<string, unknown>;
   const normalize = opsModule.normalizeOpsStaff;
   assert.equal(typeof normalize, "function");
@@ -1382,7 +1450,55 @@ test("invited staff remain visible before the identity provider assigns a subjec
 
   const records = (normalize as (payload: unknown) => Array<Record<string, unknown>>)({
     data: [{
-      id: "staff-record-1",
+      id: "staff-current-1",
+      subject: "user-current-1",
+      email: "operator@example.test",
+      displayName: "Current Operator",
+      status: "active",
+      invitedAt: "2026-08-04T18:00:00.000Z",
+      lastLoginAt: "2026-08-04T18:10:00.000Z",
+      sessionCount: 1,
+      actions: [],
+      isCurrent: true,
+      suspendBlockedReason: "You cannot suspend your own active access.",
+    }],
+  });
+
+  assert.deepEqual(records[0]?.actions, []);
+  const html = renderStaffRows(records as never);
+  assert.match(html, />You</);
+  assert.match(html, /You cannot suspend your own active access\./);
+  assert.doesNotMatch(html, /Suspend access/);
+});
+
+test("staff action normalization rejects an invalid server capability list", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const normalize = opsModule.normalizeOpsStaff;
+  assert.equal(typeof normalize, "function");
+  if (typeof normalize !== "function") return;
+
+  const records = (normalize as (payload: unknown) => Array<Record<string, unknown>>)({
+    data: [{
+      id: "staff-invalid-actions-1",
+      subject: "user-invalid-actions-1",
+      email: "operator@example.test",
+      status: "active",
+      actions: ["suspend", "unknown-action"],
+    }],
+  });
+
+  assert.deepEqual(records[0]?.actions, []);
+});
+
+test("invited staff use their stable staff record ID before the identity provider assigns a subject", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const normalize = opsModule.normalizeOpsStaff;
+  assert.equal(typeof normalize, "function");
+  if (typeof normalize !== "function") return;
+
+  const records = (normalize as (payload: unknown) => Array<Record<string, unknown>>)({
+    data: [{
+      id: "staff-invite-1",
       subject: null,
       email: "invited@example.test",
       displayName: "Invited Operator",
@@ -1390,14 +1506,174 @@ test("invited staff remain visible before the identity provider assigns a subjec
       invitedAt: "2026-07-11T18:00:00.000Z",
       activatedAt: null,
       lastLoginAt: null,
+      actions: ["resend-invitation"],
     }],
   });
 
   assert.equal(records.length, 1);
+  assert.equal(records[0]?.id, "staff-invite-1");
+  assert.equal(records[0]?.subject, "");
   const html = renderStaffRows(records as never);
   assert.match(html, /Invited Operator/);
   assert.match(html, /Resend invitation/);
+  assert.match(html, /data-staff-id="staff-invite-1"/);
   assert.doesNotMatch(html, /Revoke sessions/);
+});
+
+test("operator invitation results are truthful for each provider delivery outcome", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const invitationResult = opsModule.staffInvitationResult;
+  assert.equal(typeof invitationResult, "function");
+  if (typeof invitationResult !== "function") return;
+
+  const resolve = invitationResult as (payload: unknown) => { created: boolean; delivery: string; message: string } | null;
+  assert.deepEqual(resolve({ data: { created: true, delivery: "sent" } }), {
+    created: true,
+    delivery: "sent",
+    message: "Invitation sent",
+  });
+  assert.deepEqual(resolve({ data: { created: false, delivery: "failed" } }), {
+    created: false,
+    delivery: "failed",
+    message: "Invitation saved; email delivery needs retry",
+  });
+  assert.deepEqual(resolve({ data: { created: false, delivery: "not_sent" } }), {
+    created: false,
+    delivery: "not_sent",
+    message: "Invitation already saved; use Resend invitation to send another email",
+  });
+  assert.equal(resolve({ data: { created: true, delivery: "provider_timeout" } }), null);
+});
+
+test("operator invitation keeps the entered address unless delivery sent a new email", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const shouldClear = opsModule.shouldClearStaffInviteEmail;
+  assert.equal(typeof shouldClear, "function");
+  if (typeof shouldClear !== "function") return;
+
+  const clear = shouldClear as (delivery: unknown) => boolean;
+  assert.equal(clear("sent"), true);
+  assert.equal(clear("failed"), false);
+  assert.equal(clear("not_sent"), false);
+  assert.equal(clear("unknown"), false);
+});
+
+test("self-suspension signs out once and stops before privileged ledgers reload", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const handleResponse = opsModule.handleStaffActionResponse;
+  assert.equal(typeof handleResponse, "function");
+  if (typeof handleResponse !== "function") return;
+
+  const events: string[] = [];
+  await (handleResponse as (payload: unknown, context: {
+    clerk: { signOut: () => Promise<void> };
+    reload: () => void;
+    reloadLedgers: () => Promise<void>;
+    focusAfterRefresh: () => void;
+    showProviderWarning: (warning: string) => void;
+  }) => Promise<void>)({ data: { selfSuspended: true, providerWarning: "Do not expose this" } }, {
+    clerk: { signOut: async () => { events.push("sign-out"); } },
+    reload: () => { events.push("reload"); },
+    reloadLedgers: async () => { events.push("reload-ledgers"); },
+    focusAfterRefresh: () => { events.push("focus"); },
+    showProviderWarning: () => { events.push("warning"); },
+  });
+
+  assert.deepEqual(events, ["sign-out", "reload"]);
+});
+
+test("self-suspension reloads even when Clerk sign-out rejects", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const handleResponse = opsModule.handleStaffActionResponse;
+  assert.equal(typeof handleResponse, "function");
+  if (typeof handleResponse !== "function") return;
+
+  const events: string[] = [];
+  await (handleResponse as (payload: unknown, context: {
+    clerk: { signOut: () => Promise<void> };
+    reload: () => void;
+    reloadLedgers: () => Promise<void>;
+    focusAfterRefresh: () => void;
+    showProviderWarning: (warning: string) => void;
+  }) => Promise<void>)({ data: { selfSuspended: true } }, {
+    clerk: { signOut: async () => { events.push("sign-out"); throw new Error("unavailable"); } },
+    reload: () => { events.push("reload"); },
+    reloadLedgers: async () => { events.push("reload-ledgers"); },
+    focusAfterRefresh: () => { events.push("focus"); },
+    showProviderWarning: () => { events.push("warning"); },
+  });
+
+  assert.deepEqual(events, ["sign-out", "reload"]);
+});
+
+test("boolean provider warnings refocus after refresh and describe provider cleanup retry", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const handleResponse = opsModule.handleStaffActionResponse;
+  assert.equal(typeof handleResponse, "function");
+  if (typeof handleResponse !== "function") return;
+
+  const events: string[] = [];
+  await (handleResponse as (payload: unknown, context: {
+    clerk: null;
+    reload: () => void;
+    reloadLedgers: () => Promise<void>;
+    focusAfterRefresh: () => void;
+    showProviderWarning: (warning: string) => void;
+  }) => Promise<void>)({ data: { providerWarning: true } }, {
+    clerk: null,
+    reload: () => { events.push("reload"); },
+    reloadLedgers: async () => { events.push("reload-ledgers"); },
+    focusAfterRefresh: () => { events.push("focus"); },
+    showProviderWarning: (warning) => { events.push(warning); },
+  });
+
+  assert.deepEqual(events, [
+    "reload-ledgers",
+    "D1 access change is saved; provider session/account cleanup needs retry.",
+    "focus",
+  ]);
+});
+
+test("non-self staff actions focus a stable live target after their ledgers refresh", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const handleResponse = opsModule.handleStaffActionResponse;
+  assert.equal(typeof handleResponse, "function");
+  if (typeof handleResponse !== "function") return;
+
+  const events: string[] = [];
+  await (handleResponse as (payload: unknown, context: {
+    clerk: null;
+    reload: () => void;
+    reloadLedgers: () => Promise<void>;
+    focusAfterRefresh: () => void;
+    showProviderWarning: (warning: string) => void;
+  }) => Promise<void>)({ data: {} }, {
+    clerk: null,
+    reload: () => { events.push("reload"); },
+    reloadLedgers: async () => { events.push("reload-ledgers"); },
+    focusAfterRefresh: () => { events.push("access-guide"); },
+    showProviderWarning: () => { events.push("warning"); },
+  });
+
+  assert.deepEqual(events, ["reload-ledgers", "access-guide"]);
+});
+
+test("a late staff load is ignored after a newer access refresh begins", async () => {
+  const opsModule = await import("../src/client/ops") as Record<string, unknown>;
+  const createStaffLoadGate = opsModule.createStaffLoadGate;
+  assert.equal(typeof createStaffLoadGate, "function");
+  if (typeof createStaffLoadGate !== "function") return;
+
+  const gate = (createStaffLoadGate as () => { begin: () => number; isCurrent: (version: number) => boolean })();
+  const firstLoad = gate.begin();
+  let releaseFirst!: () => void;
+  const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const secondLoad = gate.begin();
+  releaseFirst();
+  await firstResponse;
+
+  assert.equal(gate.isCurrent(firstLoad), false);
+  assert.equal(gate.isCurrent(secondLoad), true);
 });
 
 test("unknown operations hashes always return to the command desk", () => {

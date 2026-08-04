@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CAMPAIGN_MENU,
+  CAMPAIGN_MORE_MENU,
   CAMPAIGN_PAGES,
   renderCampaignPage,
   scanCampaignHtmlStartTags,
@@ -38,11 +39,11 @@ const descriptors = {
   "route.html": { route: "route", skipLabel: "Skip to the route", skipTarget: "main" },
   "golf-balls.html": { route: "golf-balls", skipLabel: "Skip to Casey's search", skipTarget: "main" },
   "interview.html": { route: "interview", skipLabel: "Skip to Tim's Account", skipTarget: "main" },
-  "updates.html": { route: "updates", skipLabel: "Skip to official updates", skipTarget: "main" },
-  "clue-board.html": { route: "clue-board", skipLabel: "Skip to Case Notes", skipTarget: "main" },
-  "report.html": { route: "report", skipLabel: "Skip to private reporting", skipTarget: "main" },
+  "updates.html": { route: "updates", skipLabel: "Skip to Latest News", skipTarget: "main" },
+  "clue-board.html": { route: "clue-board", skipLabel: "Skip to What People Found", skipTarget: "main" },
+  "report.html": { route: "report", skipLabel: "Skip to I Found Something", skipTarget: "main" },
   "rules.html": { route: "rules", skipLabel: "Skip to the current rules", skipTarget: "main" },
-  "dashboard.html": { route: "dashboard", skipLabel: "Skip to Hunter Dashboard", skipTarget: "main" },
+  "dashboard.html": { route: "dashboard", skipLabel: "Skip to My Hunt", skipTarget: "main" },
   "privacy.html": { route: "privacy", skipLabel: "Skip to the privacy policy", skipTarget: "main" },
   "waiver.html": { route: "waiver", skipLabel: "Skip to the participation waiver", skipTarget: "main" },
   "community-guidelines.html": { route: "community-guidelines", skipLabel: "Skip to the community guidelines", skipTarget: "main" },
@@ -143,7 +144,7 @@ test("renders one complete canonical shell and footer without changing page cont
   assert.match(html, /<header class="campaign-header">\s*<div class="campaign-header__inner">/);
   assert.match(
     html,
-    /<a class="campaign-brand" href="\/">Tim Lost Something\?<span>Tim lost his ID<\/span><\/a>/,
+    /<a class="campaign-brand" href="\/">Tim Lost Something\?<span>Tim found his ID\. The rest is still out there\.<\/span><\/a>/,
   );
   assert.match(
     html,
@@ -170,14 +171,14 @@ test("renders the exact primary menu order and current route without sponsorship
 
   assert.deepEqual(
     [...nav.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
-    CAMPAIGN_MENU.map((item) => item.href),
+    [...CAMPAIGN_MENU, ...CAMPAIGN_MORE_MENU].map((item) => item.href),
   );
   assert.deepEqual(
     [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((match) => match[1]),
-    CAMPAIGN_MENU.map((item) => item.label),
+    [...CAMPAIGN_MENU, ...CAMPAIGN_MORE_MENU].map((item) => item.label),
   );
   assert.equal((nav.match(/aria-current="page"/g) ?? []).length, 1);
-  assert.match(nav, /href="\/route" aria-current="page">13 Stops<\/a>/);
+  assert.match(nav, /href="\/route" aria-current="page">Where to Look<\/a>/);
   assert.doesNotMatch(nav, /sponsors|Support the Search/i);
   assert.doesNotMatch(nav, /\.html/);
 });
@@ -561,7 +562,7 @@ test("fails closed on malformed relevant start-tag attributes", () => {
 });
 
 test("freezes every exported campaign menu item", () => {
-  for (const item of CAMPAIGN_MENU) assert.ok(Object.isFrozen(item));
+  for (const item of [...CAMPAIGN_MENU, ...CAMPAIGN_MORE_MENU]) assert.ok(Object.isFrozen(item));
 });
 
 test("attempted menu mutation cannot change navigation output", () => {
@@ -580,6 +581,7 @@ test("attempted menu mutation cannot change navigation output", () => {
 test("registry and menu expose exactly the approved frozen contracts", () => {
   assert.ok(Object.isFrozen(CAMPAIGN_PAGES));
   assert.ok(Object.isFrozen(CAMPAIGN_MENU));
+  assert.ok(Object.isFrozen(CAMPAIGN_MORE_MENU));
   assert.deepEqual(CAMPAIGN_PAGES, {
     "index.html": "home",
     "start.html": "start",
@@ -596,15 +598,15 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
     "community-guidelines.html": "community-guidelines",
   });
   assert.deepEqual(CAMPAIGN_MENU, [
-    { route: "start", label: "Start", href: "/start" },
-    { route: "route", label: "13 Stops", href: "/route" },
-    { route: "golf-balls", label: "Golf Balls", href: "/golf-balls" },
-    { route: "interview", label: "Tim's Account", href: "/interview" },
-    { route: "updates", label: "Updates", href: "/updates" },
-    { route: "clue-board", label: "Case Notes", href: "/clue-board" },
-    { route: "report", label: "Report", href: "/report" },
-    { route: "rules", label: "Rules", href: "/rules" },
-    { route: "dashboard", label: "Dashboard", href: "/dashboard" },
+    { route: "route", label: "Where to Look", href: "/route" },
+    { route: "report", label: "I Found Something", href: "/report" },
+    { route: "dashboard", label: "My Hunt", href: "/dashboard" },
+  ]);
+  assert.deepEqual(CAMPAIGN_MORE_MENU, [
+    { route: "updates", label: "Latest News", href: "/updates" },
+    { route: "clue-board", label: "What People Found", href: "/clue-board" },
+    { route: "interview", label: "Tim's Story", href: "/interview" },
+    { route: "rules", label: "Rules & Safety", href: "/rules" },
   ]);
 });
 

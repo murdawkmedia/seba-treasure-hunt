@@ -9,12 +9,12 @@
   <link rel="icon" href="/assets/favicon-32x32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <meta name="description" content="Privately report a possible find, a case tip, or a safety concern to the Tim Lost Something? case team." />
+  <meta name="description" content="Tell the Tim Lost Something? case team what you found, noticed, or need help with. Nothing publishes without staff review." />
   <meta name="robots" content="noindex,follow" />
   <link rel="canonical" href="https://www.timlostsomething.com/report" />
   <meta property="og:site_name" content="Tim Lost Something?" />
-  <meta property="og:title" content="Report Something | Tim Lost Something?" />
-  <meta property="og:description" content="Send a private find, tip, or safety report for the Seba Beach search." />
+  <meta property="og:title" content="I Found Something | Tim Lost Something?" />
+  <meta property="og:description" content="Tell SebaHub what you found, noticed, or need help with during the Seba Beach search." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://www.timlostsomething.com/report" />
   <meta property="og:image" content="https://www.timlostsomething.com/assets/photos/evidence-cash.jpg" />
@@ -28,43 +28,75 @@
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
 </head>
 <body class="campaign-page campaign-page--workspace hunter-page" data-campaign-route="report">
-  <!-- CAMPAIGN_SHELL {"route":"report","skipLabel":"Skip to private reporting","skipTarget":"main"} -->
+  <!-- CAMPAIGN_SHELL {"route":"report","skipLabel":"Skip to I Found Something","skipTarget":"main"} -->
 
   <main id="main" tabindex="-1">
     <section class="hunter-hero" aria-labelledby="report-title">
       <div class="hunter-hero__inner">
-        <p class="hunter-kicker">Private intake · Reviewed by a representative from SebaHub</p>
-        <h1 id="report-title">Report Something</h1>
-        <p class="hunter-hero__lead">Send a find claim, useful tip, or safety concern as a private report. It does not appear in Case Notes automatically.</p>
+        <p class="hunter-kicker">Tell the case team · Nothing publishes automatically</p>
+        <h1 id="report-title">I Found Something</h1>
+        <p class="hunter-hero__lead">Found something? Keep it. Then tell us. Photos help, but they are optional.</p>
       </div>
     </section>
 
     <div class="hunter-main">
       <section class="answer-first" aria-labelledby="report-answer">
         <p class="field-label">The short answer</p>
-        <h2 id="report-answer">What should I do if I find Tim's ID bundle?</h2>
-        <p>Leave the scene undisturbed when safe, take a clear photograph, note the nearest waypoint, and submit a find report below. A representative from SebaHub will review the evidence and contact you privately.</p>
+        <h2 id="report-answer">Keep the find. Share the story.</h2>
+        <p>Take the item with you when it is safe to do so, then use this form to tell the case team. Tim's ID was the one return-only item, and it has already been found. A qualifying golf ball also comes with one catch: take it to Casey and return it when redeeming the current offer.</p>
+        <p class="human-contact-alternatives">Prefer a person? <a href="tel:+17809096544">Call Tim</a>, <a href="sms:+17809096544">text Tim</a>, or <a href="mailto:casey@sebahub.com">email Casey</a>.</p>
       </section>
 
       <div class="report-grid">
         <section class="field-panel form-shell" data-report-form-panel aria-labelledby="report-form-title">
-          <p class="field-label">Private case intake</p>
-          <h2 id="report-form-title">Find, tip, or safety report</h2>
+          <p class="field-label">One place to start</p>
+          <h2 id="report-form-title">What happened?</h2>
           <div class="system-message" data-report-result role="status" aria-live="polite" tabindex="-1" hidden></div>
           <div class="system-message" data-report-errors role="alert" tabindex="-1" hidden></div>
 
           <form data-report-form novalidate enctype="multipart/form-data">
+            <fieldset class="report-intake" data-report-intake aria-describedby="report-type-error">
+              <legend>Choose the closest answer</legend>
+              <div class="report-intake__choices">
+                <label><input type="radio" name="intakeChoice" value="found" data-report-intake-choice data-report-type="find" /><span><strong>I found an item</strong><small>Cash, jewellery, electronics, a purse, a marked golf ball, or anything that might belong to the case.</small></span></label>
+                <label><input type="radio" name="intakeChoice" value="noticed" data-report-intake-choice data-report-type="tip" /><span><strong>I noticed something</strong><small>A useful observation, photo, or clue that is not a find.</small></span></label>
+                <label><input type="radio" name="intakeChoice" value="safety" data-report-intake-choice data-report-type="safety" /><span><strong>There is a safety problem</strong><small>A hazard, restricted area issue, or urgent concern for the team.</small></span></label>
+                <label><input type="radio" name="intakeChoice" value="other" data-report-intake-choice data-report-type="tip" /><span><strong>Something else</strong><small>Use this if none of the other choices fit.</small></span></label>
+              </div>
+              <div class="report-public-option" data-report-public-option hidden>
+                <p><strong>Is this just a public observation?</strong> Signed-in hunters can share it through What People Found instead. It will be moderated and is not an official clue.</p>
+                <div class="action-group">
+                  <a class="hunter-button hunter-button--quiet" href="/clue-board#share">Share publicly after moderation</a>
+                  <button class="hunter-button hunter-button--quiet" type="button" data-report-continue-private>Keep this private</button>
+                </div>
+              </div>
+              <span class="field-error" id="report-type-error" data-error-for="type"></span>
+            </fieldset>
+            <input id="report-type" name="type" type="hidden" value="" />
+            <aside class="selected-case-item" data-report-case-item hidden aria-labelledby="report-case-item-title">
+              <p class="field-label">Fresh Drops item</p>
+              <p id="report-case-item-title"><strong data-report-case-item-title></strong></p>
+              <button class="hunter-button hunter-button--quiet" type="button" data-report-case-item-clear>Report something else</button>
+            </aside>
             <div class="form-grid">
-              <div class="form-field form-field--full">
-                <label for="report-type">What are you reporting? <span class="required-mark" aria-hidden="true">*</span></label>
-                <select id="report-type" name="type" required aria-describedby="report-type-hint report-type-error">
-                  <option value="">Choose one</option>
-                  <option value="find">Possible find</option>
-                  <option value="tip">Tip or observation</option>
-                  <option value="safety">Safety concern</option>
+              <div class="form-field">
+                <label for="report-case-item-choice">What did you find?</label>
+                <select id="report-case-item-choice" name="caseItemId" aria-describedby="report-case-item-hint">
+                  <option value="">Not sure / something else</option>
+                  <option value="case-item-cash" data-report-case-item-choice>Cash</option>
+                  <option value="case-item-rings" data-report-case-item-choice>Two diamond rings</option>
+                  <option value="case-item-camera" data-report-case-item-choice>A camera</option>
+                  <option value="case-item-watch" data-report-case-item-choice>An Apple Watch</option>
+                  <option value="case-item-purse" data-report-case-item-choice>A fancy purse</option>
+                  <option value="case-item-golf-balls" data-report-case-item-choice>A marked In the Woods golf ball</option>
                 </select>
-                <span class="field-hint" id="report-type-hint">Find claims require at least one clear photograph.</span>
-                <span class="field-error" id="report-type-error" data-error-for="type"></span>
+                <span class="field-hint" id="report-case-item-hint">Choose a known item, or name a different item in the next box.</span>
+              </div>
+
+              <div class="form-field">
+                <label for="report-custom-item">Or name a different item</label>
+                <input id="report-custom-item" name="customItemName" type="text" maxlength="160" placeholder="For example: a mystery trinket" aria-describedby="report-custom-item-error" />
+                <span class="field-error" id="report-custom-item-error" data-error-for="customItemName"></span>
               </div>
 
               <div class="form-field">
@@ -86,7 +118,7 @@
               </div>
 
               <div class="form-field">
-                <label for="report-waypoint">Nearest waypoint (optional)</label>
+                <label for="report-waypoint">Nearest place (optional)</label>
                 <select id="report-waypoint" name="waypointId" aria-describedby="report-waypoint-hint">
                   <option value="not_sure">Not sure which stop</option>
                   <option value="1" data-report-waypoint data-route-order="1">Stop 01 · Creek Property</option>
@@ -99,17 +131,17 @@
                   <option value="7" data-report-waypoint data-route-order="8">Stop 08 · Lodge Trails</option>
                   <option value="8" data-report-waypoint data-route-order="9">Stop 09 · Vista Lands</option>
                   <option value="9" data-report-waypoint data-route-order="10">Stop 10 · Cliff-Edge Slope</option>
-                  <option value="10" data-report-waypoint data-route-order="11">Stop 11 · Driving Range / Digger Café</option>
+                  <option value="10" data-report-waypoint data-route-order="11">Stop 11 · Driving Range / Brewing at Seba</option>
                   <option value="11" data-report-waypoint data-route-order="12">Stop 12 · Kokanee Springs Front Gate</option>
                   <option value="12" data-report-waypoint data-route-order="13">Stop 13 · Old Seba Beach School / SebaHub</option>
                   <option value="different_location">Different location / outside the 13-stop route</option>
                 </select>
-                <span class="field-hint" id="report-waypoint-hint" data-waypoint-load-state>Loading the public waypoint list…</span>
+                <span class="field-hint" id="report-waypoint-hint" data-waypoint-load-state>Loading the public place list…</span>
               </div>
 
               <div class="form-field form-field--full">
                 <label for="report-location">Describe the location <span class="required-mark" aria-hidden="true">*</span></label>
-                <input id="report-location" name="locationDescription" type="text" maxlength="300" required placeholder="Nearby sign, trail feature, or waypoint—do not enter a home address" aria-describedby="report-location-error" />
+                <input id="report-location" name="locationDescription" type="text" maxlength="300" required placeholder="Nearby sign, trail feature, or place—do not enter a home address" aria-describedby="report-location-error" />
                 <span class="field-error" id="report-location-error" data-error-for="locationDescription"></span>
               </div>
 
@@ -129,8 +161,8 @@
                 <span class="field-error" id="report-details-error" data-error-for="details"></span>
               </div>
 
-              <fieldset class="form-field form-field--full check-group">
-                <legend>How may we credit this if a representative from SebaHub publishes it? <span class="required-mark" aria-hidden="true">*</span></legend>
+              <fieldset class="form-field form-field--full check-group" data-report-attribution>
+                <legend>How may we credit this if a representative from SebaHub publishes it?</legend>
                 <label class="check-row"><input name="publicAttributionKind" type="radio" value="display_name" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Use my public display name.</label>
                 <label class="check-row"><input name="publicAttributionKind" type="radio" value="hunter_handle" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Use my anonymous Hunter handle.</label>
                 <label class="check-row"><input name="publicAttributionKind" type="radio" value="community" required aria-describedby="report-public-attribution-hint report-public-attribution-error" /> Publish as Community Hunter.</label>
@@ -138,8 +170,15 @@
                 <span class="field-error" id="report-public-attribution-error" data-error-for="publicAttributionKind"></span>
               </fieldset>
 
+              <fieldset class="form-field form-field--full check-group">
+                <legend>What may staff do after reviewing this?</legend>
+                <label class="check-row"><input name="publicationPreference" type="radio" value="share_after_review" checked required aria-describedby="report-publication-preference-error" /> <span><strong>Share after staff review</strong><br />A representative from SebaHub may edit and publish the safe parts in What People Found. Nothing posts automatically.</span></label>
+                <label class="check-row"><input name="publicationPreference" type="radio" value="private" required aria-describedby="report-publication-preference-error" /> <span><strong>Keep this report private</strong><br />Use it only for the case team's review and follow-up.</span></label>
+                <span class="field-error" id="report-publication-preference-error" data-error-for="publicationPreference"></span>
+              </fieldset>
+
               <div class="form-field form-field--full">
-                <label for="report-photo">Photographs <span data-photo-required-copy>(required for a find)</span></label>
+                <label for="report-photo">Photographs <span data-photo-required-copy>(optional, but encouraged)</span></label>
                 <input id="report-photo" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="report-photo-hint report-photo-status report-photo-error" />
                 <span class="field-hint" id="report-photo-hint">Add up to three JPEG, PNG, or WebP photos. Photos up to 20 MB upload directly; larger photos up to 50 MB will be optimized on this device. Prepared uploads may total up to 30 MB. Images are private unless a representative from SebaHub separately approves a metadata-free public derivative.</span>
                 <ul class="report-photo-status" id="report-photo-status" data-report-photo-status aria-live="polite" aria-relevant="additions text"></ul>
@@ -156,6 +195,14 @@
               </div>
 
               <div class="form-field form-field--full">
+                <label class="check-row" for="report-sharing-acknowledgement">
+                  <input id="report-sharing-acknowledgement" name="sharingAcknowledgementAccepted" type="checkbox" required aria-describedby="report-sharing-acknowledgement-error" />
+                  <span>I understand that nothing publishes automatically. If I chose sharing above, a representative from SebaHub may publish an edited, contact-free version after review. Photos are shared only when separately selected by staff. <small>Finder sharing notice 2026.1</small></span>
+                </label>
+                <span class="field-error" id="report-sharing-acknowledgement-error" data-error-for="sharingAcknowledgementAccepted"></span>
+              </div>
+
+              <div class="form-field form-field--full">
                 <label for="report-accuracy">
                   <input id="report-accuracy" name="accuracy" type="checkbox" required aria-describedby="report-accuracy-error" />
                   I believe this report is accurate and understand the team may contact me to verify it.
@@ -164,21 +211,21 @@
               </div>
             </div>
 
-            <div class="action-row">
-              <button class="hunter-button" type="submit" data-report-submit>Send private report</button>
+            <div class="action-group">
+              <button class="hunter-button" type="submit" data-report-submit>Tell us what you found</button>
             </div>
-            <p class="field-hint">Submitting creates a private review record. It does not publish your name, contact details, photo, or location.</p>
+            <p class="field-hint">Submitting creates a private review record first. It never publishes your name, contact details, private evidence, or a child's identity.</p>
           </form>
         </section>
 
         <section class="field-panel report-receipt" data-report-receipt hidden tabindex="-1" aria-labelledby="report-receipt-title">
-          <p class="field-label">Private report receipt</p>
-          <h2 id="report-receipt-title">Report received privately</h2>
+          <p class="field-label">Finder receipt</p>
+          <h2 id="report-receipt-title">We got it</h2>
           <p>Your reference is <strong data-report-reference></strong>.</p>
-          <p data-report-receipt-message>Your report was sent privately to the SebaHub case team. It is not public. We may contact you to verify details. After review, a representative from SebaHub may publish an edited Case Note or Official Update. Your email, phone number and private details will not be published.</p>
-          <div class="action-row">
+          <p data-report-receipt-message>Your report was sent privately to the SebaHub case team. It is not public. We may contact you to verify details. After review, a representative from SebaHub may publish an edited observation in What People Found or a story in Latest News. Your email, phone number and private details will not be published.</p>
+          <div class="action-group">
             <button type="button" class="hunter-button" data-report-another>Submit another report</button>
-            <a class="hunter-button hunter-button--quiet" href="/dashboard">Open my Dashboard</a>
+            <a class="hunter-button hunter-button--quiet" href="/dashboard">Open My Hunt</a>
           </div>
         </section>
 
@@ -191,7 +238,7 @@
             <li><strong>Verified:</strong> the relevant facts were confirmed.</li>
             <li><strong>Closed:</strong> the team's private work on the report is complete.</li>
           </ol>
-          <p>A public Case Note or Official Update is a separate edited decision. Your report never publishes automatically.</p>
+          <p>Anything shared through What People Found or Latest News is a separate edited decision. Your report never publishes automatically.</p>
           <p class="field-panel__action"><a href="/privacy">How report data is handled →</a></p>
         </aside>
       </div>

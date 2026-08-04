@@ -482,6 +482,7 @@ test("moderates publicly accepted flags for operator-reviewed Case Notes end to 
     id: "report-operator-note-flag",
     status: "reviewing",
     publicAttribution: "Community Hunter",
+    publicationPreference: "share_after_review",
     waypointId: 1,
     reporterEmail: "private@example.test",
     details: "Private report details.",
@@ -522,6 +523,7 @@ test("moderates publicly accepted flags for operator-reviewed Case Notes end to 
     id: "report-withdrawn-operator-note",
     status: "reviewing",
     publicAttribution: "Community Hunter",
+    publicationPreference: "share_after_review",
     media: []
   });
   const withdrawnNote = await store.publishReportToCaseNotes(
@@ -808,6 +810,7 @@ test("activates a verified staff subject only when its email was privately invit
   assert.equal(store.audits.at(-1)?.action, "staff.activated");
 
   store.staff.clear();
+  store.staffRecords.clear();
   const uninvited = await app.request("https://www.timlostsomething.com/api/v1/ops/session", {
     headers: { authorization: "Bearer staff-token" }
   });
@@ -1092,6 +1095,7 @@ test("hunter report projection exposes only safe status and public destinations"
     evidenceKey: "private/evidence.jpg",
     publicAttribution: "Hunter Safe",
     attributionKind: "hunter_handle",
+    publicationPreference: "share_after_review",
     createdAt: "2026-07-18T10:00:00.000Z",
     media: [],
   };
@@ -1223,6 +1227,7 @@ test("lets active staff inspect a private report and only its scoped derivative 
       longitude: -114.456,
       details: "I found a possible clue beneath a fallen branch.",
       status: "received",
+      publicationPreference: "share_after_review",
       createdAt: "2026-07-15T20:00:00.000Z",
       updatedAt: "2026-07-15T20:00:00.000Z",
       media: [
@@ -1335,6 +1340,7 @@ test("publishes and withdraws a report only through exact-origin Staff requests"
     status: "reviewing",
     publicAttribution: "Hunter A7F3",
     attributionKind: "hunter_handle",
+    publicationPreference: "share_after_review",
     media: [
       {
         id: "media-publish-1",
@@ -1498,6 +1504,7 @@ test("publishes a reviewed report to Case Notes without creating an official Upd
     hunterSubject: null,
     publicAttribution: "Community Hunter",
     attributionKind: "community",
+    publicationPreference: "share_after_review",
     waypointId: 11,
     latitude: 53.5,
     longitude: -114.5,
@@ -1540,6 +1547,7 @@ test("publishes a reviewed report to Case Notes without creating an official Upd
     hunterSubject: null,
     publicAttribution: "Community Hunter",
     attributionKind: "community",
+    publicationPreference: "share_after_review",
     status: "reviewing",
     media: []
   });
@@ -1584,7 +1592,12 @@ test("publishes a reviewed report to Case Notes without creating an official Upd
 
 test("keeps report Update drafts and future schedules private until their due time", async () => {
   const { app, store } = makeApp();
-  store.reports.push({ id: "report-draft-1", status: "verified", media: [] });
+  store.reports.push({
+    id: "report-draft-1",
+    status: "verified",
+    publicationPreference: "share_after_review",
+    media: [],
+  });
   const endpoint = "https://www.timlostsomething.com/api/v1/ops/reports/report-draft-1/publish";
   const headers = { authorization: "Bearer staff-token" };
   const base = { title: "Draft finding", body: "Reviewed story", mediaIds: [] };
@@ -1720,7 +1733,12 @@ test("standalone Official Update APIs are staff-only, draft-first, and media-sco
 
 test("stores direct Official Update uploads privately only after a draft exists", async () => {
   const { app, store, uploads } = makeApp();
-  store.reports.push({ id: "report-update-upload", status: "verified", media: [] });
+  store.reports.push({
+    id: "report-update-upload",
+    status: "verified",
+    publicationPreference: "share_after_review",
+    media: [],
+  });
   const base = "https://www.timlostsomething.com/api/v1/ops/reports/report-update-upload";
   const staffHeaders = {
     authorization: "Bearer staff-token",
@@ -1877,6 +1895,238 @@ test("lets one active operator send another operator through verified password r
   assert.equal(staffAccounts.actions[0]?.target.email, "operator@example.test");
   assert.equal(store.audits.at(-1)?.action, "staff.recovery.requested");
   assert.equal(JSON.stringify(responseBody).includes("password"), false);
+});
+
+test("staff provider actions reject every capability the target's current state does not grant", async () => {
+  const { app, store, staffAccounts } = makeApp();
+  const headers = {
+    authorization: "Bearer staff-token",
+    origin: "https://www.timlostsomething.com"
+  };
+  const disallowedByStatus = {
+    invited: ["recovery", "revoke-sessions"],
+    active: ["resend-invitation"],
+    suspended: ["revoke-sessions", "resend-invitation"],
+    revoked: ["recovery", "revoke-sessions", "resend-invitation"]
+  } as const;
+
+  for (const [status, actions] of Object.entries(disallowedByStatus)) {
+    const id = `staff-${status}`;
+    store.staffRecords.set(id, {
+      id,
+      subject: status === "invited" ? null : `${id}-subject`,
+      email: `${status}@example.test`,
+      status
+    });
+    for (const action of actions) {
+      const providerCallsBefore = staffAccounts.actions.length;
+      const auditsBefore = store.audits.length;
+      const response = await app.request(
+        `https://www.timlostsomething.com/api/v1/ops/staff/${id}/${action}`,
+        { method: "POST", headers }
+      );
+      assert.equal(response.status, 409, `${status}:${action}`);
+      assert.equal((await responseJson(response)).error.code, "staff_action_not_available", `${status}:${action}`);
+      assert.equal(staffAccounts.actions.length, providerCallsBefore, `${status}:${action} provider call`);
+      assert.equal(store.audits.length, auditsBefore, `${status}:${action} audit`);
+    }
+  }
+
+  const providerCallsBefore = staffAccounts.actions.length;
+  const auditsBefore = store.audits.length;
+  const resetMfa = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/staff/staff-1/reset-mfa",
+    { method: "POST", headers }
+  );
+  assert.equal(resetMfa.status, 404);
+  assert.equal((await responseJson(resetMfa)).error.code, "staff_action_not_found");
+  assert.equal(staffAccounts.actions.length, providerCallsBefore);
+  assert.equal(store.audits.length, auditsBefore);
+});
+
+test("staff list exposes current operator capability without changing peer actions", async () => {
+  const { app, store } = makeApp();
+  const endpoint = "https://www.timlostsomething.com/api/v1/ops/staff";
+  store.staffRecords.set("staff-peer", {
+    id: "staff-peer",
+    subject: "staff-peer-subject",
+    email: "peer@example.test",
+    status: "active"
+  });
+
+  const anonymous = await app.request(endpoint);
+  assert.equal(anonymous.status, 401);
+
+  const response = await app.request(endpoint, {
+    headers: { authorization: "Bearer staff-token" }
+  });
+  const body = await responseJson(response);
+  assert.equal(response.status, 200);
+  const current = body.data.find((record: Record<string, unknown>) => record.id === "staff-1");
+  const peer = body.data.find((record: Record<string, unknown>) => record.id === "staff-peer");
+  assert.equal(current.isCurrent, true);
+  assert.equal(peer.isCurrent, false);
+  assert.deepEqual(current.actions, ["recovery", "revoke-sessions", "suspend"]);
+  assert.deepEqual(peer.actions, ["recovery", "revoke-sessions", "suspend"]);
+});
+
+test("direct staff invitations require an exact same-origin request and retain safe pending state", async () => {
+  const { app, store, staffAccounts } = makeApp();
+  const endpoint = "https://www.timlostsomething.com/api/v1/ops/staff/invitations";
+  const headers = { authorization: "Bearer staff-token" };
+
+  const anonymous = await app.request(endpoint, { method: "POST", ...json({ email: "new@example.test" }) });
+  assert.equal(anonymous.status, 401);
+
+  const crossOrigin = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: "new@example.test" }, { ...headers, origin: "https://evil.example" })
+  });
+  assert.equal(crossOrigin.status, 403);
+
+  const invalidEmail = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: "not-an-email" }, headers)
+  });
+  assert.equal(invalidEmail.status, 422);
+
+  const extraField = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: "new@example.test", role: "owner" }, headers)
+  });
+  assert.equal(extraField.status, 422);
+
+  const multipart = new FormData();
+  multipart.set("email", "multipart@example.test");
+  const multipartRequest = await app.request(endpoint, {
+    method: "POST",
+    headers: { ...headers, origin: "https://www.timlostsomething.com" },
+    body: multipart
+  });
+  assert.equal(multipartRequest.status, 415);
+
+  const created = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: " New@Example.Test " }, headers)
+  });
+  const createdBody = await responseJson(created);
+  assert.equal(created.status, 202);
+  assert.equal(createdBody.data.email, "new@example.test");
+  assert.equal(createdBody.data.status, "invited");
+  assert.equal(createdBody.data.created, true);
+  assert.equal(createdBody.data.delivery, "sent");
+  assert.deepEqual(createdBody.data.actions, ["resend-invitation"]);
+  assert.equal(store.audits.at(-1)?.action, "staff.invited");
+  assert.equal(staffAccounts.actions.length, 1);
+  const auditsBeforeDuplicate = store.audits.length;
+
+  const duplicate = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: "new@example.test" }, headers)
+  });
+  assert.equal(duplicate.status, 202);
+  const duplicateBody = await responseJson(duplicate);
+  assert.equal(duplicateBody.data.created, false);
+  assert.equal(duplicateBody.data.delivery, "not_sent");
+  assert.equal(staffAccounts.actions.length, 1);
+  assert.equal(store.audits.length, auditsBeforeDuplicate);
+
+  store.staffRecords.set("suspended-address", {
+    id: "suspended-address", subject: "staff-suspended", email: "suspended@example.test", status: "suspended"
+  });
+  const suspendedAddress = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: "suspended@example.test" }, headers)
+  });
+  assert.equal(suspendedAddress.status, 409);
+  assert.equal((await responseJson(suspendedAddress)).error.code, "staff_reactivation_required");
+
+  store.staffRecords.set("revoked-address", {
+    id: "revoked-address", subject: "staff-revoked", email: "revoked@example.test", status: "revoked"
+  });
+  const revokedAddress = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: "revoked@example.test" }, headers)
+  });
+  assert.equal(revokedAddress.status, 409);
+  assert.equal((await responseJson(revokedAddress)).error.code, "staff_invitation_blocked");
+
+  Object.assign(staffAccounts, { failActions: new Set(["resend-invitation"]) });
+  const deliveryFailure = await app.request(endpoint, {
+    method: "POST",
+    ...json({ email: "delivery@example.test" }, headers)
+  });
+  const deliveryFailureBody = await responseJson(deliveryFailure);
+  assert.equal(deliveryFailure.status, 202);
+  assert.equal(deliveryFailureBody.data.delivery, "failed");
+  assert.equal(deliveryFailureBody.data.status, "invited");
+  assert.deepEqual(deliveryFailureBody.data.actions, ["resend-invitation"]);
+  const pendingInvitation = (await store.listStaff()).find(
+    (record) => (record as Record<string, unknown>).email === "delivery@example.test"
+  ) as Record<string, unknown> | undefined;
+  assert.deepEqual(pendingInvitation?.actions, ["resend-invitation"]);
+  assert.equal(store.audits.at(-1)?.action, "staff.provider_warning");
+});
+
+test("self-suspension is D1-first and leaves provider failure as a safe warning", async () => {
+  const { app, store, staffAccounts } = makeApp();
+  store.staffRecords.set("staff-peer", {
+    id: "staff-peer", subject: "staff-peer-subject", email: "peer@example.test", status: "active"
+  });
+  const peerFromList = (await store.listStaff()).find(
+    (record) => (record as Record<string, unknown>).id === "staff-peer"
+  ) as Record<string, unknown> | undefined;
+  assert.deepEqual(peerFromList?.actions, ["recovery", "revoke-sessions", "suspend"]);
+  Object.assign(staffAccounts, { failActions: new Set(["suspend"]) });
+
+  const response = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/staff/staff-1/suspend",
+    { method: "POST", ...json({ confirmed: true }, { authorization: "Bearer staff-token" }) }
+  );
+  const body = await responseJson(response);
+  assert.equal(response.status, 202);
+  assert.equal(body.data.status, "suspended");
+  assert.equal(body.data.selfSuspended, true);
+  assert.equal(body.data.providerWarning, true);
+  assert.equal((await store.getStaffPrincipal("staff-1"))?.status, "suspended");
+  assert.equal(store.audits.at(-1)?.action, "staff.provider_warning");
+});
+
+test("final active operator rejection does not call the provider", async () => {
+  const { app, store, staffAccounts } = makeApp();
+
+  const unconfirmed = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/staff/staff-1/suspend",
+    { method: "POST", ...json({ confirmed: true, extra: true }, { authorization: "Bearer staff-token" }) }
+  );
+  assert.equal(unconfirmed.status, 422);
+  assert.equal(staffAccounts.actions.length, 0);
+
+  const rejected = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/staff/staff-1/suspend",
+    { method: "POST", ...json({ confirmed: true }, { authorization: "Bearer staff-token" }) }
+  );
+  assert.equal(rejected.status, 409);
+  assert.equal((await responseJson(rejected)).error.code, "final_active_staff");
+  assert.equal(staffAccounts.actions.length, 0);
+
+  store.staffRecords.set("staff-peer", {
+    id: "staff-peer", subject: "staff-peer-subject", email: "peer@example.test", status: "active"
+  });
+  const peer = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/staff/staff-peer/suspend",
+    { method: "POST", ...json({ confirmed: true }, { authorization: "Bearer staff-token" }) }
+  );
+  assert.equal(peer.status, 202);
+  assert.equal((await responseJson(peer)).data.status, "suspended");
+
+  const reactivated = await app.request(
+    "https://www.timlostsomething.com/api/v1/ops/staff/staff-peer/reactivate",
+    { method: "POST", ...json({ confirmed: true }, { authorization: "Bearer staff-token" }) }
+  );
+  assert.equal(reactivated.status, 202);
+  assert.equal((await responseJson(reactivated)).data.status, "active");
+  assert.deepEqual(staffAccounts.actions.map((item) => item.action), ["suspend", "reactivate"]);
 });
 
 test("exposes the consent-aware subscriber ledger only to active staff", async () => {
@@ -2066,6 +2316,9 @@ test("a current waiver unlocks hunter tools without weakening reports, moderatio
   const privateReport = await app.request("https://www.timlostsomething.com/api/v1/reports", {
     method: "POST",
     ...json({
+      publicationPreference: "private",
+      sharingNoticeVersion: "2026.1",
+      sharingAcknowledgementAccepted: true,
       type: "tip",
       name: "Anonymous-capable Reporter",
       email: "reporter@example.test",

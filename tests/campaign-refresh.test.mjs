@@ -91,8 +91,8 @@ test("the illustrative ID is disclosed and never replaces evidence", () => {
     html,
     /assets\/photos\/tim-lost-id-campaign-prop\.webp/,
   );
-  assert.match(html, /<figcaption>A visual representation of what Tim’s I\.D\. could look like\.<\/figcaption>/);
-  assert.match(html, /alt="Visual representation of a possible version of Tim's ID card on a dark counter"/);
+  assert.match(html, /<figcaption>A visual representation of what Tim's I\.D\. could look like\.<\/figcaption>/);
+  assert.match(html, /alt="A visual representation of what Tim's ID could look like"/);
   assert.doesNotMatch(html, /Campaign reference|fictional reference image|fictional, not Tim’s real ID/i);
   assert.match(html, /assets\/photos\/evidence-cash\.jpg/);
   assert.ok(

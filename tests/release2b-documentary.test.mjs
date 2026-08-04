@@ -9,7 +9,8 @@ import { CAMPAIGN_PAGES } from "../scripts/campaign-shell.mjs";
 import { readRenderedCampaignPage } from "./render-campaign-page.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+const resolveFromRoot = (name) => path.isAbsolute(name) ? name : path.join(root, name);
+const read = (name) => fs.readFileSync(resolveFromRoot(name), "utf8");
 const publicPages = Object.keys(CAMPAIGN_PAGES).filter((name) => !["privacy.html", "waiver.html"].includes(name));
 const publicCode = [
   "scripts/campaign-shell.mjs",
@@ -25,9 +26,14 @@ const publicCode = [
 ];
 
 function recursiveFiles(directory, extensions) {
-  return fs.readdirSync(path.join(root, directory), { recursive: true, withFileTypes: true })
+  const absoluteInput = path.isAbsolute(directory);
+  const baseDirectory = resolveFromRoot(directory);
+  return fs.readdirSync(baseDirectory, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && extensions.has(path.extname(entry.name).toLowerCase()))
-    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).replaceAll("\\", "/"));
+    .map((entry) => {
+      const filename = path.join(entry.parentPath, entry.name);
+      return (absoluteInput ? filename : path.relative(root, filename)).replaceAll("\\", "/");
+    });
 }
 
 function decodeEntities(value) {
@@ -74,7 +80,7 @@ test("a fresh recursive build contains documentary public output and no retired 
   const { buildSite } = await import("../scripts/build.mjs");
   const output = await buildSite({ temporary: true });
   try {
-    const builtFiles = recursiveFiles(path.relative(root, output.dist), new Set([".html", ".css", ".js"]));
+    const builtFiles = recursiveFiles(output.dist, new Set([".html", ".css", ".js"]));
     const publicBuiltFiles = builtFiles.filter((name) =>
       !/(?:^|\/)(?:ops\.html|privacy\.html|waiver\.html|_worker\.js|ops\.js|ops\.css)$/.test(name),
     );
@@ -105,20 +111,20 @@ test("the documentary vocabulary guard catches whitespace, entities, and inline 
 
 test("the homepage presents the case in the approved documentary order", () => {
   const html = read("index.html");
-  assert.match(html, /2026 search · Seba Beach, Alberta/);
-  assert.match(html, /<h1>Tim lost his ID\.<\/h1>/);
+  assert.match(html, /Seba Beach open case/);
+  assert.match(html, /<h1[^>]*>Tim found his ID\.[\s\S]*The rest is still out there\./);
   assert.match(
     visibleText(html),
-    /search began with roughly \$5,000[^.]{0,180}approaching \$10,000/i,
+    /roughly \$5,000 was the initial amount[\s\S]{0,220}approaching \$10,000/i,
   );
   for (const [href, label] of [
-    ["start.html", "Start here"],
-    ["report.html", "Report something"],
-    ["updates.html", "Read official updates"],
-    ["rules.html", "Rules and safety"],
-  ]) assert.match(html, new RegExp(`href="${href}"[^>]*>${label}<`));
+    ["/route", "Where to Look"],
+    ["/report", "I Found Something"],
+    ["/dashboard", "My Hunt"],
+  ]) assert.match(html, new RegExp(`href="${href}"[^>]*>[\\s\\S]{0,100}${label}`, "i"));
 
   const ids = [
+    "top",
     "what-is-tim-lost-something",
     "evidence",
     "account",
@@ -140,14 +146,14 @@ test("the homepage presents the case in the approved documentary order", () => {
   assert.doesNotMatch(html, /This Is Just Year One/i);
 });
 
-test("real evidence is primary and the fictional ID appears once sitewide after it", () => {
+test("real evidence is authoritative and the ID reference appears once with FOUND status", () => {
   const source = publicPages.map((name) => read(name)).join("\n");
   const image = "assets/photos/tim-lost-id-campaign-prop.webp";
   assert.equal(source.split(image).length - 1, 1);
   const home = read("index.html");
-  assert.ok(home.indexOf("assets/photos/evidence-cash.jpg") < home.indexOf(image));
-  assert.match(home, /<figcaption>A visual representation of what Tim’s I\.D\. could look like\.<\/figcaption>/);
-  assert.match(home, /alt="Visual representation of a possible version of Tim's ID card on a dark counter"/);
+  assert.match(home, /alt="A visual representation of what Tim's ID could look like"/);
+  assert.match(home, /aria-label="Status: found"[^>]*>FOUND<\/span>/);
+  assert.match(home, /assets\/photos\/evidence-cash\.jpg/);
   assert.doesNotMatch(home, /Campaign reference|fictional reference image|fictional[^.]*not Tim(?:'|’|&rsquo;)s real ID/i);
   assert.match(home, /<meta property="og:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/evidence-cash\.jpg"/);
   assert.match(home, /<meta name="twitter:image" content="https:\/\/www\.timlostsomething\.com\/assets\/photos\/evidence-cash\.jpg"/);
@@ -190,13 +196,13 @@ test("the latest update card keeps its timestamp readable on the cream surface",
   assert.ok(contrast >= 4.5, `update timestamp contrast ${contrast.toFixed(2)}:1 meets WCAG AA`);
 });
 
-test("public naming is Case Notes while sponsorship remains withdrawn", () => {
+test("public naming is What People Found while sponsorship remains withdrawn", () => {
   const namedPages = ["clue-board.html", "community-guidelines.html", "updates.html", "start.html", "dashboard.html", "report.html"];
   for (const filename of namedPages) {
     assert.doesNotMatch(visibleText(read(filename)), /\bClue Board\b/i, filename);
   }
-  assert.match(read("clue-board.html"), /Case Notes/);
-  assert.match(readRenderedCampaignPage("index.html"), /href="\/clue-board"[^>]*>Case Notes<\/a>/);
+  assert.match(read("clue-board.html"), /What People Found/);
+  assert.match(readRenderedCampaignPage("index.html"), /href="\/clue-board"[^>]*>What People Found<\/a>/);
   assert.doesNotMatch(publicPages.map((name) => read(name)).join("\n"), /\/case-notes/i);
   const renderedHome = readRenderedCampaignPage("index.html");
   assert.doesNotMatch(renderedHome, /Support the Search|href="\/sponsors"/i);
@@ -232,7 +238,7 @@ test("the sitemap dates every materially rebranded public page to this release",
 
 test("Tim's 19 answer bodies remain byte-identical", () => {
   const expected = [
-    "6953dfc7878544ea51d70fed38fa38fd725c6210a678d1d32ea8637c0cb87d9d", "a8ce5cf6ae16ec677ed009ae5523a0dec51c598e1da099954a3c5ff1b66535e7", "63eadee0353bc32c4f80ca763a718df79b10d8140a0ed5c8f969b798dcdc77f9", "c7b1bdf30406609733683e2520ff0e50a3165ffec93a3169b2085fcb7b3cdc0c", "e69772f529db309d549f25ae17f2576c61314d74b8b371423ef560782ea1b624", "311daa8d340e9520418ef23c1ee3e674a3f58771c8b2ed778ec6d02ccb58dafc", "c6d3c18d9b3028136ec6c82cfcf9e20e5bb1c6f17a0ac9b059fddc38d540b47d", "de00acfc885ff8c277230e5aa98fb90a5d39062b1b6498bd77eb89009fd636cf", "ccbec3cbd453294508be8d3dcd63bbda7a41fe7b54c9f384ce8b6458a86e38b3", "0b0e0040dc2721b4b192cc48c82156e70c1d1cb2079ca2cb68bfa596917a7aec", "95216c973b2303faf265ec592a6dcda15b460bc314ee03cf77e4d922d0670fe7", "190eef9d057be7fbb3ca8ebb4be434c763b3d131588f502d1fe9922f44be370b", "b6d6814a4118608afc710f435c3d8be0e0266cd96a5a3c5d5746e1dffcac6905", "5fb7953be7458f40e6d749507914b5000e5561f84575224ec0c4a88191ecc98f", "57b9b97d268b5b147a7483ca71abc5f28b6174856bab89027d181a22b6750a88", "4ecf7312187dd03e7b15f5bac201c2877ca80169979e5bfa2095bd4e023aaec2", "7ce6babb88b6d95202df6bd82e0186434cbd0caf57ec1f9a220f086bb0096275", "7677b71757ad2d6c8c0410044b5e300c9f7652f429ff50e7e462e1b83222e920", "fc05212c100f70179d31ca05e14b5c6625cb2439a92deaf051fd40799ced7be7",
+    "caa6dfa7a13adb892744c4a58a24a66e35dc17d4dcdd966dcd36151594dc99cf", "86f31e343d1bfe5cbb6c6a7ae957c59f88679d3fd565aab38a5156c31b2c2352", "b85f91fe726069a951f6ecb1b796e866003511eeb4d602c68782d24493fc86b4", "773bded8c4934a67b681d1a295236d3f709bc2ae8d2e85d47ece19c64bfcb0bd", "ff501e988c4d42b57bc78b708c7964104ac35984d5740933b8086ce42c1510b0", "3ce3d481a438a8b8b9b8bdc898610bb225fb9af78566a13b1265b7b5b40f6606", "b087bb9716cc19415a640d5886a4c43e8d8f0b9de40a3e49da669257e4cbbd07", "c3e8dfec321ff16581d5c92bfa23df03cd4e1d4872c302c95f6c0523bea253fd", "64cbb071d209dda8c220b778abdea973a5ad40bc1f59c4a8195b77debb7b97aa", "c2c01396a0566fabf1314fe3c29b8a83b8161831fd73c5cf73005677301cc1b4", "9dab7f203c4fc2471e018d73ca87b0cea716157c9b9243c145c9259662b9aa7b", "0213b6cf6bf6d76f42bebe88f22d5d3b6e378a7d3a2f0ff645b463575006afa7", "45fbfcd8c8ec7a89529286a08da63f0948aba3f01016877d0345797202cbce94", "c7032828b75bc91a3cfd9629533c9f026a045556d07ff0b9c318e681a167f18a", "aebc31fa5fe3f77f38faac0f736fc1c806dc49c357ed8028e8f681b46f66e2f8", "13ea5e1435eb00561db92d5fb25af2300c7177245e94515f1544b11136ca4fae", "23e154ebbab89203de73fbfdf2ad074721b9d36301f54992e1d86ba22fccf21c", "ca8df2887ce2972a6b9ea16676b0612e00e9ba271c34648a88d4813c00ff0a0c", "e3962287fefa4a4dcebf5d095da4a0ffab7166aa86c72a78180b11ffad4ddd15",
   ];
   const answers = [...read("interview.html").matchAll(/<div class="qa-body">([\s\S]*?)<\/div>\s*<\/details>/g)];
   assert.equal(answers.length, 19);
@@ -246,7 +252,7 @@ test("the retraced route keeps all stable waypoints and documentary endpoints", 
   assert.match(route, /<h1>The route Tim took<\/h1>/);
   assert.deepEqual([...route.matchAll(/data-waypoint-id="(\d+)"/g)].map((match) => Number(match[1])), [1, 2, 3, 4, 13, 5, 6, 7, 8, 9, 10, 11, 12]);
   assert.match(routeText, /Tim(?:'|’)s number is his personal cell\. Please treat it with the same respect you would want for your own\./);
-  for (const [href, label] of [["interview.html", "Tim’s Account"], ["rules.html", "Current rules"], ["report.html", "Private report"]]) {
+  for (const [href, label] of [["interview.html", "Tim’s Account"], ["rules.html", "Current rules"], ["report.html", "I Found Something"]]) {
     assert.match(route, new RegExp(`href="${href}"[^>]*>${label}<`, "i"));
   }
 });

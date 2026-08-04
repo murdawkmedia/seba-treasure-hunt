@@ -108,7 +108,8 @@ test("signup legal dialogs have labelled top close controls and sticky completio
   for (const kind of ["privacy-media", "waiver"]) {
     const dialog = html.match(new RegExp(`<dialog\\b(?=[^>]*data-signup-dialog="${kind}")[^>]*>[\\s\\S]*?<\\/dialog>`))?.[0] ?? "";
     assert.match(dialog, /signup-legal-dialog__header[\s\S]*?<button\b(?=[^>]*data-signup-dialog-close)(?=[^>]*aria-label="Close [^"]+")[^>]*>/);
-    assert.match(dialog, /signup-legal-dialog__footer[\s\S]*?<button\b[^>]*data-signup-dialog-close[^>]*>Done &mdash; back to account setup<\/button>/);
+    assert.match(dialog, /signup-legal-dialog__footer[\s\S]*?<button\b[^>]*data-signup-dialog-accept[^>]*>Accept &amp; back to signup<\/button>/);
+    assert.match(dialog, /signup-legal-dialog__footer[\s\S]*?<button\b[^>]*data-signup-dialog-close[^>]*>Done &mdash; back to signup<\/button>/);
     assert.match(dialog, /data-signup-dialog-status[^>]*role="status"/);
   }
 });
@@ -159,7 +160,7 @@ test("the report receipt keeps contact private and makes publication review expl
   const html = read("report.html");
   const dashboard = read("dashboard.html");
   const client = read("src/client/dashboard.ts");
-  assert.match(html, /Report received privately/i);
+  assert.match(html, /Finder receipt[\s\S]*We got it/i);
   assert.match(html, /sent privately to the SebaHub case team/i);
   assert.match(html, /It is not public/i);
   assert.match(html, /email, phone number and private details will not be published/i);

@@ -1,4 +1,7 @@
 import type {
+  CaseItemInput,
+  CaseItemMutation,
+  CaseItemStatusMutation,
   CaseStatus,
   IdentityLifecycleEvent,
   OperatorAlertRecipientClaim,
@@ -11,6 +14,7 @@ import type {
   SponsorInquiryRecord,
   SponsorInquiryState,
   SponsorSupportType,
+  StaffAccessAction,
   StoredMedia,
   WaiverAcceptanceInput,
   WaiverAcceptanceRecord,
@@ -124,6 +128,7 @@ const reportPublicationPreview = (
 ) => {
   const hunterSubject = typeof report.hunterSubject === "string" ? report.hunterSubject : null;
   const terminal = report.status === "rejected" || report.status === "resolved";
+  const hunterRequestedPrivate = report.publicationPreference !== "share_after_review";
   const resolvedAttribution = reportPublicAttribution(report, profile);
   const protectsMinor = profile?.participationBasis === "minor_guardian_permission";
   const hasCurrentAccess = !hunterSubject || Boolean(profile) && participationUnlocked;
@@ -132,7 +137,7 @@ const reportPublicationPreview = (
     : !terminal && hasCurrentAccess
       ? resolvedAttribution
       : null;
-  const publicationEligible = !terminal && Boolean(resolvedAttribution) &&
+  const publicationEligible = !terminal && !hunterRequestedPrivate && Boolean(resolvedAttribution) &&
     hasCurrentAccess;
   return {
     publicAttribution,
@@ -141,6 +146,8 @@ const reportPublicationPreview = (
       ? "eligible"
       : terminal
         ? "report_state_invalid"
+        : hunterRequestedPrivate
+          ? "hunter_requested_private"
         : hunterSubject && !hasCurrentAccess
           ? "current_legal_acceptance_required"
           : "public_attribution_required"
@@ -194,6 +201,56 @@ export class FakeStore {
     }
   ];
   board: Array<Record<string, unknown>> = [];
+  caseItems: Array<Record<string, unknown>> = [
+    {
+      id: "item-id",
+      slug: "tims-id",
+      owner: "tim",
+      category: "identity",
+      title: "Tim's ID",
+      description: "Tim wanted this one back.",
+      finderKeeps: false,
+      closeOnFind: false,
+      status: "found",
+      displayOrder: 1,
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+      uploads: []
+    },
+    {
+      id: "item-camera",
+      slug: "camera",
+      owner: "tim",
+      category: "prize",
+      title: "A camera",
+      description: "A camera is now somewhere in the search area.",
+      finderKeeps: true,
+      closeOnFind: true,
+      status: "out_there",
+      displayOrder: 4,
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+      uploads: []
+    },
+    {
+      id: "item-private",
+      slug: "private-draft",
+      owner: "tim",
+      category: "prize",
+      title: "Private draft",
+      description: "This must not leave Ops.",
+      finderKeeps: true,
+      closeOnFind: true,
+      status: "draft",
+      displayOrder: 99,
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+      uploads: []
+    }
+  ];
   profiles = new Map<string, Record<string, unknown>>();
   accounts = new Map<string, Record<string, unknown>>();
   legalEvents: Array<Record<string, unknown>> = [];
@@ -213,6 +270,7 @@ export class FakeStore {
   replies: Array<Record<string, unknown>> = [];
   flags: Array<Record<string, unknown>> = [];
   staff = new Set(["staff-1"]);
+  staffRecords = new Map<string, Record<string, unknown>>();
   operatorEmails = new Set(["operator@example.test"]);
   operatorAlertClaims = new Map<string, OperatorAlertRecipientClaim[]>();
   operatorAlertCompletions: Array<{
@@ -222,6 +280,7 @@ export class FakeStore {
   reconciledOperatorAlertJobs: string[] = [];
   invitedStaffEmails = new Set<string>();
   audits: Array<Record<string, unknown>> = [];
+  caseItemEvents: Array<Record<string, unknown>> = [];
   private privateReportIds = new Map<string, string>();
   private reportCaseNotes = new Map<string, Record<string, unknown>>();
   private reportCaseNoteMedia = new Map<string, string[]>();
@@ -323,7 +382,250 @@ export class FakeStore {
     };
   }
 
+  async listPublicCaseItems() {
+    return this.caseItems
+      .filter((item) => (item.audience ?? "public") === "public" &&
+        (item.status === "out_there" || item.status === "found" || item.status === "paused"))
+      .sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder))
+      .map(({ uploads, version: _version, collectionOrder: _collectionOrder, audience: _audience, ...publicItem }) => ({
+        ...publicItem,
+        media: (Array.isArray(uploads) ? uploads : [])
+          .filter((upload) => upload.status === "ready" && upload.position !== null &&
+            (upload.audience ?? "public") === "public")
+          .map((upload) => ({
+            id: upload.id,
+            url: `/api/v1/media/${upload.id}`,
+            alt: upload.altText,
+            caption: upload.caption ?? null
+          }))
+      }));
+  }
+
+  async listHunterFreshDrops() {
+    return this.caseItems
+      .filter((item) => item.collection === "fresh_drops" &&
+        (item.status === "out_there" || item.status === "found" || item.status === "paused"))
+      .sort((left, right) => Number(left.collectionOrder) - Number(right.collectionOrder) ||
+        String(left.id).localeCompare(String(right.id)))
+      .map(({ uploads, version: _version, ...item }) => ({
+        ...item,
+        media: (Array.isArray(uploads) ? uploads : [])
+          .filter((upload) => upload.status === "ready" && upload.position !== null)
+          .map((upload) => ({
+            id: upload.id,
+            url: `/api/v1/me/fresh-drops/media/${String(upload.id)}`,
+            alt: upload.altText,
+            caption: upload.caption ?? null
+          }))
+      }));
+  }
+
+  async getHunterCaseItemMedia(mediaId: string) {
+    for (const item of this.caseItems) {
+      if (item.collection !== "fresh_drops" ||
+          !["out_there", "found", "paused"].includes(String(item.status))) continue;
+      const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+      const media = uploads.find((candidate) => candidate.id === mediaId &&
+        candidate.status === "ready" && typeof candidate.position === "number");
+      const key = typeof media?.key === "string" ? media.key : "";
+      if (key.startsWith("derivatives/") && key !== "derivatives/") {
+        return { key, contentType: String(media?.contentType ?? "application/octet-stream") };
+      }
+    }
+    return null;
+  }
+
+  async getReportableFreshDrop(itemId: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === itemId &&
+      candidate.collection === "fresh_drops" && candidate.reportable === true &&
+      ["out_there", "found", "paused"].includes(String(candidate.status)));
+    return item ? { id: String(item.id), title: String(item.title) } : null;
+  }
+
+  async getReportableCaseItem(itemId: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === itemId &&
+      candidate.reportable !== false &&
+      ["out_there", "found", "paused"].includes(String(candidate.status)));
+    return item ? {
+      id: String(item.id),
+      title: String(item.title),
+      audience: item.audience === "hunter_only" ? "hunter_only" as const : "public" as const,
+    } : null;
+  }
+
+  async listOpsCaseItems() {
+    return this.caseItems;
+  }
+
+  async createCaseItem(input: CaseItemInput, actorSubject: string) {
+    const timestamp = "2026-07-31T13:00:00.000Z";
+    const item = {
+      id: `item-${this.caseItems.length + 1}`,
+      ...input,
+      collection: input.collection ?? "case",
+      collectionOrder: input.collectionOrder ?? null,
+      audience: input.audience ?? "public",
+      showOnBoard: input.showOnBoard ?? true,
+      teaserOrder: input.teaserOrder ?? null,
+      reportable: input.reportable ?? true,
+      version: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      uploads: []
+    };
+    this.caseItems.push(item);
+    this.audits.push({ action: "case_item.created", actorSubject, targetId: item.id });
+    return item;
+  }
+
+  async updateCaseItem(
+    id: string,
+    input: CaseItemMutation,
+    actorSubject: string
+  ) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    if (item.version !== input.expectedVersion) {
+      throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+    }
+    const { expectedVersion: _expectedVersion, mediaSelections, ...changes } = input;
+    const nextAudience = input.audience ?? String(item.audience ?? "public");
+    const nextShowOnBoard = input.showOnBoard ?? item.showOnBoard !== false;
+    const nextTeaserOrder = input.teaserOrder === undefined ? item.teaserOrder ?? null : input.teaserOrder;
+    if (nextAudience === "hunter_only" && (nextShowOnBoard || nextTeaserOrder !== null)) {
+      throw new ApiError(422, "case_item_private_placement", "Hunter-only items cannot appear on a public surface.");
+    }
+    const publicSelectionCount = mediaSelections.filter(
+      (selection) => (selection.audience ?? nextAudience) === "public"
+    ).length;
+    if (nextAudience === "public" && ["out_there", "found", "paused"].includes(input.status) &&
+        (nextShowOnBoard || nextTeaserOrder !== null) && publicSelectionCount === 0) {
+      throw new ApiError(422, "case_item_public_media_required", "Select a public image before placing this item publicly.");
+    }
+    const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    if (Array.isArray(mediaSelections)) {
+      for (const upload of uploads) {
+        upload.position = null;
+        upload.altText = null;
+        upload.caption = null;
+        this.publicMedia.delete(String(upload.id));
+      }
+      for (const [position, selection] of mediaSelections.entries()) {
+        const upload = uploads.find((candidate) => candidate.id === selection.id && candidate.status === "ready");
+        if (!upload || !selection.altText.trim()) {
+          throw new ApiError(422, "case_item_media_invalid", "Choose ready images and add alt text.");
+        }
+        upload.position = position;
+        upload.altText = selection.altText.trim();
+        upload.caption = selection.caption?.trim() || null;
+        upload.audience = selection.audience ?? nextAudience;
+        if (nextAudience === "public" && upload.audience === "public" &&
+            (changes.status === "out_there" || changes.status === "found" || changes.status === "paused")) {
+          this.publicMedia.set(String(upload.id), {
+            key: String(upload.key),
+            contentType: String(upload.contentType),
+            cacheControl: "no-store"
+          });
+        }
+      }
+    }
+    Object.assign(item, changes, {
+      audience: nextAudience,
+      showOnBoard: nextShowOnBoard,
+      teaserOrder: nextTeaserOrder,
+      version: Number(item.version) + 1,
+      updatedAt: "2026-07-31T13:05:00.000Z"
+    });
+    this.audits.push({ action: "case_item.updated", actorSubject, targetId: id });
+    return item;
+  }
+
+  async updateCaseItemStatus(id: string, input: CaseItemStatusMutation, actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    const previousStatus = String(item.status);
+    if (item.version !== input.expectedVersion) {
+      throw new ApiError(409, "case_item_stale", "This item changed. Refresh and try again.");
+    }
+    if (!((previousStatus === "out_there" && input.status === "found") ||
+          (previousStatus === "found" && input.status === "out_there"))) {
+      throw new ApiError(422, "case_item_status_transition", "This item can only move between Out there and Found.");
+    }
+    Object.assign(item, {
+      status: input.status,
+      version: Number(item.version) + 1,
+      updatedAt: "2026-07-31T13:05:00.000Z",
+      updatedBy: actorSubject
+    });
+    this.caseItemEvents.push({
+      action: "case_item.status_changed",
+      actorSubject,
+      itemId: id,
+      fromStatus: previousStatus,
+      toStatus: input.status,
+      itemVersion: item.version
+    });
+    this.audits.push({ action: "case_item.status_changed", actorSubject, targetId: id });
+    return item;
+  }
+
+  async addCaseItemUploads(id: string, media: StoredMedia[], actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    uploads.push(...media.map((upload) => ({
+      ...upload,
+      altText: null,
+      caption: null,
+      position: null,
+      audience: "hunter_only"
+    })));
+    item.uploads = uploads;
+    this.audits.push({ action: "case_item.media_uploaded", actorSubject, targetId: id });
+    return item;
+  }
+
+  async getCaseItemMedia(id: string, mediaId: string, actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    const uploads = Array.isArray(item?.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    const media = uploads.find((candidate) => candidate.id === mediaId && candidate.status === "ready");
+    const key = typeof media?.key === "string" ? media.key : "";
+    if (!key.startsWith("derivatives/") || key === "derivatives/") return null;
+    this.audits.push({ action: "case_item.media_viewed", actorSubject, targetId: id, mediaId });
+    return { key, contentType: String(media?.contentType ?? "application/octet-stream") };
+  }
+
+  async removeCaseItemUpload(id: string, mediaId: string, actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    const uploads = Array.isArray(item?.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+    const media = uploads.find((candidate) => candidate.id === mediaId && candidate.status !== "deleted");
+    if (!item || !media) return null;
+    media.status = "deleted";
+    media.position = null;
+    this.publicMedia.delete(mediaId);
+    this.audits.push({ action: "case_item.media_removed", actorSubject, targetId: id, mediaId });
+    return { id: mediaId, itemId: id, status: "deleted" };
+  }
+
+  async createCaseItemAnnouncementDraft(id: string, actorSubject: string) {
+    const item = this.caseItems.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    const verb = item.status === "found" ? "has been found" : "is now out there";
+    return this.createUpdate({
+      title: `${item.title} ${verb}`,
+      body: `${item.description}\n\nCheck Where to Look before heading out.`
+    }, actorSubject);
+  }
+
   async getPublicMedia(id: string) {
+    for (const item of this.caseItems) {
+      const uploads = Array.isArray(item.uploads) ? item.uploads as Array<Record<string, unknown>> : [];
+      const media = uploads.find((candidate) => candidate.id === id);
+      if (!media) continue;
+      if ((item.audience ?? "public") !== "public" || (media.audience ?? "public") !== "public" ||
+          !["out_there", "found", "paused"].includes(String(item.status)) ||
+          typeof media.position !== "number") return null;
+    }
     return this.publicMedia.get(id) ?? null;
   }
 
@@ -1019,9 +1321,27 @@ export class FakeStore {
   }
 
   async isActiveStaff(subject: string, email: string | null) {
-    if (this.staff.has(subject)) return true;
+    if (this.staffPrincipal(subject)?.status === "active") return true;
+    const invitation = email
+      ? [...this.staffRecords.values()].find(
+        (record) => record.email === email && record.status === "invited" && !record.subject
+      )
+      : null;
+    if (invitation) {
+      const changed = { ...invitation, subject, status: "active" };
+      this.staffRecords.set(String(invitation.id), changed);
+      this.staff.add(subject);
+      this.audits.push({ action: "staff.activated", actorSubject: subject });
+      return true;
+    }
     if (email && this.invitedStaffEmails.delete(email)) {
       this.staff.add(subject);
+      this.staffRecords.set(subject, {
+        id: subject,
+        subject,
+        email,
+        status: "active"
+      });
       this.audits.push({ action: "staff.activated", actorSubject: subject });
       return true;
     }
@@ -1633,6 +1953,24 @@ export class FakeStore {
     if (!["reviewing", "contacted", "escalated", "verified"].includes(String(report.status))) {
       throw new ApiError(409, "report_case_note_state_invalid", "Begin private review first.");
     }
+    const profile = typeof report.hunterSubject === "string"
+      ? this.profiles.get(report.hunterSubject)
+      : null;
+    const access = typeof report.hunterSubject === "string"
+      ? await this.getPlayerAccess(report.hunterSubject)
+      : null;
+    const attributionPreview = reportPublicationPreview(
+      report,
+      profile ?? null,
+      access?.participationUnlocked ?? false
+    );
+    if (!attributionPreview.publicationEligible || !attributionPreview.publicAttribution) {
+      throw new ApiError(
+        409,
+        "report_publication_ineligible",
+        "This report is not eligible for a public attribution."
+      );
+    }
     const reportMedia = Array.isArray(report.media) ? report.media as Array<Record<string, unknown>> : [];
     const selected = input.mediaIds.map((mediaId) => {
       const media = reportMedia.find((item) => item.id === mediaId);
@@ -1650,7 +1988,7 @@ export class FakeStore {
     const note = {
       id: `operator-reviewed-note-${this.reportCaseNotes.size + 1}`,
       noteKind: "operator_reviewed",
-      authorHandle: String(report.publicAttribution ?? "Community Hunter"),
+      authorHandle: attributionPreview.publicAttribution,
       waypointId: typeof report.waypointId === "number" ? report.waypointId : null,
       waypointRouteOrder: null,
       waypointName: null,
@@ -1667,6 +2005,20 @@ export class FakeStore {
     this.reportCaseNoteMedia.set(reportId, input.mediaIds);
     this.board.unshift(note);
     this.audits.push({ action: "report.case-note.published", actorSubject, targetId: reportId });
+    if (report.type === "find" && typeof report.caseItemId === "string") {
+      const item = this.caseItems.find((candidate) => candidate.id === report.caseItemId);
+      if (item?.closeOnFind === true && ["out_there", "paused"].includes(String(item.status))) {
+        item.status = "found";
+        item.version = Number(item.version) + 1;
+        item.updatedAt = "2026-07-17T18:00:00.000Z";
+        this.audits.push({
+          action: "case_item.found_from_case_note",
+          actorSubject,
+          targetId: item.id,
+          reportId,
+        });
+      }
+    }
     return note;
   }
 
@@ -1788,13 +2140,27 @@ export class FakeStore {
     return note;
   }
 
-  async listStaff() {
-    return [...this.staff].map((subject) => ({
-      id: subject,
-      subject,
-      email: "operator@example.test",
-      status: "active"
-    }));
+  async listStaff(actorSubject?: string) {
+    const principals = this.staffPrincipals();
+    const activeCount = principals.filter((record) => record.status === "active").length;
+    return principals.map((record) => {
+      const status = String(record.status);
+      const actions = status === "invited"
+        ? ["resend-invitation"]
+        : status === "active"
+          ? ["recovery", "revoke-sessions", ...(activeCount > 1 ? ["suspend"] : [])]
+          : status === "suspended"
+            ? ["recovery", "reactivate"]
+            : [];
+      return {
+        ...record,
+        isCurrent: Boolean(actorSubject && record.subject === actorSubject),
+        actions,
+        ...(status === "active" && activeCount <= 1
+          ? { suspendBlockedReason: "At least one active operator must remain." }
+          : {})
+      };
+    });
   }
 
   async listSubscribers() {
@@ -1869,20 +2235,119 @@ export class FakeStore {
     };
   }
 
-  async getStaffPrincipal(id: string) {
-    if (!this.staff.has(id)) return null;
-    return {
-      id,
-      subject: id,
-      email: "operator@example.test",
-      status: "active"
+  async getStaffPrincipal(id: string): Promise<Record<string, unknown> | null> {
+    const principal = this.staffPrincipal(id);
+    if (!principal) return null;
+    const status = String(principal.status);
+    const activeCount = this.staffPrincipals().filter((record) => record.status === "active").length;
+    const actions = status === "invited"
+      ? ["resend-invitation"]
+      : status === "active"
+        ? ["recovery", "revoke-sessions", ...(activeCount > 1 ? ["suspend"] : [])]
+        : status === "suspended"
+          ? ["recovery", "reactivate"]
+          : [];
+    return { ...principal, actions };
+  }
+
+  async inviteStaff(normalizedEmail: string, actorSubject: string) {
+    const existing = this.staffPrincipals().find((record) => record.email === normalizedEmail);
+    if (existing) {
+      if (existing.status === "invited") return { record: existing, created: false };
+      if (existing.status === "active") {
+        throw new ApiError(409, "staff_already_active", "This email already belongs to an active operator.");
+      }
+      if (existing.status === "suspended") {
+        throw new ApiError(409, "staff_reactivation_required", "Reactivate this suspended operator instead of sending a new invitation.");
+      }
+      throw new ApiError(409, "staff_invitation_blocked", "This staff invitation is no longer eligible to be resent.");
+    }
+    const staffId = crypto.randomUUID();
+    const record = {
+      id: staffId,
+      subject: null,
+      email: normalizedEmail,
+      displayName: normalizedEmail.split("@")[0]!.replace(/[._-]+/g, " "),
+      status: "invited",
+      invitedAt: "2026-07-11T18:00:00.000Z"
     };
+    this.staffRecords.set(staffId, record);
+    this.audits.push({ action: "staff.invited", actorSubject, targetId: staffId });
+    return { record, created: true };
+  }
+
+  async changeStaffAccess(id: string, action: StaffAccessAction, actorSubject: string) {
+    const principal = this.staffPrincipal(id);
+    if (!principal) return null;
+    const expectedStatus = action === "suspend" ? "active" : "suspended";
+    if (principal.status !== expectedStatus) {
+      throw new ApiError(409, "staff_access_conflict", "This staff access state changed. Refresh and try again.");
+    }
+    if (action === "suspend" && this.staffPrincipals().filter((record) => record.status === "active").length <= 1) {
+      throw new ApiError(
+        409,
+        "final_active_staff",
+        "At least one active operator must remain. Invite or reactivate another operator first."
+      );
+    }
+    const changed = { ...principal, status: action === "suspend" ? "suspended" : "active" };
+    this.staffRecords.set(id, changed);
+    if (changed.status === "active") this.staff.add(id);
+    else this.staff.delete(id);
+    this.audits.push({
+      action: action === "suspend" ? "staff.suspended" : "staff.reactivated",
+      actorSubject,
+      targetId: id
+    });
+    return changed;
+  }
+
+  async recordStaffProviderWarning(
+    operation: "invitation" | "revoke-sessions" | "suspend" | "reactivate",
+    target: string,
+    actorSubject: string
+  ) {
+    this.audits.push({
+      action: "staff.provider_warning",
+      actorSubject,
+      targetId: target,
+      metadata: { operation }
+    });
   }
 
   async recordStaffAction(action: string, target: string, actorSubject: string) {
+    if (!new Set(["recovery", "revoke-sessions", "resend-invitation"]).has(action)) {
+      throw new ApiError(409, "version_conflict", "Unsupported staff action.");
+    }
     const result = { action, target, status: "queued" };
     this.audits.push({ ...result, action: `staff.${action}.requested`, actorSubject });
     return result;
+  }
+
+  private staffPrincipal(id: string): Record<string, unknown> | null {
+    const record = this.staffRecords.get(id);
+    if (record) return { ...record };
+    const bySubject = [...this.staffRecords.values()].find((candidate) => candidate.subject === id);
+    if (bySubject) return { ...bySubject };
+    return this.staff.has(id)
+      ? { id, subject: id, email: "operator@example.test", status: "active" }
+      : null;
+  }
+
+  private staffPrincipals(): Record<string, unknown>[] {
+    const principals = new Map<string, Record<string, unknown>>();
+    for (const [id, record] of this.staffRecords) {
+      principals.set(id, { ...record });
+    }
+    for (const id of this.staff) {
+      const represented = [...principals.values()].some(
+        (record) => record.id === id || record.subject === id
+      );
+      if (!represented) principals.set(id, { id, subject: id, email: "operator@example.test", status: "active" });
+    }
+    return [...principals.values()].sort((left, right) =>
+      String(left.email).localeCompare(String(right.email))
+    );
   }
 
   async recordPlayerAction(action: string, target: string, actorSubject: string) {
@@ -2019,26 +2484,33 @@ export class FakeTurnstile {
 
 export class FakeUploads {
   saved: Array<{ name: string; type: string; size: number }> = [];
-  contexts: Array<{ kind: "field_note" | "report" | "official_update"; subject: string | null }> = [];
+  contexts: Array<{ kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }> = [];
 
   async save(
     files: File[],
-    context: { kind: "field_note" | "report" | "official_update"; subject: string | null }
+    context: { kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }
   ): Promise<StoredMedia[]> {
     this.contexts.push(context);
-    const saved = files.map((file, index) => {
+    const saved = await Promise.all(files.map(async (file, index) => {
+      const sequence = this.saved.length + 1;
       this.saved.push({ name: file.name, type: file.type, size: file.size });
+      const sourceSha256 = context.kind === "case_item"
+        ? [...new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))]
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("")
+        : undefined;
       return {
-        id: `media-${this.saved.length}`,
-        key: `private/${this.saved.length}-${index}`,
+        id: `media-${sequence}`,
+        key: `private/${sequence}-${index}`,
+        ...(sourceSha256 ? { sourceSha256 } : {}),
         status: "processing" as const
       };
-    });
+    }));
     return saved;
   }
 
   async read(key: string) {
-    if (!new Set(["derivatives/media-ready.webp", "derivatives/media-selected.webp"]).has(key)) {
+    if (!new Set(["derivatives/media-ready.webp", "derivatives/media-selected.webp", "derivatives/camera.webp"]).has(key)) {
       return null;
     }
     return {
@@ -2051,9 +2523,11 @@ export class FakeUploads {
 
 export class FakeStaffAccounts {
   actions: Array<{ action: string; target: Record<string, unknown> }> = [];
+  failActions = new Set<string>();
 
   async execute(action: string, target: Record<string, unknown>) {
     this.actions.push({ action, target });
+    if (this.failActions.has(action)) throw new Error("provider failure");
     return { status: action === "recovery" ? "instructions_sent" : "completed" };
   }
 }

@@ -258,7 +258,7 @@ async function validationNoticeGeometry(browser) {
       page,
       ".case-strip",
       ".campaign-header",
-      { stripHeight: 54, headerHeight: 113, stack: 167 },
+      { stripHeight: 54, headerHeight: 68, stack: 122 },
       "Validation notice fixture",
     );
     assert.equal(initialGeometry.notice.present, true, "Validation notice fixture must always exercise notice-present geometry.");
@@ -341,8 +341,8 @@ async function builtOutputScans() {
   const allowedBroadPaths = {
     sponsor_inquiries: new Set(["dist/_worker.js"]),
     sponsor_inquiry_events: new Set(["dist/_worker.js"]),
-    "private note": new Set(["dist/assets/app/ops.js"]),
-    "@sebahub.com": new Set(["dist/privacy.html", "dist/route.html"]),
+    "private note": new Set(["dist/assets/app/ops.js", "dist/ops.html"]),
+    "@sebahub.com": new Set(["dist/dashboard.html", "dist/golf-balls.html", "dist/privacy.html", "dist/route.html"]),
     "@businessasaforceforgood.ca": new Set(),
     cfcw: new Set(),
   };
@@ -365,7 +365,6 @@ async function builtOutputScans() {
   const opsDocument = documents.find((document) => document.path === "dist/assets/app/ops.js");
   assert.ok(opsDocument, "The built Ops implementation bundle must exist.");
   const reviewedPrivateNoteCopy = [
-    "Add an optional private note for this status change:",
     "Add a private note for this sponsor state change (optional, 2,000 characters maximum):",
     "Private notes must be 2,000 characters or fewer.",
   ];
@@ -377,10 +376,12 @@ async function builtOutputScans() {
     reviewedPrivateNoteCopy.length,
     "Only the reviewed private-note copy strings are allowed.",
   );
+  const opsHtmlDocument = documents.find((document) => document.path === "dist/ops.html");
+  assert.ok(opsHtmlDocument?.text.includes("Private note or reason"), "The classified private report note label must remain in Ops.");
 
   const exactPublicContacts = new Map([
-    ["casey@sebahub.com", new Set(["dist/route.html"])],
-    ["info@sebahub.com", new Set(["dist/privacy.html"])],
+    ["casey@sebahub.com", new Set(["dist/golf-balls.html", "dist/route.html"])],
+    ["info@sebahub.com", new Set(["dist/dashboard.html", "dist/privacy.html"])],
   ]);
   const contactMatches = [];
   for (const document of documents) {
@@ -392,7 +393,7 @@ async function builtOutputScans() {
   }
 
   const correctedPattern = /sponsor_inquiries|sponsor_inquiry_events|private note|CFCW/i;
-  const correctedExclusions = new Set(["dist/_worker.js", "dist/assets/app/ops.js"]);
+  const correctedExclusions = new Set(["dist/_worker.js", "dist/assets/app/ops.js", "dist/ops.html"]);
   const correctedMatches = documents.flatMap((document) => correctedExclusions.has(document.path)
     ? []
     : matches(document.text, correctedPattern).map((value) => ({ path: document.path, value })));

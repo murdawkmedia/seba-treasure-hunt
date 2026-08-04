@@ -260,7 +260,10 @@ const operatorAlertMigrationFiles = [
   "0010_graph_transactional_email.sql",
   "0011_report_publication_and_participation.sql",
   "0012_lucky_13_waypoints.sql",
-  "0015_submission_ops_publication_refinement.sql"
+  "0015_submission_ops_publication_refinement.sql",
+  "0016_dynamic_case_items.sql",
+  "0017_fresh_drops_hunter_gallery.sql",
+  "0018_keep_it_tell_us.sql"
 ] as const;
 
 const createOperatorAlertDatabase = async (t: { after(callback: () => unknown): void }) => {
@@ -277,6 +280,454 @@ const createOperatorAlertDatabase = async (t: { after(callback: () => unknown): 
   }
   return db;
 };
+
+test("real D1 Watch-found release migration is scoped and idempotent", async (t) => {
+  const migrationFiles = [
+    "0001_hunter_platform.sql",
+    "0002_consent_ledger_index.sql",
+    "0003_player_accounts_and_legal_acceptance.sql",
+    "0004_environment_metadata.sql",
+    "0005_sponsor_inquiries.sql",
+    "0006_participation_waiver_and_receipts.sql",
+    "0007_waiver_receipt_leases.sql",
+    "0008_immutable_waiver_ledgers.sql",
+    "0009_atomic_rate_limits.sql",
+    "0010_graph_transactional_email.sql",
+    "0011_report_publication_and_participation.sql",
+    "0012_lucky_13_waypoints.sql",
+    "0015_submission_ops_publication_refinement.sql",
+    "0016_dynamic_case_items.sql",
+    "0017_fresh_drops_hunter_gallery.sql",
+    "0018_keep_it_tell_us.sql"
+  ];
+  const createDatabase = async (label: string) => {
+    const miniflare = new Miniflare({
+      compatibilityDate: "2026-07-11",
+      modules: true,
+      script: "export default { fetch() { return new Response('ok'); } }",
+      d1Databases: { DB: `watch-found-migration-${label}-${crypto.randomUUID()}` }
+    });
+    t.after(() => miniflare.dispose());
+    const db = (await miniflare.getD1Database("DB")) as unknown as D1Database;
+    for (const file of migrationFiles) await applySql(db, await readFile(path.join(root, "migrations", file), "utf8"));
+    return db;
+  };
+  const db = await createDatabase("paused");
+  await db.prepare("UPDATE case_items SET status = 'paused' WHERE id = 'case-item-watch'").run();
+
+  const baseline = await db.prepare(
+    "SELECT id, status, version FROM case_items ORDER BY id"
+  ).all<{ id: string; status: string; version: number }>();
+  const watchBefore = baseline.results.find((item) => item.id === "case-item-watch");
+  assert.deepEqual(watchBefore, { id: "case-item-watch", status: "paused", version: 1 });
+
+  const releaseMigration = await readFile(path.join(root, "migrations", "0022_mark_apple_watch_found.sql"), "utf8");
+  await applySql(db, releaseMigration);
+  const afterFirst = await db.prepare(
+    "SELECT id, status, description, version, updated_at, updated_by FROM case_items ORDER BY id"
+  ).all<{ id: string; status: string; description: string; version: number; updated_at: string; updated_by: string }>();
+  const watchAfterFirst = afterFirst.results.find((item) => item.id === "case-item-watch");
+  assert.deepEqual(watchAfterFirst, {
+    id: "case-item-watch",
+    status: "found",
+    description: "Found. Its finder has it.",
+    version: 2,
+    updated_at: "2026-08-04T16:00:00.000Z",
+    updated_by: "system:migration:0022"
+  });
+  assert.deepEqual(
+    afterFirst.results.filter((item) => item.id !== "case-item-watch").map(({ id, status, version }) => ({ id, status, version })),
+    baseline.results.filter((item) => item.id !== "case-item-watch")
+  );
+
+  const events = await db.prepare(
+    "SELECT id, item_id, actor_subject, action, from_status, to_status, item_version, details_json, occurred_at FROM case_item_events WHERE id = 'case-item-watch-found-0022'"
+  ).all();
+  assert.deepEqual(events.results, [{
+    id: "case-item-watch-found-0022",
+    item_id: "case-item-watch",
+    actor_subject: "system:migration:0022",
+    action: "case_item.marked_found_release",
+    from_status: "paused",
+    to_status: "found",
+    item_version: 2,
+    details_json: '{"source":"confirmed-find"}',
+    occurred_at: "2026-08-04T16:00:00.000Z"
+  }]);
+  const audits = await db.prepare(
+    "SELECT id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at FROM audit_events WHERE id = 'audit-case-item-watch-found-0022'"
+  ).all();
+  assert.deepEqual(audits.results, [{
+    id: "audit-case-item-watch-found-0022",
+    actor_subject: "system:migration:0022",
+    action: "case_item.marked_found_release",
+    target_kind: "case_item",
+    target_id: "case-item-watch",
+    metadata_json: '{"source":"confirmed-find"}',
+    occurred_at: "2026-08-04T16:00:00.000Z"
+  }]);
+  assert.equal(
+    (await new D1DataStore(db).listPublicCaseItems()).find((item) => item.slug === "apple-watch")?.description,
+    "Found. Its finder has it."
+  );
+
+  await applySql(db, releaseMigration);
+  const afterReplay = await db.prepare(
+    "SELECT id, status, description, version, updated_at, updated_by FROM case_items ORDER BY id"
+  ).all();
+  assert.deepEqual(afterReplay.results, afterFirst.results);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM case_item_events WHERE id = 'case-item-watch-found-0022'").first<{ count: number }>())?.count, 1);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE id = 'audit-case-item-watch-found-0022'").first<{ count: number }>())?.count, 1);
+
+  const partialDb = await createDatabase("partial");
+  await partialDb.batch([
+    partialDb.prepare("UPDATE case_items SET status = 'paused' WHERE id = 'case-item-watch'"),
+    partialDb.prepare(
+      `INSERT INTO case_item_events
+       (id, item_id, actor_subject, action, from_status, to_status, item_version, details_json, occurred_at)
+       VALUES ('case-item-watch-found-0022', 'case-item-watch', 'system:migration:0022',
+               'case_item.marked_found_release', 'paused', 'found', 2,
+               '{"source":"confirmed-find"}', '2026-08-04T16:00:00.000Z')`
+    )
+  ]);
+  await applySql(partialDb, releaseMigration);
+  assert.deepEqual(await partialDb.prepare(
+    "SELECT status, version, updated_at, updated_by FROM case_items WHERE id = 'case-item-watch'"
+  ).first(), {
+    status: "found",
+    version: 2,
+    updated_at: "2026-08-04T16:00:00.000Z",
+    updated_by: "system:migration:0022"
+  });
+  assert.equal((await partialDb.prepare("SELECT COUNT(*) AS count FROM case_item_events WHERE id = 'case-item-watch-found-0022'").first<{ count: number }>())?.count, 1);
+  assert.equal((await partialDb.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE id = 'audit-case-item-watch-found-0022'").first<{ count: number }>())?.count, 1);
+
+  const auditRecoveryDb = await createDatabase("audit-recovery");
+  await auditRecoveryDb.batch([
+    auditRecoveryDb.prepare(
+      `UPDATE case_items
+       SET status = 'found', version = 5, updated_at = '2026-08-04T16:00:00.000Z',
+           updated_by = 'system:migration:0022'
+       WHERE id = 'case-item-watch'`
+    ),
+    auditRecoveryDb.prepare(
+      `INSERT INTO case_item_events
+       (id, item_id, actor_subject, action, from_status, to_status, item_version, details_json, occurred_at)
+       VALUES ('case-item-watch-found-0022', 'case-item-watch', 'system:migration:0022',
+               'case_item.marked_found_release', 'out_there', 'found', 5,
+               '{"source":"confirmed-find"}', '2026-08-04T16:00:00.000Z')`
+    )
+  ]);
+  await applySql(auditRecoveryDb, releaseMigration);
+  assert.deepEqual(await auditRecoveryDb.prepare(
+    "SELECT status, version FROM case_items WHERE id = 'case-item-watch'"
+  ).first(), { status: "found", version: 5 });
+  assert.equal((await auditRecoveryDb.prepare("SELECT COUNT(*) AS count FROM case_item_events WHERE id = 'case-item-watch-found-0022'").first<{ count: number }>())?.count, 1);
+  assert.equal((await auditRecoveryDb.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE id = 'audit-case-item-watch-found-0022'").first<{ count: number }>())?.count, 1);
+
+  const alreadyFoundDb = await createDatabase("already-found");
+  await alreadyFoundDb.prepare("UPDATE case_items SET status = 'found' WHERE id = 'case-item-watch'").run();
+  await applySql(alreadyFoundDb, releaseMigration);
+  const alreadyFoundAfterNormalization = await alreadyFoundDb.prepare(
+    "SELECT status, version, description, updated_at, updated_by FROM case_items WHERE id = 'case-item-watch'"
+  ).first();
+  assert.deepEqual(alreadyFoundAfterNormalization, {
+    status: "found",
+    version: 1,
+    description: "Found. Its finder has it.",
+    updated_at: "2026-07-31T12:00:00.000Z",
+    updated_by: "system:migration:0016"
+  });
+  assert.equal((await alreadyFoundDb.prepare("SELECT COUNT(*) AS count FROM case_item_events WHERE id = 'case-item-watch-found-0022'").first<{ count: number }>())?.count, 0);
+  assert.equal((await alreadyFoundDb.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE id = 'audit-case-item-watch-found-0022'").first<{ count: number }>())?.count, 0);
+  await applySql(alreadyFoundDb, releaseMigration);
+  assert.deepEqual(await alreadyFoundDb.prepare(
+    "SELECT status, version, description, updated_at, updated_by FROM case_items WHERE id = 'case-item-watch'"
+  ).first(), alreadyFoundAfterNormalization);
+});
+
+test("case items use public-safe projections, optimistic updates, private media, and draft announcements", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const store = new D1DataStore(db);
+
+  const seeded = await store.listPublicCaseItems();
+  assert.deepEqual(seeded.map((item) => item.slug), [
+    "tims-id",
+    "cash",
+    "diamond-rings",
+    "camera",
+    "apple-watch",
+    "purse",
+    "golf-balls"
+  ]);
+  assert.equal(seeded[0]?.status, "found");
+  assert.equal("version" in seeded[0]!, false);
+
+  const created = await store.createCaseItem({
+    slug: "test-binoculars",
+    owner: "tim",
+    category: "prize",
+    title: "A pair of binoculars",
+    description: "A private draft item.",
+    finderKeeps: true,
+    closeOnFind: true,
+    status: "draft",
+    displayOrder: 20
+  }, "staff-items");
+  assert.equal(created.version, 1);
+  assert.equal((await store.listPublicCaseItems()).some((item) => item.slug === "test-binoculars"), false);
+
+  const uploaded = await store.addCaseItemUploads(String(created.id), [{
+    id: "case-item-media-1",
+    key: "originals/2026-07-31/case_item/case-item-media-1",
+    contentType: "image/jpeg",
+    size: 1200,
+    status: "processing"
+  }], "staff-items");
+  assert.equal((uploaded?.uploads as Array<Record<string, unknown>>).length, 1);
+  await db.prepare(
+    `UPDATE case_item_uploads SET status = 'ready', derivative_object_key = ? WHERE id = ?`
+  ).bind("derivatives/case-item-media-1.webp", "case-item-media-1").run();
+
+  const visible = await store.updateCaseItem(String(created.id), {
+    slug: "test-binoculars",
+    owner: "tim",
+    category: "prize",
+    title: "A pair of binoculars",
+    description: "A pair of binoculars is out there.",
+    finderKeeps: true,
+    closeOnFind: true,
+    status: "out_there",
+    displayOrder: 20,
+    expectedVersion: 1,
+    mediaSelections: [{
+      id: "case-item-media-1",
+      altText: "A pair of binoculars prepared for the search",
+      caption: null
+    }]
+  }, "staff-items");
+  assert.equal(visible?.version, 2);
+  assert.equal((await store.listPublicCaseItems()).some((item) => item.slug === "test-binoculars"), true);
+  assert.deepEqual(await store.getPublicMedia("case-item-media-1"), {
+    key: "derivatives/case-item-media-1.webp",
+    contentType: "image/jpeg",
+    cacheControl: "no-store"
+  });
+
+  await assert.rejects(
+    () => store.updateCaseItem(String(created.id), {
+      slug: "test-binoculars",
+      owner: "tim",
+      category: "prize",
+      title: "Stale",
+      description: "Stale edit.",
+      finderKeeps: true,
+      closeOnFind: true,
+      status: "found",
+      displayOrder: 20,
+      expectedVersion: 1,
+      mediaSelections: []
+    }, "staff-items"),
+    (error: unknown) => error instanceof ApiError && error.code === "case_item_stale"
+  );
+
+  const draft = await store.createCaseItemAnnouncementDraft(String(created.id), "staff-items");
+  assert.equal(draft?.status, "draft");
+  assert.equal((await store.listUpdates()).items.some((update) => update.id === draft?.id), false);
+
+  const event = await db.prepare(
+    "SELECT id FROM case_item_events WHERE item_id = ? ORDER BY occurred_at DESC LIMIT 1"
+  ).bind(created.id).first<{ id: string }>();
+  assert.ok(event?.id);
+  await assert.rejects(
+    () => db.prepare("UPDATE case_item_events SET action = 'tampered' WHERE id = ?").bind(event!.id).run(),
+    /append-only/i
+  );
+});
+
+test("focused item status mutation is conditional, reversible, and records exactly one event and audit", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const store = new D1DataStore(db);
+  const before = await store.listOpsCaseItems();
+  const camera = before.find((item) => item.id === "case-item-camera")!;
+  const changed = await store.updateCaseItemStatus("case-item-camera", {
+    expectedVersion: Number(camera.version), status: "found", confirmed: true
+  }, "staff-items");
+  assert.equal(changed?.status, "found");
+  assert.equal(changed?.version, Number(camera.version) + 1);
+  for (const field of ["title", "description", "uploads", "collection", "collectionOrder", "audience", "showOnBoard", "teaserOrder", "reportable"]) {
+    assert.deepEqual(changed?.[field], camera[field]);
+  }
+  const counts = await db.prepare(
+    "SELECT (SELECT COUNT(*) FROM case_item_events WHERE item_id = ? AND action = 'case_item.status_changed') AS events, (SELECT COUNT(*) FROM audit_events WHERE target_id = ? AND action = 'case_item.status_changed') AS audits"
+  ).bind("case-item-camera", "case-item-camera").first<{ events: number; audits: number }>();
+  assert.deepEqual(counts, { events: 1, audits: 1 });
+  await assert.rejects(
+    () => store.updateCaseItemStatus("case-item-camera", {
+      expectedVersion: Number(camera.version) + 1, status: "found", confirmed: true
+    }, "staff-items"),
+    (error: unknown) => error instanceof ApiError && error.code === "case_item_status_transition"
+  );
+  await assert.rejects(
+    () => store.updateCaseItemStatus("case-item-camera", {
+      expectedVersion: Number(camera.version), status: "found", confirmed: true
+    }, "staff-items"),
+    (error: unknown) => error instanceof ApiError && error.code === "case_item_stale"
+  );
+  await assert.rejects(
+    () => store.updateCaseItemStatus("case-item-camera", {
+      expectedVersion: Number(camera.version), status: "out_there", confirmed: true
+    }, "staff-items"),
+    (error: unknown) => error instanceof ApiError && error.code === "case_item_stale"
+  );
+  assert.deepEqual(await db.prepare(
+    "SELECT (SELECT COUNT(*) FROM case_item_events WHERE item_id = ? AND action = 'case_item.status_changed') AS events, (SELECT COUNT(*) FROM audit_events WHERE target_id = ? AND action = 'case_item.status_changed') AS audits"
+  ).bind("case-item-camera", "case-item-camera").first<{ events: number; audits: number }>(), { events: 1, audits: 1 });
+  const reversed = await store.updateCaseItemStatus("case-item-camera", {
+    expectedVersion: Number(camera.version) + 1, status: "out_there", confirmed: true
+  }, "staff-items");
+  assert.equal(reversed?.status, "out_there");
+  assert.equal(await store.updateCaseItemStatus("missing", {
+    expectedVersion: 1, status: "found", confirmed: true
+  }, "staff-items"), null);
+});
+
+test("Fresh Drops keeps hunter-only items and media out of every public projection", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  await applyOperatorAlertMigration(db);
+  await seedOperatorAlertFixtures(db);
+  const store = new D1DataStore(db);
+
+  const created = await store.createCaseItem({
+    slug: "private-wallet",
+    owner: "tim",
+    category: "accessory",
+    title: "A wallet",
+    description: "A wallet is among the latest drops.",
+    finderKeeps: false,
+    closeOnFind: true,
+    status: "out_there",
+    displayOrder: 30,
+    collection: "fresh_drops",
+    collectionOrder: 7,
+    audience: "hunter_only",
+    showOnBoard: false,
+    teaserOrder: null,
+    reportable: true
+  }, "staff-items");
+
+  await store.addCaseItemUploads(String(created.id), [{
+    id: "private-wallet-media",
+    key: "originals/2026-08-01/case_item/private-wallet-media",
+    contentType: "image/jpeg",
+    size: 1200,
+    sourceSha256: "a".repeat(64),
+    status: "processing"
+  }], "staff-items");
+  await db.prepare(
+    `UPDATE case_item_uploads SET status = 'ready', derivative_object_key = ? WHERE id = ?`
+  ).bind("derivatives/private-wallet-media.webp", "private-wallet-media").run();
+
+  const selected = await store.updateCaseItem(String(created.id), {
+    slug: "private-wallet",
+    owner: "tim",
+    category: "accessory",
+    title: "A wallet",
+    description: "A wallet is among the latest drops.",
+    finderKeeps: false,
+    closeOnFind: true,
+    status: "out_there",
+    displayOrder: 30,
+    collection: "fresh_drops",
+    collectionOrder: 7,
+    audience: "hunter_only",
+    showOnBoard: false,
+    teaserOrder: null,
+    reportable: true,
+    expectedVersion: 1,
+    mediaSelections: [{
+      id: "private-wallet-media",
+      altText: "A dark wallet photographed before it was hidden",
+      caption: null,
+      audience: "hunter_only"
+    }]
+  }, "staff-items");
+  assert.equal(selected?.version, 2);
+
+  assert.equal((await store.listPublicCaseItems()).some((item) => item.id === created.id), false);
+  assert.equal(await store.getPublicMedia("private-wallet-media"), null);
+  const hunterItems = await store.listHunterFreshDrops();
+  const wallet = hunterItems.find((item) => item.id === created.id);
+  assert.equal(wallet?.title, "A wallet");
+  assert.equal((wallet?.media as Array<Record<string, unknown>>)[0]?.url,
+    "/api/v1/me/fresh-drops/media/private-wallet-media");
+  assert.deepEqual(await store.getHunterCaseItemMedia("private-wallet-media"), {
+    key: "derivatives/private-wallet-media.webp",
+    contentType: "image/jpeg"
+  });
+
+  await store.addCaseItemUploads(String(created.id), [{
+    id: "duplicate-wallet-media",
+    key: "originals/2026-08-01/case_item/duplicate-wallet-media",
+    contentType: "image/jpeg",
+    size: 1200,
+    sourceSha256: "a".repeat(64),
+    status: "processing"
+  }], "staff-items");
+  const duplicateCount = await db.prepare(
+    "SELECT COUNT(*) AS count FROM case_item_uploads WHERE item_id = ? AND source_sha256 = ?"
+  ).bind(created.id, "a".repeat(64)).first<{ count: number }>();
+  assert.equal(Number(duplicateCount?.count), 1);
+
+  const report = await store.createReport({
+    type: "find",
+    name: "Fresh Drop Hunter",
+    email: "fresh-drop@example.test",
+    caseItemId: String(created.id),
+    caseItemTitle: "A wallet",
+    locationDescription: "Near the public path",
+    details: "I found the Fresh Drop item.",
+    media: []
+  }, "fresh-drop-report-key");
+  assert.equal(report.value.caseItemId, created.id);
+  assert.equal(report.value.caseItemTitle, "A wallet");
+
+  await store.updateCaseItem(String(created.id), {
+    slug: "private-wallet",
+    owner: "tim",
+    category: "accessory",
+    title: "Renamed after the report",
+    description: "A wallet is among the latest drops.",
+    finderKeeps: false,
+    closeOnFind: true,
+    status: "out_there",
+    displayOrder: 30,
+    collection: "fresh_drops",
+    collectionOrder: 7,
+    audience: "hunter_only",
+    showOnBoard: false,
+    teaserOrder: null,
+    reportable: true,
+    expectedVersion: 2,
+    mediaSelections: []
+  }, "staff-items");
+  const storedReport = (await store.listReports()).items.find((item) => item.id === report.value.id);
+  assert.equal(storedReport?.caseItemId, created.id);
+  assert.equal(storedReport?.caseItemTitle, "A wallet");
+
+  const replay = await store.createReport({
+    type: "find",
+    name: "Changed retry",
+    email: "changed@example.test",
+    caseItemId: String(created.id),
+    caseItemTitle: "Renamed after the report",
+    locationDescription: "Changed retry",
+    details: "Changed retry",
+    media: []
+  }, "fresh-drop-report-key");
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.value.caseItemTitle, "A wallet");
+});
 
 test("standalone Official Updates use a private draft-first audited lifecycle", async (t) => {
   const db = await createOperatorAlertDatabase(t);
@@ -1997,7 +2448,10 @@ test("the real D1 report publication migration stores participation and enforces
     "0010_graph_transactional_email.sql",
     "0011_report_publication_and_participation.sql",
     "0012_lucky_13_waypoints.sql",
-    "0015_submission_ops_publication_refinement.sql"
+    "0015_submission_ops_publication_refinement.sql",
+    "0016_dynamic_case_items.sql",
+    "0017_fresh_drops_hunter_gallery.sql",
+    "0018_keep_it_tell_us.sql"
   ];
   const migrations = await Promise.all(
     migrationFiles.map((file) => readFile(path.join(root, "migrations", file), "utf8"))
@@ -2110,19 +2564,20 @@ test("the real D1 report publication migration stores participation and enforces
       .prepare(
         `INSERT INTO private_reports
          (id, report_type, hunter_subject, reporter_name, reporter_email, reporter_phone,
-          waypoint_id, location_description, latitude, longitude, details, status, created_at, updated_at)
+          waypoint_id, location_description, latitude, longitude, details,
+          publication_preference, status, created_at, updated_at)
          VALUES ('report-published', 'find', 'hunter-adult', 'Adult Hunter', 'adult@example.test',
                  '780-555-0123', 1, 'Near the trail', 53.123, -114.456,
-                 'Found a possible clue.', 'verified', ?, ?)`
+                 'Found a possible clue.', 'share_after_review', 'verified', ?, ?)`
       )
       .bind("2026-07-15T20:01:00.000Z", "2026-07-15T20:01:00.000Z"),
     db
       .prepare(
         `INSERT INTO private_reports
          (id, report_type, hunter_subject, reporter_name, reporter_email, location_description,
-          details, status, created_at, updated_at)
+          details, publication_preference, status, created_at, updated_at)
          VALUES ('report-other', 'tip', 'hunter-adult', 'Adult Hunter', 'adult@example.test',
-                 'Across the trail', 'A different report.', 'verified', ?, ?)`
+                 'Across the trail', 'A different report.', 'share_after_review', 'verified', ?, ?)`
       )
       .bind("2026-07-15T20:01:00.000Z", "2026-07-15T20:01:00.000Z")
   ]);
@@ -3084,6 +3539,8 @@ test("hunter report projection and recent report workflow history stay private",
     assert.deepEqual(byId.get(reportId), {
       id: reportId,
       type: "tip",
+      caseItemId: null,
+      caseItemTitle: null,
       hunterStatus: status === "received" ? "Received" :
         status === "verified" ? "Verified" :
           status === "rejected" || status === "resolved" ? "Closed" : "Under review",
@@ -3141,10 +3598,11 @@ test("real D1 publishes and withdraws a report-sourced Case Note independently f
     db.prepare(
       `INSERT INTO private_reports
        (id, report_type, reporter_name, reporter_email, waypoint_id, location_description,
-        latitude, longitude, details, public_attribution, attribution_kind, status, created_at, updated_at)
+        latitude, longitude, details, public_attribution, attribution_kind,
+        publication_preference, status, created_at, updated_at)
        VALUES ('report-case-note', 'tip', 'Private Reporter', 'private@example.test', 1,
                'Private location', 53.5, -114.5, 'Private details', 'Community Hunter',
-               'community', 'reviewing', ?, ?)`
+               'community', 'share_after_review', 'reviewing', ?, ?)`
     ).bind(timestamp, timestamp),
     db.prepare(
       `INSERT INTO media_uploads
@@ -3183,6 +3641,97 @@ test("real D1 publishes and withdraws a report-sourced Case Note independently f
   assert.equal(await store.getPublicMedia("media-case-note"), null);
 });
 
+test("real D1 keeps hunter-private reports out of Case Notes and Official Updates", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  await applyOperatorAlertMigration(db);
+  const timestamp = "2026-08-04T12:00:00.000Z";
+  await db.prepare(
+    `INSERT INTO private_reports
+     (id, report_type, reporter_name, reporter_email, location_description, details,
+      public_attribution, attribution_kind, publication_preference,
+      sharing_notice_version, sharing_notice_accepted_at, status, created_at, updated_at)
+     VALUES ('report-hunter-private', 'find', 'Private Hunter', 'private@example.test',
+             'Private location', 'Private report body', 'Community Hunter', 'community',
+             'private', '2026.1', ?, 'verified', ?, ?)`
+  ).bind(timestamp, timestamp, timestamp).run();
+
+  const store = new D1DataStore(db);
+  await assert.rejects(
+    store.publishReportToCaseNotes(
+      "report-hunter-private",
+      { body: "Must remain private.", mediaIds: [] },
+      "staff-reviewer"
+    ),
+    (error: unknown) =>
+      error instanceof ApiError && error.code === "report_publication_ineligible"
+  );
+  await assert.rejects(
+    store.publishReport(
+      "report-hunter-private",
+      { title: "Must remain private", body: "No public update.", mediaIds: [] },
+      "staff-reviewer"
+    ),
+    (error: unknown) =>
+      error instanceof ApiError && error.code === "report_publication_ineligible"
+  );
+
+  assert.equal(
+    (await db.prepare(
+      "SELECT COUNT(*) AS count FROM operator_reviewed_case_notes WHERE source_report_id = ?"
+    ).bind("report-hunter-private").first<{ count: number }>())?.count,
+    0
+  );
+  assert.equal(
+    (await db.prepare(
+      "SELECT COUNT(*) AS count FROM official_updates WHERE source_report_id = ?"
+    ).bind("report-hunter-private").first<{ count: number }>())?.count,
+    0
+  );
+});
+
+test("real D1 atomically marks a finite known item found when its find becomes a Case Note", async (t) => {
+  const db = await createOperatorAlertDatabase(t);
+  const timestamp = "2026-08-02T18:00:00.000Z";
+  await db.prepare(
+    `INSERT INTO private_reports
+     (id, report_type, reporter_name, reporter_email, location_description, details,
+      public_attribution, attribution_kind, case_item_id, case_item_title_snapshot,
+      publication_preference, sharing_notice_version, sharing_notice_accepted_at,
+      status, created_at, updated_at)
+     VALUES ('report-found-camera', 'find', 'Private Finder', 'private@example.test',
+             'Public path', 'A camera was found.', 'Community Hunter', 'community',
+             'case-item-camera', 'A camera', 'share_after_review', '2026.1', ?,
+             'verified', ?, ?)`
+  ).bind(timestamp, timestamp, timestamp).run();
+
+  const store = new D1DataStore(db);
+  const note = await store.publishReportToCaseNotes(
+    "report-found-camera",
+    { body: "A camera was found and kept by its finder.", mediaIds: [] },
+    "staff-reviewer"
+  );
+  assert.equal(note?.status, "published");
+
+  const item = await db.prepare(
+    "SELECT status, version FROM case_items WHERE id = 'case-item-camera'"
+  ).first<{ status: string; version: number }>();
+  assert.equal(item?.status, "found");
+  assert.equal(item?.version, 2);
+  assert.equal((await db.prepare(
+    `SELECT COUNT(*) AS count FROM case_item_events
+     WHERE item_id = 'case-item-camera' AND action = 'case_item.found_from_case_note'`
+  ).first<{ count: number }>())?.count, 1);
+  assert.equal((await db.prepare(
+    `SELECT COUNT(*) AS count FROM audit_events
+     WHERE target_id = 'case-item-camera' AND action = 'case_item.found_from_case_note'`
+  ).first<{ count: number }>())?.count, 1);
+
+  const cashBefore = await db.prepare(
+    "SELECT status, version FROM case_items WHERE id = 'case-item-cash'"
+  ).first<{ status: string; version: number }>();
+  assert.deepEqual(cashBefore, { status: "out_there", version: 1 });
+});
+
 test("real D1 projects accepted flags for operator-reviewed Case Notes into Staff moderation", async (t) => {
   const db = await createOperatorAlertDatabase(t);
   const timestamp = "2026-07-15T18:00:00.000Z";
@@ -3201,18 +3750,20 @@ test("real D1 projects accepted flags for operator-reviewed Case Notes into Staf
     db.prepare(
       `INSERT INTO private_reports
        (id, report_type, reporter_name, reporter_email, waypoint_id, location_description,
-        details, public_attribution, attribution_kind, status, created_at, updated_at)
+        details, public_attribution, attribution_kind, publication_preference,
+        status, created_at, updated_at)
        VALUES ('report-flagged-case-note', 'tip', 'Private Reporter', 'private@example.test', 1,
                'Private location', 'Private report details', 'Community Hunter',
-               'community', 'reviewing', ?, ?)`
+               'community', 'share_after_review', 'reviewing', ?, ?)`
     ).bind(timestamp, timestamp),
     db.prepare(
       `INSERT INTO private_reports
        (id, report_type, reporter_name, reporter_email, location_description, details,
-        public_attribution, attribution_kind, status, created_at, updated_at)
+        public_attribution, attribution_kind, publication_preference,
+        status, created_at, updated_at)
        VALUES ('report-withdrawn-flag-target', 'tip', 'Private Reporter', 'private@example.test',
                'Private location', 'Private withdrawn details', 'Community Hunter', 'community',
-               'reviewing', ?, ?)`
+               'share_after_review', 'reviewing', ?, ?)`
     ).bind(timestamp, timestamp)
   ]);
   const store = new D1DataStore(db);
@@ -3529,7 +4080,10 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
     "0010_graph_transactional_email.sql",
     "0011_report_publication_and_participation.sql",
     "0012_lucky_13_waypoints.sql",
-    "0015_submission_ops_publication_refinement.sql"
+    "0015_submission_ops_publication_refinement.sql",
+    "0016_dynamic_case_items.sql",
+    "0017_fresh_drops_hunter_gallery.sql",
+    "0018_keep_it_tell_us.sql"
   ];
   const miniflare = new Miniflare({
     compatibilityDate: "2026-07-11",
@@ -3854,9 +4408,10 @@ test("real D1 publishes only report-linked safe updates and selected derivatives
       .prepare(
         `INSERT INTO private_reports
          (id, report_type, hunter_subject, reporter_name, reporter_email, reporter_phone,
-          waypoint_id, location_description, latitude, longitude, details, status, created_at, updated_at)
+          waypoint_id, location_description, latitude, longitude, details,
+          publication_preference, status, created_at, updated_at)
          VALUES (?, 'tip', ?, ?, ?, '780-555-0199', ?, 'Private location description', ?, ?,
-                 'Private unedited report details', 'reviewing', ?, ?)`
+                 'Private unedited report details', 'share_after_review', 'reviewing', ?, ?)`
       )
       .bind(
         reportId,
@@ -4917,6 +5472,9 @@ test("FakeStore publishes the exact snapshotted report attribution after profile
       media: []
     }
   );
+  for (const report of store.reports) {
+    report.publicationPreference = "share_after_review";
+  }
   const storedSnapshots = structuredClone(store.reports);
 
   for (const [reportId, expectedAttribution] of [
@@ -5022,6 +5580,7 @@ test("FakeStore rejects a valid snapshot without current legal access", async ()
     status: "verified",
     publicAttribution: "Trail Friends",
     attributionKind: "display_name",
+    publicationPreference: "share_after_review",
     media: []
   });
 
@@ -5067,6 +5626,7 @@ test("FakeStore rejects valid snapshots when current privacy acceptance is missi
       status: "verified",
       publicAttribution: "Trail Friends",
       attributionKind: "display_name",
+      publicationPreference: "share_after_review",
       media: []
     });
   }
@@ -5246,6 +5806,13 @@ test("the Lucky 13 D1 upgrade preserves stable references and projects public ro
       "utf8"
     )
   );
+  for (const file of [
+    "0016_dynamic_case_items.sql",
+    "0017_fresh_drops_hunter_gallery.sql",
+    "0018_keep_it_tell_us.sql"
+  ]) {
+    await applySql(db, await readFile(path.join(root, "migrations", file), "utf8"));
+  }
 
   const expectedOrder = [
     [1, 1], [2, 2], [3, 3], [4, 4], [13, 5],
@@ -5397,6 +5964,83 @@ test("real D1 self-enrolls only exact approved staff domains and preserves block
     "SELECT action, actor_subject FROM audit_events WHERE action = 'staff.domain_activated' ORDER BY occurred_at"
   ).all<Record<string, unknown>>();
   assert.deepEqual(audit.results.map((row) => row.actor_subject).sort(), ["staff-operator", "staff-partner"]);
+});
+
+test("real D1 staff capabilities and suspension invariants", async (t) => {
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-07-11",
+    modules: true,
+    script: "export default { fetch() { return new Response('ok'); } }",
+    d1Databases: { DB: "staff-access-invariants" }
+  });
+  t.after(() => miniflare.dispose());
+  const db = await miniflare.getD1Database("DB") as unknown as D1Database;
+  await applySql(db, await readFile(path.join(root, "migrations", "0001_hunter_platform.sql"), "utf8"));
+  const store = new D1DataStore(db);
+  const timestamp = "2026-08-04T16:00:00.000Z";
+
+  await db.batch([
+    db.prepare(
+      `INSERT INTO staff_principals
+       (id, provider_subject, normalized_email, display_name, status, invited_at, activated_at)
+       VALUES ('staff-owner', 'user_owner', 'owner@example.test', 'Owner', 'active', ?, ?)`
+    ).bind(timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO staff_principals
+       (id, provider_subject, normalized_email, display_name, status, invited_at, activated_at)
+       VALUES ('staff-peer', 'user_peer', 'peer@example.test', 'Peer', 'active', ?, ?)`
+    ).bind(timestamp, timestamp),
+    db.prepare(
+      `INSERT INTO staff_principals
+       (id, provider_subject, normalized_email, display_name, status, invited_at, activated_at)
+       VALUES ('staff-suspended', 'user_suspended', 'suspended@example.test', 'Suspended', 'suspended', ?, ?)`
+    ).bind(timestamp, timestamp)
+  ]);
+
+  const owner = (await store.listStaff("user_owner")).find((row) => row.id === "staff-owner");
+  assert.equal(owner?.isCurrent, true);
+  assert.deepEqual(owner?.actions, ["recovery", "revoke-sessions", "suspend"]);
+  assert.deepEqual((await store.getStaffPrincipal("staff-owner"))?.actions, [
+    "recovery",
+    "revoke-sessions",
+    "suspend"
+  ]);
+
+  const suspended = await store.changeStaffAccess("staff-owner", "suspend", "user_owner");
+  assert.equal(suspended?.status, "suspended");
+  assert.deepEqual(suspended?.actions, ["recovery", "reactivate"]);
+  assert.equal(await store.isActiveStaff("user_owner", "owner@example.test"), false);
+  assert.deepEqual((await store.getStaffPrincipal("staff-peer"))?.actions, ["recovery", "revoke-sessions"]);
+
+  await assert.rejects(
+    () => store.changeStaffAccess("staff-owner", "suspend", "user_owner"),
+    (error: unknown) => error instanceof ApiError && error.code === "staff_access_conflict"
+  );
+  await assert.rejects(
+    () => store.changeStaffAccess("staff-peer", "suspend", "user_peer"),
+    (error: unknown) => error instanceof ApiError && error.code === "final_active_staff"
+  );
+
+  const reactivated = await store.changeStaffAccess("staff-owner", "reactivate", "user_peer");
+  assert.equal(reactivated?.status, "active");
+  await store.recordStaffProviderWarning("reactivate", "staff-owner", "user_peer");
+
+  const audit = await db.prepare(
+    `SELECT action, actor_subject, target_id, metadata_json
+     FROM audit_events
+     WHERE target_kind = 'staff_principal' AND target_id = 'staff-owner'
+     ORDER BY action`
+  ).all<{ action: string; actor_subject: string; target_id: string; metadata_json: string }>();
+  assert.deepEqual(audit.results.map((row) => ({
+    action: row.action,
+    actor: row.actor_subject,
+    target: row.target_id,
+    metadata: JSON.parse(row.metadata_json)
+  })), [
+    { action: "staff.provider_warning", actor: "user_peer", target: "staff-owner", metadata: { operation: "reactivate" } },
+    { action: "staff.reactivated", actor: "user_peer", target: "staff-owner", metadata: {} },
+    { action: "staff.suspended", actor: "user_owner", target: "staff-owner", metadata: {} }
+  ]);
 });
 
 test("the Graph state upgrade preserves historical immutable delivery evidence", async (t) => {

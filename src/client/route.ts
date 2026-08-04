@@ -43,7 +43,7 @@ export function normalizeMemberRoute(payload: unknown): MemberRouteProjection {
     byId.set(id, {
       id,
       routeOrder: order,
-      name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : `Waypoint ${order}`,
+      name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : `Place ${order}`,
       zoneState: typeof row.zoneState === "string" && row.zoneState.trim() ? row.zoneState.trim() : "unreviewed",
       exactUrl: unlocked ? safeExactUrl(row.exactUrl) : null,
     });
@@ -70,7 +70,7 @@ function renderWaypointLinks(projection: MemberRouteProjection): void {
       link.href = waypoint.exactUrl;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      link.textContent = "Open approved Google Maps waypoint →";
+      link.textContent = "Open approved Google Maps directions →";
       meta.appendChild(link);
     } else {
       const copy = document.createElement("span");
@@ -105,7 +105,7 @@ async function initializeMemberRoute(): Promise<void> {
     const projection = normalizeMemberRoute(payload);
     renderWaypointLinks(projection);
     if (projection.state === "unlocked") {
-      state.textContent = "Signed in. All thirteen waypoints are shown; exact links appear only where the case and zone are currently approved as open.";
+      state.textContent = "Signed in. All thirteen places are shown; exact links appear only where the case and area are currently approved as open.";
     } else {
       state.replaceChildren();
       state.append("You are signed in. ");

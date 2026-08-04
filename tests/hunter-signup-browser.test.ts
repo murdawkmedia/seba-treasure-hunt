@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after, before } from "node:test";
+import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { build } from "esbuild";
 
@@ -16,7 +17,7 @@ let dashboardBundle = "";
 before(async () => {
   browser = await chromium.launch({ headless: true });
   const output = await build({
-    absWorkingDir: new URL("..", import.meta.url).pathname.replace(/^\/(.:)/, "$1"),
+    absWorkingDir: fileURLToPath(new URL("..", import.meta.url)),
     entryPoints: ["src/client/dashboard.ts"],
     bundle: true,
     format: "iife",

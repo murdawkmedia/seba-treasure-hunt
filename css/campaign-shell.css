@@ -87,6 +87,27 @@ html {
   font-family: var(--campaign-font-display);
 }
 
+.campaign-page:not(.ops-page) :where(.action-group, .cta-row, .action-row) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+.campaign-page:not(.ops-page) :where(.action-group, .cta-row, .action-row) > :where(a, button) {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  text-align: center;
+}
+
+.campaign-page:not(.ops-page) .action-group--center {
+  justify-content: center;
+}
+
 .sr-only {
   position: absolute !important;
   overflow: hidden;
@@ -296,6 +317,45 @@ html {
   gap: 7px;
 }
 
+.campaign-more {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.campaign-more summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding-inline: 4px;
+  color: var(--campaign-paper-100);
+  cursor: pointer;
+  list-style: none;
+}
+
+.campaign-more summary::-webkit-details-marker { display: none; }
+.campaign-more summary::after { content: " +"; margin-left: 0.35em; color: var(--campaign-gold-300); }
+.campaign-more[open] summary::after { content: " −"; }
+.campaign-more--current summary,
+.campaign-more summary:hover { color: var(--campaign-gold-300); }
+
+.campaign-more__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  right: 0;
+  display: grid;
+  min-width: 220px;
+  padding: 7px;
+  background: var(--campaign-forest-950);
+  border: 1px solid var(--campaign-gold-400);
+  border-radius: 8px;
+  box-shadow: 0 14px 30px rgba(2, 16, 14, 0.36);
+}
+
+.campaign-more__menu a { padding: 7px 10px; border-radius: 4px; }
+.campaign-more__menu a:hover,
+.campaign-more__menu a:focus-visible { color: var(--campaign-ink); background: var(--campaign-gold-300); text-decoration: none; }
+
 .campaign-account__toggle[hidden] {
   display: none;
 }
@@ -488,12 +548,36 @@ html {
     border-radius: 0;
   }
 
+  .campaign-more { width: 100%; border-top: 1px solid rgba(234, 182, 63, 0.2); }
+  .campaign-more summary { width: 100%; min-height: 48px; padding: 10px 12px; }
+  .campaign-more__menu {
+    position: static;
+    width: 100%;
+    padding: 0 0 4px 14px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+  .campaign-more__menu a { min-height: 46px; border-top: 0; }
+
   .campaign-account { width: 100%; padding: 8px 12px; border-top: 1px solid rgba(234, 182, 63, 0.2); }
   .campaign-account__signin,
   .campaign-account__toggle { width: 100%; justify-content: flex-start; }
   .campaign-account__menu { position: static; width: 100%; margin-top: 6px; box-shadow: none; }
 
   .campaign-footer__inner { flex-direction: column; }
+
+  .campaign-page:not(.ops-page) :where(.action-group, .cta-row, .action-row) {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .campaign-page:not(.ops-page) :where(.action-group, .cta-row, .action-row) > :where(a, button) {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    white-space: normal;
+  }
 }
 
 @media (max-width: 390px) {

@@ -13,7 +13,7 @@ const waypointRows = [
   { id: 7, routeOrder: 8, name: "The Lodge Trails", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5800000,-114.7800000" },
   { id: 8, routeOrder: 9, name: "The Vista Lands", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.5900000,-114.7900000" },
   { id: 9, routeOrder: 10, name: "The Cliff-Edge Slope", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.6000000,-114.8000000" },
-  { id: 10, routeOrder: 11, name: "The Driving Range and Digger Café", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.6100000,-114.8100000" },
+  { id: 10, routeOrder: 11, name: "The Driving Range and Brewing at Seba", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.6100000,-114.8100000" },
   { id: 11, routeOrder: 12, name: "Kokanee Springs RV — the Front Gate", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.6200000,-114.8200000" },
   { id: 12, routeOrder: 13, name: "The Old Seba Beach School (SebaHub)", exactUrl: "https://www.google.com/maps/search/?api=1&query=53.6300000,-114.8300000" },
 ];

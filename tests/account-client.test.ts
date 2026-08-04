@@ -299,6 +299,70 @@ test("separately bundled clients share one Clerk instance and one provider liste
   assert.equal(removeListeners, 1);
 });
 
+test("shared coordinator coalesces concurrent token reads for one active session", async () => {
+  const browserGlobal: Record<string, unknown> = {};
+  let tokenReads = 0;
+  let releaseToken: (() => void) | null = null;
+  const tokenGate = new Promise<void>((resolve) => { releaseToken = resolve; });
+  const provider = {
+    user: { id: "user_concurrent_token" },
+    session: {
+      id: "session_concurrent_token",
+      async getToken() {
+        tokenReads += 1;
+        if (tokenReads > 1) return null;
+        await tokenGate;
+        return "shared-session-token";
+      },
+    },
+    client: null,
+    async load() {},
+    addListener() { return () => {}; },
+    async setActive() {},
+    async signOut() {},
+  };
+  const coordinator = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => provider as never,
+  });
+  await coordinator.load("pk_test_concurrent_token");
+
+  const first = coordinator.getToken();
+  const second = coordinator.getToken();
+  releaseToken?.();
+
+  assert.deepEqual(await Promise.all([first, second]), ["shared-session-token", "shared-session-token"]);
+  assert.equal(tokenReads, 1);
+});
+
+test("shared coordinator never reuses a token after the active session changes", async () => {
+  const browserGlobal: Record<string, unknown> = {};
+  let providerListener: (() => void) | null = null;
+  const provider = {
+    user: { id: "user_token_switch" },
+    session: { id: "session_token_one", getToken: async () => "token-one" },
+    client: null,
+    async load() {},
+    addListener(listener: () => void) {
+      providerListener = listener;
+      return () => {};
+    },
+    async setActive() {},
+    async signOut() {},
+  };
+  const coordinator = getHunterAuthSessionCoordinator({
+    browserGlobal,
+    createClerk: async () => provider as never,
+  });
+  await coordinator.load("pk_test_token_switch");
+  assert.equal(await coordinator.getToken(), "token-one");
+
+  provider.session = { id: "session_token_two", getToken: async () => "token-two" };
+  providerListener?.();
+
+  assert.equal(await coordinator.getToken(), "token-two");
+});
+
 test("coordinator teardown replaces only its owned legacy token hook on reinitialization", async () => {
   const browserGlobal: Record<string, unknown> = {};
   let removed = 0;

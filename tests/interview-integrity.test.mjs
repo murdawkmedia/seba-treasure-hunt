@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { CAMPAIGN_MENU } from "../scripts/campaign-shell.mjs";
+import { CAMPAIGN_MORE_MENU } from "../scripts/campaign-shell.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (filename) => readFileSync(path.join(repo, filename), "utf8");
@@ -71,7 +71,7 @@ test("the editorial sections group the account before, along, and after the rout
   });
 });
 
-test("Tim's Account is the primary public name across discovery and navigation copy", () => {
+test("Tim's Account remains the feature name while navigation uses plain Tim's Story wording", () => {
   for (const [filename, pattern] of [
     ["interview.html", /<h1>[^<]*Tim(?:'|’)s Account[^<]*<\/h1>/],
     ["interview.html", /<meta property="og:title" content="[^"]*Tim(?:'|’)s Account[^"]*"/],
@@ -79,16 +79,15 @@ test("Tim's Account is the primary public name across discovery and navigation c
     ["interview.html", /"name": "Tim(?:'|’)s Account"/],
     ["index.html", />[^<]*Tim(?:'|’)s Account[^<]*<\/a>/],
     ["route.html", />[^<]*Tim(?:'|’)s Account[^<]*<\/a>/],
-    ["start.html", /Tim(?:'|’)s Account/],
   ]) {
     assert.match(read(filename), pattern, `${filename} uses the primary feature name`);
   }
 });
 
-test("the campaign navigation names the public feature Tim's Account", () => {
+test("the secondary navigation links to Tim's Story", () => {
   assert.deepEqual(
-    CAMPAIGN_MENU.find((item) => item.route === "interview"),
-    { route: "interview", label: "Tim's Account", href: "/interview" },
+    CAMPAIGN_MORE_MENU.find((item) => item.route === "interview"),
+    { route: "interview", label: "Tim's Story", href: "/interview" },
   );
 });
 

@@ -33,7 +33,7 @@ export function verifySummary(summary, expected) {
     "The Lodge Trails",
     "The Vista Lands",
     "The Cliff-Edge Slope",
-    "The Driving Range and Digger Café",
+    "The Driving Range and Brewing at Seba",
     "Kokanee Springs RV — the Front Gate",
     "The Old Seba Beach School (SebaHub)",
   ];

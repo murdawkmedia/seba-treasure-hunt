@@ -122,7 +122,7 @@ test("operator-reviewed Case Notes are labelled, source-private, and do not offe
     noteKind: "operator_reviewed",
     waypointId: 11,
     waypointRouteOrder: 11,
-    waypointName: "The Driving Range & the Digger Café",
+    waypointName: "The Driving Range & Brewing at Seba",
     body: "A reviewed public finding.",
     authorHandle: "Nancy & Ron",
     latitude: 53.5,

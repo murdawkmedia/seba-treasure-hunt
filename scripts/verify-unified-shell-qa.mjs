@@ -147,7 +147,7 @@ function createReportWorkflowFixture(workflowMutationLedger) {
     updatedAt: fixedNow,
     waypointId: "11",
     waypointRouteOrder: 11,
-    waypointName: "The Driving Range & the Digger Café",
+    waypointName: "The Driving Range & Brewing at Seba",
     hunterSubject: "hunter-private-subject-sentinel",
     name: "Private Reporter Sentinel",
     email: "private-email-sentinel@example.test",
@@ -974,7 +974,7 @@ async function exposeLocalOpsWorkspace(page) {
       row.innerHTML = [
         '<td><time datetime="2026-07-14T16:00:00.000Z">Jul 14, 2026</time></td>',
         '<td><span class="ops-chip">find</span></td>',
-        '<td>Stop 11 · The Driving Range &amp; the Digger Café</td>',
+        '<td>Stop 11 · The Driving Range &amp; Brewing at Seba</td>',
         '<td>3 files</td>',
         '<td>received</td>',
         '<td><div class="ops-row-actions"><button class="ops-button ops-button--quiet" type="button" data-report-review data-report-id="report-workflow-qa-001">Review report</button></div></td>',
@@ -1396,7 +1396,7 @@ async function runReportWorkflowAudit({
         type: "find",
         hunterStatus: "Under review",
         createdAt: "2026-07-14T16:00:00.000Z",
-        publications: [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }],
+        publications: [{ kind: "case_note", label: "Published in What People Found", href: "/clue-board" }],
         rawStatus: "contacted-private-sentinel",
         privateReason: "private-reason-sentinel",
         staffActor: "staff-actor-sentinel",
@@ -1409,9 +1409,11 @@ async function runReportWorkflowAudit({
     assert.deepEqual(hunterProjection, [{
       id: "report-workflow-qa-001",
       type: "find",
+      caseItemId: null,
+      caseItemTitle: null,
       hunterStatus: "Under review",
       createdAt: "2026-07-14T16:00:00.000Z",
-      publications: [{ kind: "case_note", label: "Published in Case Notes", href: "/clue-board" }],
+      publications: [{ kind: "case_note", label: "Published in What People Found", href: "/clue-board" }],
     }]);
     const serializedProjection = JSON.stringify(hunterProjection);
     for (const sentinel of ["private-reason", "staff-actor", "private-email", "private-phone", "private-evidence", "private-child"]) {
