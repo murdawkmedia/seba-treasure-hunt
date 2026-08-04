@@ -20,9 +20,10 @@ validation accounts, submissions, or credentials into production.
 ## Update 2026-08-04 - ops access and item-status production release
 
 - Squash-merged the reviewed release to GitHub `main` as
-  `64d303f197f22bbb451fefd417ca2bdecad85b25` without publishing the private
-  feature-branch history. The prior production source is preserved by the
-  annotated tag `production-pre-ops-items-2026-08-04`.
+  `64d303f197f22bbb451fefd417ca2bdecad85b25` without copying feature-branch
+  commit history into `main`. The existing remote feature branch was not
+  advanced during this release. The prior production source is preserved by
+  the annotated tag `production-pre-ops-items-2026-08-04`.
 - Verified the release on the actual merged `main`: 632/632 tests, every
   TypeScript project, exact legal artifacts, production build, 53 served-file
   privacy checks, and 111 Playwright states across 13 routes. Browser QA

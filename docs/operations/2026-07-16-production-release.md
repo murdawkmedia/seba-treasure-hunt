@@ -16,8 +16,9 @@
 ## Production promotion: Ops access and item-status release
 
 - The reviewed release was squash-merged and pushed to GitHub `main` as
-  `64d303f197f22bbb451fefd417ca2bdecad85b25`. The private feature-branch
-  history was not published.
+  `64d303f197f22bbb451fefd417ca2bdecad85b25`. Feature-branch commit history
+  was not copied into `main`, and the existing remote feature branch was not
+  advanced during this release.
 - Ops now supports direct staff invitations, D1-first suspension/reactivation,
   and versioned, reversible item-status controls. The public evidence wall and
   find flow use the authoritative case-item ledger; the Apple Watch is found.
