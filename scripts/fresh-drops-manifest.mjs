@@ -305,5 +305,21 @@ export const freshDropManifest = Object.freeze([
     teaserOrder: null,
     collectionOrder: 15,
     media: [media("20-IMG_5610.jpg", "Several assorted items photographed together")]
+  },
+  {
+    id: "case-item-gucci-belt",
+    slug: "gucci-belt",
+    owner: "tim",
+    category: "accessory",
+    title: "A Gucci belt",
+    description: "A Gucci belt is pictured among the latest drops. The finder keeps it.",
+    finderKeeps: true,
+    reportable: true,
+    closeOnFind: true,
+    audience: "hunter_only",
+    showOnBoard: false,
+    teaserOrder: null,
+    collectionOrder: 18,
+    media: [media("23-gucci-belt.jpg", "A Gucci monogram belt with a gold double-G buckle photographed before it was hidden")]
   }
 ]);

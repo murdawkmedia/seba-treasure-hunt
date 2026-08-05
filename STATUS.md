@@ -12,10 +12,70 @@ are active in production.
 
 The live Ops console now supports audited direct staff invitations, immediate
 D1-first access suspension/reactivation, and reversible item-status controls.
-The public evidence wall is data-driven, and the Apple Watch is marked found.
+The public evidence wall is data-driven, the Apple Watch is marked found, and
+the governed Fresh Drops ledger contains the approved hunter-only collection,
+including the Gucci belt.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-08-04 - governed Fresh Drops production reconciliation
+
+- Murphy approved the previously held Gucci-belt photograph and production
+  promotion. The manifest now includes it as an Out there, hunter-only Fresh
+  Drops item at collection order 18; it is absent from the signed-out public
+  item API.
+- Exported production D1 before the first write to the ignored private backup
+  `source-media/production-backups/2026-08-04-pre-gucci-production.sql`
+  (899,820 bytes; SHA-256
+  `3c6cf02893bf7fe73e30b422c70880cba89f5ff188e0a378c2a76709c515e97a`).
+- Re-applied the canonical production staff issuer/JWKS bindings from ignored
+  local configuration and deployed media processor version
+  `57f9db4d-a76b-4994-b7c2-3c70a8133e8c`, which adds production support for
+  `case_item` media jobs. No credential value was printed or committed.
+- Repaired three interrupted, hash-deduplicated story uploads into exact,
+  metadata-free WebP derivatives, then completed the guarded production
+  importer. The reconciliation pass created 13 records, patched 19 and
+  uploaded 19 images with zero failures; the second pass created, patched and
+  uploaded zero, with all 19 items and 24 hashes already current.
+- Production now has 22 case items, 19 Fresh Drops records, 24 ready item-media
+  records, zero processing records, eight public-safe items and two preserved
+  Found states. Tim's ID and the Apple Watch remain Found, and the foreign-key
+  check is clean.
+- Signed-out checks return eight public records, exclude the Gucci belt, and
+  deny Fresh Drops with HTTP 401. Fresh source verification passed 632/632
+  automated tests, every TypeScript project, exact legal artifacts, 11 focused
+  manifest/importer tests, the production build, 53-file privacy scan and
+  `git diff --check`. Pages promotion and live browser smoke evidence are still
+  being completed for this release.
+
+## Update 2026-08-04 - governed Fresh Drops validation candidate
+
+- Privately triaged the newest live report: it is assigned, Reviewing and
+  Private. Nothing from the report was published, no item was marked Found,
+  and no public draft was created.
+- Reconciled the approved Fresh Drops manifest against validation only. The
+  first guarded pass patched 13 existing item records and reused all existing
+  processed media; the approved Gucci addendum created and reconciled one more
+  item. The final approved validation candidate has 22 item records, 19 Fresh
+  Drops records and 27
+  selected ready media records.
+- Tim's ID and the Apple Watch remain Found. The sideways duplicate remains
+  absent. The subsequently approved Gucci-belt
+  image is hunter-only. No stale record required archival.
+- The clean immutable validation candidate is
+  `https://9b9bb1e9.seba-treasure-hunt.pages.dev`; owner-review URLs are
+  `https://codex-validation.seba-treasure-hunt.pages.dev/?release=9b9bb1e9`
+  and
+  `https://codex-validation.seba-treasure-hunt.pages.dev/dashboard?release=9b9bb1e9#fresh-drops`.
+- Verification passed: 632/632 automated tests, all TypeScript projects,
+  exact legal artifacts, production build, 53-file privacy scan, manifest
+  checks, signed-out public/hunter/Ops boundaries, signed-in 18-card Fresh
+  Drops rendering, and 1440/390/320-pixel browser checks with no overflow or
+  console errors.
+- Production was unchanged during validation. The later approved production
+  reconciliation is recorded above and in
+  `docs/operations/2026-08-04-governed-fresh-drops-reconciliation.md`.
 
 ## Update 2026-08-04 - ops access and item-status production release
 

@@ -36,7 +36,10 @@ Tim's ID and Apple Watch are found. The original roughly $5,000 cash loss
 remains the starting point of the case; the current estimate is approaching
 $10,000 without being a guarantee. The rings, camera, purse and qualifying golf
 balls begin as Out there and are maintained by staff through the audited What's
-Out There board rather than source-code edits.
+Out There board rather than source-code edits. Signed-in hunters also receive
+the governed Fresh Drops collection, including the approved hunter-only Gucci
+belt record; signed-out visitors cannot fetch those private item details or
+images.
 
 ## Guided private-report workflow
 

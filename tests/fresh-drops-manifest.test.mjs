@@ -34,11 +34,38 @@ test("the July 31 manifest reconciles every source, including intentionally reus
     "19-IMG_5612.jpg",
     "20-IMG_5610.jpg",
     "21-image000001.jpg",
-    "22-IMG_5280.jpg"
+    "22-IMG_5280.jpg",
+    "23-gucci-belt.jpg"
   ];
 
   assert.deepEqual(reconciled, expected.sort());
   assert.deepEqual(omittedFreshDropSources, ["02-IMG_5646.jpg"]);
+});
+
+test("the approved Gucci belt is a hunter-only findable Fresh Drop", () => {
+  const belt = freshDropManifest.find((item) => item.id === "case-item-gucci-belt");
+
+  assert.deepEqual(belt, {
+    id: "case-item-gucci-belt",
+    slug: "gucci-belt",
+    owner: "tim",
+    category: "accessory",
+    title: "A Gucci belt",
+    description: "A Gucci belt is pictured among the latest drops. The finder keeps it.",
+    finderKeeps: true,
+    reportable: true,
+    closeOnFind: true,
+    audience: "hunter_only",
+    showOnBoard: false,
+    teaserOrder: null,
+    collectionOrder: 18,
+    media: [{
+      source: "23-gucci-belt.jpg",
+      alt: "A Gucci monogram belt with a gold double-G buckle photographed before it was hidden",
+      audience: "hunter_only",
+      caption: null
+    }]
+  });
 });
 
 test("only the camera and toy car are public teaser media", () => {

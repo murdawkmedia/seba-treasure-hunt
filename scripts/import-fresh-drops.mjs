@@ -237,7 +237,9 @@ function cliArguments(argv) {
   return result;
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain = typeof process !== "undefined" &&
+  process.argv?.[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
   try {
     const flags = cliArguments(process.argv.slice(2));
