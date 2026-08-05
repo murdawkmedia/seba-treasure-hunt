@@ -84,6 +84,10 @@ Required non-secret server setting:
 API_KEY_ADMIN_EMAILS=murphy@sebahub.com,tech@sebahub.com
 ```
 
+Configure this value independently per environment. Production uses the exact
+company identities above. Validation may name only its existing test-operator
+identities; never broaden production merely to make a preview account work.
+
 Do not put a key in any `VITE_` variable, public JavaScript, source-controlled
 file, URL, query string, log, screenshot, support message, or test fixture.
 

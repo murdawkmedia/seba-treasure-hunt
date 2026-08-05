@@ -4,9 +4,9 @@ Date: 2026-08-05
 
 ## Candidate
 
-- Source commit: `0835071`
+- Source commit: `77bdb25`
 - Immutable Pages deployment:
-  `https://5ae129e3.seba-treasure-hunt.pages.dev`
+  `https://0839ba39.seba-treasure-hunt.pages.dev`
 - Stable validation alias:
   `https://codex-validation.seba-treasure-hunt.pages.dev`
 - Deployment environment: `validation`
@@ -53,18 +53,27 @@ Date: 2026-08-05
 - No plaintext service key or pepper is present in source, public output or
   this record.
 
-## Remaining owner-gated validation
+## Owner-gated validation completed
 
-1. Sign in to the validation Case Room as Murphy or Tech.
-2. Create one validation read-only key for SebaHub Console and one separately
-   scoped validation operations key for the local MCP adapter.
-3. Store each one-time value only in the applicable ignored local environment
-   file or Cloudflare preview secret store.
-4. Run the live read/scope/mutation/idempotency/revocation smoke matrix.
-5. Validate the Console locally. Its existing Pages preview environment has no
-   runtime configuration and must not receive copied production secrets.
-6. Stop for Murphy's review before any production migration, secret, key,
-   deployment or Console production wiring.
+- Preview key administration now authorizes the existing validation-only
+  `murphy+treasure` and `tech+treasure` operator identities. Production keeps
+  the exact `murphy@sebahub.com` and `tech@sebahub.com` allowlist unchanged.
+- Created one validation read-only Console key and one separately scoped full
+  case-operations MCP key. Plaintext values exist only in an ignored local
+  validation environment file; neither value is recorded here or in source.
+- Confirmed the service session and capabilities identify as `validation`, all
+  15 Console workspace sources connect, and the read-only key receives HTTP
+  403 for a mutation.
+- Confirmed a private draft mutation, exact idempotent replay, changed-request
+  HTTP 409 conflict, validation-prefix isolation, 300-read limit followed by
+  HTTP 429, rotation overlap, and immediate old-key revocation.
+- Confirmed the local MCP lists 14 tools, reads the live validation workspace,
+  rejects an unconfirmed mutation, and creates only a private confirmed draft.
+  Validation smoke drafts do not appear in the public Updates feed.
+- The Console adapter smoke uncovered and fixed a success-envelope mismatch;
+  its regression now accepts the canonical `{ data: ... }` response shape.
+- Production remains unchanged. The remaining gate is Murphy's review before
+  any production migration, secret, key, deployment, or Console wiring.
 
 ## Rollback
 

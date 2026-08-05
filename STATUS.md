@@ -25,6 +25,23 @@ and mobile-operable image frame when selected.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-08-05 - service API owner validation complete
+
+- Corrected the Preview-only key-administrator allowlist to the existing
+  `murphy+treasure` and `tech+treasure` operators. The production allowlist is
+  unchanged and protected by a regression test.
+- Deployed immutable validation candidate
+  `https://0839ba39.seba-treasure-hunt.pages.dev` from `77bdb25`; the stable
+  `codex-validation` alias reports the validation environment.
+- Created separate validation read-only Console and full case-operations MCP
+  keys and stored their one-time values only in an ignored local environment
+  file. Rotation overlap and immediate revocation were exercised successfully.
+- Live checks passed for scope denial, environment isolation, idempotent replay,
+  changed-request conflict, rate limiting, all 15 Console workspace sources,
+  14 MCP tools, confirmed private draft creation and public-feed isolation.
+- Production was not migrated, deployed, configured or issued a key. Murphy's
+  review remains the gate before production promotion.
+
 ## Update 2026-08-05 - scoped service API validation candidate
 
 - Added environment-bound, hashed service keys with read-only and full case-
