@@ -210,6 +210,18 @@ test("operator invitations provide a labelled, live access control before the st
   assert.ok(accessPanel.indexOf('id="staff-invite-form"') < accessPanel.indexOf('id="staff-table"'));
 });
 
+test("approved key administrators receive a hidden-by-default service-key control surface", () => {
+  const html = read("ops.html");
+  const accessPanel = html.match(/<section[^>]+data-view-panel="access"[\s\S]*?<\/section>\s*<section[^>]+data-view-panel="audit"/)?.[0] ?? "";
+  assert.match(accessPanel, /id="service-key-panel"[^>]+hidden/);
+  assert.match(accessPanel, /id="service-key-form"[^>]+novalidate/);
+  assert.match(accessPanel, /for="service-key-name"/);
+  assert.match(accessPanel, /for="service-key-profile"/);
+  assert.match(accessPanel, /data-service-key-secret[^>]+readonly/);
+  assert.match(accessPanel, /id="service-key-table"/);
+  assert.match(accessPanel, /shown only once/i);
+});
+
 test("operator invitation submits only to the private staff invitation route and refreshes ledgers", () => {
   const client = read("src/client/ops.ts");
 

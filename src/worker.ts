@@ -15,6 +15,7 @@ import { providerKeyForEnvironment, publicUrlForEnvironment } from "./server/pro
 import { ManagedWaiverReceipts } from "./server/waiver-receipts";
 import { ManagedOperatorAlerts } from "./server/operator-alerts";
 import { D1GraphTokenStore } from "./server/graph-token-store";
+import { D1ServiceKeyManager } from "./server/service-key-store";
 import { MicrosoftGraphTransactionalMailer } from "./server/microsoft-graph-mailer";
 import { ResendTransactionalMailer } from "./server/resend-mailer";
 import { createTransactionalMailer } from "./server/transactional-mail-factory";
@@ -121,7 +122,9 @@ const application = (env: PagesEnv) => {
     env.LEGAL_RECEIPT_EMAIL_REPLY_TO ?? null,
     env.CAMPAIGN_BASE_URL ?? null,
     env.RATE_LIMIT_SALT ?? null,
-    env.DEPLOYMENT_ENV ?? null
+    env.DEPLOYMENT_ENV ?? null,
+    env.TIM_LOST_API_KEY_PEPPER ?? null,
+    env.API_KEY_ADMIN_EMAILS ?? null
   ]);
   if (
     cache &&
@@ -198,6 +201,15 @@ const application = (env: PagesEnv) => {
     ),
     uploads: new R2UploadStorage(env.UPLOADS ?? null, env.MEDIA_QUEUE ?? null),
     rateLimits: new D1RateLimiter(env.DB ?? null, env.RATE_LIMIT_SALT ?? null),
+    serviceKeys: new D1ServiceKeyManager(
+      env.DB ?? null,
+      env.DEPLOYMENT_ENV ?? null,
+      env.TIM_LOST_API_KEY_PEPPER ?? null
+    ),
+    apiKeyAdminEmails: (env.API_KEY_ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
     environment: new D1EnvironmentGuard(env.DB ?? null, env.DEPLOYMENT_ENV ?? null),
     webhooks: new ClerkWebhookVerifier(env.CLERK_WEBHOOK_SIGNING_SECRET ?? null),
     playerAccounts: new ManagedPlayerAccounts(hunterSecretKey, {

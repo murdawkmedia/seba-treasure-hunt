@@ -314,6 +314,17 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
 .ops-staff-invite-form input { width: 100%; min-height: 44px; padding: 9px 11px; color: var(--ops-ink); background: var(--ops-deep); border: 0; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(248, 240, 213, .22); }
 .ops-staff-invite-form [data-staff-invite-result] { grid-column: 1 / -1; min-height: 1.6em; margin: 0; color: var(--ops-muted); font-size: .8rem; }
 .ops-staff-invite-form [data-staff-invite-result][data-state="error"] { color: var(--ops-warning); }
+.ops-service-key-panel { display: grid; gap: 18px; }
+.ops-service-key-panel[hidden], .ops-service-key-secret[hidden] { display: none; }
+.ops-service-key-panel h2 { margin: 0; color: var(--ops-ink); font-family: var(--ops-font-display); font-size: 1.8rem; font-weight: 400; line-height: 1; }
+.ops-service-key-panel p:not(.ops-kicker) { margin: 8px 0 0; color: var(--ops-muted); }
+.ops-service-key-form { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(10rem, .7fr) minmax(11rem, .7fr) auto; align-items: end; gap: 8px; }
+.ops-service-key-form label { color: var(--ops-muted); font-family: var(--ops-font-ledger); font-size: .66rem; }
+.ops-service-key-form input, .ops-service-key-form select { width: 100%; min-height: 44px; padding: 9px 11px; color: var(--ops-ink); background: var(--ops-deep); border: 0; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(248, 240, 213, .22); }
+.ops-service-key-secret { display: grid; gap: 10px; padding: 14px; color: var(--ops-deep); background: var(--ops-ink); border: 2px solid var(--ops-gold); border-radius: 5px; }
+.ops-service-key-secret textarea { width: 100%; resize: vertical; overflow-wrap: anywhere; font-family: var(--ops-font-ledger); }
+.ops-service-key-scopes { display: flex; flex-wrap: wrap; gap: 5px; max-width: 34rem; }
+.ops-service-key-scopes code { white-space: nowrap; }
 .ops-staff-action-note { display: block; margin-top: 6px; color: var(--ops-muted); font-size: .76rem; line-height: 1.35; }
 .ops-action-explainer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 15px; }
 .ops-action-explainer span { padding: 10px; color: var(--ops-muted); background: rgba(7, 31, 28, .48); border-radius: 4px; font-size: .77rem; }
@@ -519,6 +530,8 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
   .ops-staff-invite-panel { grid-template-columns: 1fr; }
   .ops-staff-invite-form { grid-template-columns: 1fr; }
   .ops-staff-invite-form .ops-button { width: 100%; }
+  .ops-service-key-form { grid-template-columns: 1fr; }
+  .ops-service-key-form .ops-button { width: 100%; }
 }
 
 @media (max-width: 760px) {

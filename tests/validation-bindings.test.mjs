@@ -36,9 +36,25 @@ test("Pages preview overrides every stateful production binding", () => {
 test("production is explicitly identified and keeps its current resource bindings", () => {
   const productionVars = section(pagesConfig, "[vars]");
   assert.match(productionVars, /DEPLOYMENT_ENV\s*=\s*"production"/);
+  assert.match(
+    productionVars,
+    /API_KEY_ADMIN_EMAILS\s*=\s*"murphy@sebahub\.com,tech@sebahub\.com"/
+  );
   assert.match(pagesConfig, /database_name\s*=\s*"tim-lost-hunter-platform"\s*$/m);
   assert.match(pagesConfig, /bucket_name\s*=\s*"tim-lost-private-media"\s*$/m);
   assert.match(pagesConfig, /queue\s*=\s*"tim-lost-media-processing"\s*$/m);
+});
+
+test("Pages preview authorizes only the existing validation operator identities for key administration", () => {
+  const previewVars = section(pagesConfig, "[env.preview.vars]");
+  assert.match(
+    previewVars,
+    /API_KEY_ADMIN_EMAILS\s*=\s*"murphy\+treasure@sebahub\.com,tech\+treasure@sebahub\.com"/
+  );
+  assert.doesNotMatch(
+    previewVars,
+    /API_KEY_ADMIN_EMAILS\s*=\s*"murphy@sebahub\.com,tech@sebahub\.com"/
+  );
 });
 
 test("the full-fidelity production snapshot is bound only to Preview and uses dedicated resources", () => {

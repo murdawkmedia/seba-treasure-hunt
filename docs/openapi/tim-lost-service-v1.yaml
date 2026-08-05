@@ -1,0 +1,353 @@
+openapi: 3.1.0
+info:
+  title: Tim Lost Something Service API
+  version: 1.0.0
+  description: >-
+    Scoped machine access to the Tim Lost Something case. Read-only keys can
+    power SebaHub Console without copying production records. Confirmed
+    operations require an explicit write scope, X-Tim-Confirm, and a durable
+    Idempotency-Key. Service keys can never manage keys, staff access, account
+    security, or legal acceptance.
+servers:
+  - url: https://www.timlostsomething.com/api/v1
+    description: Production
+  - url: https://codex-validation.seba-treasure-hunt.pages.dev/api/v1
+    description: Isolated validation
+security:
+  - serviceKey: []
+paths:
+  /service/session:
+    get:
+      summary: Inspect the authenticated service identity and granted scopes
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /service/capabilities:
+    get:
+      summary: List service scopes, limits, and forbidden administration surfaces
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /status:
+    get:
+      summary: Read the public case status
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/dashboard:
+    get:
+      summary: Read the complete Ops summary
+      description: Requires every read scope used by the dashboard.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/status:
+    put:
+      summary: Change the case status
+      parameters:
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/items:
+    get:
+      summary: Read the private What’s Out There ledger
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      summary: Create one case item
+      parameters:
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /ops/items/{itemId}:
+    patch:
+      summary: Update one case item with optimistic version checking
+      parameters:
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/items/{itemId}/status:
+    post:
+      summary: Deliberately mark one item Out there or Found
+      parameters:
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedVersion, status, confirmed]
+              additionalProperties: false
+              properties:
+                expectedVersion: { type: integer, minimum: 0 }
+                status: { type: string, enum: [out_there, found] }
+                confirmed: { type: boolean, const: true }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/items/{itemId}/media:
+    post:
+      summary: Upload one to three item images
+      parameters:
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/ImageUpload"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /ops/updates:
+    get:
+      summary: List Official Update drafts, schedules, and publications
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      summary: Create a private Official Update draft
+      parameters:
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /ops/updates/{updateId}:
+    get:
+      summary: Read one Official Update and its media
+      parameters:
+        - $ref: "#/components/parameters/UpdateId"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/updates/{updateId}/publish:
+    post:
+      summary: Save, schedule, or publish one Official Update
+      parameters:
+        - $ref: "#/components/parameters/UpdateId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/updates/{updateId}/media:
+    post:
+      summary: Upload one to three Official Update images
+      parameters:
+        - $ref: "#/components/parameters/UpdateId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/ImageUpload"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /ops/reports:
+    get:
+      summary: List protected private reports
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/reports/{reportId}:
+    get:
+      summary: Read one protected private report
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    patch:
+      summary: Apply one audited report review transition
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/moderation/notes:
+    get:
+      summary: List pending public contributions
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/moderation/replies:
+    get:
+      summary: List public-reply moderation records
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/moderation/flags:
+    get:
+      summary: List content flags
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/sponsors:
+    get:
+      summary: Read the private inquiry ledger
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/players:
+    get:
+      summary: Read player and communication-consent metadata
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/staff:
+    get:
+      summary: Read staff metadata
+      description: Service keys can read staff metadata but can never invite, suspend, recover, or revoke sessions.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/audit:
+    get:
+      summary: Read the append-only Ops audit trail
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/api-keys:
+    get:
+      summary: List service-key metadata
+      description: Human-only. Requires an active staff session for an exact approved key administrator email.
+      security:
+        - staffSession: []
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      summary: Create a service key and reveal its plaintext once
+      description: Human-only. Plaintext is never returned by listing or any later request.
+      security:
+        - staffSession: []
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /ops/api-keys/{keyId}/rotate:
+    post:
+      summary: Create a replacement key while leaving the old key active for controlled overlap
+      security:
+        - staffSession: []
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /ops/api-keys/{keyId}/revoke:
+    post:
+      summary: Revoke a service key immediately
+      security:
+        - staffSession: []
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+components:
+  securitySchemes:
+    serviceKey:
+      type: http
+      scheme: bearer
+      bearerFormat: tls_val_* or tls_prod_*
+    staffSession:
+      type: http
+      scheme: bearer
+      bearerFormat: Clerk staff session JWT
+  parameters:
+    Confirmation:
+      in: header
+      name: X-Tim-Confirm
+      required: true
+      schema: { type: string, const: "true" }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 200, pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]+$" }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100 }
+    Cursor:
+      in: query
+      name: cursor
+      schema: { type: string, maxLength: 512 }
+    ItemId:
+      in: path
+      name: itemId
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$" }
+    UpdateId:
+      in: path
+      name: updateId
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$" }
+    ReportId:
+      in: path
+      name: reportId
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$" }
+    KeyId:
+      in: path
+      name: keyId
+      required: true
+      schema: { type: string }
+  requestBodies:
+    JsonMutation:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    ImageUpload:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [images]
+            properties:
+              images:
+                type: array
+                minItems: 1
+                maxItems: 3
+                items: { type: string, format: binary }
+  responses:
+    Success:
+      description: Successful no-store API envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+    Problem:
+      description: Safe failed API envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProblemEnvelope" }
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: { type: boolean, const: true }
+        data: {}
+        meta: { type: object, additionalProperties: true }
+    ProblemEnvelope:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { type: boolean, const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }

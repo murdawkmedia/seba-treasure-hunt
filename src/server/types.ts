@@ -24,6 +24,91 @@ export type ReportWorkflowMutation =
 export type CaseState = "open" | "paused" | "found";
 export type ZoneState = "open" | "restricted" | "hazardous" | "temporarily_closed";
 export type DeploymentEnvironment = "validation" | "production";
+export type ServiceKeyScope =
+  | "case.read"
+  | "case.write"
+  | "reports.read"
+  | "reports.write"
+  | "media.read"
+  | "media.write"
+  | "publishing.read"
+  | "publishing.write"
+  | "moderation.read"
+  | "moderation.write"
+  | "inquiries.read"
+  | "inquiries.write"
+  | "people.read"
+  | "legal.read"
+  | "staff.read"
+  | "audit.read";
+export type ServiceKeyStatus = "active" | "revoked";
+
+export interface ServiceKeyRecord {
+  id: string;
+  name: string;
+  environment: DeploymentEnvironment;
+  prefix: string;
+  scopes: ServiceKeyScope[];
+  status: ServiceKeyStatus;
+  createdAt: string;
+  createdBy: string;
+  rotatedFromId: string | null;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+}
+
+export interface ServiceKeyCreateInput {
+  name: string;
+  scopes: ServiceKeyScope[];
+  expiresAt?: string | null;
+  rotatedFromId?: string | null;
+}
+
+export interface ServicePrincipal {
+  kind: "service";
+  subject: string;
+  email: null;
+  keyId: string;
+  name: string;
+  environment: DeploymentEnvironment;
+  scopes: ServiceKeyScope[];
+}
+
+export interface ServiceKeyManager {
+  authenticate(request: Request): Promise<ServicePrincipal | null>;
+  list(): Promise<ServiceKeyRecord[]>;
+  create(
+    input: ServiceKeyCreateInput,
+    actorSubject: string
+  ): Promise<{ record: ServiceKeyRecord; plaintext: string }>;
+  rotate(
+    id: string,
+    actorSubject: string
+  ): Promise<{ record: ServiceKeyRecord; plaintext: string } | null>;
+  revoke(id: string, actorSubject: string): Promise<ServiceKeyRecord | null>;
+  beginIdempotentRequest(input: ServiceIdempotencyInput): Promise<ServiceIdempotencyStart>;
+  completeIdempotentRequest(
+    input: ServiceIdempotencyInput,
+    response: { status: number; body: string }
+  ): Promise<void>;
+  cancelIdempotentRequest(input: ServiceIdempotencyInput): Promise<void>;
+}
+
+export interface ServiceIdempotencyInput {
+  keyId: string;
+  idempotencyKey: string;
+  method: string;
+  path: string;
+  requestHash: string;
+}
+
+export type ServiceIdempotencyStart =
+  | { state: "started" }
+  | { state: "replay"; status: number; body: string }
+  | { state: "conflict" }
+  | { state: "in_progress" };
 export type CaseItemOwner = "tim" | "casey";
 export type CaseItemStatus = "draft" | "out_there" | "found" | "paused" | "archived";
 export type StaffAccessAction = "suspend" | "reactivate";
@@ -678,6 +763,8 @@ export interface ApiDependencies {
   productionSnapshot?: ProductionSnapshotStore;
   productionSnapshotMedia?: PrivateMediaReader;
   environment: EnvironmentGuard;
+  serviceKeys?: ServiceKeyManager;
+  apiKeyAdminEmails?: string[];
 }
 
 export interface PagesEnv {
@@ -719,4 +806,6 @@ export interface PagesEnv {
   LEGAL_RECEIPT_EMAIL_REPLY_TO?: string;
   CAMPAIGN_BASE_URL?: string;
   DEPLOYMENT_ENV?: DeploymentEnvironment;
+  TIM_LOST_API_KEY_PEPPER?: string;
+  API_KEY_ADMIN_EMAILS?: string;
 }
