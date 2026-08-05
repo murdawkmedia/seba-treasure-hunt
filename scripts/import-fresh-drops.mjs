@@ -14,6 +14,13 @@ const record = (value) => value && typeof value === "object" && !Array.isArray(v
 const dataFrom = (value) => record(value)?.data;
 const defaultSha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const defaultSleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const imageContentType = (filename) => {
+  const extension = path.extname(filename).toLowerCase();
+  if (extension === ".png") return "image/png";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  throw new Error(`Fresh Drops source has an unsupported image extension: ${filename}.`);
+};
 
 const safeItem = (value) => {
   const item = record(value);
@@ -158,7 +165,7 @@ export async function importFreshDrops(options) {
       if (!/^[a-f0-9]{64}$/.test(hash)) {
         throw new Error(`Fresh Drops hashing failed for ${manifestItem.id} (${manifestItem.slug}) source ${media.source}.`);
       }
-      sourceRecords.push({ ...media, bytes, hash });
+      sourceRecords.push({ ...media, bytes, hash, contentType: imageContentType(media.source) });
     }
 
     let uploads = Array.isArray(item.uploads) ? item.uploads : [];
@@ -169,7 +176,7 @@ export async function importFreshDrops(options) {
     if (missing.length > 0) {
       const form = new FormData();
       for (const source of missing) {
-        form.append("images", new Blob([source.bytes], { type: "image/jpeg" }), source.source);
+        form.append("images", new Blob([source.bytes], { type: source.contentType }), source.source);
       }
       await request(`/api/v1/ops/items/${encodeURIComponent(item.id)}/media`, { method: "POST", body: form });
       for (const source of missing) {

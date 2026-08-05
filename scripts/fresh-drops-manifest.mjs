@@ -321,5 +321,21 @@ export const freshDropManifest = Object.freeze([
     teaserOrder: null,
     collectionOrder: 18,
     media: [media("23-gucci-belt.jpg", "A Gucci monogram belt with a gold double-G buckle photographed before it was hidden")]
+  },
+  {
+    id: "case-item-coop-escape-artist",
+    slug: "coop-escape-artist",
+    owner: "casey",
+    category: "animal",
+    title: "The Coop Escape Artist",
+    description: "A rodeo-winning chicken is loose in Kokanee Springs RV Park. Catch and return him to the front chickens for a $100 reward.",
+    finderKeeps: false,
+    reportable: true,
+    closeOnFind: true,
+    audience: "public",
+    showOnBoard: true,
+    teaserOrder: null,
+    collectionOrder: 19,
+    media: [media("24-coop-escape-artist.png", "Wanted poster for the Coop Escape Artist chicken, offering a $100 reward for his return to the front chickens", "public")]
   }
 ]);

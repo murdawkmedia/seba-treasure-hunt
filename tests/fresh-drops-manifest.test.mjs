@@ -35,7 +35,8 @@ test("the July 31 manifest reconciles every source, including intentionally reus
     "20-IMG_5610.jpg",
     "21-image000001.jpg",
     "22-IMG_5280.jpg",
-    "23-gucci-belt.jpg"
+    "23-gucci-belt.jpg",
+    "24-coop-escape-artist.png"
   ];
 
   assert.deepEqual(reconciled, expected.sort());
@@ -63,6 +64,32 @@ test("the approved Gucci belt is a hunter-only findable Fresh Drop", () => {
       source: "23-gucci-belt.jpg",
       alt: "A Gucci monogram belt with a gold double-G buckle photographed before it was hidden",
       audience: "hunter_only",
+      caption: null
+    }]
+  });
+});
+
+test("the Coop Escape Artist is a public return-required Fresh Drop", () => {
+  const chicken = freshDropManifest.find((item) => item.id === "case-item-coop-escape-artist");
+
+  assert.deepEqual(chicken, {
+    id: "case-item-coop-escape-artist",
+    slug: "coop-escape-artist",
+    owner: "casey",
+    category: "animal",
+    title: "The Coop Escape Artist",
+    description: "A rodeo-winning chicken is loose in Kokanee Springs RV Park. Catch and return him to the front chickens for a $100 reward.",
+    finderKeeps: false,
+    reportable: true,
+    closeOnFind: true,
+    audience: "public",
+    showOnBoard: true,
+    teaserOrder: null,
+    collectionOrder: 19,
+    media: [{
+      source: "24-coop-escape-artist.png",
+      alt: "Wanted poster for the Coop Escape Artist chicken, offering a $100 reward for his return to the front chickens",
+      audience: "public",
       caption: null
     }]
   });
@@ -96,7 +123,8 @@ test("public evidence-board items publish their verified source media", () => {
       ["case-item-watch", ["public"]],
       ["case-item-toy-car", ["public"]],
       ["case-item-rings", ["public"]],
-      ["case-item-purse", ["public", "public"]]
+      ["case-item-purse", ["public", "public"]],
+      ["case-item-coop-escape-artist", ["public"]]
     ]
   );
 });
@@ -108,11 +136,14 @@ test("every item placed on the public board has selected public media", () => {
   }
 });
 
-test("every finite Fresh Drop is finder-kept and closes when its reviewed find is published", () => {
+test("every finite Fresh Drop closes when its reviewed find is published", () => {
   const finiteItems = freshDropManifest.filter((item) => item.reportable);
   assert.ok(finiteItems.length > 0);
-  assert.equal(finiteItems.every((item) => item.finderKeeps === true), true);
   assert.equal(finiteItems.every((item) => item.closeOnFind === true), true);
+  assert.deepEqual(
+    finiteItems.filter((item) => !item.finderKeeps).map((item) => item.id),
+    ["case-item-coop-escape-artist"]
+  );
   const story = freshDropManifest.find((item) => !item.reportable);
   assert.equal(story?.closeOnFind, false);
 });
@@ -172,6 +203,7 @@ function fakeImporterServer({ environment = "validation", readyMedia = true } = 
       fakeItem(watch),
     ],
     requests: [],
+    uploadedFiles: [],
   };
 
   const response = (data, status = 200) => new Response(JSON.stringify({ data }), {
@@ -206,6 +238,7 @@ function fakeImporterServer({ environment = "validation", readyMedia = true } = 
       assert.ok(item);
       const files = init.body.getAll("images");
       for (const file of files) {
+        state.uploadedFiles.push({ name: file.name, type: file.type });
         const bytes = Buffer.from(await file.arrayBuffer());
         item.uploads.push({
           id: `media-${item.slug}-${item.uploads.length + 1}`,
@@ -277,6 +310,10 @@ test("the importer patches seeded items, skips matching hashes, and reruns witho
   assert.equal(first.created.length, freshDropManifest.length - 2);
   const expectedUploadCount = freshDropManifest.reduce((total, item) => total + item.media.length, 0) - 1;
   assert.equal(first.uploaded.length, expectedUploadCount);
+  assert.deepEqual(
+    server.state.uploadedFiles.find((file) => file.name === "24-coop-escape-artist.png"),
+    { name: "24-coop-escape-artist.png", type: "image/png" },
+  );
   assert.equal(first.skipped.some((entry) => entry.source === "16-IMG_5615.jpg" && entry.reason === "hash_exists"), true);
   assert.equal(server.state.requests.filter((entry) => entry.method === "POST" && entry.path === "/api/v1/ops/items").length,
     freshDropManifest.length - 2);
