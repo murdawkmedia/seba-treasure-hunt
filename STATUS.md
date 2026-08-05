@@ -25,6 +25,28 @@ and mobile-operable image frame when selected.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-08-05 - scoped service API validation candidate
+
+- Added environment-bound, hashed service keys with read-only and full case-
+  operations profiles, one-time reveal, optional expiry, rotation overlap and
+  immediate revocation. Only the configured Murphy and Tech human staff
+  identities can administer keys.
+- Service clients can use the existing case, report, media, publishing,
+  moderation, inquiry, people, legal, staff and audit APIs with exact scopes.
+  Service keys cannot manage keys, staff access, account security or legal
+  records. Mutations require explicit confirmation and request-bound
+  idempotency.
+- Validation-only migration `0023_service_api_keys.sql` and the encrypted
+  preview pepper are active. The immutable candidate is
+  `https://5ae129e3.seba-treasure-hunt.pages.dev`; production was not deployed,
+  migrated or reconfigured.
+- Verification passed 608 TypeScript tests across 54 files, the complete
+  legacy/static suite, every TypeScript project, exact legal generation, the
+  production build and validation HTTP/D1 smoke checks.
+- Human-gated key creation and downstream Console/MCP live validation remain.
+  Full evidence and the exact resume sequence are in
+  `docs/operations/2026-08-05-service-api-validation.md`.
+
 ## Update 2026-08-05 - evidence poster viewer production follow-up
 
 - Kept ordinary evidence thumbnails compact while giving the document-style
