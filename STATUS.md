@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## Current state
 
@@ -14,10 +14,42 @@ The live Ops console now supports audited direct staff invitations, immediate
 D1-first access suspension/reactivation, and reversible item-status controls.
 The public evidence wall is data-driven, the Apple Watch is marked found, and
 the governed Fresh Drops ledger contains the approved hunter-only collection,
-including the Gucci belt.
+including the Gucci belt. Casey's Coop Escape Artist is now a public,
+return-required item with its processed wanted poster on the evidence wall and
+in Fresh Drops.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-08-05 - Coop Escape Artist production release
+
+- Moved the supplied 1,536 by 2,048 PNG into the ignored private source-media
+  area and added a governed public item for Casey's Coop Escape Artist. The
+  chicken is Out there, reportable, return-required, present on the main board
+  and ordered 19 in Fresh Drops. Its public image is a metadata-clean WebP.
+- Added a focused importer regression and corrected source MIME handling so
+  PNG and WebP evidence are no longer hard-coded as JPEG. The final focused
+  suite passed 12/12 and the complete suite passed 632/632.
+- Exported production D1 before the first write to
+  `source-media/production-backups/2026-08-05-pre-coop-escape-artist-production.sql`
+  (1,009,530 bytes; SHA-256
+  `f5018511548210873c1bfe2dbdb7c0e3ff505fed43b6648f0e7554106fa4e39a`).
+- The guarded production resume uploaded one image and patched one item with
+  zero failures. Its second pass created, patched and uploaded zero. Production
+  now has 23 items, 20 Fresh Drops records, nine public-safe items, 25 ready
+  and selected media records, three preserved Found states and clean foreign
+  keys.
+- Verification passed every TypeScript project, exact legal artifacts, the
+  production build, 53-file privacy scan, canonical/immutable route checks,
+  authenticated 20-record Fresh Drops retrieval, public media retrieval, and
+  1,280/390-pixel browser checks with no overflow or console errors.
+- Pushed source commit `4fc070a` to GitHub `main` and deployed Cloudflare Pages
+  production deployment `20cee3a7-25f2-4e30-8444-829ccdb6b9c3`, immutable at
+  `https://20cee3a7.seba-treasure-hunt.pages.dev` and live at
+  `https://www.timlostsomething.com`.
+- Full evidence and rollback instructions are in
+  `docs/operations/2026-08-05-coop-escape-artist-release.md`. The prior
+  immutable Pages release and the pre-change D1 export remain available.
 
 ## Update 2026-08-04 - governed Fresh Drops production reconciliation
 
