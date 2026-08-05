@@ -327,7 +327,7 @@ export const freshDropManifest = Object.freeze([
     slug: "coop-escape-artist",
     owner: "casey",
     category: "animal",
-    title: "The Coop Escape Artist",
+    title: "Cock on the Walk",
     description: "A rodeo-winning chicken is loose in Kokanee Springs RV Park. Catch and return him to the front chickens for a $100 reward.",
     finderKeeps: false,
     reportable: true,
@@ -336,6 +336,6 @@ export const freshDropManifest = Object.freeze([
     showOnBoard: true,
     teaserOrder: null,
     collectionOrder: 19,
-    media: [media("24-coop-escape-artist.png", "Wanted poster for the Coop Escape Artist chicken, offering a $100 reward for his return to the front chickens", "public")]
+    media: [media("24-coop-escape-artist.png", "Wanted poster for the Cock on the Walk chicken, offering a $100 reward for his return to the front chickens", "public")]
   }
 ]);

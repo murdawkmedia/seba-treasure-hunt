@@ -14,7 +14,7 @@ The live Ops console now supports audited direct staff invitations, immediate
 D1-first access suspension/reactivation, and reversible item-status controls.
 The public evidence wall is data-driven, the Apple Watch is marked found, and
 the governed Fresh Drops ledger contains the approved hunter-only collection,
-including the Gucci belt. Casey's Coop Escape Artist is now a public,
+including the Gucci belt. Casey's Cock on the Walk is now a public,
 return-required item with its processed wanted poster on the evidence wall and
 in Fresh Drops.
 
@@ -24,6 +24,22 @@ and mobile-operable image frame when selected.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-08-05 - Cock on the Walk title
+
+- Renamed the public item card from **The Coop Escape Artist** to
+  **Cock on the Walk** in the canonical Fresh Drops manifest and governed item
+  ledger. The stable item ID and slug remain unchanged for compatibility.
+- Kept the supplied wanted-poster artwork unchanged; only the website item
+  title and accessible alternative text changed.
+- Reconciled validation and production with optimistic item version checks,
+  append-only audit history and a fresh ignored production D1 export. The live
+  item remains Out there and the production foreign-key check is clean.
+- Verification passed the 12-test focused suite, every TypeScript project, the
+  325-test static/browser/privacy suite, production build, legal verification,
+  53-file output privacy scan and live browser smoke test. The unchanged
+  real-D1 unit surface reproduced its known local Miniflare shutdown hang and
+  was stopped without assertion-failure output.
 
 ## Update 2026-08-05 - evidence poster viewer production follow-up
 

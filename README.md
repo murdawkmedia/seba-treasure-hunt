@@ -35,7 +35,7 @@ provider does not answer.
 Tim's ID and Apple Watch are found. The original roughly $5,000 cash loss
 remains the starting point of the case; the current estimate is approaching
 $10,000 without being a guarantee. The rings, camera, purse and qualifying golf
-balls begin as Out there. Casey's public Coop Escape Artist item asks hunters
+balls begin as Out there. Casey's public Cock on the Walk item asks hunters
 to return the loose chicken to the front chickens for the stated reward rather
 than keep it. All live statuses are maintained by staff through the audited
 What's Out There board. Signed-in hunters also receive the governed Fresh Drops

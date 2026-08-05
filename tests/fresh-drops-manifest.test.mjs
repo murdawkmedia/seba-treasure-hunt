@@ -69,7 +69,7 @@ test("the approved Gucci belt is a hunter-only findable Fresh Drop", () => {
   });
 });
 
-test("the Coop Escape Artist is a public return-required Fresh Drop", () => {
+test("Cock on the Walk is a public return-required Fresh Drop", () => {
   const chicken = freshDropManifest.find((item) => item.id === "case-item-coop-escape-artist");
 
   assert.deepEqual(chicken, {
@@ -77,7 +77,7 @@ test("the Coop Escape Artist is a public return-required Fresh Drop", () => {
     slug: "coop-escape-artist",
     owner: "casey",
     category: "animal",
-    title: "The Coop Escape Artist",
+    title: "Cock on the Walk",
     description: "A rodeo-winning chicken is loose in Kokanee Springs RV Park. Catch and return him to the front chickens for a $100 reward.",
     finderKeeps: false,
     reportable: true,
@@ -88,7 +88,7 @@ test("the Coop Escape Artist is a public return-required Fresh Drop", () => {
     collectionOrder: 19,
     media: [{
       source: "24-coop-escape-artist.png",
-      alt: "Wanted poster for the Coop Escape Artist chicken, offering a $100 reward for his return to the front chickens",
+      alt: "Wanted poster for the Cock on the Walk chicken, offering a $100 reward for his return to the front chickens",
       audience: "public",
       caption: null
     }]
