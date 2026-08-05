@@ -123,8 +123,33 @@ Gucci belt; signed-out Fresh Drops access returns HTTP 401.
 
 ## Release and rollback
 
+The governed manifest and importer release is Git commit
+`a8142cff1b3ca792157e6ac2086706d650aa16ec`. It was pushed to GitHub `main`
+and deployed to Cloudflare Pages production as
+`ed4d0fe8-f91f-49f8-89e2-c0c47e49b3be`, immutable at
+`https://ed4d0fe8.seba-treasure-hunt.pages.dev` and promoted at
+`https://www.timlostsomething.com`.
+
+Post-deploy smoke checks confirmed:
+
+- production identity on the canonical host;
+- HTTP 200 for Home, Route, Report, Latest News, What People Found, My Hunt,
+  Ops and the matching immutable routes;
+- the bare-domain 301 preserves the tested route and query;
+- signed-out public API: eight records, zero Gucci-belt records;
+- signed-out Fresh Drops: HTTP 401;
+- authenticated hunter Fresh Drops: 18 item cards, Gucci belt Out there and
+  hunter-only, with one 200 `image/webp` response;
+- authenticated live Ops: 22 records, Gucci belt visible with one complete
+  480 by 640 image and its approved alternative text;
+- public evidence board: eight cards, no Gucci-belt text, no horizontal
+  overflow at the 1280-pixel smoke viewport, and all eight media endpoints
+  available; and
+- post-deploy D1: 22 items, 19 Fresh Drops records, 24 ready and selected
+  item-media records, zero processing records, two Found states and a clean
+  foreign-key check.
+
 The previous immutable Pages deployment remains
 `https://a6dc3b9c.seba-treasure-hunt.pages.dev` for immediate code rollback.
-The D1 export above is the pre-reconciliation data rollback point. The final
-source commit, immutable production Pages URL and post-deploy browser smoke
-results are appended after the clean release build is promoted.
+The D1 export above is the pre-reconciliation data rollback point. Existing R2
+originals and derivatives remain available for a data rollback if required.

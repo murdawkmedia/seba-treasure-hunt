@@ -46,8 +46,18 @@ validation accounts, submissions, or credentials into production.
   deny Fresh Drops with HTTP 401. Fresh source verification passed 632/632
   automated tests, every TypeScript project, exact legal artifacts, 11 focused
   manifest/importer tests, the production build, 53-file privacy scan and
-  `git diff --check`. Pages promotion and live browser smoke evidence are still
-  being completed for this release.
+  `git diff --check`.
+- Pushed governed release `a8142cff1b3ca792157e6ac2086706d650aa16ec`
+  to GitHub `main` and deployed Cloudflare Pages production deployment
+  `ed4d0fe8-f91f-49f8-89e2-c0c47e49b3be`, immutable at
+  `https://ed4d0fe8.seba-treasure-hunt.pages.dev` and live at
+  `https://www.timlostsomething.com`.
+- Post-deploy smoke checks passed on canonical and immutable hosts. Live Ops
+  loads 22 records and the complete Gucci image. An authenticated hunter
+  receives 18 Fresh Drops cards and the Gucci WebP; signed-out visitors cannot
+  fetch the collection or see the Gucci record. The apex redirect preserves
+  path/query, the public board has no horizontal overflow at 1280 pixels, and
+  final D1 counts and foreign keys remain correct.
 
 ## Update 2026-08-04 - governed Fresh Drops validation candidate
 
