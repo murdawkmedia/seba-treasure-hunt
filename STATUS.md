@@ -40,6 +40,10 @@ validation accounts, submissions, or credentials into production.
   53-file output privacy scan and live browser smoke test. The unchanged
   real-D1 unit surface reproduced its known local Miniflare shutdown hang and
   was stopped without assertion-failure output.
+- Pushed source commit `2fa041f` and deployed immutable production release
+  `https://009fb8cd.seba-treasure-hunt.pages.dev`; canonical and immutable
+  browser checks both show the new heading, updated poster alternative text,
+  no old heading and zero console errors.
 
 ## Update 2026-08-05 - evidence poster viewer production follow-up
 

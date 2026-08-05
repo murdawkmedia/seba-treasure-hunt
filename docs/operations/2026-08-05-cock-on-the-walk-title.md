@@ -40,3 +40,10 @@ The real-D1 unit runner reproduced its known local Miniflare shutdown hang and
 was terminated after producing no failure output. No worker or database code
 changed in this release; the changed manifest contract is covered by the
 passing focused suite.
+
+Source commit `2fa041f` was pushed to GitHub `main`. The matching production
+Pages deployment is `009fb8cd-c65b-446a-bb8b-f96ba8fc4233`, immutable at
+`https://009fb8cd.seba-treasure-hunt.pages.dev` and live at
+`https://www.timlostsomething.com`. The prior immutable release remains
+`https://31664366.seba-treasure-hunt.pages.dev` for immediate code rollback;
+the D1 export above is the pre-title data rollback point.
