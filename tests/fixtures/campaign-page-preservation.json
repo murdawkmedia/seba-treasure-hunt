@@ -4,7 +4,7 @@
   "normalizationVersion": "campaign-shell-v2",
   "pages": {
     "index.html": {
-      "headSha256": "1a6111d8ae269587837b105395e9e976052a598bbfa3ede0c046adff0ae0084a",
+      "headSha256": "a427191c01c6aadb538e42913137c31af1c0509ce7590196a551a04b469beb35",
       "scriptsSha256": "b0a71fccd2de16c79aa81dea27ec6a8b64a196a60a1ff1c958ef0da49fc2ad57",
       "bodySha256": "a0f8614e7eab9ed8d5c95a06b6944422ecf8155396413a41bb3dd343d92f5595"
     },

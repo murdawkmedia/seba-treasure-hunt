@@ -1,3 +1,5 @@
+import { initializeApprovedMediaViewer } from "./approved-media-viewer";
+
 type CaseItemStatus = "out_there" | "found" | "paused";
 
 interface PublicCaseItemMedia {
@@ -84,19 +86,31 @@ const addFoundStamp = (card: HTMLElement): void => {
   photo.appendChild(stamp);
 };
 
-const replaceMedia = (card: HTMLElement, media: PublicCaseItemMedia[]): void => {
-  if (media.length === 0) return;
-  const first = media[0];
+const replaceMedia = (card: HTMLElement, item: PublicCaseItem): void => {
+  if (item.media.length === 0) return;
+  const first = item.media[0];
   if (!first) return;
   const existing = card.querySelector<HTMLElement>(".evidence-card__photo");
   const figure = document.createElement("figure");
   figure.className = "evidence-card__photo";
+  if (item.slug === "coop-escape-artist") figure.classList.add("evidence-card__photo--document");
+  const trigger = document.createElement("a");
+  trigger.className = "approved-media-trigger";
+  trigger.href = first.url;
+  trigger.target = "_blank";
+  trigger.rel = "noopener";
+  trigger.referrerPolicy = "no-referrer";
+  trigger.setAttribute("data-approved-media", "");
+  trigger.dataset.mediaCaption = item.title;
+  trigger.setAttribute("aria-label", `Open full image: ${first.alt}`);
   const image = document.createElement("img");
   image.src = first.url;
   image.alt = first.alt;
   image.loading = "lazy";
   image.decoding = "async";
-  figure.appendChild(image);
+  image.referrerPolicy = "no-referrer";
+  trigger.appendChild(image);
+  figure.appendChild(trigger);
   if (existing) existing.replaceWith(figure);
   else card.prepend(figure);
 };
@@ -115,7 +129,7 @@ const updateCard = (card: HTMLElement, item: PublicCaseItem): void => {
   if (!meta.isConnected) body.prepend(meta);
   if (!heading.isConnected) body.appendChild(heading);
   if (!description.isConnected) body.appendChild(description);
-  replaceMedia(card, item.media);
+  replaceMedia(card, item);
   if (item.status === "found") addFoundStamp(card);
   else card.querySelector(".evidence-stamp")?.remove();
 };
@@ -185,6 +199,9 @@ const initializeItems = async (): Promise<void> => {
   const state = board?.querySelector<HTMLElement>("[data-case-items-state]");
   const teaserList = document.querySelector<HTMLOListElement>("[data-fresh-drops-teaser-items]");
   if (!board || !list) return;
+  list.setAttribute("data-media-gallery", "");
+  list.dataset.mediaGalleryTitle = "Current case evidence";
+  initializeApprovedMediaViewer(document);
   try {
     const response = await fetch("/api/v1/items", { credentials: "same-origin", headers: { Accept: "application/json" } });
     const payload: unknown = await response.json().catch(() => null);

@@ -161,6 +161,9 @@
 .evidence-card__meta { color: #86501b; font-size: 0.7rem; font-weight: 700; }
 .evidence-card__photo { position: relative; display: block; overflow: hidden; margin: 0 0 0.8rem; background: #18362e; }
 .evidence-card__photo img { display: block; width: 100%; max-height: 340px; object-fit: cover; }
+.evidence-card__photo .approved-media-trigger { display: block; cursor: zoom-in; }
+.evidence-card__photo.evidence-card__photo--document { background: #efe1ba; }
+.evidence-card__photo.evidence-card__photo--document img { height: auto; max-height: none; object-fit: contain; }
 .evidence-card__photo--id img { max-height: 400px; object-position: center 18%; }
 .evidence-card__photo figcaption { padding: 0.55rem 0.7rem; color: #f6efdd; font-family: var(--campaign-font-meta); font-size: 0.7rem; line-height: 1.45; text-align: center; }
 

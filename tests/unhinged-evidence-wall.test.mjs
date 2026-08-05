@@ -103,6 +103,21 @@ test("the evidence board has a semantic mobile fallback instead of a pan-and-zoo
   assert.doesNotMatch(styles, /overflow:\s*(?:scroll|auto)[^}]*transform:\s*scale/i);
 });
 
+test("evidence-board media opens in the shared full-image viewer and document evidence is never cropped", async () => {
+  const [html, client, styles] = await Promise.all([
+    read("index.html"),
+    read("src/client/items.ts"),
+    read("css/evidence-wall.css"),
+  ]);
+
+  assert.match(html, /<link rel="stylesheet" href="\/css\/route-lightbox\.css"/);
+  assert.match(client, /initializeApprovedMediaViewer/);
+  assert.match(client, /data-approved-media/);
+  assert.match(client, /data-media-gallery/);
+  assert.match(client, /evidence-card__photo--document/);
+  assert.match(styles, /\.evidence-card__photo\.evidence-card__photo--document img\s*\{[^}]*max-height:\s*none[^}]*object-fit:\s*contain/s);
+});
+
 test("public metadata and answers describe the ID as found", async () => {
   for (const file of ["index.html", "route.html", "start.html", "updates.html", "golf-balls.html"]) {
     const html = await read(file);
