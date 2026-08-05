@@ -110,12 +110,15 @@ test("evidence-board media opens in the shared full-image viewer and document ev
     read("css/evidence-wall.css"),
   ]);
 
-  assert.match(html, /<link rel="stylesheet" href="\/css\/route-lightbox\.css"/);
+  assert.match(html, /<link rel="stylesheet" href="\/css\/route-lightbox\.css(?:\?[^\"]+)?"/);
   assert.match(client, /initializeApprovedMediaViewer/);
   assert.match(client, /data-approved-media/);
   assert.match(client, /data-media-gallery/);
   assert.match(client, /evidence-card__photo--document/);
   assert.match(styles, /\.evidence-card__photo\.evidence-card__photo--document img\s*\{[^}]*max-height:\s*none[^}]*object-fit:\s*contain/s);
+  assert.match(html, /\/css\/evidence-wall\.css\?v=20260805-poster-viewer/);
+  assert.match(html, /\/css\/route-lightbox\.css\?v=20260805-poster-viewer/);
+  assert.match(html, /\/assets\/app\/items\.js\?v=20260805-poster-viewer/);
 });
 
 test("public metadata and answers describe the ID as found", async () => {
