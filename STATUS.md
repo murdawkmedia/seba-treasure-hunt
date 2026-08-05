@@ -14,7 +14,7 @@ The live Ops console now supports audited direct staff invitations, immediate
 D1-first access suspension/reactivation, and reversible item-status controls.
 The public evidence wall is data-driven, the Apple Watch is marked found, and
 the governed Fresh Drops ledger contains the approved hunter-only collection,
-including the Gucci belt. Casey's Coop Escape Artist is now a public,
+including the Gucci belt. Casey's Cock on the Walk is now a public,
 return-required item with its processed wanted poster on the evidence wall and
 in Fresh Drops.
 
@@ -63,7 +63,25 @@ validation accounts, submissions, or credentials into production.
 - Human-gated key creation and downstream Console/MCP live validation remain.
   Full evidence and the exact resume sequence are in
   `docs/operations/2026-08-05-service-api-validation.md`.
+## Update 2026-08-05 - Cock on the Walk title
 
+- Renamed the public item card from **The Coop Escape Artist** to
+  **Cock on the Walk** in the canonical Fresh Drops manifest and governed item
+  ledger. The stable item ID and slug remain unchanged for compatibility.
+- Kept the supplied wanted-poster artwork unchanged; only the website item
+  title and accessible alternative text changed.
+- Reconciled validation and production with optimistic item version checks,
+  append-only audit history and a fresh ignored production D1 export. The live
+  item remains Out there and the production foreign-key check is clean.
+- Verification passed the 12-test focused suite, every TypeScript project, the
+  325-test static/browser/privacy suite, production build, legal verification,
+  53-file output privacy scan and live browser smoke test. The unchanged
+  real-D1 unit surface reproduced its known local Miniflare shutdown hang and
+  was stopped without assertion-failure output.
+- Pushed source commit `2fa041f` and deployed immutable production release
+  `https://009fb8cd.seba-treasure-hunt.pages.dev`; canonical and immutable
+  browser checks both show the new heading, updated poster alternative text,
+  no old heading and zero console errors.
 ## Update 2026-08-05 - evidence poster viewer production follow-up
 
 - Kept ordinary evidence thumbnails compact while giving the document-style
