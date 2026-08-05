@@ -123,6 +123,23 @@ The Graph contract uses:
 
 Use `scripts/graph-device-login.mjs` only for controlled delegated setup. Refresh-token changes are encrypted rotations; revoked or expired grants require a fresh delegated authorization.
 
+## Service API and machine access
+
+The versioned `/api/v1` service boundary supports durable, environment-bound,
+scoped API keys for server integrations and the dedicated local MCP adapter.
+The SebaHub Console uses a read-only key and fetches live production data
+through its server-side Pages Function; the key never enters its browser
+bundle and Console does not copy Treasure Hunt records into Convex.
+
+Machine mutations require an explicit write scope, `X-Tim-Confirm: true`, and
+a durable `Idempotency-Key`. Service clients can never administer keys, staff
+access, account security, or legal acceptance. Plaintext keys are shown only
+once when created or rotated; only their HMAC hashes and identifying prefixes
+are stored.
+
+See [`docs/SERVICE_API_RUNBOOK.md`](docs/SERVICE_API_RUNBOOK.md) and
+[`docs/openapi/tim-lost-service-v1.yaml`](docs/openapi/tim-lost-service-v1.yaml).
+
 ## Deployment
 
 Cloudflare Pages serves `www.timlostsomething.com`; the bare hostname redirects to the canonical `www` host while preserving paths and query strings. `wrangler.toml` separates production from disposable Preview bindings, and `wrangler.media.toml` defines the private media processor.

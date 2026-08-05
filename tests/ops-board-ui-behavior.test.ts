@@ -56,6 +56,8 @@ import {
   renderSubscriberRows,
   renderSponsorRows,
   renderStaffRows,
+  normalizeServiceKeys,
+  renderServiceKeyRows,
   normalizeProductionSnapshotSummary,
   normalizeProductionSnapshotReports,
   renderProductionSnapshotReportRows,
@@ -66,6 +68,32 @@ import {
   waiverReceiptRetryIntent,
 } from "../src/client/ops";
 import { nextReportStates } from "../src/shared/publication";
+
+test("service-key controls normalize metadata without ever rendering a secret", () => {
+  const records = normalizeServiceKeys({ data: [{
+    id: "key-1",
+    name: "Console read",
+    environment: "validation",
+    prefix: "tls_val_key-1_abcd",
+    scopes: ["case.read", "people.read"],
+    status: "active",
+    createdAt: "2026-08-05T18:00:00.000Z",
+    createdBy: "staff:tech",
+    rotatedFromId: null,
+    revokedAt: null,
+    revokedBy: null,
+    expiresAt: null,
+    lastUsedAt: null,
+    secret: "must-not-render",
+  }] });
+  assert.equal(records.length, 1);
+  const html = renderServiceKeyRows(records);
+  assert.match(html, /Console read/);
+  assert.match(html, /case\.read/);
+  assert.match(html, /Rotate/);
+  assert.match(html, /Revoke/);
+  assert.doesNotMatch(html, /must-not-render/);
+});
 
 test("Case Note moderation renders truthful media states with publication selection off", () => {
   const records = normalizeModeration({ data: [{

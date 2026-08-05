@@ -34,6 +34,10 @@ import type {
   PagesEnv,
   Principal,
   ReportWorkflowMutation,
+  ServiceKeyCreateInput,
+  ServiceIdempotencyInput,
+  ServiceKeyScope,
+  ServicePrincipal,
   SponsorContributionRange,
   SponsorInquiryRecord,
   SponsorInquiryState,
@@ -124,6 +128,24 @@ const validSponsorContributionRanges = new Set<SponsorContributionRange>([
   "2500_4999",
   "5000_plus",
   "prefer_to_discuss"
+]);
+const validServiceKeyScopes = new Set<ServiceKeyScope>([
+  "case.read",
+  "case.write",
+  "reports.read",
+  "reports.write",
+  "media.read",
+  "media.write",
+  "publishing.read",
+  "publishing.write",
+  "moderation.read",
+  "moderation.write",
+  "inquiries.read",
+  "inquiries.write",
+  "people.read",
+  "legal.read",
+  "staff.read",
+  "audit.read",
 ]);
 const rateLimitRules = {
   report: { limit: 5, windowSeconds: 600 },
@@ -880,6 +902,9 @@ const scheduleOperatorAlert = (
 
 const sameOrigin = (request: Request) => {
   const raw = request.headers.get("origin")?.trim() ?? "";
+  if (!raw && /^Bearer tls_(?:val|prod)_/.test(request.headers.get("authorization") ?? "")) {
+    return;
+  }
   let origin: URL;
   try {
     if (!raw || raw === "null") throw new Error("missing origin");
@@ -932,13 +957,167 @@ const optionalHunter = async (deps: ApiDependencies, request: Request) => {
   return principal;
 };
 
+const serviceScopesFor = (request: Request): ServiceKeyScope[] | null => {
+  const { pathname } = new URL(request.url);
+  const method = request.method.toUpperCase();
+  const isRead = method === "GET" || method === "HEAD";
+
+  if (/^\/api\/v1\/ops\/(?:api-keys|staff\/|players\/[^/]+\/(?:recovery|revoke-sessions))/.test(pathname)) {
+    return null;
+  }
+  if (/^\/api\/v1\/ops\/players\/[^/]+\/waiver\/receipt$/.test(pathname)) return null;
+  if (pathname === "/api/v1/ops/session") return null;
+
+  if (pathname === "/api/v1/ops/dashboard") {
+    return isRead
+      ? [
+          "case.read", "reports.read", "publishing.read", "moderation.read", "inquiries.read",
+          "people.read", "legal.read", "staff.read", "audit.read",
+        ]
+      : null;
+  }
+  if (pathname === "/api/v1/ops/status") return method === "PUT" ? ["case.write"] : null;
+
+  if (/^\/api\/v1\/ops\/items(?:\/|$)/.test(pathname)) {
+    const media = /\/media(?:\/|$)/.test(pathname);
+    const announcement = /\/announcement-draft$/.test(pathname);
+    if (isRead) return media ? ["case.read", "media.read"] : ["case.read"];
+    if (announcement) return ["case.write", "publishing.write"];
+    if (media) return ["case.write", "media.write"];
+    return ["case.write"];
+  }
+
+  if (/^\/api\/v1\/ops\/updates(?:\/|$)/.test(pathname)) {
+    const media = /\/media(?:\/|$)/.test(pathname);
+    if (isRead) return media ? ["publishing.read", "media.read"] : ["publishing.read"];
+    return media ? ["publishing.write", "media.write"] : ["publishing.write"];
+  }
+
+  if (/^\/api\/v1\/ops\/reports(?:\/|$)/.test(pathname)) {
+    const media = /\/(?:media|update-media)(?:\/|$)/.test(pathname);
+    const publication = /\/(?:case-note|publish|unpublish)(?:\/|$)/.test(pathname);
+    if (isRead) return media ? ["reports.read", "media.read"] : ["reports.read"];
+    if (media) return ["reports.write", "media.write"];
+    if (publication) return ["reports.write", "publishing.write"];
+    return ["reports.write"];
+  }
+
+  if (/^\/api\/v1\/ops\/sponsors(?:\/|$)/.test(pathname)) {
+    return isRead ? ["inquiries.read"] : ["inquiries.write"];
+  }
+  if (/^\/api\/v1\/ops\/moderation(?:\/|$)/.test(pathname)) {
+    if (isRead) {
+      return /\/media(?:\/|$)/.test(pathname)
+        ? ["moderation.read", "media.read"]
+        : ["moderation.read"];
+    }
+    return ["moderation.write"];
+  }
+  if (pathname === "/api/v1/ops/staff") return isRead ? ["staff.read"] : null;
+  if (pathname === "/api/v1/ops/subscribers" || pathname === "/api/v1/ops/players") {
+    return isRead ? ["people.read"] : null;
+  }
+  if (/^\/api\/v1\/ops\/players\/[^/]+\/waiver$/.test(pathname)) {
+    return isRead ? ["legal.read"] : null;
+  }
+  if (pathname === "/api/v1/ops/audit") return isRead ? ["audit.read"] : null;
+
+  if (/^\/api\/v1\/ops\/production-snapshot(?:\/|$)/.test(pathname) && isRead) {
+    if (/\/reports(?:\/|$)/.test(pathname)) {
+      return /\/media(?:\/|$)/.test(pathname)
+        ? ["reports.read", "media.read"]
+        : ["reports.read"];
+    }
+    if (/\/players\/[^/]+\/waiver$/.test(pathname)) return ["legal.read"];
+    if (/\/players(?:\/|$)/.test(pathname)) return ["people.read"];
+    if (/\/staff$/.test(pathname)) return ["staff.read"];
+    if (/\/audit$/.test(pathname)) return ["audit.read"];
+    return ["case.read"];
+  }
+
+  return null;
+};
+
 const requireStaff = async (deps: ApiDependencies, request: Request) => {
   const principal = await deps.identity.authenticateStaff(request);
-  if (!principal) throw new ApiError(401, "staff_auth_required", "Sign in through the staff account portal.");
-  if (!(await deps.store.isActiveStaff(principal.subject, principal.email))) {
-    throw new ApiError(403, "staff_access_revoked", "This staff identity is not active.");
+  if (principal) {
+    if (!(await deps.store.isActiveStaff(principal.subject, principal.email))) {
+      throw new ApiError(403, "staff_access_revoked", "This staff identity is not active.");
+    }
+    return principal;
   }
-  return principal;
+  const service = await deps.serviceKeys?.authenticate(request);
+  if (!service) throw new ApiError(401, "staff_auth_required", "Sign in through the staff account portal.");
+  const requiredScopes = serviceScopesFor(request);
+  if (!requiredScopes) {
+    throw new ApiError(403, "service_route_forbidden", "Service keys cannot access this staff operation.");
+  }
+  const missing = requiredScopes.filter((scope) => !service.scopes.includes(scope));
+  if (missing.length) {
+    throw new ApiError(403, "service_scope_required", "The service key does not have the required scope.", {
+      requiredScopes,
+    });
+  }
+  return service;
+};
+
+const requireService = async (deps: ApiDependencies, request: Request): Promise<ServicePrincipal> => {
+  const service = await deps.serviceKeys?.authenticate(request);
+  if (!service) {
+    throw new ApiError(401, "service_auth_invalid", "A valid service API key is required.");
+  }
+  return service;
+};
+
+const requireApiKeyAdmin = async (deps: ApiDependencies, request: Request) => {
+  const staff = await requireStaff(deps, request);
+  const email = staff.email?.trim().toLowerCase() ?? "";
+  const allowed = new Set(
+    (deps.apiKeyAdminEmails ?? []).map((candidate) => candidate.trim().toLowerCase())
+  );
+  if (!email || !allowed.has(email)) {
+    throw new ApiError(
+      403,
+      "api_key_admin_required",
+      "Only an authorized service-key administrator can manage API keys."
+    );
+  }
+  if (!deps.serviceKeys) {
+    throw new ApiError(503, "service_key_unavailable", "Service-key management is not configured.");
+  }
+  return staff;
+};
+
+const serviceKeyInput = (body: Record<string, unknown>): ServiceKeyCreateInput => {
+  const allowed = new Set(["name", "scopes", "expiresAt"]);
+  const forbidden = Object.keys(body).find((key) => !allowed.has(key));
+  if (forbidden) {
+    throw new ApiError(422, "validation_failed", "The service-key request contains an unsupported field.", {
+      field: forbidden,
+    });
+  }
+  const name = requiredString(body, "name", { min: 3, max: 100, label: "Key name" });
+  if (
+    !Array.isArray(body.scopes) ||
+    body.scopes.length < 1 ||
+    body.scopes.length > validServiceKeyScopes.size ||
+    body.scopes.some((scope) => typeof scope !== "string" || !validServiceKeyScopes.has(scope as ServiceKeyScope))
+  ) {
+    throw new ApiError(422, "validation_failed", "Choose one or more valid service-key scopes.", {
+      field: "scopes",
+    });
+  }
+  const scopes = [...new Set(body.scopes as ServiceKeyScope[])].sort() as ServiceKeyScope[];
+  if (scopes.length !== body.scopes.length) {
+    throw new ApiError(422, "validation_failed", "Service-key scopes must be unique.", { field: "scopes" });
+  }
+  const expiresAt = optionalString(body, "expiresAt", 64);
+  if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) {
+    throw new ApiError(422, "validation_failed", "Key expiry must be a future date and time.", {
+      field: "expiresAt",
+    });
+  }
+  return { name, scopes, expiresAt };
 };
 
 const verifyHuman = async (
@@ -958,7 +1137,7 @@ const applyRateLimit = async (
   deps: ApiDependencies,
   request: Request,
   scope: keyof typeof rateLimitRules,
-  principal: Principal | null
+  principal: Principal | ServicePrincipal | null
 ) => {
   if (!deps.rateLimits) {
     throw new ApiError(
@@ -980,6 +1159,50 @@ const applyRateLimit = async (
       retryAfter: result.retryAfter
     });
   }
+};
+
+const applyServiceRateLimit = async (
+  deps: ApiDependencies,
+  request: Request,
+  service: ServicePrincipal,
+  kind: "read" | "mutation" | "upload"
+) => {
+  if (!deps.rateLimits) {
+    throw new ApiError(503, "rate_limit_unavailable", "Service API abuse protection is unavailable.");
+  }
+  const rule = kind === "read"
+    ? { limit: 300, windowSeconds: 60 }
+    : kind === "upload"
+      ? { limit: 20, windowSeconds: 60 }
+      : { limit: 60, windowSeconds: 60 };
+  const clientIp = request.headers.get("cf-connecting-ip")?.trim() || "client-unavailable";
+  const result = await deps.rateLimits.consume({
+    scope: `service_${kind}`,
+    identifiers: [`key:${service.keyId}`, `ip:${clientIp}`],
+    ...rule,
+  });
+  if (!result.allowed) {
+    throw new ApiError(429, "rate_limit_exceeded", "Too many service API requests. Try again later.", {
+      retryAfter: result.retryAfter,
+    });
+  }
+};
+
+const requestFingerprint = async (request: Request) => {
+  const url = new URL(request.url);
+  const maximumBytes = mediaTypeEssence(request) === "multipart/form-data"
+    ? 32 * 1024 * 1024
+    : 64 * 1024;
+  const prefix = new TextEncoder().encode(
+    `${request.method.toUpperCase()}\n${url.pathname}${url.search}\n${mediaTypeEssence(request)}\n`
+  );
+  const body = await readLimitedBody(request.clone(), maximumBytes);
+  const bytes = new Uint8Array(prefix.byteLength + body.byteLength);
+  bytes.set(prefix);
+  bytes.set(body, prefix.byteLength);
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 };
 
 const ensureOpenForWrites = async (deps: ApiDependencies) => {
@@ -1115,6 +1338,87 @@ export const createApi = (deps: ApiDependencies) => {
       await deps.environment.assertWritable();
     }
     await next();
+  });
+
+  app.use("/api/v1/ops/*", async (c, next) => {
+    const service = await deps.serviceKeys?.authenticate(c.req.raw);
+    if (!service) {
+      await next();
+      return;
+    }
+    const requiredScopes = serviceScopesFor(c.req.raw);
+    if (!requiredScopes) {
+      await next();
+      return;
+    }
+    const missing = requiredScopes.filter((scope) => !service.scopes.includes(scope));
+    if (missing.length) {
+      throw new ApiError(403, "service_scope_required", "The service key does not have the required scope.", {
+        requiredScopes,
+      });
+    }
+    const method = c.req.method.toUpperCase();
+    const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
+    const isUpload = isMutation && (
+      /\/(?:media|update-media)(?:\/|$)/.test(new URL(c.req.url).pathname) ||
+      mediaTypeEssence(c.req.raw) === "multipart/form-data"
+    );
+    await applyServiceRateLimit(deps, c.req.raw, service, isUpload ? "upload" : isMutation ? "mutation" : "read");
+    if (!isMutation) {
+      await next();
+      return;
+    }
+    if (c.req.header("x-tim-confirm")?.toLowerCase() !== "true") {
+      throw new ApiError(
+        422,
+        "service_confirmation_required",
+        "Service mutations require X-Tim-Confirm: true."
+      );
+    }
+    const idempotencyKey = c.req.header("idempotency-key")?.trim() ?? "";
+    if (idempotencyKey.length < 8 || idempotencyKey.length > 200 || !/^[A-Za-z0-9._:-]+$/.test(idempotencyKey)) {
+      throw new ApiError(
+        422,
+        "idempotency_key_required",
+        "Service mutations require a unique Idempotency-Key of 8 to 200 safe characters."
+      );
+    }
+    const url = new URL(c.req.url);
+    const input: ServiceIdempotencyInput = {
+      keyId: service.keyId,
+      idempotencyKey,
+      method,
+      path: `${url.pathname}${url.search}`,
+      requestHash: await requestFingerprint(c.req.raw),
+    };
+    const start = await deps.serviceKeys!.beginIdempotentRequest(input);
+    if (start.state === "conflict") {
+      throw new ApiError(409, "idempotency_conflict", "This Idempotency-Key was already used for another request.");
+    }
+    if (start.state === "in_progress") {
+      throw new ApiError(409, "idempotency_in_progress", "This idempotent request is still in progress.");
+    }
+    if (start.state === "replay") {
+      c.header("idempotency-replayed", "true");
+      c.header("cache-control", "no-store");
+      c.header("content-type", "application/json; charset=UTF-8");
+      c.res = new Response(start.body, { status: start.status, headers: c.res.headers });
+      return;
+    }
+    try {
+      await next();
+    } catch (error) {
+      await deps.serviceKeys!.cancelIdempotentRequest(input);
+      throw error;
+    }
+    if (c.res.status >= 500) {
+      await deps.serviceKeys!.cancelIdempotentRequest(input);
+      return;
+    }
+    await deps.serviceKeys!.completeIdempotentRequest(input, {
+      status: c.res.status,
+      body: await c.res.clone().text(),
+    });
   });
 
   app.get("/api/v1/config", (c) =>
@@ -1768,6 +2072,32 @@ export const createApi = (deps: ApiDependencies) => {
     );
   });
 
+  app.get("/api/v1/service/session", async (c) => {
+    const service = await requireService(deps, c.req.raw);
+    await applyServiceRateLimit(deps, c.req.raw, service, "read");
+    return success(c, {
+      keyId: service.keyId,
+      name: service.name,
+      environment: service.environment,
+      scopes: service.scopes,
+    });
+  });
+  app.get("/api/v1/service/capabilities", async (c) => {
+    const service = await requireService(deps, c.req.raw);
+    await applyServiceRateLimit(deps, c.req.raw, service, "read");
+    return success(c, {
+      keyId: service.keyId,
+      environment: service.environment,
+      scopes: service.scopes,
+      safeguards: {
+        mutationsRequireConfirmation: true,
+        mutationsRequireIdempotencyKey: true,
+        accountSecurityUnavailable: true,
+        legalWritesUnavailable: true,
+        serviceKeyAdministrationUnavailable: true,
+      },
+    });
+  });
   app.get("/api/v1/ops/session", async (c) => {
     const staff = await requireStaff(deps, c.req.raw);
     return success(c, { subject: staff.subject, email: staff.email });
@@ -2611,6 +2941,49 @@ export const createApi = (deps: ApiDependencies) => {
       cursor: c.req.query("cursor") ?? null
     });
     return success(c, result.items, 200, { nextCursor: result.nextCursor });
+  });
+  app.get("/api/v1/ops/api-keys", async (c) => {
+    await requireApiKeyAdmin(deps, c.req.raw);
+    return success(c, await deps.serviceKeys!.list());
+  });
+  app.post("/api/v1/ops/api-keys", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireApiKeyAdmin(deps, c.req.raw);
+    requireJsonMediaType(c.req.raw, "Service-key creation requires JSON.");
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length) {
+      throw new ApiError(422, "validation_failed", "Service-key creation does not accept files.");
+    }
+    const created = await deps.serviceKeys!.create(serviceKeyInput(body), staff.subject);
+    return success(c, { key: created.record, secret: created.plaintext }, 201);
+  });
+  app.post("/api/v1/ops/api-keys/:id/rotate", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireApiKeyAdmin(deps, c.req.raw);
+    requireJsonMediaType(c.req.raw, "Service-key rotation requires JSON.");
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length || Object.keys(body).length !== 1 || body.confirmed !== true) {
+      throw new ApiError(422, "validation_failed", "Deliberately confirm this service-key rotation.", {
+        field: "confirmed",
+      });
+    }
+    const rotated = await deps.serviceKeys!.rotate(c.req.param("id"), staff.subject);
+    if (!rotated) throw new ApiError(404, "service_key_not_found", "Service key not found.");
+    return success(c, { key: rotated.record, secret: rotated.plaintext }, 201);
+  });
+  app.post("/api/v1/ops/api-keys/:id/revoke", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireApiKeyAdmin(deps, c.req.raw);
+    requireJsonMediaType(c.req.raw, "Service-key revocation requires JSON.");
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length || Object.keys(body).length !== 1 || body.confirmed !== true) {
+      throw new ApiError(422, "validation_failed", "Deliberately confirm this service-key revocation.", {
+        field: "confirmed",
+      });
+    }
+    const revoked = await deps.serviceKeys!.revoke(c.req.param("id"), staff.subject);
+    if (!revoked) throw new ApiError(404, "service_key_not_found", "Service key not found.");
+    return success(c, revoked);
   });
   app.post("/api/v1/ops/staff/invitations", async (c) => {
     sameOrigin(c.req.raw);

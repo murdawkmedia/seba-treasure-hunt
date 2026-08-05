@@ -65,6 +65,20 @@ interface OpsStaffRecord {
   suspendBlockedReason: string;
 }
 
+export interface OpsServiceKeyRecord {
+  id: string;
+  name: string;
+  environment: "validation" | "production";
+  prefix: string;
+  scopes: string[];
+  status: "active" | "revoked";
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  rotatedFromId: string | null;
+  revokedAt: string | null;
+}
+
 export interface OpsReportRecord {
   id: string;
   createdAt: string;
@@ -347,6 +361,15 @@ let sponsorsLoaded = false;
 let sponsorLoadVersion = 0;
 const staffLoadGate = createStaffLoadGate();
 const sponsorMutations = new Set<string>();
+const serviceKeyReadScopes = [
+  "case.read", "reports.read", "media.read", "publishing.read", "moderation.read",
+  "inquiries.read", "people.read", "legal.read", "staff.read", "audit.read",
+] as const;
+const serviceKeyFullOpsScopes = [
+  "case.read", "case.write", "reports.read", "reports.write", "media.read", "media.write",
+  "publishing.read", "publishing.write", "moderation.read", "moderation.write",
+  "inquiries.read", "inquiries.write", "people.read", "legal.read", "staff.read", "audit.read",
+] as const;
 let productionSnapshotLoaded = false;
 let productionSnapshotLoading = false;
 let productionSnapshotAvailable = false;
@@ -574,6 +597,37 @@ export function normalizeOpsStaff(payload: unknown): OpsStaffRecord[] {
       actions: actionList,
       isCurrent: asBoolean(value.isCurrent) === true,
       suspendBlockedReason: asString(value.suspendBlockedReason),
+    }];
+  });
+}
+
+export function normalizeServiceKeys(payload: unknown): OpsServiceKeyRecord[] {
+  return asArray(envelopeData(payload)).flatMap((value): OpsServiceKeyRecord[] => {
+    if (!isRecord(value)) return [];
+    const id = asString(value.id).trim();
+    const name = asString(value.name).trim();
+    const environment = asString(value.environment);
+    const prefix = asString(value.prefix).trim();
+    const status = asString(value.status);
+    const scopes = asArray(value.scopes).filter((scope): scope is string => typeof scope === "string");
+    if (
+      !id || !name || !prefix ||
+      !["validation", "production"].includes(environment) ||
+      !["active", "revoked"].includes(status) ||
+      scopes.length !== asArray(value.scopes).length
+    ) return [];
+    return [{
+      id,
+      name,
+      environment: environment as OpsServiceKeyRecord["environment"],
+      prefix,
+      scopes,
+      status: status as OpsServiceKeyRecord["status"],
+      createdAt: asString(value.createdAt),
+      expiresAt: asString(value.expiresAt) || null,
+      lastUsedAt: asString(value.lastUsedAt) || null,
+      rotatedFromId: asString(value.rotatedFromId) || null,
+      revokedAt: asString(value.revokedAt) || null,
     }];
   });
 }
@@ -1263,6 +1317,20 @@ export function renderStaffRows(records: readonly OpsStaffRecord[]): string {
       <td><div class="ops-row-actions">${action("resend-invitation", "Resend invitation")}${action("recovery", "Send recovery instructions")}${action("revoke-sessions", "Revoke sessions")}${accessAction}${record.status === "active" && !record.actions.includes("suspend") && record.suspendBlockedReason ? `<span class="ops-staff-action-note">${escapeOpsHtml(record.suspendBlockedReason)}</span>` : ""}</div></td>
     </tr>`;
   }).join("");
+}
+
+export function renderServiceKeyRows(records: readonly OpsServiceKeyRecord[]): string {
+  if (records.length === 0) {
+    return `<tr><td colspan="6"><span class="ops-table-empty">No service keys exist in this environment.</span></td></tr>`;
+  }
+  return records.map((record) => `<tr>
+    <td><strong>${escapeOpsHtml(record.name)}</strong><br /><span class="ops-mono">${escapeOpsHtml(record.prefix)}&hellip;</span></td>
+    <td><span class="ops-chip">${escapeOpsHtml(record.environment)}</span></td>
+    <td><span class="ops-service-key-scopes">${record.scopes.map((scope) => `<code>${escapeOpsHtml(scope)}</code>`).join(" ")}</span></td>
+    <td><span class="ops-chip">${escapeOpsHtml(record.status)}</span></td>
+    <td>${record.lastUsedAt ? `<time datetime="${escapeOpsHtml(record.lastUsedAt)}">${escapeOpsHtml(formatOpsTime(record.lastUsedAt))}</time>` : "Never"}</td>
+    <td><div class="ops-row-actions">${record.status === "active" ? `<button class="ops-button ops-button--quiet" type="button" data-service-key-action="rotate" data-service-key-id="${escapeOpsHtml(record.id)}">Rotate</button><button class="ops-button ops-button--danger" type="button" data-service-key-action="revoke" data-service-key-id="${escapeOpsHtml(record.id)}">Revoke</button>` : ""}</div></td>
+  </tr>`).join("");
 }
 
 export function renderReportRows(records: readonly OpsReportRecord[]): string {
@@ -3671,6 +3739,44 @@ async function loadStaff(): Promise<void> {
   }
 }
 
+function setServiceKeyResult(message: string, kind: "normal" | "error" = "normal"): void {
+  const state = document.querySelector<HTMLElement>("[data-service-key-result]");
+  if (!state) return;
+  state.textContent = message;
+  if (kind === "error") state.dataset.kind = "error";
+  else delete state.dataset.kind;
+}
+
+function revealServiceKeySecret(secret: string): void {
+  const container = document.querySelector<HTMLElement>("[data-service-key-secret-wrap]");
+  const output = document.querySelector<HTMLTextAreaElement>("[data-service-key-secret]");
+  if (!container || !output) return;
+  output.value = secret;
+  container.hidden = false;
+  output.focus();
+  output.select();
+}
+
+async function loadServiceKeys(): Promise<void> {
+  const panel = document.querySelector<HTMLElement>("#service-key-panel");
+  if (!panel) return;
+  try {
+    const { response, payload } = await opsRequest("/api/v1/ops/api-keys");
+    if (response.status === 403 && apiErrorCode(payload) === "api_key_admin_required") {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    if (!response.ok) throw new Error(apiError(payload, "Service-key management is unavailable."));
+    setTable("#service-key-table", renderServiceKeyRows(normalizeServiceKeys(payload)));
+    setServiceKeyResult("Service-key metadata loaded. Plaintext secrets are never returned here.");
+  } catch (error) {
+    panel.hidden = false;
+    setTable("#service-key-table", `<tr><td colspan="6"><span class="ops-table-empty">Service-key metadata is unavailable.</span></td></tr>`);
+    setServiceKeyResult(error instanceof Error ? error.message : "Service-key management is unavailable.", "error");
+  }
+}
+
 async function loadAudit(): Promise<void> {
   setViewGuide("audit", { state: "Loading audit trail", next: "Wait for the append-only event source.", kind: "loading" });
   try {
@@ -3957,7 +4063,7 @@ async function verifyStaffSession(): Promise<boolean> {
   document.querySelector<HTMLElement>("#ops-auth-panel")?.setAttribute("hidden", "");
   const app = document.querySelector<HTMLElement>("#ops-app");
   if (app) app.hidden = false;
-  await Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit()]);
+  await Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadServiceKeys(), loadAudit()]);
   switchView(resolveOpsView(location.hash, productionSnapshotAvailable), false);
   return true;
 }
@@ -4178,7 +4284,7 @@ function setupWorkspace(): void {
     sidebar?.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", String(open));
   });
-  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadAudit(), ...(itemsLoaded ? [loadItemsView()] : []), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadServiceKeys(), loadAudit(), ...(itemsLoaded ? [loadItemsView()] : []), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view-retry]")) {
     button.addEventListener("click", async () => {
       const view = resolveOpsView(button.dataset.viewRetry ?? "");
@@ -4192,7 +4298,7 @@ function setupWorkspace(): void {
         else if (view === "zones") await loadZones();
         else if (view === "rules") await loadRules();
         else if (view === "subscribers") await loadSubscribers();
-        else if (view === "access") await loadStaff();
+        else if (view === "access") await Promise.all([loadStaff(), loadServiceKeys()]);
         else if (view === "audit") await loadAudit();
       } finally {
         button.disabled = false;
@@ -4243,6 +4349,101 @@ function setupWorkspace(): void {
     } finally {
       if (submit) { submit.disabled = false; submit.textContent = label; }
     }
+  });
+  const serviceKeyForm = document.querySelector<HTMLFormElement>("#service-key-form");
+  serviceKeyForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = serviceKeyForm.querySelector<HTMLInputElement>("#service-key-name")?.value.trim() ?? "";
+    const profile = serviceKeyForm.querySelector<HTMLSelectElement>("#service-key-profile")?.value ?? "";
+    const expiresLocal = serviceKeyForm.querySelector<HTMLInputElement>("#service-key-expiry")?.value ?? "";
+    const submit = serviceKeyForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (name.length < 3) {
+      setServiceKeyResult("Enter a descriptive key name of at least three characters.", "error");
+      return;
+    }
+    const scopes = profile === "read_only"
+      ? [...serviceKeyReadScopes]
+      : profile === "full_operations"
+        ? [...serviceKeyFullOpsScopes]
+        : null;
+    if (!scopes) {
+      setServiceKeyResult("Choose Read only or Full case operations.", "error");
+      return;
+    }
+    const expiresAt = expiresLocal ? new Date(expiresLocal).toISOString() : null;
+    if (!window.confirm(`Create “${name}” for ${profile === "read_only" ? "read-only access" : "full case operations"}? The secret will be shown once.`)) return;
+    if (submit) submit.disabled = true;
+    setServiceKeyResult("Creating service key...");
+    try {
+      const { response, payload } = await opsRequest("/api/v1/ops/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, scopes, expiresAt }),
+      });
+      if (!response.ok) throw new Error(apiError(payload, "The service key was not created."));
+      const data = envelopeData(payload);
+      const secret = isRecord(data) ? asString(data.secret) : "";
+      if (!secret) throw new Error("The one-time service-key secret was not returned.");
+      revealServiceKeySecret(secret);
+      serviceKeyForm.reset();
+      await loadServiceKeys();
+      setServiceKeyResult("Key created. Copy the one-time secret now; it cannot be shown again.");
+    } catch (error) {
+      setServiceKeyResult(error instanceof Error ? error.message : "The service key was not created.", "error");
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
+  document.querySelector("#service-key-table")?.addEventListener("click", async (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>("[data-service-key-action][data-service-key-id]");
+    const keyId = button?.dataset.serviceKeyId;
+    const action = button?.dataset.serviceKeyAction;
+    if (!button || !keyId || (action !== "rotate" && action !== "revoke")) return;
+    const message = action === "rotate"
+      ? "Rotate this key? A replacement secret will be shown once. The old key remains active until you revoke it."
+      : "Revoke this key immediately? Any integration still using it will stop working.";
+    if (!window.confirm(message)) return;
+    button.disabled = true;
+    try {
+      const { response, payload } = await opsRequest(`/api/v1/ops/api-keys/${encodeURIComponent(keyId)}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed: true }),
+      });
+      if (!response.ok) throw new Error(apiError(payload, `The service key was not ${action === "rotate" ? "rotated" : "revoked"}.`));
+      if (action === "rotate") {
+        const data = envelopeData(payload);
+        const secret = isRecord(data) ? asString(data.secret) : "";
+        if (!secret) throw new Error("The replacement secret was not returned.");
+        revealServiceKeySecret(secret);
+      }
+      await loadServiceKeys();
+      setServiceKeyResult(action === "rotate"
+        ? "Replacement created. Update the consumer, verify it, then revoke the old key."
+        : "Key revoked immediately.");
+    } catch (error) {
+      setServiceKeyResult(error instanceof Error ? error.message : "The service-key action failed.", "error");
+      button.disabled = false;
+    }
+  });
+  document.querySelector("[data-service-key-copy]")?.addEventListener("click", async () => {
+    const output = document.querySelector<HTMLTextAreaElement>("[data-service-key-secret]");
+    if (!output?.value) return;
+    try {
+      await navigator.clipboard.writeText(output.value);
+      setServiceKeyResult("One-time secret copied. Store it only in the destination secret store or ignored local environment file.");
+    } catch {
+      output.focus();
+      output.select();
+      setServiceKeyResult("Clipboard access was unavailable. The secret is selected for manual copying.", "error");
+    }
+  });
+  document.querySelector("[data-service-key-clear]")?.addEventListener("click", () => {
+    const container = document.querySelector<HTMLElement>("[data-service-key-secret-wrap]");
+    const output = document.querySelector<HTMLTextAreaElement>("[data-service-key-secret]");
+    if (output) output.value = "";
+    if (container) container.hidden = true;
+    setServiceKeyResult("One-time secret cleared from this page.");
   });
   document.querySelector("#moderation-replies-table")?.addEventListener("click", (event) => {
     const target = event.target;
