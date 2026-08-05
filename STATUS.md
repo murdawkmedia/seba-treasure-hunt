@@ -18,8 +18,38 @@ including the Gucci belt. Casey's Coop Escape Artist is now a public,
 return-required item with its processed wanted poster on the evidence wall and
 in Fresh Drops.
 
+The evidence-wall photographs now use the shared full-image viewer. The Coop
+Escape Artist poster is shown uncropped in its card and opens in a keyboard-
+and mobile-operable image frame when selected.
+
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-08-05 - evidence poster viewer production follow-up
+
+- Kept ordinary evidence thumbnails compact while giving the document-style
+  Coop Escape Artist poster its natural 3:4 presentation with `object-fit:
+  contain` and no height crop.
+- Connected all data-driven evidence-wall images to the existing accessible
+  full-image viewer. It supports mouse/touch activation, keyboard activation,
+  previous/next navigation, swipe navigation, an original-image fallback and
+  focus restoration on close.
+- Added explicit cache versions to the evidence-wall stylesheet, viewer
+  stylesheet and item client after production browser QA caught an older
+  cached item bundle on the canonical hostname.
+- Feature commit `59035df` passed all 325 static/browser/privacy tests and all
+  632 TypeScript and real-D1 tests. Cache-release commit `034ce6d` passed all
+  TypeScript projects, all 325 static/browser/privacy tests, the production
+  build, the 53-file public-output privacy scan and live browser QA.
+- Deployed the immutable validation candidate at
+  `https://c3baa1fa.seba-treasure-hunt.pages.dev`, then the byte-identical
+  production candidate at `https://31664366.seba-treasure-hunt.pages.dev`.
+  The canonical site is live at `https://www.timlostsomething.com`.
+- No database, API, authentication, legal, item-state or media-record changes
+  were made. The prior production release remains available at
+  `https://20cee3a7.seba-treasure-hunt.pages.dev`.
+- Full release evidence is in
+  `docs/operations/2026-08-05-evidence-poster-viewer-release.md`.
 
 ## Update 2026-08-05 - Coop Escape Artist production release
 
