@@ -9,10 +9,15 @@ Date: 2026-08-05
 - Immutable production deployment:
   `https://7361dfea.seba-treasure-hunt.pages.dev`
 - Canonical API base: `https://www.timlostsomething.com/api/v1`
-- Console source: `c18edc4af2382699a21fc93d5adcdf2b620198a1`
-- Console pull request: <https://github.com/murdawkmedia/sebahub-console/pull/78>
-- Console deployment run:
-  <https://github.com/murdawkmedia/sebahub-console/actions/runs/31058626776>
+- Console integration source: `c18edc4af2382699a21fc93d5adcdf2b620198a1`
+- Console integration pull request:
+  <https://github.com/murdawkmedia/sebahub-console/pull/78>
+- Console privacy follow-up source:
+  `28be59f9ec7ef790ef42935ef4e8d148a3eb5af2`
+- Console privacy follow-up pull request:
+  <https://github.com/murdawkmedia/sebahub-console/pull/79>
+- Code-bearing Console deployment run:
+  <https://github.com/murdawkmedia/sebahub-console/actions/runs/31059818008>
 
 The merged service tree is byte-identical to the tested validation candidate.
 The Console workflow installed its read credential as a server-side Pages

@@ -43,7 +43,10 @@ validation accounts, submissions, or credentials into production.
   validation key is rejected with HTTP 401.
 - Merged the server-only Console integration through pull request 78 as source
   `c18edc4af2382699a21fc93d5adcdf2b620198a1`; GitHub Actions run
-  `31058626776` passed and deployed it behind Cloudflare Access.
+  `31058626776` passed and deployed it behind Cloudflare Access. Privacy
+  follow-up pull request 79 removed a developer-specific local fallback path;
+  merge `28be59f9ec7ef790ef42935ef4e8d148a3eb5af2` and deployment run
+  `31059818008` both passed.
 - Full production evidence and rollback instructions are in
   `docs/operations/2026-08-05-service-api-production-release.md`.
 
