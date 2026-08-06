@@ -72,12 +72,14 @@ Date: 2026-08-05
   Validation smoke drafts do not appear in the public Updates feed.
 - The Console adapter smoke uncovered and fixed a success-envelope mismatch;
   its regression now accepts the canonical `{ data: ... }` response shape.
-- Production remains unchanged. The remaining gate is Murphy's review before
-  any production migration, secret, key, deployment, or Console wiring.
+- Production remained unchanged throughout this validation stage. Murphy later
+  approved promotion; the completed production release is recorded in
+  `2026-08-05-service-api-production-release.md`.
 
 ## Rollback
 
 - Code: redeploy the previous immutable validation Pages deployment.
 - Key access: revoke each validation key from the Case Room.
-- Data: validation accounts and submissions remain disposable. Do not apply
-  the service-key migration rollback to production; production is unchanged.
+- Data: validation accounts and submissions remain disposable. Production
+  rollback is governed separately by
+  `2026-08-05-service-api-production-release.md`.

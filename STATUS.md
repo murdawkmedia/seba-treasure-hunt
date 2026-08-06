@@ -25,6 +25,28 @@ and mobile-operable image frame when selected.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+## Update 2026-08-05 - production Service API and Console integration
+
+- Merged the scoped service API through pull request 2 as source
+  `37ca80283f02b75e46477dee9e05e0a6280f5de9` and deployed the exact production
+  candidate at `https://7361dfea.seba-treasure-hunt.pages.dev`.
+- Exported D1 before the first write (1,031,068 bytes; SHA-256
+  `4ADA44F2F312C6C087B73CEAD7B1B1E81DE8B2FD19812DA2E0CEFA931EDE90F3`),
+  applied only migration `0023_service_api_keys.sql`, and retained clean
+  foreign keys and all protected record counts.
+- Created separate production-bound Console read and MCP case-operations keys.
+  Plaintext exists only in provider or ignored local secret stores; D1 contains
+  hashes, metadata and append-only events. Neither key can administer keys,
+  staff access or legal records.
+- The live case-operations client identifies as production, exposes 16 scopes
+  and reads 23 items. An unconfirmed mutation is rejected with HTTP 422 and a
+  validation key is rejected with HTTP 401.
+- Merged the server-only Console integration through pull request 78 as source
+  `c18edc4af2382699a21fc93d5adcdf2b620198a1`; GitHub Actions run
+  `31058626776` passed and deployed it behind Cloudflare Access.
+- Full production evidence and rollback instructions are in
+  `docs/operations/2026-08-05-service-api-production-release.md`.
+
 ## Update 2026-08-05 - service API owner validation complete
 
 - Corrected the Preview-only key-administrator allowlist to the existing
@@ -39,8 +61,8 @@ validation accounts, submissions, or credentials into production.
 - Live checks passed for scope denial, environment isolation, idempotent replay,
   changed-request conflict, rate limiting, all 15 Console workspace sources,
   14 MCP tools, confirmed private draft creation and public-feed isolation.
-- Production was not migrated, deployed, configured or issued a key. Murphy's
-  review remains the gate before production promotion.
+- At this validation stage production was unchanged. The subsequently approved
+  production release is recorded above and in the production release record.
 
 ## Update 2026-08-05 - scoped service API validation candidate
 
