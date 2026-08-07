@@ -366,3 +366,58 @@ test("the waiver ledger schema records review, participants, and receipt deliver
   assert.ok(reparentAt >= 0 && reparentAt < reconcileAt, "delivery history reparents first");
   assert.ok(reconcileAt >= 0 && reconcileAt < uniqueIndexAt, "receipt duplicates reconcile first");
 });
+
+test("the paid clue decoder migration adds constrained clue, order, and audit ledgers without seeding copy", async () => {
+  const names = (await readdir(path.resolve("migrations"))).sort();
+  assert.ok(
+    names.indexOf("0024_paid_clue_decoder.sql") > names.indexOf("0023_service_api_keys.sql")
+  );
+
+  const sql = await readFile(
+    path.resolve("migrations", "0024_paid_clue_decoder.sql"),
+    "utf8"
+  );
+
+  for (const table of ["clues", "clue_orders", "clue_events", "clue_order_events"]) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`, "i"), table);
+  }
+
+  assert.match(sql, /sequence INTEGER NOT NULL UNIQUE CHECK \(sequence BETWEEN 1 AND 30\)/i);
+  assert.match(sql, /state TEXT NOT NULL DEFAULT 'draft'\s+CHECK \(state IN \('draft', 'ready', 'released', 'retired'\)\)/i);
+  assert.match(sql, /decoder_mode TEXT NOT NULL DEFAULT 'paid'\s+CHECK \(decoder_mode IN \('paid', 'free'\)\)/i);
+  assert.match(sql, /version INTEGER NOT NULL DEFAULT 1 CHECK \(version >= 1\)/i);
+  assert.match(sql, /retired_at IS NULL OR released_at IS NOT NULL/i);
+
+  assert.match(sql, /clue_id TEXT NOT NULL REFERENCES clues\(id\) ON DELETE RESTRICT/i);
+  assert.match(sql, /player_subject TEXT NOT NULL REFERENCES player_accounts\(subject\) ON DELETE RESTRICT/i);
+  assert.match(sql, /reference TEXT NOT NULL UNIQUE CHECK \(reference GLOB 'TLS-C\[0-9\]\[0-9\]-\[A-Z0-9\]\[A-Z0-9\]\[A-Z0-9\]\[A-Z0-9\]'\)/i);
+  assert.match(sql, /status TEXT NOT NULL DEFAULT 'created'\s+CHECK \(status IN \('created', 'waiting_verification', 'approved', 'rejected', 'cancelled'\)\)/i);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_orders_one_active_per_player_clue\s+ON clue_orders\(player_subject, clue_id\)\s+WHERE status IN \('created', 'waiting_verification', 'approved'\)/i);
+  assert.match(sql, /decision_note TEXT/i);
+  assert.match(sql, /decided_by TEXT/i);
+  assert.match(sql, /decided_at TEXT/i);
+
+  assert.match(sql, /action TEXT NOT NULL CHECK\s*\(\s*action IN \('created', 'edited', 'state_changed', 'released', 'retracted', 'decoder_mode_changed', 'notified'\)\s*\)/i);
+  assert.match(sql, /action TEXT NOT NULL CHECK\s*\(\s*action IN \('created', 'claimed', 'approved', 'rejected', 'cancelled', 'reopened', 'email_notice_sent', 'email_retry'\)\s*\)/i);
+  assert.match(sql, /actor_type TEXT NOT NULL CHECK \(actor_type IN \('player', 'staff', 'system'\)\)/i);
+  assert.match(sql, /details_json TEXT NOT NULL DEFAULT '\{\}' CHECK \(json_valid\(details_json\)\)/i);
+  assert.match(sql, /clue_version INTEGER NOT NULL CHECK \(clue_version >= 1\)/i);
+  assert.match(sql, /order_version INTEGER NOT NULL CHECK \(order_version >= 1\)/i);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_events_notification_idempotency[\s\S]*WHERE action = 'notified' AND notification_key IS NOT NULL/i);
+
+  for (const index of [
+    "idx_clues_catalogue",
+    "idx_clues_ops_state",
+    "idx_clue_orders_player",
+    "idx_clue_orders_queue",
+    "idx_clue_events_history",
+    "idx_clue_order_events_history"
+  ]) {
+    assert.match(sql, new RegExp(`CREATE (?:UNIQUE )?INDEX IF NOT EXISTS ${index}\\b`, "i"), index);
+  }
+
+  assert.match(sql, /No clue rows are seeded in this migration/i);
+  assert.doesNotMatch(sql, /INSERT\s+INTO\s+clues\b/i);
+  assert.doesNotMatch(sql, /ALTER TABLE|DROP TABLE|DELETE FROM|UPDATE\s+/i);
+  assert.doesNotMatch(sql, /bank(?:ing)?|routing_number|account_number|iban|swift|card_number|cvv/i);
+});
