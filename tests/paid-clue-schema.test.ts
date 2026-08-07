@@ -90,6 +90,14 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
   await expectReject(db.prepare(
     `UPDATE clue_orders SET status = 'created' WHERE id = 'order-07'`
   ));
+  await expectReject(db.prepare(
+    `UPDATE clue_orders SET status = 'approved', decided_at = '2026-08-07T00:01:00.000Z'
+     WHERE id = 'order-07'`
+  ));
+  await expectReject(db.prepare(
+    `UPDATE clue_orders SET status = 'approved', decided_by = 'staff-1'
+     WHERE id = 'order-07'`
+  ));
   await db.prepare(
     `UPDATE clue_orders
      SET status = 'approved', decided_by = 'staff-1', decided_at = '2026-08-07T00:01:00.000Z'
@@ -195,6 +203,10 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
      (id, clue_id, player_subject, reference, sender_name, status, created_at, updated_at, version)
      VALUES ('order-08', 'clue-08', 'player-1', 'TLS-C08-K4M2', 'Sender', 'waiting_verification', 't', 't', 1)`
   ).run();
+  await expectReject(db.prepare(
+    `UPDATE clue_orders SET status = 'rejected', decided_by = 'staff-1', decided_at = 't'
+     WHERE id = 'order-08'`
+  ));
   await db.prepare(
     `UPDATE clue_orders
      SET status = 'rejected', decision_note = 'No matching payment', decided_by = 'staff-1', decided_at = 't'
@@ -204,6 +216,22 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
     `UPDATE clue_orders
      SET status = 'created', sender_name = NULL, decision_note = NULL, decided_by = NULL, decided_at = NULL
      WHERE id = 'order-08'`
+  ).run();
+
+  await db.prepare(
+    `INSERT INTO clue_orders
+     (id, clue_id, player_subject, reference, status, created_at, updated_at, version)
+     VALUES ('order-10', 'clue-10', 'player-1', 'TLS-C10-K4M2', 'created', 't', 't', 1)`
+  ).run();
+  await expectReject(db.prepare(
+    `UPDATE clue_orders SET status = 'cancelled', decided_at = 't' WHERE id = 'order-10'`
+  ));
+  await expectReject(db.prepare(
+    `UPDATE clue_orders SET status = 'cancelled', decided_by = 'player-1' WHERE id = 'order-10'`
+  ));
+  await db.prepare(
+    `UPDATE clue_orders SET status = 'cancelled', decided_by = 'player-1', decided_at = 't'
+     WHERE id = 'order-10'`
   ).run();
 
   const integrityCheck = await db.prepare("PRAGMA integrity_check").all().catch((error: unknown) => error);

@@ -57,11 +57,13 @@ CREATE TABLE IF NOT EXISTS clue_orders (
     OR
     (status IN ('approved', 'rejected')
       AND sender_name IS NOT NULL AND length(trim(sender_name)) > 0
-      AND length(trim(decided_by)) > 0 AND length(trim(decided_at)) > 0
-      AND (status != 'rejected' OR length(trim(decision_note)) > 0))
+      AND decided_by IS NOT NULL AND length(trim(decided_by)) > 0
+      AND decided_at IS NOT NULL AND length(trim(decided_at)) > 0
+      AND (status != 'rejected' OR (decision_note IS NOT NULL AND length(trim(decision_note)) > 0)))
     OR
     (status = 'cancelled'
-      AND length(trim(decided_by)) > 0 AND length(trim(decided_at)) > 0)
+      AND decided_by IS NOT NULL AND length(trim(decided_by)) > 0
+      AND decided_at IS NOT NULL AND length(trim(decided_at)) > 0)
   )
 );
 

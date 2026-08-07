@@ -399,6 +399,9 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
     sql,
     /status = 'waiting_verification'[\s\S]*sender_name IS NOT NULL[\s\S]*decision_note IS NULL/i
   );
+  assert.match(sql, /decided_by IS NOT NULL AND length\(trim\(decided_by\)\) > 0/i);
+  assert.match(sql, /decided_at IS NOT NULL AND length\(trim\(decided_at\)\) > 0/i);
+  assert.match(sql, /decision_note IS NOT NULL AND length\(trim\(decision_note\)\) > 0/i);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_orders_one_active_per_player_clue\s+ON clue_orders\(player_subject, clue_id\)\s+WHERE status IN \('created', 'waiting_verification', 'approved'\)/i);
   assert.match(sql, /decision_note TEXT/i);
   assert.match(sql, /decided_by TEXT/i);
