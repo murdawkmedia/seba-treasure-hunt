@@ -262,6 +262,24 @@ test("clue release notices require publishing and people scopes, confirmation, i
   assert.ok(store.audits.some((audit) => audit.action === "clue.notified"));
 });
 
+test("publishing scope reads the clue ledger but payment counts additionally require people scope", async () => {
+  const { app, serviceKeys } = makeApp("tech@sebahub.com");
+  serviceKeys.principal = {
+    kind: "service", subject: "service:clue-read", email: null, keyId: "key-clue-read",
+    name: "Clue reader", environment: "validation", scopes: ["publishing.read"],
+  };
+  const headers = { authorization: "Bearer service-token" };
+  const clueOnly = await app.request("https://www.timlostsomething.com/api/v1/ops/clues", { headers });
+  assert.equal(clueOnly.status, 200);
+  const clueOnlyBody = await responseJson(clueOnly);
+  assert.ok(Array.isArray(clueOnlyBody.data.clues));
+  assert.equal("paymentCounts" in clueOnlyBody.data, false);
+  serviceKeys.principal.scopes.push("people.read");
+  const allowed = await app.request("https://www.timlostsomething.com/api/v1/ops/clues", { headers });
+  assert.equal(allowed.status, 200);
+  assert.ok((await responseJson(allowed)).data.paymentCounts);
+});
+
 test("service keys can never access service-key or account-security administration", async () => {
   const { app, serviceKeys } = makeApp("murphy@sebahub.com");
   serviceKeys.principal = {

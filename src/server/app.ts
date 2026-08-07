@@ -967,6 +967,18 @@ const requireHunter = async (deps: ApiDependencies, request: Request) => {
   return principal;
 };
 
+const requireActiveHunterAccount = async (deps: ApiDependencies, hunter: { subject: string }) => {
+  const account = await deps.store.getPlayerAccount(hunter.subject);
+  if (!account || account.accountState !== "active" || !account.verifiedEmail) {
+    throw new ApiError(
+      409,
+      "identity_sync_pending",
+      "Your verified email is still being synchronized. Try again in a moment."
+    );
+  }
+  return account;
+};
+
 const optionalHunter = async (deps: ApiDependencies, request: Request) => {
   const authorization = request.headers.get("authorization");
   if (!authorization) return null;
@@ -982,11 +994,12 @@ const clueLabel = (sequence: number, title: string | null, entitled: boolean) =>
 const publicClueProjection = (
   clue: Record<string, any>,
   subject: string | null,
-  approvedClueIds: Set<string>
+  orderStatuses: Map<string, string>
 ) => {
-  const released = clue.state === "released";
+  const released = clue.state === "released" || (clue.state === "retired" && orderStatuses.get(clue.id) === "approved");
   const riddleEntitled = released && (clue.sequence === 1 || Boolean(subject));
-  const decoderUnlocked = released && (clue.decoderMode === "free" || approvedClueIds.has(clue.id));
+  const orderStatus = orderStatuses.get(clue.id) ?? null;
+  const decoderUnlocked = released && riddleEntitled && (clue.decoderMode === "free" || orderStatus === "approved");
   if (!released) return {
     id: clue.id, sequence: clue.sequence, label: clueLabel(clue.sequence, null, false), state: "sealed" as const
   };
@@ -999,11 +1012,40 @@ const publicClueProjection = (
     decoder: {
       mode: clue.decoderMode,
       priceCad: 5,
-      access: decoderUnlocked ? "unlocked" : subject ? "purchase_required" : "sign_in_required",
+      access: decoderUnlocked
+        ? "unlocked"
+        : orderStatus === "waiting_verification"
+          ? "waiting_verification"
+          : subject
+            ? "purchase_required"
+            : "sign_in_required",
       ...(decoderUnlocked ? { explanation: clue.decoderExplanation, narrowingSummary: clue.narrowingSummary } : {})
     }
   };
 };
+
+const activeClueOrderStatuses = (orders: Array<{ clueId: string; status: string }>) => {
+  const statuses = new Map<string, string>();
+  const rank: Record<string, number> = { created: 1, waiting_verification: 2, approved: 3 };
+  for (const order of orders) {
+    const candidateRank = rank[order.status] ?? 0;
+    if (candidateRank > (rank[statuses.get(order.clueId) ?? ""] ?? 0)) statuses.set(order.clueId, order.status);
+  }
+  return statuses;
+};
+
+const hunterClueOrderProjection = (order: Record<string, any>) => ({
+  id: order.id,
+  clueId: order.clueId,
+  reference: order.reference,
+  senderName: order.senderName,
+  status: order.status,
+  decisionNote: order.decisionNote,
+  decidedAt: order.decidedAt,
+  version: order.version,
+  createdAt: order.createdAt,
+  updatedAt: order.updatedAt
+});
 
 const serviceScopesFor = (request: Request): ServiceKeyScope[] | null => {
   const { pathname } = new URL(request.url);
@@ -1528,10 +1570,11 @@ export const createApi = (deps: ApiDependencies) => {
 
   app.get("/api/v1/clues", async (c) => {
     const hunter = await optionalHunter(deps, c.req.raw);
+    if (hunter) await requireActiveHunterAccount(deps, hunter);
     const orders = hunter ? await deps.store.listPlayerClueOrders(hunter.subject) : [];
-    const approved = new Set(orders.filter((order) => order.status === "approved").map((order) => order.clueId));
+    const statuses = activeClueOrderStatuses(orders);
     const clues = await deps.store.listPaidClues();
-    return success(c, { clues: clues.map((clue) => publicClueProjection(clue, hunter?.subject ?? null, approved)) });
+    return success(c, { clues: clues.map((clue) => publicClueProjection(clue, hunter?.subject ?? null, statuses)) });
   });
 
   app.get("/api/v1/rules/current", async (c) => success(c, await deps.store.getCurrentRules()));
@@ -1777,38 +1820,58 @@ export const createApi = (deps: ApiDependencies) => {
   });
   app.get("/api/v1/me/clues", async (c) => {
     const hunter = await requireHunter(deps, c.req.raw);
+    await requireActiveHunterAccount(deps, hunter);
     const [clues, orders] = await Promise.all([
       deps.store.listPaidClues(), deps.store.listPlayerClueOrders(hunter.subject)
     ]);
-    const approved = new Set(orders.filter((order) => order.status === "approved").map((order) => order.clueId));
-    return success(c, { clues: clues.map((clue) => publicClueProjection(clue, hunter.subject, approved)), orders });
+    const statuses = activeClueOrderStatuses(orders);
+    return success(c, {
+      clues: clues.map((clue) => publicClueProjection(clue, hunter.subject, statuses)),
+      orders: orders.map(hunterClueOrderProjection)
+    });
   });
   app.post("/api/v1/clues/:id/orders", async (c) => {
     sameOrigin(c.req.raw);
     const hunter = await requireHunter(deps, c.req.raw);
+    await requireActiveHunterAccount(deps, hunter);
     await applyRateLimit(deps, c.req.raw, "clue_order", hunter);
     const { files } = await requestBody(c.req.raw);
     if (files.length) throw new ApiError(415, "unsupported_media_type", "Decoder purchases accept JSON only.");
     const result = await deps.store.createOrReuseClueOrder(hunter.subject, c.req.param("id"));
     const validation = deps.config?.deploymentEnvironment === "validation";
+    const payment = result.order.status === "approved"
+      ? { status: "unlocked" }
+      : result.order.status === "waiting_verification"
+        ? { status: "waiting_verification" }
+        : validation
+          ? { amountCad: 5, instructions: "Validation only — do not send money. Use the Ops test approval flow." }
+          : { amountCad: 5, recipient: "tim@businessasaforceforgood.ca", reference: result.order.reference,
+              instructions: "Send a $5 CAD Interac e-Transfer, include this reference, then return here and confirm it was sent." };
     return success(c, {
-      order: result.order,
+      order: hunterClueOrderProjection(result.order),
       reused: result.reused,
-      payment: validation
-        ? { amountCad: 5, instructions: "Validation only — do not send money. Use the Ops test approval flow." }
-        : { amountCad: 5, recipient: "tim@businessasaforceforgood.ca", reference: result.order.reference,
-            instructions: "Send a $5 CAD Interac e-Transfer, include this reference, then return here and confirm it was sent." }
+      payment
     }, result.reused ? 200 : 201);
   });
   app.post("/api/v1/me/clue-orders/:id/claim", async (c) => {
     sameOrigin(c.req.raw);
     const hunter = await requireHunter(deps, c.req.raw);
+    await requireActiveHunterAccount(deps, hunter);
     await applyRateLimit(deps, c.req.raw, "clue_order", hunter);
     const { body, files } = await requestBody(c.req.raw);
     if (files.length) throw new ApiError(415, "unsupported_media_type", "Payment confirmation accepts JSON only.");
-    const order = await deps.store.claimClueOrder(hunter.subject, c.req.param("id"), requiredString(body, "senderName", { min: 2, max: 100, label: "Sender name" }));
+    const expectedVersion = body.expectedVersion;
+    if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+      throw new ApiError(422, "validation_failed", "expectedVersion is required.", { field: "expectedVersion" });
+    }
+    const order = await deps.store.claimClueOrder(
+      hunter.subject,
+      c.req.param("id"),
+      requiredString(body, "senderName", { min: 2, max: 100, label: "Sender name" }),
+      Number(expectedVersion)
+    );
     if (!order) throw new ApiError(404, "clue_order_not_found", "That payment request was not found.");
-    return success(c, { order, message: "Waiting for verification." });
+    return success(c, { order: hunterClueOrderProjection(order), message: "Waiting for verification." });
   });
   app.post("/api/v1/me/bootstrap", async (c) => {
     sameOrigin(c.req.raw);
@@ -2373,11 +2436,14 @@ export const createApi = (deps: ApiDependencies) => {
   });
 
   app.get("/api/v1/ops/clues", async (c) => {
-    await requireStaff(deps, c.req.raw);
-    const [clues, orders] = await Promise.all([deps.store.listOpsPaidClues(), deps.store.listOpsClueOrders()]);
-    return success(c, { clues, paymentCounts: orders.reduce<Record<string, number>>((counts, order) => {
-      counts[order.status] = (counts[order.status] ?? 0) + 1; return counts;
-    }, {}) });
+    const staff = await requireStaff(deps, c.req.raw);
+    const canReadPayments = staff.kind !== "service" || staff.scopes.includes("people.read");
+    if (!canReadPayments) return success(c, { clues: await deps.store.listOpsPaidClues() });
+    const [clues, orderPage] = await Promise.all([
+      deps.store.listOpsPaidClues(),
+      deps.store.listOpsClueOrders({ limit: 1 })
+    ]);
+    return success(c, { clues, paymentCounts: orderPage.counts });
   });
   app.patch("/api/v1/ops/clues/:id", async (c) => {
     sameOrigin(c.req.raw);
@@ -2389,7 +2455,8 @@ export const createApi = (deps: ApiDependencies) => {
     const decoderMode = body.decoderMode;
     if (decoderMode !== undefined && decoderMode !== "paid" && decoderMode !== "free") throw new ApiError(422, "validation_failed", "Decoder mode is invalid.", { field: "decoderMode" });
     const state = body.state;
-    if (state !== undefined && !["draft", "ready", "released", "retired"].includes(String(state))) throw new ApiError(422, "validation_failed", "Clue state is invalid.", { field: "state" });
+    if (state === "released") throw new ApiError(422, "clue_lifecycle_route_required", "Use the dedicated release action to publish a clue.", { field: "state" });
+    if (state !== undefined && !["draft", "ready", "retired"].includes(String(state))) throw new ApiError(422, "validation_failed", "Clue state is invalid.", { field: "state" });
     const score = body.internalScore;
     if (score !== undefined && (!Number.isInteger(score) || Number(score) < 0 || Number(score) > 100)) throw new ApiError(422, "validation_failed", "Internal score must be 0 to 100.", { field: "internalScore" });
     const clue = await deps.store.updatePaidClue(c.req.param("id"), {
@@ -2443,7 +2510,12 @@ export const createApi = (deps: ApiDependencies) => {
     await requireStaff(deps, c.req.raw);
     const status = c.req.query("status") ?? null;
     if (status && !["created", "waiting_verification", "approved", "rejected", "cancelled"].includes(status)) throw new ApiError(422, "validation_failed", "Payment status is invalid.", { field: "status" });
-    return success(c, { orders: await deps.store.listOpsClueOrders({ status: status as any }) });
+    const page = await deps.store.listOpsClueOrders({
+      status: status as any,
+      limit: queryLimit(c.req.query("limit")),
+      cursor: c.req.query("cursor") ?? null
+    });
+    return success(c, { orders: page.items, counts: page.counts }, 200, { nextCursor: page.nextCursor });
   });
   app.post("/api/v1/ops/clue-orders/:id/:decision", async (c) => {
     sameOrigin(c.req.raw); const staff = await requireStaff(deps, c.req.raw); const { body, files } = await requestBody(c.req.raw);

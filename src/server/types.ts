@@ -473,6 +473,25 @@ export interface PaidClueOrder {
   updatedAt: string;
 }
 
+export interface PaidClueOrderWithClue extends PaidClueOrder {
+  clueSequence: number;
+  clueTitle: string;
+}
+
+export interface PaidClueOrderCounts {
+  created: number;
+  waiting_verification: number;
+  approved: number;
+  rejected: number;
+  cancelled: number;
+}
+
+export interface PaidClueOrderPage {
+  items: PaidClueOrderWithClue[];
+  counts: PaidClueOrderCounts;
+  nextCursor: string | null;
+}
+
 export interface PaidClueMutation {
   expectedVersion: number;
   title?: string | undefined;
@@ -497,12 +516,12 @@ export interface DataStore {
   listPaidClues(): Promise<PaidClueRecord[]>;
   listPlayerClueOrders(subject: string): Promise<PaidClueOrder[]>;
   createOrReuseClueOrder(subject: string, clueId: string): Promise<{ order: PaidClueOrder; reused: boolean }>;
-  claimClueOrder(subject: string, orderId: string, senderName: string): Promise<PaidClueOrder | null>;
+  claimClueOrder(subject: string, orderId: string, senderName: string, expectedVersion: number): Promise<PaidClueOrder | null>;
   listOpsPaidClues(): Promise<PaidClueRecord[]>;
   updatePaidClue(id: string, input: PaidClueMutation, actorSubject: string): Promise<PaidClueRecord | null>;
   releasePaidClue(id: string, expectedVersion: number, actorSubject: string): Promise<PaidClueRecord | null>;
   retractPaidClue(id: string, expectedVersion: number, reason: string, actorSubject: string): Promise<PaidClueRecord | null>;
-  listOpsClueOrders(options?: { status?: PaidClueOrderStatus | null }): Promise<Array<PaidClueOrder & { clueSequence: number; clueTitle: string }>>;
+  listOpsClueOrders(options?: { status?: PaidClueOrderStatus | null; limit?: number; cursor?: string | null }): Promise<PaidClueOrderPage>;
   decideClueOrder(
     id: string,
     input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null },
