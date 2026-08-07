@@ -262,6 +262,28 @@ test("operators can cancel an unclaimed order and later reopen it", async () => 
   assert.equal((await responseJson(reopened)).data.order.status, "created");
 });
 
+test("reopening an older order conflicts clearly when a newer active order exists", async () => {
+  const { app, store } = makeApp();
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  const older = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const cancelled = await store.decideClueOrder(
+    older.order.id,
+    { expectedVersion: older.order.version, status: "cancelled" },
+    "staff-1"
+  );
+  assert.ok(cancelled);
+  const newer = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  assert.notEqual(newer.order.id, older.order.id);
+  const eventCount = store.paidClueOrderEvents.length;
+  const response = await app.request(`${origin}/api/v1/ops/clue-orders/${older.order.id}/reopen`, {
+    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: cancelled.version })
+  });
+  assert.equal(response.status, 409);
+  assert.equal((await responseJson(response)).error.code, "clue_order_active_exists");
+  assert.equal(store.paidClueOrders.find((order) => order.id === older.order.id)?.status, "cancelled");
+  assert.equal(store.paidClueOrderEvents.length, eventCount);
+});
+
 test("ops clue order queue exposes cursor pagination and aggregate counts", async () => {
   const { app, store } = makeApp();
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");

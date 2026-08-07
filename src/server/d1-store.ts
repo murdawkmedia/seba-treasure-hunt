@@ -736,22 +736,30 @@ export class D1DataStore implements DataStore {
           .bind(input.status, ...decisionFields, timestamp, orderId, input.expectedVersion);
     const action = input.status === "created" ? "reopened" : input.status;
     const eventId = id();
-    const results = await this.db.batch([
-      update,
-      this.db.prepare(
-        `INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
-         SELECT ?, id, 'staff', ?, ?, ?, ?, ? FROM clue_orders
-         WHERE id = ? AND status = ? AND version = ? AND changes() = 1`
-      ).bind(eventId, actorSubject, action, json({ status: input.status, version: nextVersion }), nextVersion,
-        timestamp, orderId, input.status, nextVersion),
-      this.db.prepare(
-        `INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
-         SELECT ?, ?, ?, 'clue_order', orders.id, ?, ?
-         FROM clue_order_events event JOIN clue_orders orders ON orders.id = event.order_id
-         WHERE event.id = ?`
-      ).bind(id(), actorSubject, `clue_order.${action}`, json({ status: input.status, version: nextVersion }),
-        timestamp, eventId)
-    ]);
+    let results: D1Result<unknown>[];
+    try {
+      results = await this.db.batch([
+        update,
+        this.db.prepare(
+          `INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
+           SELECT ?, id, 'staff', ?, ?, ?, ?, ? FROM clue_orders
+           WHERE id = ? AND status = ? AND version = ? AND changes() = 1`
+        ).bind(eventId, actorSubject, action, json({ status: input.status, version: nextVersion }), nextVersion,
+          timestamp, orderId, input.status, nextVersion),
+        this.db.prepare(
+          `INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+           SELECT ?, ?, ?, 'clue_order', orders.id, ?, ?
+           FROM clue_order_events event JOIN clue_orders orders ON orders.id = event.order_id
+           WHERE event.id = ?`
+        ).bind(id(), actorSubject, `clue_order.${action}`, json({ status: input.status, version: nextVersion }),
+          timestamp, eventId)
+      ]);
+    } catch (error) {
+      if (input.status === "created" && uniqueConstraint(error)) {
+        throw new ApiError(409, "clue_order_active_exists", "A newer active payment request already exists for this clue.");
+      }
+      throw error;
+    }
     if (!results[0]?.meta.changes) throw new ConflictError();
     const updated = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ?").bind(orderId).first<Row>();
     if (!updated) throw new Error("updated clue order could not be loaded");

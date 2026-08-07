@@ -186,7 +186,7 @@ test("Ops order pages use stable cursors and aggregate all statuses in SQL", asy
   await db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'").run();
   const first = await store.createOrReuseClueOrder("player-1", "clue-01");
   await store.decideClueOrder(first.order.id, { expectedVersion: 1, status: "cancelled" }, "staff-1");
-  await store.createOrReuseClueOrder("player-2", "clue-01");
+  await store.createOrReuseClueOrder("player-1", "clue-01");
   const page = await store.listOpsClueOrders({ limit: 1 });
   assert.deepEqual({ created: page.counts.created, cancelled: page.counts.cancelled }, { created: 1, cancelled: 1 });
   assert.equal(page.items.length, 1);
@@ -194,4 +194,16 @@ test("Ops order pages use stable cursors and aggregate all statuses in SQL", asy
   const next = await store.listOpsClueOrders({ limit: 1, cursor: page.nextCursor });
   assert.equal(next.items.length, 1);
   assert.notEqual(next.items[0]?.id, page.items[0]?.id);
+  const beforeEvents = (await db.prepare("SELECT COUNT(*) AS count FROM clue_order_events WHERE order_id = ?").bind(first.order.id).first<any>())?.count;
+  const beforeAudits = (await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = ?").bind(first.order.id).first<any>())?.count;
+  await assert.rejects(
+    () => store.decideClueOrder(first.order.id, { expectedVersion: 2, status: "created" }, "staff-1"),
+    (error: any) => error?.status === 409 && error?.code === "clue_order_active_exists"
+  );
+  assert.deepEqual(
+    await db.prepare("SELECT status, version FROM clue_orders WHERE id = ?").bind(first.order.id).first(),
+    { status: "cancelled", version: 2 }
+  );
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM clue_order_events WHERE order_id = ?").bind(first.order.id).first<any>())?.count, beforeEvents);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = ?").bind(first.order.id).first<any>())?.count, beforeAudits);
 });

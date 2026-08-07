@@ -415,6 +415,12 @@ export class FakeStore {
       (order.status === "waiting_verification" && ["approved", "rejected", "cancelled"].includes(input.status)) ||
       (["rejected", "cancelled"].includes(String(order.status)) && input.status === "created");
     if (!allowed) throw new ApiError(422, "clue_order_transition_invalid", "That payment status cannot be changed this way.");
+    if (input.status === "created" && this.paidClueOrders.some((candidate) =>
+      candidate.id !== order.id && candidate.playerSubject === order.playerSubject && candidate.clueId === order.clueId &&
+      ["created", "waiting_verification", "approved"].includes(candidate.status)
+    )) {
+      throw new ApiError(409, "clue_order_active_exists", "A newer active payment request already exists for this clue.");
+    }
     if (input.status === "rejected" && !input.decisionNote?.trim()) throw new ApiError(422, "decision_note_required", "Give the hunter a reason before rejecting this payment.");
     order.status = input.status; order.version = Number(order.version) + 1; order.updatedAt = new Date().toISOString();
     if (input.status === "created") { order.senderName = null; order.decisionNote = null; order.decidedBy = null; order.decidedAt = null; }
