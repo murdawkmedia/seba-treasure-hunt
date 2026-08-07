@@ -35,7 +35,8 @@ CREATE INDEX IF NOT EXISTS idx_clues_ops_state
 
 CREATE TRIGGER IF NOT EXISTS trg_clues_sequence_referenced_immutable
 BEFORE UPDATE OF sequence ON clues
-WHEN EXISTS (SELECT 1 FROM clue_orders WHERE clue_id = OLD.id)
+WHEN NEW.sequence != OLD.sequence
+  AND EXISTS (SELECT 1 FROM clue_orders WHERE clue_id = OLD.id)
 BEGIN
   SELECT RAISE(ABORT, 'clue sequence is immutable after orders exist');
 END;

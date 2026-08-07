@@ -74,6 +74,7 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
      VALUES ('order-07', 'clue-07', 'player-1', 'TLS-C07-K4M2', 'created',
              '2026-08-07T00:00:00.000Z', '2026-08-07T00:00:00.000Z', 1)`
   ).run();
+  await db.prepare(`UPDATE clues SET sequence = 7 WHERE id = 'clue-07'`).run();
   await expectReject(db.prepare(
     `UPDATE clues SET sequence = 13 WHERE id = 'clue-07'`
   ));
