@@ -75,6 +75,10 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
              '2026-08-07T00:00:00.000Z', '2026-08-07T00:00:00.000Z', 1)`
   ).run();
   await expectReject(db.prepare(
+    `UPDATE clues SET sequence = 13 WHERE id = 'clue-07'`
+  ));
+  await db.prepare(`UPDATE clues SET sequence = 13 WHERE id = 'clue-09'`).run();
+  await expectReject(db.prepare(
     `INSERT INTO clue_orders
      (id, clue_id, player_subject, reference, status, created_at, updated_at, version)
      VALUES ('order-07-duplicate', 'clue-07', 'player-1', 'TLS-C07-Z9Q8', 'created',
@@ -178,6 +182,11 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
      (id, clue_id, actor_type, actor_subject, action, notification_key, clue_version, occurred_at)
      VALUES ('clue-event-notified-duplicate', 'clue-07', 'system', 'system:test', 'notified', 'notice-1', 1, 't')`
   ));
+  await expectReject(db.prepare(
+    `INSERT OR REPLACE INTO clue_events
+     (id, clue_id, actor_type, actor_subject, action, notification_key, clue_version, occurred_at)
+     VALUES ('clue-event-notified-replace', 'clue-07', 'system', 'replacement', 'notified', 'notice-1', 1, 't')`
+  ));
 
   await db.prepare(
     `INSERT INTO clue_order_events
@@ -233,6 +242,17 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
     `UPDATE clue_orders SET status = 'cancelled', decided_by = 'player-1', decided_at = 't'
      WHERE id = 'order-10'`
   ).run();
+  await db.prepare(
+    `UPDATE clue_orders
+     SET status = 'created', sender_name = NULL, decision_note = NULL, decided_by = NULL, decided_at = NULL
+     WHERE id = 'order-10'`
+  ).run();
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT status, sender_name, decision_note, decided_by, decided_at FROM clue_orders WHERE id = 'order-10'`
+    ).first(),
+    { status: 'created', sender_name: null, decision_note: null, decided_by: null, decided_at: null }
+  );
 
   const integrityCheck = await db.prepare("PRAGMA integrity_check").all().catch((error: unknown) => error);
   if (integrityCheck instanceof Error) {

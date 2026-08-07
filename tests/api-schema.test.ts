@@ -416,6 +416,7 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_events_notification_idempotency[\s\S]*WHERE action = 'notified' AND notification_key IS NOT NULL/i);
   assert.match(sql, /action = 'notified' AND notification_key IS NOT NULL AND length\(trim\(notification_key\)\) > 0/i);
   assert.match(sql, /action != 'notified' AND notification_key IS NULL/i);
+  assert.match(sql, /CREATE TRIGGER IF NOT EXISTS trg_clues_sequence_referenced_immutable/i);
 
   for (const [trigger, table, operation] of [
     ["trg_clue_events_no_update", "clue_events", "UPDATE"],

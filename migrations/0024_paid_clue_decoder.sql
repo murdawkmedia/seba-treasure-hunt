@@ -33,6 +33,13 @@ CREATE INDEX IF NOT EXISTS idx_clues_catalogue
 CREATE INDEX IF NOT EXISTS idx_clues_ops_state
   ON clues(state, decoder_mode, updated_at DESC, id DESC);
 
+CREATE TRIGGER IF NOT EXISTS trg_clues_sequence_referenced_immutable
+BEFORE UPDATE OF sequence ON clues
+WHEN EXISTS (SELECT 1 FROM clue_orders WHERE clue_id = OLD.id)
+BEGIN
+  SELECT RAISE(ABORT, 'clue sequence is immutable after orders exist');
+END;
+
 CREATE TABLE IF NOT EXISTS clue_orders (
   id TEXT PRIMARY KEY,
   clue_id TEXT NOT NULL REFERENCES clues(id) ON DELETE RESTRICT,
@@ -142,6 +149,10 @@ END;
 CREATE TRIGGER IF NOT EXISTS trg_clue_events_no_replace
 BEFORE INSERT ON clue_events
 WHEN EXISTS (SELECT 1 FROM clue_events WHERE id = NEW.id)
+  OR (NEW.action = 'notified' AND EXISTS (
+    SELECT 1 FROM clue_events
+    WHERE clue_id = NEW.clue_id AND notification_key = NEW.notification_key
+  ))
 BEGIN
   SELECT RAISE(ABORT, 'clue event IDs are immutable');
 END;
