@@ -5,6 +5,7 @@ export const CAMPAIGN_MENU = Object.freeze([
 ]);
 
 export const CAMPAIGN_MORE_MENU = Object.freeze([
+  Object.freeze({ route: "clues", label: "Clues", href: "/clues" }),
   Object.freeze({ route: "updates", label: "Latest News", href: "/updates" }),
   Object.freeze({ route: "clue-board", label: "What People Found", href: "/clue-board" }),
   Object.freeze({ route: "interview", label: "Tim's Story", href: "/interview" }),
@@ -16,6 +17,7 @@ export const CAMPAIGN_PAGES = Object.freeze({
   "start.html": "start",
   "route.html": "route",
   "golf-balls.html": "golf-balls",
+  "clues.html": "clues",
   "interview.html": "interview",
   "updates.html": "updates",
   "clue-board.html": "clue-board",

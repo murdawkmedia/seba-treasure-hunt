@@ -4,9 +4,9 @@
   "normalizationVersion": "campaign-shell-v2",
   "pages": {
     "index.html": {
-      "headSha256": "e7f22c399d5bd820e1213d4da509c6a520e195d0f055da1b659f5e35b62fe20d",
+      "headSha256": "9f837e1b980d244dcb391fbfd413cced2e6588efa0a54b184e81fa2dad0f9206",
       "scriptsSha256": "f133b3a0ffed3839dfb3a80d2e1ebc54e2cab5fb62bb49d619ce23e14149db5b",
-      "bodySha256": "a0f8614e7eab9ed8d5c95a06b6944422ecf8155396413a41bb3dd343d92f5595"
+      "bodySha256": "b9e9b2b711dd089288ac3d2ea836b4e2a7067b0811df1edb411d9242030508aa"
     },
     "start.html": {
       "headSha256": "cc4dfa66dd234eec69c20ee9299ffa18c2515b2842fe9ab846b4d3121a9bd909",
@@ -22,6 +22,11 @@
       "headSha256": "d04b8cb792243b49854d519599a0cc49e320918d680108f0ca6764ac1554e09f",
       "scriptsSha256": "69e75c0cd762a4611b2365ace93cf30e580264cdcce162088f8da814c228f637",
       "bodySha256": "7010e08b39c5686140707eedb77d930857db5fd0de97e5e2d6a169d5894a2e55"
+    },
+    "clues.html": {
+      "headSha256": "6135e1e3bceb619caeb1de1637f23d2bd0d48e455e4b76b23317857d1e2c3e3f",
+      "scriptsSha256": "3e74801cdc712ca275f31cd1ed2d8ec6d4affa27aad2fcac39ca20880016f3d6",
+      "bodySha256": "50dc7205e63ed03545ed9333b018a14d21d5b3b16942cd063713eef4e7344d19"
     },
     "interview.html": {
       "headSha256": "6f74cfd279858257513cc8918764b104b98c988bab2132d604df6a771f40c794",
@@ -49,9 +54,9 @@
       "bodySha256": "c68fa1c30bde1694b60da3a5a2d89c692735331b5fe44327b49fccaa3186efa2"
     },
     "dashboard.html": {
-      "headSha256": "ac95c57e9915a25cf394af6070a6a23aa123916b04497564ce94505231f2350c",
-      "scriptsSha256": "e05ab979782e680caf291b2f77e492f28d3ecbfadaff5abc4e2e1f18ed5bef2d",
-      "bodySha256": "4f59fa68856a8e53107a9e9f994dd3ad32dd758caff35125fdc0dc1e1c745c46"
+      "headSha256": "8215cf8ad1fcfe12b7215947fbcc50c7d0ab18cc961b7106d54f4d551f1047e3",
+      "scriptsSha256": "3d6e47db34a9cdeed5a65ed0ebf377ed8194ee46446ee286965cf413129c592e",
+      "bodySha256": "725c547223ab6a36a98451202f439e0c73d0f7d80423ea4363299c2491f7ae33"
     },
     "privacy.html": {
       "headSha256": "4a5cb1cd4f2d89b79ddeec49975ac17a0611d52b1391579cd4979edc418cfa0e",

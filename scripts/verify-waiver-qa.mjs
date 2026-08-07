@@ -554,6 +554,11 @@ function opsReadResponse(url, legalDocument, fixtureState) {
   if (pathname === "/api/v1/ops/session") return jsonResponse({ data: { operator: { displayName: "QA Operator", email: "qa-operator@example.test" } } });
   if (pathname === "/api/v1/ops/dashboard") return jsonResponse({ data: { status: { state: "open", updatedAt: "2026-07-13T18:00:00.000Z", version: 1 }, counts: { pendingNotes: 0, receivedReports: 1, receivedFlags: 0, activeHunters: 1 }, killSwitches: { boardVisible: true, notesEnabled: true, repliesEnabled: true } } });
   if (pathname === "/api/v1/ops/reports") return jsonResponse({ data: fixtureState.reportSubmitted ? [reportSummary()] : [] });
+  if (pathname === "/api/v1/ops/clues") return jsonResponse({ data: { clues: [], counts: { waiting_verification: 0 } } });
+  if (pathname === "/api/v1/ops/clue-orders") return jsonResponse({
+    data: { orders: [], counts: { waiting_verification: 0 } },
+    page: { nextCursor: null },
+  });
   if (pathname === `/api/v1/ops/reports/${reportFixture.id}`) return jsonResponse({ data: reportDetail(fixtureState) });
   if (pathname === `/api/v1/ops/reports/${reportFixture.id}/media/${reportFixture.selectedMediaId}` ||
       pathname === `/api/v1/ops/reports/${reportFixture.id}/media/${privateFixtures.unselectedMediaId}`) {
@@ -564,6 +569,7 @@ function opsReadResponse(url, legalDocument, fixtureState) {
     return jsonResponse({ data: [], page: { nextCursor: null } });
   }
   if (pathname === "/api/v1/ops/staff") return jsonResponse({ data: [] });
+  if (pathname === "/api/v1/ops/api-keys") return jsonResponse({ data: [] });
   if (pathname === "/api/v1/ops/audit") return jsonResponse({ data: [] });
   if (pathname === "/api/v1/ops/players") return jsonResponse({ data: {
     counts: { verifiedAccounts: 1, completedProfiles: 1, huntEmail: 0, marketing: 0 },
@@ -599,6 +605,12 @@ function readMockResponse(url, fixtureState, legalDocument) {
   if (url.pathname === "/api/v1/zones") return jsonResponse({ data: [] });
   if (url.pathname === "/api/v1/legal/waiver") return jsonResponse({ data: legalDocument });
   if (url.pathname === "/api/v1/me/dashboard") return jsonResponse(dashboardPayload(fixtureState));
+  if (url.pathname === "/api/v1/me/clues") return jsonResponse({ data: {
+    clues: [],
+    orders: [],
+    environment: "validation",
+    paymentAddress: null,
+  } });
   if (url.pathname === "/api/v1/me/profile") return fixtureState.dashboardProfileIncomplete === true
     ? jsonResponse({ data: null })
     : jsonResponse({ data: { fullName: privateFixtures.minorName, email: privateFixtures.email, publicHandle: "@qa-hunter" } });

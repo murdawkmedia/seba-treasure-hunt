@@ -721,6 +721,40 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
 .ops-teaser-conflict { margin-top: 14px; padding: 13px; color: #ffe9c2; background: #57251f; border-left: 4px solid var(--ops-danger, #e75b4f); border-radius: 6px; }
 .ops-teaser-conflict p { margin-top: 0; }
 
+[data-ops-clues],
+[data-ops-clue-orders] { display: grid; gap: 14px; margin-top: 16px; }
+
+.ops-card {
+  min-width: 0;
+  padding: 16px;
+  color: #f7efd5;
+  background: #082b24;
+  border: 1px solid #356758;
+  border-radius: 7px;
+}
+
+.ops-card > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ops-card h3 { margin: 3px 0 0; overflow-wrap: anywhere; }
+.ops-card details { margin-top: 13px; }
+.ops-card summary { min-height: 44px; padding: 10px 0; color: var(--ops-gold, #f4ae1f); cursor: pointer; }
+.ops-card form,
+.ops-card label { display: grid; gap: 7px; }
+.ops-card form { gap: 13px; }
+.ops-card dl { display: grid; gap: 8px; margin: 14px 0; }
+.ops-card dl div { display: grid; grid-template-columns: minmax(90px, .7fr) minmax(0, 1.3fr); gap: 10px; }
+.ops-card dt { color: #cfc4a2; }
+.ops-card dd { margin: 0; overflow-wrap: anywhere; }
+.ops-card input,
+.ops-card select,
+.ops-card textarea { width: 100%; min-width: 0; }
+.ops-card textarea { min-height: 96px; resize: vertical; }
+
 @media (max-width: 1100px) {
   .ops-task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ops-status-key { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -733,4 +767,6 @@ td time, td .ops-mono { color: var(--ops-muted); font-family: var(--ops-font-led
   .ops-item-previews,
   .ops-status-key { grid-template-columns: 1fr; }
   .ops-item-card__header { display: grid; }
+  .ops-card > header,
+  .ops-card dl div { display: grid; grid-template-columns: 1fr; }
 }

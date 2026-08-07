@@ -21,6 +21,7 @@ const campaignFiles = Object.keys(CAMPAIGN_PAGES);
 assert.ok(campaignFiles.includes("updates.html"), "the public approved-report destination must remain in the canonical shell matrix");
 const representativeFiles = [
   "index.html",
+  "clues.html",
   "route.html",
   "golf-balls.html",
   "interview.html",
@@ -30,6 +31,7 @@ const representativeFiles = [
 ];
 const screenshotFiles = [
   "index.html",
+  "clues.html",
   "route.html",
   "golf-balls.html",
   "interview.html",
@@ -40,6 +42,7 @@ const screenshotFiles = [
 ];
 const expectedScreenshotNames = [
   "mobile-390x844-home.png",
+  "mobile-390x844-clues.png",
   "mobile-390x844-route.png",
   "mobile-390x844-golf-balls.png",
   "mobile-390x844-interview.png",
@@ -48,6 +51,7 @@ const expectedScreenshotNames = [
   "mobile-390x844-privacy.png",
   "mobile-390x844-waiver.png",
   "desktop-1440x1000-home.png",
+  "desktop-1440x1000-clues.png",
   "desktop-1440x1000-route.png",
   "desktop-1440x1000-golf-balls.png",
   "desktop-1440x1000-interview.png",
@@ -1621,13 +1625,13 @@ async function run() {
     const consoleErrorCount = consoleErrors.length;
     const pageErrorCount = pageErrors.length;
     const requestFailureCount = requestFailures.length;
-    assert.equal(pageNavigations, 72, "the canonical matrix must navigate 72 page/view combinations");
-    assert.equal(statesAudited, 111, "the canonical matrix must audit 111 shell states");
+    assert.equal(pageNavigations, 78, "the canonical matrix must navigate 78 page/view combinations");
+    assert.equal(statesAudited, 120, "the canonical matrix must audit 120 shell states");
     assert.equal(routeLightboxAudit.statesAudited, 10, "the route lightbox audit must exercise 10 browser states");
     assert.ok(routeLightboxAudit.reducedMotionTargetsAudited >= 40, "the route lightbox audit must inspect the complete element and pseudo-element tree for reduced motion");
     assert.deepEqual(reportWorkflowAudit.scenarios, reportWorkflowScenarioNames, "the reversible report workflow audit must complete every named scenario");
     assert.equal(reportWorkflowAudit.moderationQueueUnchanged, true, "the report workflow must leave Moderation Queue state unchanged");
-    assert.equal(screenshotEvidence.length, 21, "the screenshot suite must contain 21 artifacts");
+    assert.equal(screenshotEvidence.length, 23, "the screenshot suite must contain 23 artifacts");
     assert.deepEqual(
       screenshotEvidence.map(({ artifactName }) => artifactName.replace("screenshots/", "")).sort(),
       expectedScreenshotNames.toSorted(),

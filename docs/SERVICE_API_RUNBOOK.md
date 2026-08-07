@@ -46,6 +46,17 @@ inquiries.read inquiries.write people.read legal.read staff.read audit.read
 There are deliberately no `staff.write`, `people.write`, `legal.write`, or
 `keys.write` scopes. Human staff retain those workflows in Case Room.
 
+Paid-clue scope rules:
+
+- `publishing.read` reads the private clue ledger. Payment counts are omitted
+  unless the key also has `people.read`.
+- `publishing.write` edits, releases and retracts clues.
+- Release notifications and every clue-order read or decision additionally
+  require `people.read`.
+- Machine clue mutations keep the ordinary confirmation and idempotency
+  headers. They cannot release clues out of sequence or approve their own
+  payment claims.
+
 ## Authentication and guards
 
 Send the service key only in the Authorization header:
@@ -100,7 +111,13 @@ $headers = @{ Authorization = "Bearer $env:TIM_LOST_API_KEY" }
 Invoke-RestMethod "$env:TIM_LOST_API_BASE/service/session" -Headers $headers
 Invoke-RestMethod "$env:TIM_LOST_API_BASE/service/capabilities" -Headers $headers
 Invoke-RestMethod "$env:TIM_LOST_API_BASE/ops/items" -Headers $headers
+Invoke-RestMethod "$env:TIM_LOST_API_BASE/ops/clues" -Headers $headers
 ```
+
+For a payment-bearing check, use a separately scoped key containing both
+`publishing.read` and `people.read`, then request `/ops/clue-orders?limit=1`.
+Never put a real sender name, payment reference, or decoder body in shell
+history, screenshots, or support notes.
 
 Before enabling a consumer, verify the returned environment and exact scopes.
 Test insufficient scope, a wrong-environment key, an idempotent retry, a

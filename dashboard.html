@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/hunter.css" />
   <link rel="stylesheet" href="/css/fresh-drops.css" />
+  <link rel="stylesheet" href="/css/clues.css" />
   <link rel="stylesheet" href="/css/route-lightbox.css" />
   <link rel="stylesheet" href="/css/campaign-shell.css" />
 </head>
@@ -175,6 +176,16 @@
         </aside>
 
         <div class="dashboard-content">
+          <section class="field-panel field-panel--full my-clues" id="my-clues" aria-labelledby="my-clues-title" data-my-clues>
+            <p class="field-label">Optional clue help</p>
+            <h2 id="my-clues-title" tabindex="-1">My Decoders</h2>
+            <p>Released riddles are free. A paid decoder costs $5 CAD and gives you the plain-English explanation plus what the clue narrows down. It does not affect your ability to search or keep an eligible find.</p>
+            <p data-my-clues-state role="status" aria-live="polite">Loading your clues and decoder access&hellip;</p>
+            <ol class="clue-list clue-list--member" data-my-clue-list></ol>
+            <p class="field-hint"><strong>Waiting for verification</strong> means a SebaHub representative still needs to match your e-transfer reference.</p>
+            <button class="hunter-button hunter-button--quiet" type="button" data-my-clues-retry hidden>Try My Decoders again</button>
+          </section>
+
           <section class="fresh-drops field-panel field-panel--full" id="fresh-drops" aria-labelledby="fresh-drops-title" data-fresh-drops>
             <p class="field-label">Signed-in case file</p>
             <h2 id="fresh-drops-title" tabindex="-1">Fresh Drops</h2>
@@ -362,9 +373,29 @@
     </div>
   </main>
 
+  <dialog class="clue-order-dialog" data-clue-order-dialog aria-labelledby="clue-order-dialog-title">
+    <form method="dialog" class="clue-order-dialog__head"><div><p class="field-label">Optional decoder purchase</p><h2 id="clue-order-dialog-title">Get this decoder</h2></div><button value="close" aria-label="Close decoder payment instructions">&times;</button></form>
+    <div class="clue-order-dialog__body">
+      <p data-clue-order-environment></p>
+      <ol>
+        <li>Send exactly <strong>$5 CAD</strong> by Interac e-Transfer using the payment address shown below.</li>
+        <li>Put your unique reference in the transfer message.</li>
+        <li>Return here, enter the sender name, and choose <strong>I sent it</strong>.</li>
+      </ol>
+      <dl class="clue-order-summary"><div><dt>Payment address</dt><dd data-clue-payment-address>Loading&hellip;</dd></div><div><dt>Your reference</dt><dd><code data-clue-order-reference>Loading&hellip;</code></dd></div></dl>
+      <form data-clue-order-claim novalidate>
+        <label for="clue-sender-name">Name on the e-transfer</label>
+        <input id="clue-sender-name" name="senderName" minlength="2" maxlength="100" autocomplete="name" required />
+        <div class="action-row"><button class="hunter-button" type="submit">I sent it</button><button class="hunter-button hunter-button--quiet" type="button" data-clue-order-cancel>Not yet</button></div>
+        <p data-clue-order-result role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </dialog>
+
   <!-- CAMPAIGN_FOOTER -->
   <script src="/js/site.js"></script>
   <script type="module" src="/assets/app/status.js"></script>
   <script type="module" src="/assets/app/dashboard.js"></script>
+  <script type="module" src="/assets/app/clues.js"></script>
 </body>
 </html>

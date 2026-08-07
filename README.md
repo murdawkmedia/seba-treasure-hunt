@@ -9,6 +9,7 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 | `/` | Full investigation board, real evidence and current item status |
 | `/route` | Where to Look: 13 public place stories; signed-in hunters receive exact directions and a private checklist |
 | `/golf-balls` | Casey's separate search for marked In the Woods golf balls and current festival-ticket redemption details |
+| `/clues` | Released riddles and optional decoder access; sealed clues reveal only their number |
 | `/interview` | Tim's Story, preserving the 19-entry account recorded before the ID was found |
 | `/updates` | Latest News and approved public reports |
 | `/report` | I Found Something: guest-friendly private find, observation and safety intake |
@@ -18,6 +19,26 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 | `/waiver` | Participation Acknowledgement, Waiver and Release |
 
 Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and are protected by authenticated company-domain access.
+
+## Paid clues and decoders
+
+The clue case file contains 30 sequential records. Clue 01's riddle is public;
+later released riddles require an active hunter account. Unreleased records are
+rendered only as `Clue ## — Sealed`, and their titles, riddles, decoders and
+private editorial notes remain server-side.
+
+Every paid decoder costs exactly $5 CAD. A signed-in hunter receives one
+reusable reference, confirms the sender name after sending an Interac
+e-Transfer, and sees **Waiting for verification** until Ops makes an audited
+decision. Validation creates disposable test orders and never presents a real
+payment address. Payment approval unlocks access before email is attempted, so
+a mail failure can never relock a decoder.
+
+Marketing releases clues manually and sequentially from the private **Clues &
+Decoder Sales** workspace. There is no daily scheduler, automatic free
+conversion, banking integration, or automatic Latest News/social post. The
+reviewed 30-clue source stays in the gitignored `.private/` controller folder;
+the public build and tracked-source leak scan must pass before any import.
 
 Public sponsorship is withdrawn. The dormant `sponsors.html` source remains in the repository for possible future review, but it is not built or routed publicly and no public submission form is available. Existing sponsor inquiry records remain private in the Ops Sponsors ledger.
 

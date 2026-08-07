@@ -18,8 +18,9 @@ import {
   type OfficialUpdateStatus,
 } from "../shared/official-update-workflow";
 import { loadOpsItems, setupOpsItems } from "./ops-items";
+import { loadOpsClues, setupOpsClues } from "./ops-clues";
 
-type OpsView = "command" | "updates" | "reports" | "items" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
+type OpsView = "command" | "updates" | "reports" | "items" | "clues" | "sponsors" | "moderation" | "zones" | "rules" | "subscribers" | "access" | "audit" | "production-snapshot";
 
 type OpsSponsorState = "new" | "contacted" | "qualified" | "accepted" | "closed";
 type OpsSponsorSupportType = "community" | "lead" | "prize_in_kind" | "other";
@@ -344,7 +345,7 @@ export interface ProductionSnapshotReport {
   createdAt: string;
 }
 
-const views: readonly OpsView[] = ["command", "updates", "reports", "items", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit", "production-snapshot"];
+const views: readonly OpsView[] = ["command", "updates", "reports", "items", "clues", "sponsors", "moderation", "zones", "rules", "subscribers", "access", "audit", "production-snapshot"];
 const sponsorStates: readonly OpsSponsorState[] = ["new", "contacted", "qualified", "accepted", "closed"];
 const visibleSponsorMetricStates = ["new", "contacted", "qualified", "accepted"] as const;
 const sponsorSupportTypes: readonly OpsSponsorSupportType[] = ["community", "lead", "prize_in_kind", "other"];
@@ -379,6 +380,7 @@ let productionSnapshotObjectUrls: string[] = [];
 let updatesLoaded = false;
 let updatesLoading = false;
 let itemsLoaded = false;
+let cluesLoaded = false;
 let standaloneUpdateObjectUrls: string[] = [];
 interface StandaloneUpdateEditor {
   updateId: string | null;
@@ -2306,6 +2308,19 @@ async function loadItemsView(): Promise<void> {
   itemsLoaded = true;
 }
 
+async function loadCluesView(): Promise<void> {
+  try {
+    await loadOpsClues();
+    cluesLoaded = true;
+  } catch (error) {
+    setViewGuide("clues", {
+      state: "Clue workspace unavailable",
+      next: error instanceof Error ? error.message : "Refresh Clues. Nothing was changed.",
+      kind: "error",
+    });
+  }
+}
+
 function setText(selector: string, value: string): void {
   const element = document.querySelector<HTMLElement>(selector);
   if (element) element.textContent = value;
@@ -2353,6 +2368,7 @@ function switchView(view: OpsView, focus = true): void {
   if (focus) document.querySelector<HTMLElement>("#ops-main")?.focus();
   if (view === "sponsors" && !sponsorsLoaded) void loadSponsors();
   if (view === "items" && !itemsLoaded) void loadItemsView();
+  if (view === "clues" && !cluesLoaded) void loadCluesView();
   if (view === "updates" && !updatesLoaded && !updatesLoading) void loadOpsUpdates();
   if (view === "subscribers" && !subscribersLoaded && !subscribersLoading) void loadSubscribers();
   if (view === "production-snapshot" && !productionSnapshotLoaded && !productionSnapshotLoading) {
@@ -4270,6 +4286,7 @@ function setupWorkspace(): void {
       setOfficialUpdateResult("A private Latest News draft was created from the item. Review and edit it before any release.");
     },
   });
+  setupOpsClues({ request: opsRequest });
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view]")) {
     button.addEventListener("click", () => switchView(resolveOpsView(button.dataset.view ?? "")));
   }
@@ -4284,7 +4301,7 @@ function setupWorkspace(): void {
     sidebar?.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", String(open));
   });
-  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadServiceKeys(), loadAudit(), ...(itemsLoaded ? [loadItemsView()] : []), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
+  document.querySelector("#ops-refresh")?.addEventListener("click", () => void Promise.all([loadDashboard(), loadReports(), loadModeration(), loadZones(), loadRules(), loadStaff(), loadServiceKeys(), loadAudit(), ...(itemsLoaded ? [loadItemsView()] : []), ...(cluesLoaded ? [loadCluesView()] : []), ...(sponsorsLoaded ? [loadSponsors()] : []), ...(subscribersLoaded ? [loadSubscribers()] : []), ...(productionSnapshotLoaded ? [loadProductionSnapshot()] : [])]));
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view-retry]")) {
     button.addEventListener("click", async () => {
       const view = resolveOpsView(button.dataset.viewRetry ?? "");
@@ -4294,6 +4311,7 @@ function setupWorkspace(): void {
         else if (view === "updates") await loadOpsUpdates();
         else if (view === "reports") await loadReports();
         else if (view === "items") await loadItemsView();
+        else if (view === "clues") await loadCluesView();
         else if (view === "moderation") await loadModeration();
         else if (view === "zones") await loadZones();
         else if (view === "rules") await loadRules();

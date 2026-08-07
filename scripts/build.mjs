@@ -22,6 +22,7 @@ const legalPages = new Set(["privacy.html", "waiver.html"]);
 const clientEntryNames = Object.freeze([
   "account",
   "board",
+  "clues",
   "dashboard",
   "items",
   "legal-embed",
@@ -39,6 +40,7 @@ const staticFiles = [
   "index.html",
   "route.html",
   "golf-balls.html",
+  "clues.html",
   "interview.html",
   "start.html",
   "dashboard.html",

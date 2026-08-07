@@ -38,6 +38,7 @@ const descriptors = {
   "start.html": { route: "start", skipLabel: "Skip to the hunt guide", skipTarget: "main" },
   "route.html": { route: "route", skipLabel: "Skip to the route", skipTarget: "main" },
   "golf-balls.html": { route: "golf-balls", skipLabel: "Skip to Casey's search", skipTarget: "main" },
+  "clues.html": { route: "clues", skipLabel: "Skip to the clues", skipTarget: "main" },
   "interview.html": { route: "interview", skipLabel: "Skip to Tim's Account", skipTarget: "main" },
   "updates.html": { route: "updates", skipLabel: "Skip to Latest News", skipTarget: "main" },
   "clue-board.html": { route: "clue-board", skipLabel: "Skip to What People Found", skipTarget: "main" },
@@ -62,6 +63,7 @@ const filenames = Object.fromEntries(
     "start.html": "start",
     "route.html": "route",
     "golf-balls.html": "golf-balls",
+    "clues.html": "clues",
     "interview.html": "interview",
     "updates.html": "updates",
     "clue-board.html": "clue-board",
@@ -587,6 +589,7 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
     "start.html": "start",
     "route.html": "route",
     "golf-balls.html": "golf-balls",
+    "clues.html": "clues",
     "interview.html": "interview",
     "updates.html": "updates",
     "clue-board.html": "clue-board",
@@ -603,6 +606,7 @@ test("registry and menu expose exactly the approved frozen contracts", () => {
     { route: "dashboard", label: "My Hunt", href: "/dashboard" },
   ]);
   assert.deepEqual(CAMPAIGN_MORE_MENU, [
+    { route: "clues", label: "Clues", href: "/clues" },
     { route: "updates", label: "Latest News", href: "/updates" },
     { route: "clue-board", label: "What People Found", href: "/clue-board" },
     { route: "interview", label: "Tim's Story", href: "/interview" },
