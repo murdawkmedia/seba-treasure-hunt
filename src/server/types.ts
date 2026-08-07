@@ -410,6 +410,60 @@ export interface OfficialUpdateMutation {
   scheduledFor: string | null;
 }
 
+export type PaidClueState = "draft" | "ready" | "released" | "retired";
+export type PaidDecoderMode = "paid" | "free";
+export type PaidClueOrderStatus =
+  | "created"
+  | "waiting_verification"
+  | "approved"
+  | "rejected"
+  | "cancelled";
+
+export interface PaidClueRecord {
+  id: string;
+  sequence: number;
+  title: string;
+  riddle: string;
+  decoderExplanation: string;
+  narrowingSummary: string;
+  internalNapkinNote: string;
+  internalScore: number;
+  state: PaidClueState;
+  decoderMode: PaidDecoderMode;
+  version: number;
+  releasedAt: string | null;
+  retiredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaidClueOrder {
+  id: string;
+  clueId: string;
+  playerSubject: string;
+  reference: string;
+  senderName: string | null;
+  status: PaidClueOrderStatus;
+  decisionNote: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaidClueMutation {
+  expectedVersion: number;
+  title?: string | undefined;
+  riddle?: string | undefined;
+  decoderExplanation?: string | undefined;
+  narrowingSummary?: string | undefined;
+  internalNapkinNote?: string | undefined;
+  internalScore?: number | undefined;
+  decoderMode?: PaidDecoderMode | undefined;
+  state?: PaidClueState | undefined;
+}
+
 export interface DataStore {
   getStatus(): Promise<CaseStatus>;
   listUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
@@ -419,6 +473,20 @@ export interface DataStore {
   listBoard(waypointId: number | null, options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   listPublicCaseItems(): Promise<Record<string, unknown>[]>;
   listHunterFreshDrops(): Promise<Record<string, unknown>[]>;
+  listPaidClues(): Promise<PaidClueRecord[]>;
+  listPlayerClueOrders(subject: string): Promise<PaidClueOrder[]>;
+  createOrReuseClueOrder(subject: string, clueId: string): Promise<{ order: PaidClueOrder; reused: boolean }>;
+  claimClueOrder(subject: string, orderId: string, senderName: string): Promise<PaidClueOrder | null>;
+  listOpsPaidClues(): Promise<PaidClueRecord[]>;
+  updatePaidClue(id: string, input: PaidClueMutation, actorSubject: string): Promise<PaidClueRecord | null>;
+  releasePaidClue(id: string, expectedVersion: number, actorSubject: string): Promise<PaidClueRecord | null>;
+  retractPaidClue(id: string, expectedVersion: number, reason: string, actorSubject: string): Promise<PaidClueRecord | null>;
+  listOpsClueOrders(options?: { status?: PaidClueOrderStatus | null }): Promise<Array<PaidClueOrder & { clueSequence: number; clueTitle: string }>>;
+  decideClueOrder(
+    id: string,
+    input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null },
+    actorSubject: string
+  ): Promise<PaidClueOrder | null>;
   getHunterCaseItemMedia(mediaId: string): Promise<{ key: string; contentType: string } | null>;
   getReportableFreshDrop(id: string): Promise<{ id: string; title: string } | null>;
   getReportableCaseItem(id: string): Promise<{

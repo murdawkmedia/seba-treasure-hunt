@@ -7,6 +7,8 @@ import type {
   OperatorAlertRecipientClaim,
   OperatorAlertRecipientCompletion,
   OfficialUpdateMutation,
+  PaidClueRecord,
+  PaidClueOrder,
   PlayerAccessState,
   ReportWorkflowMutation,
   SponsorInquiryCounts,
@@ -306,6 +308,81 @@ export class FakeStore {
       updatedAt: "2026-07-11T17:00:00.000Z"
     }
   ];
+  paidClues: PaidClueRecord[] = [1, 2].map((sequence): PaidClueRecord => ({
+    id: `clue-${String(sequence).padStart(2, "0")}`,
+    sequence,
+    title: sequence === 1 ? "The Starting Line" : "Private later clue",
+    riddle: sequence === 1 ? "A public starting riddle." : "Private later riddle.",
+    decoderExplanation: `Private decoder ${sequence}.`, narrowingSummary: `Private narrowing ${sequence}.`,
+    internalNapkinNote: `Private note ${sequence}.`, internalScore: 80,
+    state: sequence === 1 ? "released" : "draft", decoderMode: "paid",
+    version: 1, releasedAt: sequence === 1 ? "2026-08-07T12:00:00.000Z" : null,
+    retiredAt: null, createdAt: "2026-08-07T12:00:00.000Z", updatedAt: "2026-08-07T12:00:00.000Z"
+  }));
+  paidClueOrders: PaidClueOrder[] = [];
+  paidClueEvents: Array<Record<string, unknown>> = [];
+  paidClueOrderEvents: Array<Record<string, unknown>> = [];
+
+  async listPaidClues() { return this.paidClues.map((clue) => ({ ...clue })); }
+  async listPlayerClueOrders(subject: string): Promise<PaidClueOrder[]> {
+    return this.paidClueOrders.filter((order) => order.playerSubject === subject).map((order) => ({ ...order }));
+  }
+  async createOrReuseClueOrder(subject: string, clueId: string): Promise<{ order: PaidClueOrder; reused: boolean }> {
+    const clue = this.paidClues.find((candidate) => candidate.id === clueId);
+    if (!clue || clue.state !== "released") throw new ApiError(404, "clue_not_available", "That clue is not available.");
+    if (clue.decoderMode === "free") throw new ApiError(409, "clue_decoder_free", "This decoder is already free.");
+    const existing = this.paidClueOrders.find((order) => order.playerSubject === subject && order.clueId === clueId && ["created", "waiting_verification", "approved"].includes(String(order.status)));
+    if (existing) return { order: { ...existing }, reused: true };
+    const timestamp = new Date().toISOString();
+    const order: PaidClueOrder = { id: `clue-order-${this.paidClueOrders.length + 1}`, clueId, playerSubject: subject,
+      reference: `TLS-C${String(clue.sequence).padStart(2, "0")}-TEST`, senderName: null, status: "created", decisionNote: null, decidedBy: null, decidedAt: null, version: 1, createdAt: timestamp, updatedAt: timestamp };
+    this.paidClueOrders.push(order); this.paidClueOrderEvents.push({ orderId: order.id, action: "created" });
+    return { order: { ...order }, reused: false };
+  }
+  async claimClueOrder(subject: string, id: string, senderName: string): Promise<PaidClueOrder | null> {
+    const order = this.paidClueOrders.find((candidate) => candidate.id === id && candidate.playerSubject === subject);
+    if (!order) return null;
+    if (order.status === "created") { order.senderName = senderName; order.status = "waiting_verification"; order.version = Number(order.version) + 1; order.updatedAt = new Date().toISOString(); this.paidClueOrderEvents.push({ orderId: id, action: "claimed" }); }
+    return { ...order };
+  }
+  async listOpsPaidClues(): Promise<PaidClueRecord[]> { return this.listPaidClues(); }
+  async updatePaidClue(id: string, input: any, actorSubject: string) {
+    const clue = this.paidClues.find((candidate) => candidate.id === id); if (!clue) return null;
+    if (clue.version !== input.expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    const mappings: Array<[string, string]> = [["decoderExplanation", "decoderExplanation"], ["narrowingSummary", "narrowingSummary"], ["internalNapkinNote", "internalNapkinNote"], ["internalScore", "internalScore"], ["decoderMode", "decoderMode"], ["title", "title"], ["riddle", "riddle"], ["state", "state"]];
+    for (const [source, target] of mappings) if (input[source] !== undefined) (clue as any)[target] = input[source];
+    clue.version += 1; clue.updatedAt = new Date().toISOString(); this.paidClueEvents.push({ clueId: id, action: "edited", actorSubject }); return { ...clue };
+  }
+  async releasePaidClue(id: string, expectedVersion: number, actorSubject: string) {
+    const clue = this.paidClues.find((candidate) => candidate.id === id); if (!clue) return null;
+    if (clue.version !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    if (clue.state !== "ready") throw new ApiError(422, "clue_not_ready", "Only a Ready clue can be released.");
+    if (this.paidClues.filter((candidate) => candidate.state === "released" && candidate.sequence < clue.sequence).length !== clue.sequence - 1) throw new ApiError(422, "clue_release_order", "Release the next numbered Ready clue first.");
+    clue.state = "released"; clue.releasedAt = new Date().toISOString(); clue.version += 1; clue.updatedAt = clue.releasedAt; this.paidClueEvents.push({ clueId: id, action: "released", actorSubject }); return { ...clue };
+  }
+  async retractPaidClue(id: string, expectedVersion: number, reason: string, actorSubject: string) {
+    const clue = this.paidClues.find((candidate) => candidate.id === id); if (!clue) return null;
+    if (clue.version !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    if (clue.state !== "released") throw new ApiError(422, "clue_not_released", "Only a released clue can be retracted.");
+    clue.state = "ready"; clue.version += 1; clue.updatedAt = new Date().toISOString(); this.paidClueEvents.push({ clueId: id, action: "retracted", reason, actorSubject }); return { ...clue };
+  }
+  async listOpsClueOrders(options: { status?: PaidClueOrder["status"] | null } = {}): Promise<Array<PaidClueOrder & { clueSequence: number; clueTitle: string }>> {
+    return this.paidClueOrders.filter((order) => !options.status || order.status === options.status).map((order) => {
+      const clue = this.paidClues.find((candidate) => candidate.id === order.clueId)!;
+      return { ...order, clueSequence: clue.sequence, clueTitle: clue.title };
+    });
+  }
+  async decideClueOrder(id: string, input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null }, actorSubject: string): Promise<PaidClueOrder | null> {
+    const order = this.paidClueOrders.find((candidate) => candidate.id === id); if (!order) return null;
+    if (order.version !== input.expectedVersion) throw new ApiError(409, "clue_order_stale", "This payment changed. Refresh and try again.");
+    const allowed = (order.status === "waiting_verification" && ["approved", "rejected", "cancelled"].includes(input.status)) || (["rejected", "cancelled"].includes(String(order.status)) && input.status === "created");
+    if (!allowed) throw new ApiError(422, "clue_order_transition_invalid", "That payment status cannot be changed this way.");
+    if (input.status === "rejected" && !input.decisionNote?.trim()) throw new ApiError(422, "decision_note_required", "Give the hunter a reason before rejecting this payment.");
+    order.status = input.status; order.version = Number(order.version) + 1; order.updatedAt = new Date().toISOString();
+    if (input.status === "created") { order.senderName = null; order.decisionNote = null; order.decidedBy = null; order.decidedAt = null; }
+    else { order.decisionNote = input.status === "rejected" ? input.decisionNote?.trim() ?? null : null; order.decidedBy = actorSubject; order.decidedAt = order.updatedAt; }
+    this.paidClueOrderEvents.push({ orderId: id, action: input.status, actorSubject }); return { ...order };
+  }
 
   async getStatus() {
     if (!this.status) throw new Error("status unavailable");

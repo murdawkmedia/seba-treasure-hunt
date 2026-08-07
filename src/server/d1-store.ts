@@ -23,6 +23,10 @@ import type {
   OperatorAlertRecipientCompletion,
   OpsWaiverReceiptResendResult,
   OfficialUpdateMutation,
+  PaidClueMutation,
+  PaidClueOrder,
+  PaidClueOrderStatus,
+  PaidClueRecord,
   Page,
   PlayerAccessState,
   ReportWorkflowMutation,
@@ -113,6 +117,20 @@ const caseItemFromRow = (
     updatedAt: value(row.updated_at),
     uploads
   } : {})
+});
+const paidClueFromRow = (row: Row): PaidClueRecord => ({
+  id: value(row.id), sequence: Number(row.sequence), title: value(row.title), riddle: value(row.riddle),
+  decoderExplanation: value(row.decoder_explanation), narrowingSummary: value(row.narrowing_summary),
+  internalNapkinNote: value(row.internal_napkin_note), internalScore: Number(row.internal_numeric_score),
+  state: value(row.state) as PaidClueRecord["state"], decoderMode: value(row.decoder_mode) as PaidClueRecord["decoderMode"],
+  version: Number(row.version), releasedAt: nullable(row.released_at), retiredAt: nullable(row.retired_at),
+  createdAt: value(row.created_at), updatedAt: value(row.updated_at)
+});
+const paidClueOrderFromRow = (row: Row): PaidClueOrder => ({
+  id: value(row.id), clueId: value(row.clue_id), playerSubject: value(row.player_subject), reference: value(row.reference),
+  senderName: nullable(row.sender_name), status: value(row.status) as PaidClueOrderStatus,
+  decisionNote: nullable(row.decision_note), decidedBy: nullable(row.decided_by), decidedAt: nullable(row.decided_at),
+  version: Number(row.version), createdAt: value(row.created_at), updatedAt: value(row.updated_at)
 });
 const json = (input: unknown) => JSON.stringify(input ?? null);
 const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -373,6 +391,193 @@ const parseSubscriberCursor = (cursor: string | null | undefined) => {
 
 export class D1DataStore implements DataStore {
   constructor(private readonly db: D1Database) {}
+
+  async listPaidClues(): Promise<PaidClueRecord[]> {
+    const result = await this.db.prepare("SELECT * FROM clues ORDER BY sequence ASC").all<Row>();
+    return result.results.map(paidClueFromRow);
+  }
+
+  async listPlayerClueOrders(subject: string): Promise<PaidClueOrder[]> {
+    const result = await this.db.prepare(
+      "SELECT * FROM clue_orders WHERE player_subject = ? ORDER BY created_at DESC, id DESC"
+    ).bind(subject).all<Row>();
+    return result.results.map(paidClueOrderFromRow);
+  }
+
+  async createOrReuseClueOrder(subject: string, clueId: string): Promise<{ order: PaidClueOrder; reused: boolean }> {
+    const clue = await this.db.prepare("SELECT * FROM clues WHERE id = ? LIMIT 1").bind(clueId).first<Row>();
+    if (!clue || value(clue.state) !== "released") {
+      throw new ApiError(404, "clue_not_available", "That clue is not available.");
+    }
+    if (value(clue.decoder_mode) === "free") {
+      throw new ApiError(409, "clue_decoder_free", "This decoder is already free.");
+    }
+    const existing = await this.db.prepare(
+      `SELECT * FROM clue_orders WHERE player_subject = ? AND clue_id = ?
+       AND status IN ('created', 'waiting_verification', 'approved') LIMIT 1`
+    ).bind(subject, clueId).first<Row>();
+    if (existing) return { order: paidClueOrderFromRow(existing), reused: true };
+    const timestamp = now();
+    const orderId = id();
+    const reference = `TLS-C${String(Number(clue.sequence)).padStart(2, "0")}-${crypto.randomUUID().replaceAll("-", "").slice(0, 4).toUpperCase()}`;
+    await this.db.batch([
+      this.db.prepare(
+        `INSERT INTO clue_orders
+         (id, clue_id, player_subject, reference, sender_name, status, decision_note, decided_by, decided_at, created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, NULL, 'created', NULL, NULL, NULL, ?, ?, 1)`
+      ).bind(orderId, clueId, subject, reference, timestamp, timestamp),
+      this.db.prepare(
+        `INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
+         VALUES (?, ?, 'player', ?, 'created', '{}', 1, ?)`
+      ).bind(id(), orderId, subject, timestamp)
+    ]);
+    const order = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ?").bind(orderId).first<Row>();
+    if (!order) throw new Error("created clue order could not be loaded");
+    return { order: paidClueOrderFromRow(order), reused: false };
+  }
+
+  async claimClueOrder(subject: string, orderId: string, senderName: string): Promise<PaidClueOrder | null> {
+    const existing = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ? AND player_subject = ? LIMIT 1")
+      .bind(orderId, subject).first<Row>();
+    if (!existing) return null;
+    if (value(existing.status) !== "created") {
+      return paidClueOrderFromRow(existing);
+    }
+    const timestamp = now();
+    const result = await this.db.prepare(
+      `UPDATE clue_orders SET sender_name = ?, status = 'waiting_verification', version = version + 1, updated_at = ?
+       WHERE id = ? AND player_subject = ? AND version = ? AND status = 'created'`
+    ).bind(senderName, timestamp, orderId, subject, Number(existing.version)).run();
+    if (!result.meta.changes) throw new ConflictError();
+    await this.db.prepare(
+      `INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
+       VALUES (?, ?, 'player', ?, 'claimed', ?, ?, ?)`
+    ).bind(id(), orderId, subject, json({ senderName }), Number(existing.version) + 1, timestamp).run();
+    const updated = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ?").bind(orderId).first<Row>();
+    return updated ? paidClueOrderFromRow(updated) : null;
+  }
+
+  async listOpsPaidClues(): Promise<PaidClueRecord[]> { return this.listPaidClues(); }
+
+  async updatePaidClue(clueId: string, input: PaidClueMutation, actorSubject: string): Promise<PaidClueRecord | null> {
+    const existing = await this.db.prepare("SELECT * FROM clues WHERE id = ? LIMIT 1").bind(clueId).first<Row>();
+    if (!existing) return null;
+    if (Number(existing.version) !== input.expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    const fields = [
+      ["title", input.title], ["riddle", input.riddle], ["decoder_explanation", input.decoderExplanation],
+      ["narrowing_summary", input.narrowingSummary], ["internal_napkin_note", input.internalNapkinNote],
+      ["internal_numeric_score", input.internalScore], ["decoder_mode", input.decoderMode], ["state", input.state]
+    ] as Array<[string, unknown]>;
+    const changed = fields.filter(([, candidate]) => candidate !== undefined);
+    if (!changed.length) return paidClueFromRow(existing);
+    const timestamp = now();
+    const set = changed.map(([column]) => `${column} = ?`).join(", ");
+    const values = changed.map(([, field]) => field);
+    const state = input.state ?? value(existing.state);
+    const result = await this.db.prepare(
+      `UPDATE clues SET ${set}, released_at = CASE WHEN ? = 'released' THEN COALESCE(released_at, ?) ELSE released_at END,
+       retired_at = CASE WHEN ? = 'retired' THEN COALESCE(retired_at, ?) ELSE retired_at END,
+       version = version + 1, updated_at = ? WHERE id = ? AND version = ?`
+    ).bind(...values, state, timestamp, state, timestamp, timestamp, clueId, input.expectedVersion).run();
+    if (!result.meta.changes) throw new ConflictError();
+    const updated = await this.db.prepare("SELECT * FROM clues WHERE id = ?").bind(clueId).first<Row>();
+    if (!updated) throw new Error("updated clue could not be loaded");
+    const updatedRecord = paidClueFromRow(updated);
+    await this.db.batch([
+      this.db.prepare(`INSERT INTO clue_events (id, clue_id, actor_type, actor_subject, action, details_json, notification_key, clue_version, occurred_at)
+        VALUES (?, ?, 'staff', ?, 'edited', ?, NULL, ?, ?)`).bind(id(), clueId, actorSubject, json({ fields: changed.map(([field]) => field) }), updatedRecord.version, timestamp),
+      this.db.prepare("INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at) VALUES (?, ?, 'clue.edited', 'clue', ?, ?, ?)")
+        .bind(id(), actorSubject, clueId, json({ version: updatedRecord.version }), timestamp)
+    ]);
+    return updatedRecord;
+  }
+
+  async releasePaidClue(clueId: string, expectedVersion: number, actorSubject: string): Promise<PaidClueRecord | null> {
+    const existing = await this.db.prepare("SELECT * FROM clues WHERE id = ? LIMIT 1").bind(clueId).first<Row>();
+    if (!existing) return null;
+    if (Number(existing.version) !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    if (value(existing.state) !== "ready") throw new ApiError(422, "clue_not_ready", "Only a Ready clue can be released.");
+    const previous = await this.db.prepare("SELECT COUNT(*) AS count FROM clues WHERE state = 'released' AND sequence < ?")
+      .bind(Number(existing.sequence)).first<Row>();
+    if (Number(previous?.count) !== Number(existing.sequence) - 1) {
+      throw new ApiError(422, "clue_release_order", "Release the next numbered Ready clue first.");
+    }
+    const timestamp = now();
+    const result = await this.db.prepare(
+      "UPDATE clues SET state = 'released', released_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?"
+    ).bind(timestamp, timestamp, clueId, expectedVersion).run();
+    if (!result.meta.changes) throw new ConflictError();
+    const updated = await this.db.prepare("SELECT * FROM clues WHERE id = ?").bind(clueId).first<Row>();
+    if (!updated) throw new Error("released clue could not be loaded");
+    const record = paidClueFromRow(updated);
+    await this.db.batch([
+      this.db.prepare(`INSERT INTO clue_events (id, clue_id, actor_type, actor_subject, action, details_json, notification_key, clue_version, occurred_at)
+        VALUES (?, ?, 'staff', ?, 'released', '{}', NULL, ?, ?)`).bind(id(), clueId, actorSubject, record.version, timestamp),
+      this.db.prepare("INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at) VALUES (?, ?, 'clue.released', 'clue', ?, '{}', ?)")
+        .bind(id(), actorSubject, clueId, timestamp)
+    ]);
+    return record;
+  }
+
+  async retractPaidClue(clueId: string, expectedVersion: number, reason: string, actorSubject: string): Promise<PaidClueRecord | null> {
+    const existing = await this.db.prepare("SELECT * FROM clues WHERE id = ? LIMIT 1").bind(clueId).first<Row>();
+    if (!existing) return null;
+    if (Number(existing.version) !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    if (value(existing.state) !== "released") throw new ApiError(422, "clue_not_released", "Only a released clue can be retracted.");
+    const timestamp = now();
+    const result = await this.db.prepare("UPDATE clues SET state = 'ready', version = version + 1, updated_at = ? WHERE id = ? AND version = ?")
+      .bind(timestamp, clueId, expectedVersion).run();
+    if (!result.meta.changes) throw new ConflictError();
+    const updated = await this.db.prepare("SELECT * FROM clues WHERE id = ?").bind(clueId).first<Row>();
+    if (!updated) throw new Error("retracted clue could not be loaded");
+    const record = paidClueFromRow(updated);
+    await this.db.batch([
+      this.db.prepare(`INSERT INTO clue_events (id, clue_id, actor_type, actor_subject, action, details_json, notification_key, clue_version, occurred_at)
+        VALUES (?, ?, 'staff', ?, 'retracted', ?, NULL, ?, ?)`).bind(id(), clueId, actorSubject, json({ reason }), record.version, timestamp),
+      this.db.prepare("INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at) VALUES (?, ?, 'clue.retracted', 'clue', ?, ?, ?)")
+        .bind(id(), actorSubject, clueId, json({ reason }), timestamp)
+    ]);
+    return record;
+  }
+
+  async listOpsClueOrders(options: { status?: PaidClueOrderStatus | null } = {}) {
+    const where = options.status ? "WHERE o.status = ?" : "";
+    const statement = this.db.prepare(`SELECT o.*, c.sequence AS clue_sequence, c.title AS clue_title FROM clue_orders o JOIN clues c ON c.id = o.clue_id ${where} ORDER BY o.updated_at DESC, o.id DESC`);
+    const result = options.status ? await statement.bind(options.status).all<Row>() : await statement.all<Row>();
+    return result.results.map((row) => ({ ...paidClueOrderFromRow(row), clueSequence: Number(row.clue_sequence), clueTitle: value(row.clue_title) }));
+  }
+
+  async decideClueOrder(orderId: string, input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null }, actorSubject: string): Promise<PaidClueOrder | null> {
+    const existing = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ? LIMIT 1").bind(orderId).first<Row>();
+    if (!existing) return null;
+    if (Number(existing.version) !== input.expectedVersion) throw new ApiError(409, "clue_order_stale", "This payment changed. Refresh and try again.");
+    const oldStatus = value(existing.status) as PaidClueOrderStatus;
+    const allowed = (oldStatus === "waiting_verification" && ["approved", "rejected", "cancelled"].includes(input.status)) ||
+      (["rejected", "cancelled"].includes(oldStatus) && input.status === "created");
+    if (!allowed) throw new ApiError(422, "clue_order_transition_invalid", "That payment status cannot be changed this way.");
+    if (input.status === "rejected" && !input.decisionNote?.trim()) throw new ApiError(422, "decision_note_required", "Give the hunter a reason before rejecting this payment.");
+    const timestamp = now();
+    const decisionFields = input.status === "created"
+      ? [null, null, null, null]
+      : [input.status === "rejected" ? input.decisionNote!.trim() : null, actorSubject, timestamp, value(existing.sender_name)];
+    const result = input.status === "created"
+      ? await this.db.prepare("UPDATE clue_orders SET status = 'created', sender_name = NULL, decision_note = NULL, decided_by = NULL, decided_at = NULL, version = version + 1, updated_at = ? WHERE id = ? AND version = ?")
+          .bind(timestamp, orderId, input.expectedVersion).run()
+      : await this.db.prepare("UPDATE clue_orders SET status = ?, decision_note = ?, decided_by = ?, decided_at = ?, sender_name = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?")
+          .bind(input.status, ...decisionFields, timestamp, orderId, input.expectedVersion).run();
+    if (!result.meta.changes) throw new ConflictError();
+    const updated = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ?").bind(orderId).first<Row>();
+    if (!updated) throw new Error("updated clue order could not be loaded");
+    const record = paidClueOrderFromRow(updated);
+    const action = input.status === "created" ? "reopened" : input.status;
+    await this.db.batch([
+      this.db.prepare("INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at) VALUES (?, ?, 'staff', ?, ?, ?, ?, ?)")
+        .bind(id(), orderId, actorSubject, action, json({ decisionNote: input.decisionNote ?? null }), record.version, timestamp),
+      this.db.prepare("INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at) VALUES (?, ?, ?, 'clue_order', ?, ?, ?)")
+        .bind(id(), actorSubject, `clue_order.${action}`, orderId, json({ status: input.status }), timestamp)
+    ]);
+    return record;
+  }
 
   async getStatus(): Promise<CaseStatus> {
     const row = await this.db.prepare("SELECT * FROM case_status WHERE id = 1").first<Row>();
