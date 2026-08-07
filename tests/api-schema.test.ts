@@ -392,6 +392,12 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
   assert.match(sql, /player_subject TEXT NOT NULL REFERENCES player_accounts\(subject\) ON DELETE RESTRICT/i);
   assert.match(sql, /reference TEXT NOT NULL UNIQUE CHECK \(reference GLOB 'TLS-C\[0-9\]\[0-9\]-\[A-Z0-9\]\[A-Z0-9\]\[A-Z0-9\]\[A-Z0-9\]'\)/i);
   assert.match(sql, /status TEXT NOT NULL DEFAULT 'created'\s+CHECK \(status IN \('created', 'waiting_verification', 'approved', 'rejected', 'cancelled'\)\)/i);
+  assert.match(sql, /sender_name TEXT CHECK \(sender_name IS NULL OR length\(trim\(sender_name\)\) > 0\)/i);
+  assert.doesNotMatch(sql, /sender_name TEXT NOT NULL/i);
+  assert.match(
+    sql,
+    /CHECK \(\s*status IN \('created', 'cancelled'\)\s+OR \(sender_name IS NOT NULL AND length\(trim\(sender_name\)\) > 0\)\s*\)/i
+  );
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_orders_one_active_per_player_clue\s+ON clue_orders\(player_subject, clue_id\)\s+WHERE status IN \('created', 'waiting_verification', 'approved'\)/i);
   assert.match(sql, /decision_note TEXT/i);
   assert.match(sql, /decided_by TEXT/i);
@@ -404,6 +410,21 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
   assert.match(sql, /clue_version INTEGER NOT NULL CHECK \(clue_version >= 1\)/i);
   assert.match(sql, /order_version INTEGER NOT NULL CHECK \(order_version >= 1\)/i);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_events_notification_idempotency[\s\S]*WHERE action = 'notified' AND notification_key IS NOT NULL/i);
+
+  for (const [trigger, table, operation] of [
+    ["trg_clue_events_no_update", "clue_events", "UPDATE"],
+    ["trg_clue_events_no_delete", "clue_events", "DELETE"],
+    ["trg_clue_order_events_no_update", "clue_order_events", "UPDATE"],
+    ["trg_clue_order_events_no_delete", "clue_order_events", "DELETE"]
+  ]) {
+    assert.match(
+      sql,
+      new RegExp(`CREATE TRIGGER IF NOT EXISTS ${trigger}\\s+BEFORE ${operation} ON ${table}`, "i"),
+      trigger
+    );
+  }
+  assert.match(sql, /RAISE\(ABORT, 'clue events are append-only'\)/i);
+  assert.match(sql, /RAISE\(ABORT, 'clue order events are append-only'\)/i);
 
   for (const index of [
     "idx_clues_catalogue",
@@ -418,6 +439,6 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
 
   assert.match(sql, /No clue rows are seeded in this migration/i);
   assert.doesNotMatch(sql, /INSERT\s+INTO\s+clues\b/i);
-  assert.doesNotMatch(sql, /ALTER TABLE|DROP TABLE|DELETE FROM|UPDATE\s+/i);
+  assert.doesNotMatch(sql, /ALTER TABLE|DROP TABLE|DELETE FROM/i);
   assert.doesNotMatch(sql, /bank(?:ing)?|routing_number|account_number|iban|swift|card_number|cvv/i);
 });

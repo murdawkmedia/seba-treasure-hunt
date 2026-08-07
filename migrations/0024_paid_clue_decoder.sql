@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS clue_orders (
   clue_id TEXT NOT NULL REFERENCES clues(id) ON DELETE RESTRICT,
   player_subject TEXT NOT NULL REFERENCES player_accounts(subject) ON DELETE RESTRICT,
   reference TEXT NOT NULL UNIQUE CHECK (reference GLOB 'TLS-C[0-9][0-9]-[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]'),
-  sender_name TEXT NOT NULL CHECK (length(trim(sender_name)) > 0),
+  sender_name TEXT CHECK (sender_name IS NULL OR length(trim(sender_name)) > 0),
   status TEXT NOT NULL DEFAULT 'created'
     CHECK (status IN ('created', 'waiting_verification', 'approved', 'rejected', 'cancelled')),
   decision_note TEXT,
@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS clue_orders (
   CHECK (
     status NOT IN ('approved', 'rejected', 'cancelled')
     OR (decided_by IS NOT NULL AND decided_at IS NOT NULL)
+  ),
+  CHECK (
+    status IN ('created', 'cancelled')
+    OR (sender_name IS NOT NULL AND length(trim(sender_name)) > 0)
   )
 );
 
@@ -86,6 +90,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_events_notification_idempotency
   ON clue_events(clue_id, notification_key)
   WHERE action = 'notified' AND notification_key IS NOT NULL;
 
+CREATE TRIGGER IF NOT EXISTS trg_clue_events_no_update
+BEFORE UPDATE ON clue_events
+BEGIN
+  SELECT RAISE(ABORT, 'clue events are append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_clue_events_no_delete
+BEFORE DELETE ON clue_events
+BEGIN
+  SELECT RAISE(ABORT, 'clue events are append-only');
+END;
+
 CREATE TABLE IF NOT EXISTS clue_order_events (
   id TEXT PRIMARY KEY,
   order_id TEXT NOT NULL REFERENCES clue_orders(id) ON DELETE RESTRICT,
@@ -101,3 +117,15 @@ CREATE TABLE IF NOT EXISTS clue_order_events (
 
 CREATE INDEX IF NOT EXISTS idx_clue_order_events_history
   ON clue_order_events(order_id, occurred_at DESC, id DESC);
+
+CREATE TRIGGER IF NOT EXISTS trg_clue_order_events_no_update
+BEFORE UPDATE ON clue_order_events
+BEGIN
+  SELECT RAISE(ABORT, 'clue order events are append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_clue_order_events_no_delete
+BEFORE DELETE ON clue_order_events
+BEGIN
+  SELECT RAISE(ABORT, 'clue order events are append-only');
+END;
