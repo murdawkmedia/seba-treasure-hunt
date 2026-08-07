@@ -13,9 +13,11 @@ class NoticeStore implements ClueNoticeStore {
   batches: ClueNoticeRecipientClaim[][] = [[claim], []];
   completions: string[] = [];
   reconciled: string[] = [];
+  configurationFailures: string[] = [];
   async claimClueNoticeRecipients() { return this.batches.shift() ?? []; }
   async completeClueNoticeRecipient(recipient: ClueNoticeRecipientClaim) { this.completions.push(recipient.id); }
   async reconcileClueNoticeJob(jobId: string) { this.reconciled.push(jobId); }
+  async failClueNoticeConfiguration(jobId: string) { this.configurationFailures.push(jobId); }
 }
 
 test("clue notice mail links to My Hunt without decoder or purchaser details", () => {
@@ -41,5 +43,19 @@ test("managed clue notices deliver each claimed recipient and reconcile the dura
   assert.deepEqual(await notices.deliver("job-1"), { status: "sent", sent: 1, failed: 0 });
   assert.deepEqual(messages.map((message) => message.to), ["hunter@example.test"]);
   assert.deepEqual(store.completions, ["recipient-1"]);
+  assert.deepEqual(store.reconciled, ["job-1"]);
+});
+
+test("invalid mail configuration explicitly fails and reconciles the durable job", async () => {
+  const store = new NoticeStore();
+  const notices = new ManagedClueNotices(store, {
+    mailer: null,
+    sender: { name: "", address: "" },
+    replyTo: "",
+    canonicalOrigin: "https://www.timlostsomething.com"
+  });
+
+  assert.deepEqual(await notices.deliver("job-1"), { status: "failed", sent: 0, failed: 0 });
+  assert.deepEqual(store.configurationFailures, ["job-1"]);
   assert.deepEqual(store.reconciled, ["job-1"]);
 });

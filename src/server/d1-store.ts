@@ -758,12 +758,15 @@ export class D1DataStore implements DataStore {
     return paidClueOrderFromRow(updated);
   }
 
-  async queueClueOrderApprovalNotice(orderId: string, actorSubject: string): Promise<string | null> {
+  async queueClueOrderApprovalNotice(orderId: string, expectedVersion: number, actorSubject: string): Promise<string | null> {
     const order = await this.db
       .prepare("SELECT id, player_subject, version FROM clue_orders WHERE id = ? AND status = 'approved' LIMIT 1")
       .bind(orderId)
       .first<Row>();
     if (!order) return null;
+    if (Number(order.version) !== expectedVersion) {
+      throw new ApiError(409, "clue_order_stale", "This payment changed. Refresh and try again.");
+    }
     const existing = await this.db
       .prepare("SELECT id FROM notification_jobs WHERE kind = 'clue_order_approved' AND target_record_id = ? LIMIT 1")
       .bind(orderId)
@@ -996,6 +999,65 @@ export class D1DataStore implements DataStore {
     if (Number(completion.meta?.changes ?? 0) !== 1) {
       throw new ApiError(409, "clue_notice_lease_lost", "The clue notification delivery lease is no longer current.");
     }
+  }
+
+  async failClueNoticeConfiguration(jobId: string): Promise<void> {
+    const timestamp = now();
+    const failed = await this.db.prepare(
+      `UPDATE clue_notification_recipients
+       SET status = 'failed', next_attempt_at = NULL, last_error_code = 'configuration_error', updated_at = ?
+       WHERE notification_job_id = ? AND status = 'pending'`
+    ).bind(timestamp, jobId).run();
+    if (Number(failed.meta?.changes ?? 0) > 0) {
+      await this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, 'system:clue-notice', 'clue_notice.delivery_configuration_failed',
+                 'notification_job', ?, '{}', ?)`
+      ).bind(id(), jobId, timestamp).run();
+    }
+  }
+
+  async requeueClueNoticeJob(jobId: string, actorSubject: string) {
+    const job = await this.db.prepare(
+      `SELECT job.id, job.kind, job.status,
+              SUM(CASE WHEN recipient.status IN ('pending', 'failed') THEN 1 ELSE 0 END) AS retryable_count,
+              SUM(CASE WHEN recipient.status = 'processing' THEN 1 ELSE 0 END) AS processing_count,
+              SUM(CASE WHEN recipient.status = 'uncertain' THEN 1 ELSE 0 END) AS uncertain_count
+       FROM notification_jobs job
+       LEFT JOIN clue_notification_recipients recipient ON recipient.notification_job_id = job.id
+       WHERE job.id = ? AND job.kind IN ('clue_order_approved', 'clue_released')
+       GROUP BY job.id, job.kind, job.status`
+    ).bind(jobId).first<Row>();
+    if (!job) return { status: "not_found" as const };
+    if (Number(job.processing_count ?? 0) > 0) return { status: "in_progress" as const };
+    const retryableCount = Number(job.retryable_count ?? 0);
+    if (retryableCount === 0) {
+      return Number(job.uncertain_count ?? 0) > 0
+        ? { status: "uncertain" as const }
+        : { status: "sent" as const };
+    }
+    const timestamp = now();
+    const reset = await this.db.prepare(
+      `UPDATE clue_notification_recipients
+       SET status = 'pending', next_attempt_at = NULL, lease_token = NULL, lease_expires_at = NULL,
+           correlation_id = NULL, last_error_code = NULL, updated_at = ?
+       WHERE notification_job_id = ? AND status IN ('pending', 'failed')`
+    ).bind(timestamp, jobId).run();
+    if (Number(reset.meta?.changes ?? 0) === 0) return { status: "in_progress" as const };
+    await this.db.batch([
+      this.db.prepare(
+        `UPDATE notification_jobs
+         SET status = 'pending', next_attempt_at = NULL, last_error_code = NULL, updated_at = ?
+         WHERE id = ? AND kind IN ('clue_order_approved', 'clue_released')`
+      ).bind(timestamp, jobId),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'clue_notice.retry_requested', 'notification_job', ?, ?, ?)`
+      ).bind(id(), actorSubject, jobId, json({ kind: value(job.kind), recipientCount: Number(reset.meta?.changes ?? 0) }), timestamp)
+    ]);
+    return { status: "queued" as const };
   }
 
   async reconcileClueNoticeJob(jobId: string): Promise<void> {

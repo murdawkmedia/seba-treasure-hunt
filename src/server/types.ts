@@ -346,6 +346,10 @@ export interface ClueNoticeSender {
   deliver(jobId: string): Promise<OperatorAlertDeliveryResult>;
 }
 
+export type ClueNoticeRequeueResult = {
+  status: "queued" | "in_progress" | "uncertain" | "sent" | "not_found";
+};
+
 export interface IdentityLifecycleEvent {
   id: string;
   type: "user.created" | "user.updated" | "user.deleted";
@@ -527,7 +531,7 @@ export interface DataStore {
     input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null },
     actorSubject: string
   ): Promise<PaidClueOrder | null>;
-  queueClueOrderApprovalNotice(orderId: string, actorSubject: string): Promise<string | null>;
+  queueClueOrderApprovalNotice(orderId: string, expectedVersion: number, actorSubject: string): Promise<string | null>;
   queueClueReleaseNotice(
     clueId: string,
     expectedVersion: number,
@@ -538,6 +542,8 @@ export interface DataStore {
     claim: ClueNoticeRecipientClaim,
     result: ClueNoticeRecipientCompletion
   ): Promise<void>;
+  failClueNoticeConfiguration(jobId: string): Promise<void>;
+  requeueClueNoticeJob(jobId: string, actorSubject: string): Promise<ClueNoticeRequeueResult>;
   reconcileClueNoticeJob(jobId: string): Promise<void>;
   getHunterCaseItemMedia(mediaId: string): Promise<{ key: string; contentType: string } | null>;
   getReportableFreshDrop(id: string): Promise<{ id: string; title: string } | null>;

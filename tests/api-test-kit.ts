@@ -326,6 +326,7 @@ export class FakeStore {
   clueNoticeRecipients: Array<{ jobId: string; hunterSubject: string }> = [];
   huntEmailSubscribers = new Set(["hunter-1"]);
   clueNoticeQueueFails = false;
+  requeuedClueNoticeJobs: string[] = [];
 
   async listPaidClues() { return this.paidClues.map((clue) => ({ ...clue })); }
   async listPlayerClueOrders(subject: string): Promise<PaidClueOrder[]> {
@@ -420,10 +421,11 @@ export class FakeStore {
     else { order.decisionNote = input.status === "rejected" ? input.decisionNote?.trim() ?? null : null; order.decidedBy = actorSubject; order.decidedAt = order.updatedAt; }
     this.paidClueOrderEvents.push({ orderId: id, action: input.status, actorSubject }); return { ...order };
   }
-  async queueClueOrderApprovalNotice(orderId: string, actorSubject: string) {
+  async queueClueOrderApprovalNotice(orderId: string, expectedVersion: number, actorSubject: string) {
     if (this.clueNoticeQueueFails) throw new Error("notice queue unavailable");
     const order = this.paidClueOrders.find((candidate) => candidate.id === orderId);
     if (!order || order.status !== "approved") return null;
+    if (order.version !== expectedVersion) throw new ApiError(409, "clue_order_stale", "This payment changed. Refresh and try again.");
     const existing = this.clueNoticeJobs.find((job) => job.kind === "clue_order_approved" && job.targetId === orderId);
     if (existing) return existing.id;
     const job = { id: `clue-notice-${this.clueNoticeJobs.length + 1}`, kind: "clue_order_approved" as const, targetId: orderId };
@@ -446,6 +448,14 @@ export class FakeStore {
   }
   async claimClueNoticeRecipients() { return []; }
   async completeClueNoticeRecipient() {}
+  async failClueNoticeConfiguration() {}
+  async requeueClueNoticeJob(jobId: string, actorSubject: string) {
+    const exists = this.clueNoticeJobs.some((job) => job.id === jobId);
+    if (!exists) return { status: "not_found" as const };
+    this.requeuedClueNoticeJobs.push(jobId);
+    this.audits.push({ action: "clue_notice.retry_requested", actorSubject, targetId: jobId });
+    return { status: "queued" as const };
+  }
   async reconcileClueNoticeJob() {}
 
   async getStatus() {

@@ -15,7 +15,7 @@ import type {
 
 export type ClueNoticeStore = Pick<
   DataStore,
-  "claimClueNoticeRecipients" | "completeClueNoticeRecipient" | "reconcileClueNoticeJob"
+  "claimClueNoticeRecipients" | "completeClueNoticeRecipient" | "failClueNoticeConfiguration" | "reconcileClueNoticeJob"
 >;
 
 export interface ClueNoticeMessage {
@@ -81,6 +81,8 @@ export class ManagedClueNotices {
     const origin = absoluteOrigin(this.config.canonicalOrigin?.trim() ?? "");
     if (!mailer || !isValidTransactionalHeaderValue(senderName) || !isValidTransactionalEmailAddress(senderAddress)
       || !isValidTransactionalEmailAddress(replyTo) || !origin) {
+      await this.store.failClueNoticeConfiguration(jobId);
+      await this.store.reconcileClueNoticeJob(jobId);
       return { status: "failed", sent: 0, failed: 0 };
     }
     let sent = 0;

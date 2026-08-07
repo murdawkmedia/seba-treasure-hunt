@@ -2503,8 +2503,17 @@ export const createApi = (deps: ApiDependencies) => {
     }
     const queued = await deps.store.queueClueReleaseNotice(c.req.param("id"), Number(expectedVersion), staff.subject);
     if (!queued) throw new ApiError(404, "clue_not_found", "That clue was not found.");
-    scheduleClueNotice(c, deps.clueNotices, queued.jobId);
-    return success(c, { replayed: queued.replayed }, 202);
+    const retry = queued.replayed
+      ? await deps.store.requeueClueNoticeJob(queued.jobId, staff.subject)
+      : { status: "queued" as const };
+    if (retry.status === "uncertain") {
+      throw new ApiError(409, "clue_notice_delivery_uncertain", "The email provider may already have accepted this notice. Check provider delivery evidence before retrying.");
+    }
+    if (retry.status === "in_progress") {
+      throw new ApiError(409, "clue_notice_in_progress", "This clue notice is already being delivered.");
+    }
+    if (retry.status === "queued") scheduleClueNotice(c, deps.clueNotices, queued.jobId);
+    return success(c, { replayed: queued.replayed, status: retry.status }, retry.status === "sent" ? 200 : 202);
   });
   app.get("/api/v1/ops/clue-orders", async (c) => {
     await requireStaff(deps, c.req.raw);
@@ -2516,6 +2525,30 @@ export const createApi = (deps: ApiDependencies) => {
       cursor: c.req.query("cursor") ?? null
     });
     return success(c, { orders: page.items, counts: page.counts }, 200, { nextCursor: page.nextCursor });
+  });
+  app.post("/api/v1/ops/clue-orders/:id/notify", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length) throw new ApiError(415, "unsupported_media_type", "Clue order notifications accept JSON only.");
+    const expectedVersion = body.expectedVersion;
+    if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+      throw new ApiError(422, "validation_failed", "expectedVersion is required.", { field: "expectedVersion" });
+    }
+    if (body.confirmNotify !== true) {
+      throw new ApiError(422, "clue_notification_confirmation_required", "Deliberately confirm the clue order notification.");
+    }
+    const jobId = await deps.store.queueClueOrderApprovalNotice(c.req.param("id"), Number(expectedVersion), staff.subject);
+    if (!jobId) throw new ApiError(404, "clue_order_not_found", "That approved payment request was not found.");
+    const retry = await deps.store.requeueClueNoticeJob(jobId, staff.subject);
+    if (retry.status === "uncertain") {
+      throw new ApiError(409, "clue_notice_delivery_uncertain", "The email provider may already have accepted this notice. Check provider delivery evidence before retrying.");
+    }
+    if (retry.status === "in_progress") {
+      throw new ApiError(409, "clue_notice_in_progress", "This clue notice is already being delivered.");
+    }
+    if (retry.status === "queued") scheduleClueNotice(c, deps.clueNotices, jobId);
+    return success(c, { status: retry.status }, retry.status === "sent" ? 200 : 202);
   });
   app.post("/api/v1/ops/clue-orders/:id/:decision", async (c) => {
     sameOrigin(c.req.raw); const staff = await requireStaff(deps, c.req.raw); const { body, files } = await requestBody(c.req.raw);
@@ -2530,7 +2563,7 @@ export const createApi = (deps: ApiDependencies) => {
     let noticeJobId: string | null = null;
     if (order.status === "approved") {
       try {
-        noticeJobId = await deps.store.queueClueOrderApprovalNotice(order.id, staff.subject);
+        noticeJobId = await deps.store.queueClueOrderApprovalNotice(order.id, order.version, staff.subject);
       } catch {
         // Approval is the access grant. A notification outage must never undo it.
       }

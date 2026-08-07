@@ -355,13 +355,33 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
      (id, clue_id, player_subject, reference, sender_name, status, decided_by, decided_at, created_at, updated_at, version)
      VALUES ('order-11', 'clue-11', 'player-1', 'TLS-C11-K4M2', 'Sender', 'approved', 'staff-1', 't', 't', 't', 1)`
   ).run();
-  const approvalJob = await store.queueClueOrderApprovalNotice('order-11', 'staff-1');
+  const approvalJob = await store.queueClueOrderApprovalNotice('order-11', 1, 'staff-1');
   assert.ok(approvalJob);
   assert.deepEqual(
     await db.prepare(
       `SELECT action FROM audit_events WHERE target_id = 'order-11' ORDER BY occurred_at DESC, id DESC LIMIT 1`
     ).first(),
     { action: 'clue_order.email_notice_queued' }
+  );
+  await store.failClueNoticeConfiguration(approvalJob);
+  await store.reconcileClueNoticeJob(approvalJob);
+  assert.deepEqual(
+    await db.prepare(`SELECT status, last_error_code FROM notification_jobs WHERE id = ?`).bind(approvalJob).first(),
+    { status: 'failed', last_error_code: 'configuration_error' }
+  );
+  assert.deepEqual(await store.requeueClueNoticeJob(approvalJob, 'staff-1'), { status: 'queued' });
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT status, next_attempt_at, last_error_code FROM clue_notification_recipients
+       WHERE notification_job_id = ?`
+    ).bind(approvalJob).first(),
+    { status: 'pending', next_attempt_at: null, last_error_code: null }
+  );
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT action FROM audit_events WHERE target_id = ? AND action = 'clue_notice.retry_requested' LIMIT 1`
+    ).bind(approvalJob).first(),
+    { action: 'clue_notice.retry_requested' }
   );
 
   const integrityCheck = await db.prepare("PRAGMA integrity_check").all().catch((error: unknown) => error);

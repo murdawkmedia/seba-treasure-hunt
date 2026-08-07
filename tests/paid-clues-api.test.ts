@@ -166,6 +166,32 @@ test("approving a waiting order persists decoder access before its transactional
   assert.equal(delivered.length, 1);
 });
 
+test("ops can explicitly retry an approved-order notice without changing decoder access", async () => {
+  const delivered: string[] = [];
+  const { app, store } = makeApp(undefined, { async deliver(jobId) { delivered.push(jobId); } });
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  const created = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const claimed = await store.claimClueOrder("hunter-1", created.order.id, "A Hunter", created.order.version);
+  assert.ok(claimed);
+  await app.request(`${origin}/api/v1/ops/clue-orders/${created.order.id}/approve`, {
+    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: claimed.version })
+  });
+
+  const missingConfirmation = await app.request(`${origin}/api/v1/ops/clue-orders/${created.order.id}/notify`, {
+    method: "POST", headers: staff, body: "{}"
+  });
+  assert.equal(missingConfirmation.status, 422);
+
+  const retry = await app.request(`${origin}/api/v1/ops/clue-orders/${created.order.id}/notify`, {
+    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: store.paidClueOrders[0]?.version, confirmNotify: true })
+  });
+  assert.equal(retry.status, 202);
+  assert.equal(store.paidClueOrders[0]?.status, "approved");
+  assert.deepEqual(store.requeuedClueNoticeJobs, [store.clueNoticeJobs[0]?.id]);
+  assert.equal(delivered.length, 2);
+  assert.ok(store.audits.some((audit) => audit.action === "clue_notice.retry_requested"));
+});
+
 test("a confirmed release notice snapshots only hunt-email opt-ins and is durable-idempotent", async () => {
   const { app, store } = makeApp();
   store.huntEmailSubscribers.add("hunter-2");
