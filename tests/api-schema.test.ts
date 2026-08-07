@@ -382,11 +382,12 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
     assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`, "i"), table);
   }
 
-  assert.match(sql, /sequence INTEGER NOT NULL UNIQUE CHECK \(sequence BETWEEN 1 AND 30\)/i);
+  assert.match(sql, /sequence INTEGER NOT NULL UNIQUE CHECK \(typeof\(sequence\) = 'integer' AND sequence BETWEEN 1 AND 30\)/i);
+  assert.match(sql, /typeof\(internal_numeric_score\) = 'integer' AND internal_numeric_score BETWEEN 0 AND 100/i);
   assert.match(sql, /state TEXT NOT NULL DEFAULT 'draft'\s+CHECK \(state IN \('draft', 'ready', 'released', 'retired'\)\)/i);
   assert.match(sql, /decoder_mode TEXT NOT NULL DEFAULT 'paid'\s+CHECK \(decoder_mode IN \('paid', 'free'\)\)/i);
-  assert.match(sql, /version INTEGER NOT NULL DEFAULT 1 CHECK \(version >= 1\)/i);
-  assert.match(sql, /retired_at IS NULL OR released_at IS NOT NULL/i);
+  assert.match(sql, /version INTEGER NOT NULL DEFAULT 1 CHECK \(typeof\(version\) = 'integer' AND version >= 1\)/i);
+  assert.doesNotMatch(sql, /retired_at IS NULL OR released_at IS NOT NULL/i);
 
   assert.match(sql, /clue_id TEXT NOT NULL REFERENCES clues\(id\) ON DELETE RESTRICT/i);
   assert.match(sql, /player_subject TEXT NOT NULL REFERENCES player_accounts\(subject\) ON DELETE RESTRICT/i);
@@ -396,7 +397,7 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
   assert.doesNotMatch(sql, /sender_name TEXT NOT NULL/i);
   assert.match(
     sql,
-    /CHECK \(\s*status IN \('created', 'cancelled'\)\s+OR \(sender_name IS NOT NULL AND length\(trim\(sender_name\)\) > 0\)\s*\)/i
+    /status = 'waiting_verification'[\s\S]*sender_name IS NOT NULL[\s\S]*decision_note IS NULL/i
   );
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_orders_one_active_per_player_clue\s+ON clue_orders\(player_subject, clue_id\)\s+WHERE status IN \('created', 'waiting_verification', 'approved'\)/i);
   assert.match(sql, /decision_note TEXT/i);
@@ -407,15 +408,19 @@ test("the paid clue decoder migration adds constrained clue, order, and audit le
   assert.match(sql, /action TEXT NOT NULL CHECK\s*\(\s*action IN \('created', 'claimed', 'approved', 'rejected', 'cancelled', 'reopened', 'email_notice_sent', 'email_retry'\)\s*\)/i);
   assert.match(sql, /actor_type TEXT NOT NULL CHECK \(actor_type IN \('player', 'staff', 'system'\)\)/i);
   assert.match(sql, /details_json TEXT NOT NULL DEFAULT '\{\}' CHECK \(json_valid\(details_json\)\)/i);
-  assert.match(sql, /clue_version INTEGER NOT NULL CHECK \(clue_version >= 1\)/i);
-  assert.match(sql, /order_version INTEGER NOT NULL CHECK \(order_version >= 1\)/i);
+  assert.match(sql, /clue_version INTEGER NOT NULL CHECK \(typeof\(clue_version\) = 'integer' AND clue_version >= 1\)/i);
+  assert.match(sql, /order_version INTEGER NOT NULL CHECK \(typeof\(order_version\) = 'integer' AND order_version >= 1\)/i);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_clue_events_notification_idempotency[\s\S]*WHERE action = 'notified' AND notification_key IS NOT NULL/i);
+  assert.match(sql, /action = 'notified' AND notification_key IS NOT NULL AND length\(trim\(notification_key\)\) > 0/i);
+  assert.match(sql, /action != 'notified' AND notification_key IS NULL/i);
 
   for (const [trigger, table, operation] of [
     ["trg_clue_events_no_update", "clue_events", "UPDATE"],
     ["trg_clue_events_no_delete", "clue_events", "DELETE"],
+    ["trg_clue_events_no_replace", "clue_events", "INSERT"],
     ["trg_clue_order_events_no_update", "clue_order_events", "UPDATE"],
-    ["trg_clue_order_events_no_delete", "clue_order_events", "DELETE"]
+    ["trg_clue_order_events_no_delete", "clue_order_events", "DELETE"],
+    ["trg_clue_order_events_no_replace", "clue_order_events", "INSERT"]
   ]) {
     assert.match(
       sql,
