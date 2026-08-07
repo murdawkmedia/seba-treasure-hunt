@@ -183,8 +183,9 @@ test("the Worker constructs one selected mailer and shares it with every transac
   assert.match(workerSource, /const resendMailer = new ResendTransactionalMailer\(/);
   assert.match(workerSource, /const transactionalMailer = createTransactionalMailer\(/);
   assert.match(workerSource, /operatorAlerts:\s*new ManagedOperatorAlerts\(store,/);
+  assert.match(workerSource, /clueNotices:\s*new ManagedClueNotices\(store,/);
   const applicationWiring = workerSource.slice(workerSource.indexOf("const app = createApi"));
-  assert.equal((applicationWiring.match(/mailer:\s*transactionalMailer/g) ?? []).length, 4);
+  assert.equal((applicationWiring.match(/mailer:\s*transactionalMailer/g) ?? []).length, 5);
 });
 
 test("production snapshot dependencies are composed only for validation", async () => {

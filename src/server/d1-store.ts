@@ -15,6 +15,9 @@ import type {
   CaseItemInput,
   CaseItemMutation,
   CaseItemStatusMutation,
+  ClueNoticeKind,
+  ClueNoticeRecipientClaim,
+  ClueNoticeRecipientCompletion,
   DataStore,
   IdentityLifecycleEvent,
   OperatorAlertErrorCode,
@@ -309,6 +312,10 @@ const operatorAlertKinds = new Set<OperatorAlertKind>([
   "operator_private_report",
   "operator_field_note_moderation"
 ]);
+const clueNoticeKinds = new Set<ClueNoticeKind>([
+  "clue_order_approved",
+  "clue_released"
+]);
 
 const safeProviderReference = /^[\x20-\x7e]{1,128}$/;
 const isCanonicalTimestamp = (input: string) => {
@@ -577,6 +584,264 @@ export class D1DataStore implements DataStore {
         .bind(id(), actorSubject, `clue_order.${action}`, orderId, json({ status: input.status }), timestamp)
     ]);
     return record;
+  }
+
+  async queueClueOrderApprovalNotice(orderId: string, actorSubject: string): Promise<string | null> {
+    const order = await this.db
+      .prepare("SELECT id, player_subject, version FROM clue_orders WHERE id = ? AND status = 'approved' LIMIT 1")
+      .bind(orderId)
+      .first<Row>();
+    if (!order) return null;
+    const existing = await this.db
+      .prepare("SELECT id FROM notification_jobs WHERE kind = 'clue_order_approved' AND target_record_id = ? LIMIT 1")
+      .bind(orderId)
+      .first<Row>();
+    if (existing) return value(existing.id);
+    const jobId = id();
+    const timestamp = now();
+    await this.db.batch([
+      this.db.prepare(
+        `INSERT INTO notification_jobs
+         (id, kind, target_record_id, status, attempts, created_at, updated_at)
+         VALUES (?, 'clue_order_approved', ?, 'pending', 0, ?, ?)`
+      ).bind(jobId, orderId, timestamp, timestamp),
+      this.db.prepare(
+        `INSERT OR IGNORE INTO clue_notification_recipients
+         (id, notification_job_id, hunter_subject, recipient_email, created_at, updated_at)
+         SELECT ?, job.id, account.subject, account.verified_email, ?, ?
+         FROM notification_jobs job
+         JOIN player_accounts account ON account.subject = ?
+         WHERE job.kind = 'clue_order_approved' AND job.target_record_id = ?
+           AND account.account_state = 'active' AND account.verified_email IS NOT NULL`
+      ).bind(id(), timestamp, timestamp, value(order.player_subject), orderId),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'clue_order.email_notice_queued', 'clue_order', ?, '{}', ?)`
+      ).bind(id(), actorSubject, orderId, timestamp)
+    ]);
+    const queued = await this.db
+      .prepare("SELECT id FROM notification_jobs WHERE kind = 'clue_order_approved' AND target_record_id = ? LIMIT 1")
+      .bind(orderId)
+      .first<Row>();
+    return queued ? value(queued.id) : null;
+  }
+
+  async queueClueReleaseNotice(
+    clueId: string,
+    expectedVersion: number,
+    actorSubject: string
+  ): Promise<{ jobId: string; replayed: boolean } | null> {
+    const clue = await this.db.prepare("SELECT id, version, state FROM clues WHERE id = ? LIMIT 1").bind(clueId).first<Row>();
+    if (!clue) return null;
+    if (Number(clue.version) !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    if (value(clue.state) !== "released") throw new ApiError(422, "clue_not_released", "Only a released clue can be announced.");
+    const release = await this.db.prepare(
+      `SELECT id FROM clue_events WHERE clue_id = ? AND action = 'released'
+       ORDER BY occurred_at DESC, id DESC LIMIT 1`
+    ).bind(clueId).first<Row>();
+    if (!release) throw new ApiError(422, "clue_release_audit_missing", "This clue must be released through the audited release action before it can be announced.");
+    const notificationKey = `release:${value(release.id)}`;
+    const priorEvent = await this.db.prepare(
+      `SELECT event.id, job.id AS job_id FROM clue_events event
+       JOIN notification_jobs job ON job.target_record_id = event.id AND job.kind = 'clue_released'
+       WHERE event.clue_id = ? AND event.action = 'notified' AND event.notification_key = ? LIMIT 1`
+    ).bind(clueId, notificationKey).first<Row>();
+    if (priorEvent) return { jobId: value(priorEvent.job_id), replayed: true };
+    const eventId = id();
+    const jobId = id();
+    const timestamp = now();
+    await this.db.batch([
+      this.db.prepare(
+        `INSERT INTO clue_events
+         (id, clue_id, actor_type, actor_subject, action, details_json, notification_key, clue_version, occurred_at)
+         VALUES (?, ?, 'staff', ?, 'notified', '{"audience":"hunt_email_opt_in"}', ?, ?, ?)`
+      ).bind(eventId, clueId, actorSubject, notificationKey, expectedVersion, timestamp),
+      this.db.prepare(
+        `INSERT INTO notification_jobs
+         (id, kind, target_record_id, status, attempts, created_at, updated_at)
+         VALUES (?, 'clue_released', ?, 'pending', 0, ?, ?)`
+      ).bind(jobId, eventId, timestamp, timestamp),
+      this.db.prepare(
+        `INSERT INTO clue_notification_recipients
+         (id, notification_job_id, hunter_subject, recipient_email, created_at, updated_at)
+         WITH latest_hunt_email AS (
+           SELECT hunter_subject, granted,
+                  ROW_NUMBER() OVER (PARTITION BY hunter_subject ORDER BY occurred_at DESC, id DESC) AS consent_rank
+           FROM consent_events WHERE consent_type = 'hunt_email'
+         )
+         SELECT lower(hex(randomblob(16))), ?, account.subject, account.verified_email, ?, ?
+         FROM player_accounts account
+         JOIN latest_hunt_email consent ON consent.hunter_subject = account.subject
+         WHERE account.account_state = 'active' AND account.verified_email IS NOT NULL
+           AND consent.consent_rank = 1 AND consent.granted = 1`
+      ).bind(jobId, timestamp, timestamp),
+      this.db.prepare(
+        `INSERT INTO audit_events
+         (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+         VALUES (?, ?, 'clue.notified', 'clue', ?, ?, ?)`
+      ).bind(id(), actorSubject, clueId, json({ notificationKey }), timestamp)
+    ]);
+    return { jobId, replayed: false };
+  }
+
+  async claimClueNoticeRecipients(jobId: string): Promise<ClueNoticeRecipientClaim[]> {
+    const timestamp = now();
+    const currentOptIn = `
+      SELECT 1 FROM consent_events consent
+      WHERE consent.hunter_subject = clue_notification_recipients.hunter_subject
+        AND consent.consent_type = 'hunt_email' AND consent.granted = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM consent_events newer
+          WHERE newer.hunter_subject = consent.hunter_subject
+            AND newer.consent_type = consent.consent_type
+            AND (newer.occurred_at > consent.occurred_at
+              OR (newer.occurred_at = consent.occurred_at AND newer.id > consent.id))
+        )`;
+    await this.db.batch([
+      this.db.prepare(
+        `UPDATE clue_notification_recipients
+         SET status = 'uncertain', lease_token = NULL, lease_expires_at = NULL,
+             last_error_code = 'provider_delivery_uncertain', updated_at = ?
+         WHERE notification_job_id = ? AND status = 'processing' AND lease_expires_at <= ?`
+      ).bind(timestamp, jobId, timestamp),
+      this.db.prepare(
+        `UPDATE clue_notification_recipients
+         SET status = 'cancelled', next_attempt_at = NULL, lease_token = NULL,
+             lease_expires_at = NULL, last_error_code = 'recipient_ineligible', updated_at = ?
+         WHERE notification_job_id = ? AND status = 'pending' AND (
+           NOT EXISTS (
+             SELECT 1 FROM player_accounts account
+             WHERE account.subject = clue_notification_recipients.hunter_subject
+               AND account.account_state = 'active'
+               AND account.verified_email = clue_notification_recipients.recipient_email
+           )
+           OR (
+             EXISTS (SELECT 1 FROM notification_jobs job WHERE job.id = clue_notification_recipients.notification_job_id AND job.kind = 'clue_released')
+             AND NOT EXISTS (${currentOptIn})
+           )
+         )`
+      ).bind(timestamp, jobId)
+    ]);
+    const candidates = await this.db.prepare(
+      `SELECT recipient.id, recipient.recipient_email, recipient.attempts, job.kind
+       FROM clue_notification_recipients recipient
+       JOIN notification_jobs job ON job.id = recipient.notification_job_id
+       WHERE recipient.notification_job_id = ? AND job.status = 'pending'
+         AND job.kind IN ('clue_order_approved', 'clue_released')
+         AND recipient.status = 'pending'
+         AND (recipient.next_attempt_at IS NULL OR recipient.next_attempt_at <= ?)
+         AND EXISTS (
+           SELECT 1 FROM player_accounts account
+           WHERE account.subject = recipient.hunter_subject AND account.account_state = 'active'
+             AND account.verified_email = recipient.recipient_email
+         )
+         AND (job.kind <> 'clue_released' OR EXISTS (
+           SELECT 1 FROM consent_events consent
+           WHERE consent.hunter_subject = recipient.hunter_subject
+             AND consent.consent_type = 'hunt_email' AND consent.granted = 1
+             AND NOT EXISTS (
+               SELECT 1 FROM consent_events newer
+               WHERE newer.hunter_subject = consent.hunter_subject AND newer.consent_type = consent.consent_type
+                 AND (newer.occurred_at > consent.occurred_at OR (newer.occurred_at = consent.occurred_at AND newer.id > consent.id))
+             )
+         ))
+       ORDER BY recipient.created_at, recipient.id LIMIT 1`
+    ).bind(jobId, timestamp).all<Row>();
+    if (candidates.results.length === 0) return [];
+    const leaseExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const claims = candidates.results.map((row) => ({
+      id: value(row.id), jobId, kind: row.kind as ClueNoticeKind, email: value(row.recipient_email),
+      attempts: Number(row.attempts) + 1, leaseToken: id(), correlationId: `cluenotice_${id().replaceAll("-", "")}`
+    }));
+    const results = await this.db.batch(claims.map((claim, index) => this.db.prepare(
+      `UPDATE clue_notification_recipients
+       SET status = 'processing', attempts = ?, next_attempt_at = NULL, lease_token = ?,
+           lease_expires_at = ?, correlation_id = ?, last_error_code = NULL, updated_at = ?
+       WHERE id = ? AND notification_job_id = ? AND status = 'pending' AND attempts = ?
+         AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+         AND EXISTS (
+           SELECT 1 FROM player_accounts account
+           WHERE account.subject = clue_notification_recipients.hunter_subject
+             AND account.account_state = 'active'
+             AND account.verified_email = clue_notification_recipients.recipient_email
+         )
+         AND (NOT EXISTS (
+           SELECT 1 FROM notification_jobs job
+           WHERE job.id = clue_notification_recipients.notification_job_id AND job.kind = 'clue_released'
+         ) OR EXISTS (
+           SELECT 1 FROM consent_events consent
+           WHERE consent.hunter_subject = clue_notification_recipients.hunter_subject
+             AND consent.consent_type = 'hunt_email' AND consent.granted = 1
+             AND NOT EXISTS (
+               SELECT 1 FROM consent_events newer
+               WHERE newer.hunter_subject = consent.hunter_subject AND newer.consent_type = consent.consent_type
+                 AND (newer.occurred_at > consent.occurred_at OR (newer.occurred_at = consent.occurred_at AND newer.id > consent.id))
+             )
+         ))`
+    ).bind(claim.attempts, claim.leaseToken, leaseExpiresAt, claim.correlationId, timestamp,
+      claim.id, jobId, Number(candidates.results[index]?.attempts), timestamp)));
+    return claims.filter((_claim, index) => Number(results[index]?.meta?.changes ?? 0) === 1);
+  }
+
+  async completeClueNoticeRecipient(
+    claim: ClueNoticeRecipientClaim,
+    result: ClueNoticeRecipientCompletion
+  ): Promise<void> {
+    if (!clueNoticeKinds.has(claim.kind)) {
+      throw new ApiError(422, "clue_notice_kind_invalid", "The clue notification kind is invalid.");
+    }
+    if (result.status === "sent" && !validProviderAcceptance(result)) {
+      throw new ApiError(422, "clue_notice_acceptance_invalid", "The notification provider acceptance is invalid.");
+    }
+    if (result.status !== "sent" && !operatorAlertErrorCodes.has(result.errorCode)) {
+      throw new ApiError(422, "clue_notice_error_invalid", "The notification error code is invalid.");
+    }
+    if (result.status === "retry" && !isCanonicalTimestamp(result.nextAttemptAt)) {
+      throw new ApiError(422, "clue_notice_retry_invalid", "The notification retry time is invalid.");
+    }
+    const timestamp = now();
+    const statement = result.status === "sent"
+      ? this.db.prepare(
+          `UPDATE clue_notification_recipients
+           SET status = 'sent', next_attempt_at = NULL, lease_token = NULL, lease_expires_at = NULL,
+               provider = ?, provider_reference = ?, provider_reference_kind = ?, accepted_at = ?,
+               sent_at = ?, last_error_code = NULL, updated_at = ?
+           WHERE id = ? AND notification_job_id = ? AND status = 'processing' AND attempts = ?
+             AND lease_token = ? AND correlation_id = ?`
+        ).bind(result.provider, result.providerReference, result.providerReferenceKind, result.acceptedAt,
+          result.acceptedAt, timestamp, claim.id, claim.jobId, claim.attempts, claim.leaseToken, claim.correlationId)
+      : this.db.prepare(
+          `UPDATE clue_notification_recipients
+           SET status = ?, next_attempt_at = ?, lease_token = NULL, lease_expires_at = NULL,
+               last_error_code = ?, updated_at = ?
+           WHERE id = ? AND notification_job_id = ? AND status = 'processing' AND attempts = ?
+             AND lease_token = ? AND correlation_id = ?`
+        ).bind(result.status === "retry" ? "pending" : result.status,
+          result.status === "retry" ? result.nextAttemptAt : null, result.errorCode, timestamp,
+          claim.id, claim.jobId, claim.attempts, claim.leaseToken, claim.correlationId);
+    const completion = await statement.run();
+    if (Number(completion.meta?.changes ?? 0) !== 1) {
+      throw new ApiError(409, "clue_notice_lease_lost", "The clue notification delivery lease is no longer current.");
+    }
+  }
+
+  async reconcileClueNoticeJob(jobId: string): Promise<void> {
+    const timestamp = now();
+    await this.db.prepare(
+      `UPDATE notification_jobs
+       SET status = CASE
+             WHEN EXISTS (SELECT 1 FROM clue_notification_recipients r WHERE r.notification_job_id = notification_jobs.id AND r.status IN ('pending', 'processing')) THEN 'pending'
+             WHEN EXISTS (SELECT 1 FROM clue_notification_recipients r WHERE r.notification_job_id = notification_jobs.id AND r.status IN ('failed', 'uncertain')) THEN 'failed'
+             WHEN EXISTS (SELECT 1 FROM clue_notification_recipients r WHERE r.notification_job_id = notification_jobs.id AND r.status = 'sent') THEN 'sent'
+             ELSE 'cancelled' END,
+           attempts = COALESCE((SELECT MAX(r.attempts) FROM clue_notification_recipients r WHERE r.notification_job_id = notification_jobs.id), 0),
+           next_attempt_at = (SELECT MIN(r.next_attempt_at) FROM clue_notification_recipients r WHERE r.notification_job_id = notification_jobs.id AND r.status = 'pending'),
+           last_error_code = CASE WHEN EXISTS (SELECT 1 FROM clue_notification_recipients r WHERE r.notification_job_id = notification_jobs.id AND r.status IN ('pending', 'processing')) THEN NULL
+             ELSE (SELECT r.last_error_code FROM clue_notification_recipients r WHERE r.notification_job_id = notification_jobs.id AND r.status IN ('uncertain', 'failed') ORDER BY CASE r.status WHEN 'uncertain' THEN 0 ELSE 1 END, r.updated_at DESC, r.id DESC LIMIT 1) END,
+           updated_at = ?
+       WHERE id = ? AND kind IN ('clue_order_approved', 'clue_released')`
+    ).bind(timestamp, jobId).run();
   }
 
   async getStatus(): Promise<CaseStatus> {

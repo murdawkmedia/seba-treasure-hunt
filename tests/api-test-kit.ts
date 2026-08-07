@@ -322,6 +322,10 @@ export class FakeStore {
   paidClueOrders: PaidClueOrder[] = [];
   paidClueEvents: Array<Record<string, unknown>> = [];
   paidClueOrderEvents: Array<Record<string, unknown>> = [];
+  clueNoticeJobs: Array<{ id: string; kind: "clue_order_approved" | "clue_released"; targetId: string }> = [];
+  clueNoticeRecipients: Array<{ jobId: string; hunterSubject: string }> = [];
+  huntEmailSubscribers = new Set(["hunter-1"]);
+  clueNoticeQueueFails = false;
 
   async listPaidClues() { return this.paidClues.map((clue) => ({ ...clue })); }
   async listPlayerClueOrders(subject: string): Promise<PaidClueOrder[]> {
@@ -383,6 +387,33 @@ export class FakeStore {
     else { order.decisionNote = input.status === "rejected" ? input.decisionNote?.trim() ?? null : null; order.decidedBy = actorSubject; order.decidedAt = order.updatedAt; }
     this.paidClueOrderEvents.push({ orderId: id, action: input.status, actorSubject }); return { ...order };
   }
+  async queueClueOrderApprovalNotice(orderId: string, actorSubject: string) {
+    if (this.clueNoticeQueueFails) throw new Error("notice queue unavailable");
+    const order = this.paidClueOrders.find((candidate) => candidate.id === orderId);
+    if (!order || order.status !== "approved") return null;
+    const existing = this.clueNoticeJobs.find((job) => job.kind === "clue_order_approved" && job.targetId === orderId);
+    if (existing) return existing.id;
+    const job = { id: `clue-notice-${this.clueNoticeJobs.length + 1}`, kind: "clue_order_approved" as const, targetId: orderId };
+    this.clueNoticeJobs.push(job);
+    this.audits.push({ action: "clue_order.email_notice_queued", actorSubject, targetId: orderId });
+    return job.id;
+  }
+  async queueClueReleaseNotice(clueId: string, expectedVersion: number, actorSubject: string) {
+    const clue = this.paidClues.find((candidate) => candidate.id === clueId);
+    if (!clue || clue.state !== "released") return null;
+    const existing = this.clueNoticeJobs.find((job) => job.kind === "clue_released" && job.targetId === `${clueId}:${expectedVersion}`);
+    if (existing) return { jobId: existing.id, replayed: true };
+    if (clue.version !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
+    const job = { id: `clue-notice-${this.clueNoticeJobs.length + 1}`, kind: "clue_released" as const, targetId: `${clueId}:${expectedVersion}` };
+    this.clueNoticeJobs.push(job);
+    for (const hunterSubject of this.huntEmailSubscribers) this.clueNoticeRecipients.push({ jobId: job.id, hunterSubject });
+    this.paidClueEvents.push({ clueId, action: "notified", actorSubject });
+    this.audits.push({ action: "clue.notified", actorSubject, targetId: clueId });
+    return { jobId: job.id, replayed: false };
+  }
+  async claimClueNoticeRecipients() { return []; }
+  async completeClueNoticeRecipient() {}
+  async reconcileClueNoticeJob() {}
 
   async getStatus() {
     if (!this.status) throw new Error("status unavailable");

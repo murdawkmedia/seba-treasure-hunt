@@ -902,6 +902,22 @@ const scheduleOperatorAlert = (
   }
 };
 
+const scheduleClueNotice = (
+  c: Context<AppBindings>,
+  sender: ApiDependencies["clueNotices"],
+  jobId: string | null,
+) => {
+  if (!sender || !jobId) return;
+  const delivery = Promise.resolve()
+    .then(() => sender.deliver(jobId))
+    .catch(() => ({ status: "failed" as const, sent: 0, failed: 0 }));
+  try {
+    c.executionCtx.waitUntil(delivery);
+  } catch {
+    void delivery;
+  }
+};
+
 const sameOrigin = (request: Request) => {
   const raw = request.headers.get("origin")?.trim() ?? "";
   if (!raw && /^Bearer tls_(?:val|prod)_/.test(request.headers.get("authorization") ?? "")) {
@@ -1021,6 +1037,9 @@ const serviceScopesFor = (request: Request): ServiceKeyScope[] | null => {
 
   if (/^\/api\/v1\/ops\/clue-orders(?:\/|$)/.test(pathname)) {
     return isRead ? ["publishing.read", "people.read"] : ["publishing.write", "people.read"];
+  }
+  if (/^\/api\/v1\/ops\/clues\/[^/]+\/notify$/.test(pathname)) {
+    return ["publishing.write", "people.read"];
   }
   if (/^\/api\/v1\/ops\/clues(?:\/|$)/.test(pathname)) {
     return isRead ? ["publishing.read"] : ["publishing.write"];
@@ -2403,6 +2422,23 @@ export const createApi = (deps: ApiDependencies) => {
     const clue = await deps.store.retractPaidClue(c.req.param("id"), Number(expectedVersion), requiredString(body, "reason", { min: 3, max: 1_000, label: "Retraction reason" }), staff.subject);
     if (!clue) throw new ApiError(404, "clue_not_found", "That clue was not found."); return success(c, { clue });
   });
+  app.post("/api/v1/ops/clues/:id/notify", async (c) => {
+    sameOrigin(c.req.raw);
+    const staff = await requireStaff(deps, c.req.raw);
+    const { body, files } = await requestBody(c.req.raw);
+    if (files.length) throw new ApiError(415, "unsupported_media_type", "Clue notifications accept JSON only.");
+    const expectedVersion = body.expectedVersion;
+    if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+      throw new ApiError(422, "validation_failed", "expectedVersion is required.", { field: "expectedVersion" });
+    }
+    if (body.confirmNotify !== true) {
+      throw new ApiError(422, "clue_notification_confirmation_required", "Deliberately confirm the clue notification.");
+    }
+    const queued = await deps.store.queueClueReleaseNotice(c.req.param("id"), Number(expectedVersion), staff.subject);
+    if (!queued) throw new ApiError(404, "clue_not_found", "That clue was not found.");
+    scheduleClueNotice(c, deps.clueNotices, queued.jobId);
+    return success(c, { replayed: queued.replayed }, 202);
+  });
   app.get("/api/v1/ops/clue-orders", async (c) => {
     await requireStaff(deps, c.req.raw);
     const status = c.req.query("status") ?? null;
@@ -2418,7 +2454,17 @@ export const createApi = (deps: ApiDependencies) => {
     const expectedVersion = body.expectedVersion;
     if (!Number.isInteger(expectedVersion)) throw new ApiError(422, "validation_failed", "expectedVersion is required.", { field: "expectedVersion" });
     const order = await deps.store.decideClueOrder(c.req.param("id"), { expectedVersion: Number(expectedVersion), status: status as any, decisionNote: optionalString(body, "decisionNote", 1_000) }, staff.subject);
-    if (!order) throw new ApiError(404, "clue_order_not_found", "That payment request was not found."); return success(c, { order });
+    if (!order) throw new ApiError(404, "clue_order_not_found", "That payment request was not found.");
+    let noticeJobId: string | null = null;
+    if (order.status === "approved") {
+      try {
+        noticeJobId = await deps.store.queueClueOrderApprovalNotice(order.id, staff.subject);
+      } catch {
+        // Approval is the access grant. A notification outage must never undo it.
+      }
+      scheduleClueNotice(c, deps.clueNotices, noticeJobId);
+    }
+    return success(c, { order });
   });
 
   app.get("/api/v1/ops/updates", async (c) => {

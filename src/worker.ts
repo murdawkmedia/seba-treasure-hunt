@@ -14,6 +14,7 @@ import { D1EnvironmentGuard } from "./server/environment-guard";
 import { providerKeyForEnvironment, publicUrlForEnvironment } from "./server/provider-environment";
 import { ManagedWaiverReceipts } from "./server/waiver-receipts";
 import { ManagedOperatorAlerts } from "./server/operator-alerts";
+import { ManagedClueNotices } from "./server/clue-notices";
 import { D1GraphTokenStore } from "./server/graph-token-store";
 import { D1ServiceKeyManager } from "./server/service-key-store";
 import { MicrosoftGraphTransactionalMailer } from "./server/microsoft-graph-mailer";
@@ -232,6 +233,12 @@ const application = (env: PagesEnv) => {
       canonicalOrigin: campaignBaseUrl
     }),
     operatorAlerts: new ManagedOperatorAlerts(store, {
+      mailer: transactionalMailer,
+      sender: transactionalSender,
+      replyTo: transactionalReplyTo,
+      canonicalOrigin: campaignBaseUrl
+    }),
+    clueNotices: new ManagedClueNotices(store, {
       mailer: transactionalMailer,
       sender: transactionalSender,
       replyTo: transactionalReplyTo,

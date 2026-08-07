@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import { D1DataStore } from "../src/server/d1-store";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -253,6 +254,114 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
       `SELECT status, sender_name, decision_note, decided_by, decided_at FROM clue_orders WHERE id = 'order-10'`
     ).first(),
     { status: 'created', sender_name: null, decision_note: null, decided_by: null, decided_at: null }
+  );
+
+  await db.prepare(
+    `INSERT INTO notification_jobs
+     (id, kind, target_record_id, status, attempts, created_at, updated_at)
+     VALUES ('order-notice', 'clue_order_approved', 'order-07', 'pending', 0, 't', 't')`
+  ).run();
+  await db.prepare(
+    `INSERT INTO clue_notification_recipients
+     (id, notification_job_id, hunter_subject, recipient_email, created_at, updated_at)
+     VALUES ('order-notice-recipient', 'order-notice', 'player-1', 'player-1@example.test', 't', 't')`
+  ).run();
+  await expectReject(db.prepare(
+    `INSERT INTO clue_notification_recipients
+     (id, notification_job_id, hunter_subject, recipient_email, created_at, updated_at)
+     VALUES ('order-notice-recipient-duplicate', 'order-notice', 'player-1', 'other@example.test', 't', 't')`
+  ));
+  await expectReject(db.prepare(
+    `UPDATE clue_notification_recipients SET recipient_email = 'changed@example.test'
+     WHERE id = 'order-notice-recipient'`
+  ));
+  await expectReject(db.prepare(
+    `INSERT INTO notification_jobs
+     (id, kind, target_record_id, status, attempts, created_at, updated_at)
+     VALUES ('bad-order-notice', 'clue_order_approved', 'order-10', 'pending', 0, 't', 't')`
+  ));
+  await db.prepare(
+    `UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-08'`
+  ).run();
+  await db.prepare(
+    `INSERT INTO clue_events
+     (id, clue_id, actor_type, actor_subject, action, notification_key, clue_version, occurred_at)
+     VALUES ('release-notice-event', 'clue-08', 'staff', 'staff-1', 'notified', 'release:1', 1, 't')`
+  ).run();
+  await db.prepare(
+    `INSERT INTO notification_jobs
+     (id, kind, target_record_id, status, attempts, created_at, updated_at)
+     VALUES ('release-notice', 'clue_released', 'release-notice-event', 'pending', 0, 't', 't')`
+  ).run();
+  await expectReject(db.prepare(
+    `INSERT INTO notification_jobs
+     (id, kind, target_record_id, status, attempts, created_at, updated_at)
+     VALUES ('release-notice-duplicate', 'clue_released', 'release-notice-event', 'pending', 0, 't', 't')`
+  ));
+
+  await db.batch([
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, interests_json, adult_attested_at, created_at, updated_at)
+       VALUES ('player-1', 'player-1@example.test', 'Player One', 'Player One', '[]', 't', 't', 't')`
+    ),
+    db.prepare(
+      `INSERT INTO player_accounts
+       (subject, verified_email, account_state, created_at, updated_at, last_seen_at)
+       VALUES ('player-2', 'player-2@example.test', 'active', 't', 't', 't')`
+    ),
+    db.prepare(
+      `INSERT INTO hunter_profiles
+       (subject, verified_email, full_name, public_handle, interests_json, adult_attested_at, created_at, updated_at)
+       VALUES ('player-2', 'player-2@example.test', 'Player Two', 'Player Two', '[]', 't', 't', 't')`
+    ),
+    db.prepare(
+      `INSERT INTO consent_events (id, hunter_subject, consent_type, granted, policy_version, occurred_at)
+       VALUES ('player-1-opted-in', 'player-1', 'hunt_email', 1, '2026.1', 't')`
+    ),
+    db.prepare(
+      `INSERT INTO consent_events (id, hunter_subject, consent_type, granted, policy_version, occurred_at)
+       VALUES ('player-2-opted-out', 'player-2', 'hunt_email', 0, '2026.1', 't')`
+    ),
+    insertClue(db, 'clue-11', 11),
+    db.prepare(`UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-11'`),
+    db.prepare(
+      `INSERT INTO clue_events
+       (id, clue_id, actor_type, actor_subject, action, clue_version, occurred_at)
+       VALUES ('clue-11-released', 'clue-11', 'staff', 'staff-1', 'released', 1, 't')`
+    ),
+  ]);
+  const store = new D1DataStore(db);
+  const queuedRelease = await store.queueClueReleaseNotice('clue-11', 1, 'staff-1');
+  assert.deepEqual(queuedRelease?.replayed, false);
+  assert.deepEqual(
+    (await db.prepare(
+      `SELECT hunter_subject FROM clue_notification_recipients
+       WHERE notification_job_id = ? ORDER BY hunter_subject`
+    ).bind(queuedRelease?.jobId).all()).results,
+    [{ hunter_subject: 'player-1' }]
+  );
+  assert.deepEqual(await store.queueClueReleaseNotice('clue-11', 1, 'staff-1'), {
+    jobId: queuedRelease?.jobId,
+    replayed: true
+  });
+  await db.prepare(`UPDATE clues SET title = 'Edited after release', version = 2 WHERE id = 'clue-11'`).run();
+  assert.deepEqual(await store.queueClueReleaseNotice('clue-11', 2, 'staff-1'), {
+    jobId: queuedRelease?.jobId,
+    replayed: true
+  });
+  await db.prepare(
+    `INSERT INTO clue_orders
+     (id, clue_id, player_subject, reference, sender_name, status, decided_by, decided_at, created_at, updated_at, version)
+     VALUES ('order-11', 'clue-11', 'player-1', 'TLS-C11-K4M2', 'Sender', 'approved', 'staff-1', 't', 't', 't', 1)`
+  ).run();
+  const approvalJob = await store.queueClueOrderApprovalNotice('order-11', 'staff-1');
+  assert.ok(approvalJob);
+  assert.deepEqual(
+    await db.prepare(
+      `SELECT action FROM audit_events WHERE target_id = 'order-11' ORDER BY occurred_at DESC, id DESC LIMIT 1`
+    ).first(),
+    { action: 'clue_order.email_notice_queued' }
   );
 
   const integrityCheck = await db.prepare("PRAGMA integrity_check").all().catch((error: unknown) => error);

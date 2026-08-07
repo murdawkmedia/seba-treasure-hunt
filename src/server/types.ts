@@ -325,6 +325,27 @@ export interface OperatorAlertSender {
   deliver(jobId: string): Promise<OperatorAlertDeliveryResult>;
 }
 
+export type ClueNoticeKind = "clue_order_approved" | "clue_released";
+
+export interface ClueNoticeRecipientClaim {
+  id: string;
+  jobId: string;
+  kind: ClueNoticeKind;
+  email: string;
+  attempts: number;
+  leaseToken: string;
+  correlationId: string;
+}
+
+export type ClueNoticeRecipientCompletion =
+  | ({ status: "sent" } & TransactionalMailAcceptance)
+  | { status: "retry"; errorCode: OperatorAlertErrorCode; nextAttemptAt: string }
+  | { status: "failed" | "uncertain"; errorCode: OperatorAlertErrorCode };
+
+export interface ClueNoticeSender {
+  deliver(jobId: string): Promise<OperatorAlertDeliveryResult>;
+}
+
 export interface IdentityLifecycleEvent {
   id: string;
   type: "user.created" | "user.updated" | "user.deleted";
@@ -487,6 +508,18 @@ export interface DataStore {
     input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null },
     actorSubject: string
   ): Promise<PaidClueOrder | null>;
+  queueClueOrderApprovalNotice(orderId: string, actorSubject: string): Promise<string | null>;
+  queueClueReleaseNotice(
+    clueId: string,
+    expectedVersion: number,
+    actorSubject: string
+  ): Promise<{ jobId: string; replayed: boolean } | null>;
+  claimClueNoticeRecipients(jobId: string): Promise<ClueNoticeRecipientClaim[]>;
+  completeClueNoticeRecipient(
+    claim: ClueNoticeRecipientClaim,
+    result: ClueNoticeRecipientCompletion
+  ): Promise<void>;
+  reconcileClueNoticeJob(jobId: string): Promise<void>;
   getHunterCaseItemMedia(mediaId: string): Promise<{ key: string; contentType: string } | null>;
   getReportableFreshDrop(id: string): Promise<{ id: string; title: string } | null>;
   getReportableCaseItem(id: string): Promise<{
@@ -828,6 +861,7 @@ export interface ApiDependencies {
   webhooks?: WebhookVerifier;
   waiverReceipts?: LegalReceiptSender;
   operatorAlerts?: OperatorAlertSender;
+  clueNotices?: ClueNoticeSender;
   productionSnapshot?: ProductionSnapshotStore;
   productionSnapshotMedia?: PrivateMediaReader;
   environment: EnvironmentGuard;
