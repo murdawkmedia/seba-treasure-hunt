@@ -26,11 +26,12 @@ test("Clues is a registered public case file under More", async () => {
   assert.match(rendered, /aria-current="page"[^>]*>Clues<\/a>/);
 });
 
-test("the Clues page is answer-first, non-daily, and explains the five-dollar decoder", async () => {
+test("the Clues page is answer-first, non-daily, and explains next-clue early access", async () => {
   const html = await read("clues.html");
   assert.match(html, /Clues arrive without a fixed schedule/i);
-  assert.match(html, /free riddle/i);
-  assert.match(html, /optional \$5 CAD decoder/i);
+  assert.match(html, /Released riddles are public/i);
+  assert.match(html, /next clue for \$5 CAD/i);
+  assert.match(html, /No clue beyond the next one can be purchased/i);
   assert.match(html, /does not affect (?:your )?ability to search or keep an eligible find/i);
   assert.doesNotMatch(html, /Day\s*\d+|30 days|daily clue/i);
   assert.doesNotMatch(html, /tim@businessasaforceforgood\.ca/i, "payment address must come from the environment-aware API");
@@ -44,11 +45,12 @@ test("the homepage introduces the clue case file without replacing the three pri
   assert.doesNotMatch(html, /Day\s*1/i);
 });
 
-test("My Hunt has a decoder ledger and plain waiting-verification language", async () => {
+test("My Hunt has a clue ledger and plain waiting-verification language", async () => {
   const html = await read("dashboard.html");
   assert.match(html, /data-my-clues/);
   assert.match(html, /data-my-clue-list/);
-  assert.match(html, /My Decoders/);
+  assert.match(html, /My Clues/);
+  assert.match(html, /one next clue for \$5 CAD/i);
   assert.match(html, /Waiting for verification/i);
   assert.match(html, /data-clue-order-dialog/);
   assert.match(html, /I sent it/i);
@@ -58,7 +60,7 @@ test("Ops exposes a task-first Clues & Decoder Sales workspace", async () => {
   const html = await read("ops.html");
   assert.match(html, /data-view="clues"/);
   assert.match(html, /data-view-panel="clues"/);
-  assert.match(html, /Clues &amp; Decoder Sales/);
+  assert.match(html, /Clues &amp; Early-Access Sales/);
   assert.match(html, /Release the next clue/);
   assert.match(html, /Pending e-transfer verification/);
   assert.match(html, /data-ops-clue-orders-more/);

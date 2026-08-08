@@ -10,6 +10,7 @@ const makeApp = (store = new FakeStore(), clueNotices?: { deliver(jobId: string)
 const origin = "https://www.timlostsomething.com";
 const hunter = { authorization: "Bearer hunter-token", origin, "content-type": "application/json" };
 const staff = { authorization: "Bearer staff-token", origin, "content-type": "application/json" };
+const readyNextClue = (store: FakeStore) => { store.paidClues[1].state = "ready"; };
 
 test("public clue catalogue never leaks sealed clue copy", async () => {
   const { app } = makeApp();
@@ -17,92 +18,150 @@ test("public clue catalogue never leaks sealed clue copy", async () => {
   assert.equal(response.status, 200);
   const body = await responseJson(response);
   assert.equal(body.data.clues[0].title, "The Starting Line");
+  assert.equal(body.data.clues[0].decoder.access, "public_sample");
+  assert.equal(body.data.clues[0].decoder.explanation, "Private decoder 1.");
+  assert.equal(body.data.clues[0].decoder.narrowingSummary, "Private narrowing 1.");
   assert.equal(body.data.clues[1].label, "Clue 02 — Sealed");
   assert.equal("title" in body.data.clues[1], false);
   assert.equal("riddle" in body.data.clues[1], false);
-  assert.equal(/Private later|Private decoder|Private note/.test(JSON.stringify(body.data.clues)), false);
+  assert.equal(/Private later|Private decoder 2|Private note/.test(JSON.stringify(body.data.clues[1])), false);
 });
 
-test("later released riddles require an active synchronized hunter while Clue 01 stays public", async () => {
+test("later released riddles are public while their decoders reward active signed-in hunters", async () => {
   const { app, store } = makeApp();
   store.paidClues[1].state = "released";
   store.paidClues[1].releasedAt = "2026-08-07T13:00:00.000Z";
   const anonymous = await responseJson(await app.request(`${origin}/api/v1/clues`));
   assert.equal(anonymous.data.clues[0].title, "The Starting Line");
   assert.equal(anonymous.data.clues[1].state, "released");
-  assert.equal("title" in anonymous.data.clues[1], false);
+  assert.equal(anonymous.data.clues[1].title, "Private later clue");
+  assert.equal(anonymous.data.clues[1].riddle, "Private later riddle.");
+  assert.equal(anonymous.data.clues[1].decoder.access, "sign_in_required");
+  assert.equal("explanation" in anonymous.data.clues[1].decoder, false);
   const pending = await app.request(`${origin}/api/v1/clues`, { headers: { authorization: "Bearer hunter-token" } });
   assert.equal(pending.status, 409);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
   const signedIn = await responseJson(await app.request(`${origin}/api/v1/clues`, { headers: { authorization: "Bearer hunter-token" } }));
   assert.equal(signedIn.data.clues[1].title, "Private later clue");
   assert.equal(signedIn.data.clues[1].riddle, "Private later riddle.");
-  assert.equal("explanation" in signedIn.data.clues[1].decoder, false);
+  assert.equal(signedIn.data.clues[1].decoder.access, "released_member");
+  assert.equal(signedIn.data.clues[1].decoder.explanation, "Private decoder 2.");
 });
 
-test("a free decoder for a later released clue remains sealed until hunter entitlement", async () => {
+test("only the next Ready clue offers one-package early access", async () => {
   const { app, store } = makeApp();
-  store.paidClues[1].state = "released";
-  store.paidClues[1].decoderMode = "free";
-  store.paidClues[1].releasedAt = "2026-08-07T13:00:00.000Z";
+  store.paidClues[1].state = "ready";
   const anonymous = await responseJson(await app.request(`${origin}/api/v1/clues`));
   const clue = anonymous.data.clues[1];
   assert.match(clue.label, /^Clue 02 .* Sealed$/);
   assert.equal("title" in clue, false);
   assert.equal("riddle" in clue, false);
-  assert.equal("explanation" in clue.decoder, false);
-  assert.equal("narrowingSummary" in clue.decoder, false);
-  assert.equal(clue.decoder.access, "sign_in_required");
+  assert.equal(clue.earlyAccess, undefined);
+
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  const signedIn = await responseJson(await app.request(`${origin}/api/v1/clues`, { headers: { authorization: "Bearer hunter-token" } }));
+  assert.deepEqual(signedIn.data.clues[1].earlyAccess, { priceCad: 5, access: "purchase_required" });
+  assert.equal("title" in signedIn.data.clues[1], false);
 });
 
-test("hunter order is reusable, claimed, approved, and then unlocks only that decoder", async () => {
+test("exact controlled-digging permits require the current waiver", async () => {
+  const { app, store } = makeApp();
+  store.paidClues[1].state = "released";
+  Object.assign(store.paidClues[1] as any, {
+    digPermitEnabled: true,
+    digZoneId: "zone-loose-sand",
+    digInstruction: "Loose sand inside the marked rope square only.",
+    digMaxDepthMm: 200,
+    digAllowedTools: ["hands", "hand trowel", "short beach shovel"],
+    digZoneState: "open",
+    digZonePublished: true
+  });
+  const anonymous = await responseJson(await app.request(`${origin}/api/v1/clues`));
+  assert.deepEqual(anonymous.data.clues[1].digPermit, { access: "sign_in_required" });
+  assert.equal(JSON.stringify(anonymous).includes("marked rope square"), false);
+
+  await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
+  store.getPlayerAccess = async () => ({ participationUnlocked: false } as any);
+  const unsigned = await responseJson(await app.request(`${origin}/api/v1/clues`, { headers: { authorization: "Bearer hunter-token" } }));
+  assert.deepEqual(unsigned.data.clues[1].digPermit, { access: "waiver_required" });
+
+  store.getPlayerAccess = async () => ({ participationUnlocked: true, waiverVersion: "2026.3" } as any);
+  const accepted = await responseJson(await app.request(`${origin}/api/v1/clues`, { headers: { authorization: "Bearer hunter-token" } }));
+  assert.deepEqual(accepted.data.clues[1].digPermit, {
+    access: "permitted",
+    zoneId: "zone-loose-sand",
+    instruction: "Loose sand inside the marked rope square only.",
+    maxDepthMm: 200,
+    allowedTools: ["hands", "hand trowel", "short beach shovel"]
+  });
+
+  Object.assign(store.paidClues[1] as any, { digZoneState: "restricted" });
+  const restricted = await responseJson(await app.request(`${origin}/api/v1/clues`, { headers: { authorization: "Bearer hunter-token" } }));
+  assert.deepEqual(restricted.data.clues[1].digPermit, { access: "unavailable" });
+  assert.equal(JSON.stringify(restricted).includes("marked rope square"), false);
+});
+
+test("hunter can buy only the next Ready clue and approval requires Tim payment confirmation", async () => {
   const { app, store } = makeApp();
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const first = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  store.paidClues[1].state = "ready";
+  const released = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  assert.equal(released.status, 409);
+  assert.equal((await responseJson(released)).error.code, "clue_already_released");
+  const first = await app.request(`${origin}/api/v1/clues/clue-02/orders`, { method: "POST", headers: hunter, body: "{}" });
   assert.equal(first.status, 201);
   const firstBody = await responseJson(first);
-  assert.match(firstBody.data.order.reference, /^TLS-C01-/);
+  assert.match(firstBody.data.order.reference, /^TLS-C02-/);
   assert.equal("playerSubject" in firstBody.data.order, false);
   assert.equal("decidedBy" in firstBody.data.order, false);
-  const reused = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  const reused = await app.request(`${origin}/api/v1/clues/clue-02/orders`, { method: "POST", headers: hunter, body: "{}" });
   const reusedBody = await responseJson(reused);
   assert.equal(reusedBody.data.reused, true);
   assert.equal(reusedBody.data.payment.amountCad, 5);
   const claim = await app.request(`${origin}/api/v1/me/clue-orders/${firstBody.data.order.id}/claim`, { method: "POST", headers: hunter, body: JSON.stringify({ senderName: "A Hunter", expectedVersion: firstBody.data.order.version }) });
   assert.equal((await responseJson(claim)).data.order.status, "waiting_verification");
-  const waiting = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  const waiting = await app.request(`${origin}/api/v1/clues/clue-02/orders`, { method: "POST", headers: hunter, body: "{}" });
   const waitingBody = await responseJson(waiting);
   assert.deepEqual(waitingBody.data.payment, { status: "waiting_verification" });
   assert.equal(waitingBody.data.order.playerSubject, undefined);
   const pending = store.paidClueOrders[0];
-  const approved = await app.request(`${origin}/api/v1/ops/clue-orders/${pending.id}/approve`, { method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: pending.version }) });
+  const missingConfirmation = await app.request(`${origin}/api/v1/ops/clue-orders/${pending.id}/approve`, {
+    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: pending.version })
+  });
+  assert.equal(missingConfirmation.status, 422);
+  assert.equal((await responseJson(missingConfirmation)).error.code, "tim_payment_confirmation_required");
+  const approved = await app.request(`${origin}/api/v1/ops/clue-orders/${pending.id}/approve`, {
+    method: "POST", headers: staff,
+    body: JSON.stringify({ expectedVersion: pending.version, timPaymentConfirmed: true })
+  });
   assert.equal(approved.status, 200);
   assert.equal((await responseJson(approved)).data.order.status, "approved");
-  const owned = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  const owned = await app.request(`${origin}/api/v1/clues/clue-02/orders`, { method: "POST", headers: hunter, body: "{}" });
   assert.deepEqual((await responseJson(owned)).data.payment, { status: "unlocked" });
   const mine = await app.request(`${origin}/api/v1/me/clues`, { headers: { authorization: "Bearer hunter-token" } });
   const data = await responseJson(mine);
-  assert.equal(data.data.clues[0].decoder.access, "unlocked");
-  assert.equal(typeof data.data.clues[0].decoder.explanation, "string");
+  assert.equal(data.data.clues[1].decoder.access, "early_access");
+  assert.equal(typeof data.data.clues[1].decoder.explanation, "string");
   assert.equal("playerSubject" in data.data.orders[0], false);
   assert.equal("decidedBy" in data.data.orders[0], false);
-  store.paidClues[0].state = "retired";
+  store.paidClues[1].state = "retired";
   const historical = await responseJson(await app.request(`${origin}/api/v1/me/clues`, { headers: { authorization: "Bearer hunter-token" } }));
-  assert.equal(historical.data.clues[0].decoder.access, "unlocked", "retirement preserves an approved historical purchase");
+  assert.equal(historical.data.clues[1].decoder.access, "early_access", "retirement preserves an approved historical purchase");
 });
 
 test("paid clue account access waits for an active synchronized player identity", async () => {
   const { app, store } = makeApp();
+  readyNextClue(store);
   for (const [method, path, body] of [
     ["GET", "/api/v1/me/clues", undefined],
-    ["POST", "/api/v1/clues/clue-01/orders", "{}"]
+    ["POST", "/api/v1/clues/clue-02/orders", "{}"]
   ] as const) {
     const response = await app.request(`${origin}${path}`, { method, headers: hunter, body });
     assert.equal(response.status, 409);
     assert.equal((await responseJson(response)).error.code, "identity_sync_pending");
   }
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const order = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  const order = await app.request(`${origin}/api/v1/clues/clue-02/orders`, { method: "POST", headers: hunter, body: "{}" });
   assert.equal(order.status, 201);
   const created = (await responseJson(order)).data.order;
   store.accounts.set("hunter-1", { ...store.accounts.get("hunter-1"), accountState: "deleted" });
@@ -115,8 +174,9 @@ test("paid clue account access waits for an active synchronized player identity"
 
 test("claim requires the hunter's current order version", async () => {
   const { app, store } = makeApp();
+  readyNextClue(store);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const created = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  const created = await app.request(`${origin}/api/v1/clues/clue-02/orders`, { method: "POST", headers: hunter, body: "{}" });
   const order = (await responseJson(created)).data.order;
   const missing = await app.request(`${origin}/api/v1/me/clue-orders/${order.id}/claim`, {
     method: "POST", headers: hunter, body: JSON.stringify({ senderName: "A Hunter" })
@@ -130,8 +190,9 @@ test("claim requires the hunter's current order version", async () => {
 
 test("a waiting order is reflected in the auth-aware clue decoder state", async () => {
   const { app, store } = makeApp();
+  readyNextClue(store);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const created = await app.request(`${origin}/api/v1/clues/clue-01/orders`, { method: "POST", headers: hunter, body: "{}" });
+  const created = await app.request(`${origin}/api/v1/clues/clue-02/orders`, { method: "POST", headers: hunter, body: "{}" });
   const order = (await responseJson(created)).data.order;
   await app.request(`${origin}/api/v1/me/clue-orders/${order.id}/claim`, {
     method: "POST", headers: hunter, body: JSON.stringify({ senderName: "A Hunter", expectedVersion: order.version })
@@ -141,7 +202,7 @@ test("a waiting order is reflected in the auth-aware clue decoder state", async 
     updatedAt: "2026-08-06T00:00:00.000Z"
   });
   const catalogue = await app.request(`${origin}/api/v1/clues`, { headers: { authorization: "Bearer hunter-token" } });
-  assert.equal((await responseJson(catalogue)).data.clues[0].decoder.access, "waiting_verification");
+  assert.equal((await responseJson(catalogue)).data.clues[1].earlyAccess.access, "waiting_verification");
 });
 
 test("approving a waiting order persists decoder access before its transactional notice is delivered", async () => {
@@ -152,13 +213,14 @@ test("approving a waiting order persists decoder access before its transactional
       throw new Error("mail provider unavailable");
     }
   });
+  readyNextClue(store);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const order = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const order = await store.createOrReuseClueOrder("hunter-1", "clue-02");
   const claimed = await store.claimClueOrder("hunter-1", order.order.id, "A Hunter", order.order.version);
   assert.ok(claimed);
 
   const approved = await app.request(`${origin}/api/v1/ops/clue-orders/${order.order.id}/approve`, {
-    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: claimed.version })
+    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: claimed.version, timPaymentConfirmed: true })
   });
 
   assert.equal(approved.status, 200);
@@ -169,12 +231,13 @@ test("approving a waiting order persists decoder access before its transactional
 test("ops can explicitly retry an approved-order notice without changing decoder access", async () => {
   const delivered: string[] = [];
   const { app, store } = makeApp(undefined, { async deliver(jobId) { delivered.push(jobId); } });
+  readyNextClue(store);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const created = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const created = await store.createOrReuseClueOrder("hunter-1", "clue-02");
   const claimed = await store.claimClueOrder("hunter-1", created.order.id, "A Hunter", created.order.version);
   assert.ok(claimed);
   await app.request(`${origin}/api/v1/ops/clue-orders/${created.order.id}/approve`, {
-    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: claimed.version })
+    method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: claimed.version, timPaymentConfirmed: true })
   });
 
   const missingConfirmation = await app.request(`${origin}/api/v1/ops/clue-orders/${created.order.id}/notify`, {
@@ -225,7 +288,7 @@ test("ops releases sequentially and needs a reason to retract", async () => {
   const rejectRetract = await app.request(`${origin}/api/v1/ops/clues/clue-02/retract`, { method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: 2, reason: "" }) });
   assert.equal(rejectRetract.status, 422);
   const retract = await app.request(`${origin}/api/v1/ops/clues/clue-02/retract`, { method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: 2, reason: "Unsafe wording" }) });
-  assert.equal((await responseJson(retract)).data.clue.state, "ready");
+  assert.equal((await responseJson(retract)).data.clue.state, "draft");
 });
 
 test("generic clue editing cannot bypass release and retraction lifecycle routes", async () => {
@@ -247,8 +310,9 @@ test("generic clue editing cannot bypass release and retraction lifecycle routes
 
 test("operators can cancel an unclaimed order and later reopen it", async () => {
   const { app, store } = makeApp();
+  readyNextClue(store);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const created = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const created = await store.createOrReuseClueOrder("hunter-1", "clue-02");
   const cancelled = await app.request(`${origin}/api/v1/ops/clue-orders/${created.order.id}/cancel`, {
     method: "POST", headers: staff, body: JSON.stringify({ expectedVersion: 1 })
   });
@@ -264,15 +328,16 @@ test("operators can cancel an unclaimed order and later reopen it", async () => 
 
 test("reopening an older order conflicts clearly when a newer active order exists", async () => {
   const { app, store } = makeApp();
+  readyNextClue(store);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const older = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const older = await store.createOrReuseClueOrder("hunter-1", "clue-02");
   const cancelled = await store.decideClueOrder(
     older.order.id,
     { expectedVersion: older.order.version, status: "cancelled" },
     "staff-1"
   );
   assert.ok(cancelled);
-  const newer = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const newer = await store.createOrReuseClueOrder("hunter-1", "clue-02");
   assert.notEqual(newer.order.id, older.order.id);
   const eventCount = store.paidClueOrderEvents.length;
   const response = await app.request(`${origin}/api/v1/ops/clue-orders/${older.order.id}/reopen`, {
@@ -286,10 +351,11 @@ test("reopening an older order conflicts clearly when a newer active order exist
 
 test("ops clue order queue exposes cursor pagination and aggregate counts", async () => {
   const { app, store } = makeApp();
+  readyNextClue(store);
   await store.upsertPlayerAccount("hunter-1", "hunter@example.test");
-  const first = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const first = await store.createOrReuseClueOrder("hunter-1", "clue-02");
   await store.decideClueOrder(first.order.id, { expectedVersion: 1, status: "cancelled" }, "staff-1");
-  const second = await store.createOrReuseClueOrder("hunter-1", "clue-01");
+  const second = await store.createOrReuseClueOrder("hunter-1", "clue-02");
   const page = await app.request(`${origin}/api/v1/ops/clue-orders?limit=1`, { headers: { authorization: "Bearer staff-token" } });
   assert.equal(page.status, 200);
   const body = await responseJson(page);

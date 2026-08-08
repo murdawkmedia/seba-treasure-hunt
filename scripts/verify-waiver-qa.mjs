@@ -672,7 +672,7 @@ function writeMockResponse(pathname, fixtureState, request) {
     fixtureState.accepted = true;
     fixtureState.receiptStatus = "pending";
     if (fixtureState.profileStored) {
-      assert.equal(body.version, "2026.2");
+      assert.equal(body.version, "2026.3");
       assert.equal(body.reviewEventId, "review-qa-minor-signup-1");
       assert.deepEqual(body.minors, []);
       fixtureState.signupWaiverAccepted = true;
@@ -1063,7 +1063,7 @@ async function exerciseMinorSignupGate(page, fixtureState, legalDocument) {
   if (await waiverDialog.locator("[data-signup-dialog-fallback]").getAttribute("href") !== "/waiver") {
     throw new Error("Waiver legal fallback must target the canonical waiver.");
   }
-  assert.equal(await signup.getAttribute("data-waiver-version"), "2026.2");
+  assert.equal(await signup.getAttribute("data-waiver-version"), "2026.3");
   assert.equal(await waiverAcceptance.isEnabled(), true);
   await waiverDialog.locator(".signup-legal-dialog__footer").getByRole("button", { name: "Done — back to signup" }).click();
   await waiverDialog.waitFor({ state: "hidden" });
@@ -1606,8 +1606,8 @@ async function run() {
   try {
     await buildSite();
     await mkdir(screenshotRoot, { recursive: true });
-    const waiverSource = JSON.parse(await readFile(path.join(root, "legal", "participation-waiver-2026.2.json"), "utf8"));
-    assert.equal(waiverSource.version, "2026.2", "the isolated legal journey must use the active Participation Waiver");
+    const waiverSource = JSON.parse(await readFile(path.join(root, "legal", "participation-waiver-2026.3.json"), "utf8"));
+    assert.equal(waiverSource.version, "2026.3", "the isolated legal journey must use the active Participation Waiver");
     const legalDocument = { ...waiverSource, hash: canonicalHash(waiverSource) };
     const clerkChunkPaths = await findClerkChunkPaths();
     const networkLedger = {

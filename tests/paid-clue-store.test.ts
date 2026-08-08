@@ -52,6 +52,17 @@ const fixture = async (t: test.TestContext) => {
   return { db, store: new D1DataStore(db) };
 };
 
+const seedNextReadyClue = async (db: D1Database) => {
+  await db.batch([
+    db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'"),
+    db.prepare(`INSERT INTO clues
+      (id, sequence, title, riddle, decoder_explanation, narrowing_summary,
+       internal_numeric_score, state, decoder_mode, version, created_at, updated_at)
+      VALUES ('clue-02', 2, 'Two', 'Riddle 2', 'Decoder 2', 'Narrowing 2', 50,
+              'ready', 'paid', 1, 't', 't')`)
+  ]);
+};
+
 test("clue release, event, and audit roll back together when the ledger insert fails", async (t) => {
   const { db, store } = await fixture(t);
   await db.prepare(`CREATE TRIGGER force_release_event_failure BEFORE INSERT ON clue_events
@@ -78,8 +89,8 @@ test("clue release, event, and audit roll back together when the ledger insert f
 
 test("claim, event, and audit roll back together and event JSON excludes payment PII", async (t) => {
   const { db, store } = await fixture(t);
-  await db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'").run();
-  const created = await store.createOrReuseClueOrder("player-1", "clue-01");
+  await seedNextReadyClue(db);
+  const created = await store.createOrReuseClueOrder("player-1", "clue-02");
   await db.prepare(`CREATE TRIGGER force_claim_event_failure BEFORE INSERT ON clue_order_events
     WHEN NEW.action = 'claimed' BEGIN SELECT RAISE(ABORT, 'forced claim event failure'); END;`).run();
   await assert.rejects(() => store.claimClueOrder("player-1", created.order.id, "Private Sender", 1), /forced claim event failure/);
@@ -108,10 +119,10 @@ test("claim, event, and audit roll back together and event JSON excludes payment
 
 test("simultaneous order creation converges on one active order", async (t) => {
   const { db, store } = await fixture(t);
-  await db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'").run();
+  await seedNextReadyClue(db);
   const [left, right] = await Promise.all([
-    store.createOrReuseClueOrder("player-1", "clue-01"),
-    store.createOrReuseClueOrder("player-1", "clue-01")
+    store.createOrReuseClueOrder("player-1", "clue-02"),
+    store.createOrReuseClueOrder("player-1", "clue-02")
   ]);
   assert.equal(left.order.id, right.order.id);
   assert.equal([left.reused, right.reused].filter(Boolean).length, 1);
@@ -134,10 +145,10 @@ test("same-clock concurrent clue edits create exactly one event and audit", asyn
 
 test("same-clock concurrent claims create exactly one event and audit", async (t) => {
   const { db } = await fixture(t);
-  await db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'").run();
+  await seedNextReadyClue(db);
   const fixedNow = "2026-08-07T20:00:00.000Z";
   const store = new D1DataStore(db, { now: () => fixedNow });
-  const created = await store.createOrReuseClueOrder("player-1", "clue-01");
+  const created = await store.createOrReuseClueOrder("player-1", "clue-02");
   const results = await Promise.allSettled([
     store.claimClueOrder("player-1", created.order.id, "Left Sender", 1),
     store.claimClueOrder("player-1", created.order.id, "Right Sender", 1)
@@ -164,29 +175,29 @@ test("same-clock concurrent releases create exactly one event and audit", async 
 
 test("reference collisions retry without leaking or duplicating an order", async (t) => {
   const { db } = await fixture(t);
-  await db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'").run();
+  await seedNextReadyClue(db);
   await db.prepare(`INSERT INTO clue_orders
     (id, clue_id, player_subject, reference, status, decided_by, decided_at, created_at, updated_at, version)
-    VALUES ('old-order', 'clue-01', 'player-1', 'TLS-C01-K4M2', 'cancelled', 'staff-1', 't', 't', 't', 1)`).run();
+    VALUES ('old-order', 'clue-02', 'player-1', 'TLS-C02-K4M2', 'cancelled', 'staff-1', 't', 't', 't', 1)`).run();
   const tokens = ["K4M2", "Z9Q8"];
   const store = new D1DataStore(db, { clueOrderReferenceToken: () => tokens.shift() ?? "LAST" });
   await db.prepare(`CREATE TRIGGER force_create_event_failure BEFORE INSERT ON clue_order_events
     WHEN NEW.action = 'created' BEGIN SELECT RAISE(ABORT, 'forced create event failure'); END;`).run();
-  await assert.rejects(() => store.createOrReuseClueOrder("player-2", "clue-01"), /forced create event failure/);
+  await assert.rejects(() => store.createOrReuseClueOrder("player-2", "clue-02"), /forced create event failure/);
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM clue_orders WHERE player_subject = 'player-2'").first<any>())?.count, 0);
   await db.prepare("DROP TRIGGER force_create_event_failure").run();
   tokens.unshift("K4M2", "Z9Q8");
-  const created = await store.createOrReuseClueOrder("player-2", "clue-01");
-  assert.equal(created.order.reference, "TLS-C01-Z9Q8");
+  const created = await store.createOrReuseClueOrder("player-2", "clue-02");
+  assert.equal(created.order.reference, "TLS-C02-Z9Q8");
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM clue_orders WHERE player_subject = 'player-2'").first<any>())?.count, 1);
 });
 
 test("Ops order pages use stable cursors and aggregate all statuses in SQL", async (t) => {
   const { db, store } = await fixture(t);
-  await db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'").run();
-  const first = await store.createOrReuseClueOrder("player-1", "clue-01");
+  await seedNextReadyClue(db);
+  const first = await store.createOrReuseClueOrder("player-1", "clue-02");
   await store.decideClueOrder(first.order.id, { expectedVersion: 1, status: "cancelled" }, "staff-1");
-  await store.createOrReuseClueOrder("player-1", "clue-01");
+  await store.createOrReuseClueOrder("player-1", "clue-02");
   const page = await store.listOpsClueOrders({ limit: 1 });
   assert.deepEqual({ created: page.counts.created, cancelled: page.counts.cancelled }, { created: 1, cancelled: 1 });
   assert.equal(page.items.length, 1);
@@ -206,4 +217,103 @@ test("Ops order pages use stable cursors and aggregate all statuses in SQL", asy
   );
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM clue_order_events WHERE order_id = ?").bind(first.order.id).first<any>())?.count, beforeEvents);
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE target_id = ?").bind(first.order.id).first<any>())?.count, beforeAudits);
+});
+
+test("only the next Ready clue can be purchased before release", async (t) => {
+  const { db, store } = await fixture(t);
+  await db.batch([
+    db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'"),
+    db.prepare(`INSERT INTO clues
+      (id, sequence, title, riddle, decoder_explanation, narrowing_summary,
+       internal_numeric_score, state, decoder_mode, version, created_at, updated_at)
+      VALUES ('clue-02', 2, 'Two', 'Riddle 2', 'Decoder 2', 'Narrowing 2', 50,
+              'ready', 'paid', 1, 't', 't')`),
+    db.prepare(`INSERT INTO clues
+      (id, sequence, title, riddle, decoder_explanation, narrowing_summary,
+       internal_numeric_score, state, decoder_mode, version, created_at, updated_at)
+      VALUES ('clue-03', 3, 'Three', 'Riddle 3', 'Decoder 3', 'Narrowing 3', 50,
+              'ready', 'paid', 1, 't', 't')`)
+  ]);
+  await assert.rejects(
+    () => store.createOrReuseClueOrder("player-1", "clue-01"),
+    (error: any) => error?.status === 409 && error?.code === "clue_already_released"
+  );
+  const order = await store.createOrReuseClueOrder("player-1", "clue-02");
+  assert.equal(order.order.clueId, "clue-02");
+  await assert.rejects(
+    () => store.createOrReuseClueOrder("player-2", "clue-03"),
+    (error: any) => error?.status === 404 && error?.code === "clue_not_available"
+  );
+});
+
+test("release blocks verified-payment work and atomically cancels unclaimed carts", async (t) => {
+  const { db, store } = await fixture(t);
+  const waiting = await store.createOrReuseClueOrder("player-1", "clue-01");
+  await assert.rejects(
+    () => store.updatePaidClue("clue-01", { expectedVersion: 1, state: "draft" }, "staff-1"),
+    (error: any) => error?.status === 409 && error?.code === "clue_order_active_exists"
+  );
+  assert.deepEqual(
+    await db.prepare("SELECT state, version FROM clues WHERE id = 'clue-01'").first(),
+    { state: "ready", version: 1 }
+  );
+  await store.claimClueOrder("player-1", waiting.order.id, "Player One", waiting.order.version);
+  await assert.rejects(
+    () => store.releasePaidClue("clue-01", 1, "staff-1"),
+    (error: any) => error?.status === 409 && error?.code === "clue_release_payment_pending"
+  );
+  await store.decideClueOrder(waiting.order.id, { expectedVersion: 2, status: "cancelled" }, "staff-1");
+  const cart = await store.createOrReuseClueOrder("player-2", "clue-01");
+  const released = await store.releasePaidClue("clue-01", 1, "staff-1");
+  assert.equal(released?.state, "released");
+  assert.deepEqual(
+    await db.prepare("SELECT status, version FROM clue_orders WHERE id = ?").bind(cart.order.id).first(),
+    { status: "cancelled", version: 2 }
+  );
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM clue_order_events WHERE order_id = ? AND action = 'cancelled'").bind(cart.order.id).first<any>())?.count, 1);
+});
+
+test("payment approval records Tim confirmation and retraction returns to Draft", async (t) => {
+  const { db, store } = await fixture(t);
+  const created = await store.createOrReuseClueOrder("player-1", "clue-01");
+  const claimed = await store.claimClueOrder("player-1", created.order.id, "Player One", created.order.version);
+  assert.ok(claimed);
+  const approved = await store.decideClueOrder(
+    created.order.id,
+    { expectedVersion: claimed.version, status: "approved", timPaymentConfirmed: true },
+    "staff-1"
+  );
+  assert.ok(approved?.timPaymentConfirmedAt);
+  assert.equal(
+    (await db.prepare("SELECT tim_payment_confirmed_at FROM clue_orders WHERE id = ?").bind(created.order.id).first<any>())?.tim_payment_confirmed_at,
+    approved?.timPaymentConfirmedAt
+  );
+  await db.prepare("UPDATE clues SET state = 'released', released_at = 't' WHERE id = 'clue-01'").run();
+  const retracted = await store.retractPaidClue("clue-01", 1, "Safety review", "staff-1");
+  assert.equal(retracted?.state, "draft");
+});
+
+test("a controlled-digging clue releases only while its approved area is open and published", async (t) => {
+  const { db, store } = await fixture(t);
+  await db.prepare(`UPDATE clues SET
+    dig_permit_enabled = 1,
+    dig_zone_id = 'zone-rv-horseshoe-restricted',
+    dig_instruction = 'Use hands only inside the marked loose-sand square.',
+    dig_max_depth_mm = 100,
+    dig_allowed_tools_json = '["hands"]'
+    WHERE id = 'clue-01'`).run();
+
+  await assert.rejects(
+    () => store.releasePaidClue("clue-01", 1, "staff-1"),
+    (error: any) => error?.status === 422 && error?.code === "clue_dig_zone_unavailable"
+  );
+  assert.deepEqual(
+    await db.prepare("SELECT state, version FROM clues WHERE id = 'clue-01'").first(),
+    { state: "ready", version: 1 }
+  );
+
+  await db.prepare(`UPDATE zones SET state = 'open', is_published = 1
+    WHERE id = 'zone-rv-horseshoe-restricted'`).run();
+  const released = await store.releasePaidClue("clue-01", 1, "staff-1");
+  assert.equal(released?.state, "released");
 });

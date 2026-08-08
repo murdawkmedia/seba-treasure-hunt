@@ -38,6 +38,8 @@
 .clue-card__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .clue-list--member { grid-template-columns: 1fr; }
 .clue-card__riddle--decoded { margin-top: 14px; border-left-color: #238961; }
+.clue-card__permit { margin-top: 18px; padding: 14px 16px; border: 2px solid #8a4e17; background: #fff7dc; font-weight: 600; line-height: 1.5; }
+.clue-card__permit .clues-button { display: inline-flex; margin-top: 8px; }
 .clues-button { min-height: 48px; padding: 12px 18px; border: 2px solid var(--clue-gold); border-radius: 5px; color: #102b24; background: var(--clue-gold); font: 700 1rem "Source Sans 3", sans-serif; cursor: pointer; }
 .clues-button--quiet { color: #fff5d6; background: transparent; }
 .clues-button:focus-visible, .clues-ledger a:focus-visible { outline: 4px solid #62d8a2; outline-offset: 4px; }

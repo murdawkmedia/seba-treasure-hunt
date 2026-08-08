@@ -112,8 +112,8 @@ test("waiver receipt renderer includes the complete legal record and escapes con
   assert.match(message.text, /In an emergency, I will call 911\./);
   assert.match(message.text, new RegExp(participationWaiverDocument.acceptanceStatement.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(message.text, new RegExp(participationWaiverDocument.guardianStatement.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(message.text, /Version 2026\.2/);
-  assert.match(message.text, /Effective July 15, 2026/);
+  assert.match(message.text, new RegExp(`Version ${participationWaiverDocument.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(message.text, new RegExp(`Effective ${participationWaiverDocument.effectiveDateLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.match(message.text, /TLS-W-12345678/);
   assert.match(message.text, /\/waiver/);
   assert.match(message.text, /\/rules/);

@@ -455,6 +455,13 @@ export interface PaidClueRecord {
   internalScore: number;
   state: PaidClueState;
   decoderMode: PaidDecoderMode;
+  digPermitEnabled?: boolean;
+  digZoneId?: string | null;
+  digInstruction?: string | null;
+  digMaxDepthMm?: number | null;
+  digAllowedTools?: string[];
+  digZoneState?: string | null;
+  digZonePublished?: boolean;
   version: number;
   releasedAt: string | null;
   retiredAt: string | null;
@@ -472,6 +479,7 @@ export interface PaidClueOrder {
   decisionNote: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
+  timPaymentConfirmedAt?: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -505,6 +513,11 @@ export interface PaidClueMutation {
   internalNapkinNote?: string | undefined;
   internalScore?: number | undefined;
   decoderMode?: PaidDecoderMode | undefined;
+  digPermitEnabled?: boolean | undefined;
+  digZoneId?: string | null | undefined;
+  digInstruction?: string | null | undefined;
+  digMaxDepthMm?: number | null | undefined;
+  digAllowedTools?: string[] | undefined;
   state?: PaidClueState | undefined;
 }
 
@@ -528,7 +541,7 @@ export interface DataStore {
   listOpsClueOrders(options?: { status?: PaidClueOrderStatus | null; limit?: number; cursor?: string | null }): Promise<PaidClueOrderPage>;
   decideClueOrder(
     id: string,
-    input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null },
+    input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null; timPaymentConfirmed?: true },
     actorSubject: string
   ): Promise<PaidClueOrder | null>;
   queueClueOrderApprovalNotice(orderId: string, expectedVersion: number, actorSubject: string): Promise<string | null>;

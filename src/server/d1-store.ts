@@ -128,6 +128,12 @@ const paidClueFromRow = (row: Row): PaidClueRecord => ({
   decoderExplanation: value(row.decoder_explanation), narrowingSummary: value(row.narrowing_summary),
   internalNapkinNote: value(row.internal_napkin_note), internalScore: Number(row.internal_numeric_score),
   state: value(row.state) as PaidClueRecord["state"], decoderMode: value(row.decoder_mode) as PaidClueRecord["decoderMode"],
+  digPermitEnabled: row.dig_permit_enabled === 1,
+  digZoneId: nullable(row.dig_zone_id), digInstruction: nullable(row.dig_instruction),
+  digMaxDepthMm: numberOrNull(row.dig_max_depth_mm),
+  digAllowedTools: parseJson<string[]>(row.dig_allowed_tools_json, []),
+  digZoneState: nullable(row.dig_zone_state),
+  digZonePublished: row.dig_zone_published === 1,
   version: Number(row.version), releasedAt: nullable(row.released_at), retiredAt: nullable(row.retired_at),
   createdAt: value(row.created_at), updatedAt: value(row.updated_at)
 });
@@ -135,6 +141,7 @@ const paidClueOrderFromRow = (row: Row): PaidClueOrder => ({
   id: value(row.id), clueId: value(row.clue_id), playerSubject: value(row.player_subject), reference: value(row.reference),
   senderName: nullable(row.sender_name), status: value(row.status) as PaidClueOrderStatus,
   decisionNote: nullable(row.decision_note), decidedBy: nullable(row.decided_by), decidedAt: nullable(row.decided_at),
+  timPaymentConfirmedAt: nullable(row.tim_payment_confirmed_at),
   version: Number(row.version), createdAt: value(row.created_at), updatedAt: value(row.updated_at)
 });
 const json = (input: unknown) => JSON.stringify(input ?? null);
@@ -440,7 +447,11 @@ export class D1DataStore implements DataStore {
   }
 
   async listPaidClues(): Promise<PaidClueRecord[]> {
-    const result = await this.db.prepare("SELECT * FROM clues ORDER BY sequence ASC").all<Row>();
+    const result = await this.db.prepare(
+      `SELECT clues.*, zones.state AS dig_zone_state, zones.is_published AS dig_zone_published
+       FROM clues LEFT JOIN zones ON zones.id = clues.dig_zone_id
+       ORDER BY clues.sequence ASC`
+    ).all<Row>();
     return result.results.map(paidClueFromRow);
   }
 
@@ -459,11 +470,15 @@ export class D1DataStore implements DataStore {
       throw new ApiError(409, "identity_sync_pending", "Your verified email is still being synchronized. Try again in a moment.");
     }
     const clue = await this.db.prepare("SELECT * FROM clues WHERE id = ? LIMIT 1").bind(clueId).first<Row>();
-    if (!clue || value(clue.state) !== "released") {
-      throw new ApiError(404, "clue_not_available", "That clue is not available.");
+    if (!clue) throw new ApiError(404, "clue_not_available", "That clue is not available.");
+    if (value(clue.state) === "released") {
+      throw new ApiError(409, "clue_already_released", "This clue is already public.");
     }
-    if (value(clue.decoder_mode) === "free") {
-      throw new ApiError(409, "clue_decoder_free", "This decoder is already free.");
+    const next = await this.db.prepare(
+      "SELECT id, state FROM clues WHERE state != 'released' ORDER BY sequence ASC LIMIT 1"
+    ).first<Row>();
+    if (value(clue.state) !== "ready" || value(next?.id) !== clueId) {
+      throw new ApiError(404, "clue_not_available", "Only the next Ready clue is available for early access.");
     }
     const existing = await this.db.prepare(
       `SELECT * FROM clue_orders WHERE player_subject = ? AND clue_id = ?
@@ -481,8 +496,14 @@ export class D1DataStore implements DataStore {
              (id, clue_id, player_subject, reference, sender_name, status, decision_note, decided_by, decided_at, created_at, updated_at, version)
              SELECT ?, ?, account.subject, ?, NULL, 'created', NULL, NULL, NULL, ?, ?, 1
              FROM player_accounts account
-             WHERE account.subject = ? AND account.account_state = 'active' AND account.verified_email IS NOT NULL`
-          ).bind(orderId, clueId, reference, timestamp, timestamp, subject),
+             JOIN clues clue ON clue.id = ?
+             WHERE account.subject = ? AND account.account_state = 'active' AND account.verified_email IS NOT NULL
+               AND clue.state = 'ready'
+               AND NOT EXISTS (
+                 SELECT 1 FROM clues previous
+                 WHERE previous.sequence < clue.sequence AND previous.state != 'released'
+               )`
+          ).bind(orderId, clueId, reference, timestamp, timestamp, clueId, subject),
           this.db.prepare(
             `INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
              SELECT ?, id, 'player', ?, 'created', '{"status":"created","version":1}', 1, ?
@@ -494,9 +515,7 @@ export class D1DataStore implements DataStore {
              FROM clue_orders WHERE id = ? AND player_subject = ? AND version = 1`
           ).bind(id(), subject, timestamp, orderId, subject)
         ]);
-        if (!results[0]?.meta.changes) {
-          throw new ApiError(409, "identity_sync_pending", "Your verified email is still being synchronized. Try again in a moment.");
-        }
+        if (!results[0]?.meta.changes) throw new ApiError(409, "clue_order_stale", "This clue changed. Refresh and try again.");
         const order = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ?").bind(orderId).first<Row>();
         if (!order) throw new Error("created clue order could not be loaded");
         return { order: paidClueOrderFromRow(order), reused: false };
@@ -532,7 +551,14 @@ export class D1DataStore implements DataStore {
     const results = await this.db.batch([
       this.db.prepare(
         `UPDATE clue_orders SET sender_name = ?, status = 'waiting_verification', version = version + 1, updated_at = ?
-         WHERE id = ? AND player_subject = ? AND version = ? AND status = 'created'`
+         WHERE id = ? AND player_subject = ? AND version = ? AND status = 'created'
+           AND EXISTS (
+             SELECT 1 FROM clues clue WHERE clue.id = clue_orders.clue_id AND clue.state = 'ready'
+               AND NOT EXISTS (
+                 SELECT 1 FROM clues previous
+                 WHERE previous.sequence < clue.sequence AND previous.state != 'released'
+               )
+           )`
       ).bind(senderName, timestamp, orderId, subject, expectedVersion),
       this.db.prepare(
         `INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
@@ -562,10 +588,22 @@ export class D1DataStore implements DataStore {
     if (input.state === "released" || (value(existing.state) === "released" && input.state !== undefined)) {
       throw new ApiError(422, "clue_lifecycle_route_required", "Use the dedicated release or retract action to change Released state.");
     }
+    if (input.state !== undefined && input.state !== value(existing.state)) {
+      const activeOrders = await this.db.prepare(
+        "SELECT COUNT(*) AS count FROM clue_orders WHERE clue_id = ? AND status IN ('created', 'waiting_verification')"
+      ).bind(clueId).first<Row>();
+      if (Number(activeOrders?.count) > 0) {
+        throw new ApiError(409, "clue_order_active_exists", "Resolve or cancel active early-access requests before changing this clue's state.");
+      }
+    }
     const fields = [
       ["title", input.title], ["riddle", input.riddle], ["decoder_explanation", input.decoderExplanation],
       ["narrowing_summary", input.narrowingSummary], ["internal_napkin_note", input.internalNapkinNote],
       ["internal_numeric_score", input.internalScore], ["decoder_mode", input.decoderMode], ["state", input.state]
+      , ["dig_permit_enabled", input.digPermitEnabled === undefined ? undefined : input.digPermitEnabled ? 1 : 0]
+      , ["dig_zone_id", input.digZoneId], ["dig_instruction", input.digInstruction]
+      , ["dig_max_depth_mm", input.digMaxDepthMm]
+      , ["dig_allowed_tools_json", input.digAllowedTools === undefined ? undefined : json(input.digAllowedTools)]
     ] as Array<[string, unknown]>;
     const changed = fields.filter(([, candidate]) => candidate !== undefined);
     if (!changed.length) return paidClueFromRow(existing);
@@ -573,14 +611,18 @@ export class D1DataStore implements DataStore {
     const set = changed.map(([column]) => `${column} = ?`).join(", ");
     const values = changed.map(([, field]) => field);
     const state = input.state ?? value(existing.state);
+    const stateChanged = input.state !== undefined && input.state !== value(existing.state);
     const nextVersion = input.expectedVersion + 1;
     const eventId = id();
     const results = await this.db.batch([
       this.db.prepare(
         `UPDATE clues SET ${set},
          retired_at = CASE WHEN ? = 'retired' THEN COALESCE(retired_at, ?) ELSE retired_at END,
-         version = version + 1, updated_at = ? WHERE id = ? AND version = ?`
-      ).bind(...values, state, timestamp, timestamp, clueId, input.expectedVersion),
+         version = version + 1, updated_at = ? WHERE id = ? AND version = ?
+           AND (? = 0 OR NOT EXISTS (
+             SELECT 1 FROM clue_orders WHERE clue_id = ? AND status IN ('created', 'waiting_verification')
+           ))`
+      ).bind(...values, state, timestamp, timestamp, clueId, input.expectedVersion, stateChanged ? 1 : 0, clueId),
       this.db.prepare(
         `INSERT INTO clue_events (id, clue_id, actor_type, actor_subject, action, details_json, notification_key, clue_version, occurred_at)
          SELECT ?, id, 'staff', ?, 'edited', ?, NULL, ?, ? FROM clues
@@ -593,7 +635,17 @@ export class D1DataStore implements DataStore {
          FROM clue_events event JOIN clues ON clues.id = event.clue_id WHERE event.id = ?`
       ).bind(id(), actorSubject, json({ version: nextVersion }), timestamp, eventId)
     ]);
-    if (!results[0]?.meta.changes) throw new ConflictError();
+    if (!results[0]?.meta.changes) {
+      if (stateChanged) {
+        const activeOrders = await this.db.prepare(
+          "SELECT COUNT(*) AS count FROM clue_orders WHERE clue_id = ? AND status IN ('created', 'waiting_verification')"
+        ).bind(clueId).first<Row>();
+        if (Number(activeOrders?.count) > 0) {
+          throw new ApiError(409, "clue_order_active_exists", "Resolve or cancel active early-access requests before changing this clue's state.");
+        }
+      }
+      throw new ConflictError();
+    }
     const updated = await this.db.prepare("SELECT * FROM clues WHERE id = ?").bind(clueId).first<Row>();
     if (!updated) throw new Error("updated clue could not be loaded");
     return paidClueFromRow(updated);
@@ -604,18 +656,48 @@ export class D1DataStore implements DataStore {
     if (!existing) return null;
     if (Number(existing.version) !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
     if (value(existing.state) !== "ready") throw new ApiError(422, "clue_not_ready", "Only a Ready clue can be released.");
+    if (existing.dig_permit_enabled === 1) {
+      const zone = await this.db.prepare("SELECT state, is_published FROM zones WHERE id = ? LIMIT 1")
+        .bind(existing.dig_zone_id).first<Row>();
+      if (value(zone?.state) !== "open" || zone?.is_published !== 1) {
+        throw new ApiError(422, "clue_dig_zone_unavailable", "Open and publish the controlled-digging area before releasing this clue.");
+      }
+    }
     const previous = await this.db.prepare("SELECT COUNT(*) AS count FROM clues WHERE state = 'released' AND sequence < ?")
       .bind(Number(existing.sequence)).first<Row>();
     if (Number(previous?.count) !== Number(existing.sequence) - 1) {
       throw new ApiError(422, "clue_release_order", "Release the next numbered Ready clue first.");
     }
+    const waiting = await this.db.prepare(
+      "SELECT COUNT(*) AS count FROM clue_orders WHERE clue_id = ? AND status = 'waiting_verification'"
+    ).bind(clueId).first<Row>();
+    if (Number(waiting?.count) > 0) {
+      throw new ApiError(409, "clue_release_payment_pending", "Resolve the payment awaiting Tim's confirmation before releasing this clue.");
+    }
+    const carts = (await this.db.prepare(
+      "SELECT id, version FROM clue_orders WHERE clue_id = ? AND status = 'created' ORDER BY id ASC"
+    ).bind(clueId).all<Row>()).results;
     const timestamp = this.timestamp();
     const nextVersion = expectedVersion + 1;
     const eventId = id();
-    const results = await this.db.batch([
+    const statements = [
       this.db.prepare(
-        "UPDATE clues SET state = 'released', released_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND state = 'ready'"
-      ).bind(timestamp, timestamp, clueId, expectedVersion),
+        `UPDATE clues SET state = 'released', released_at = ?, version = version + 1, updated_at = ?
+         WHERE id = ? AND version = ? AND state = 'ready'
+           AND NOT EXISTS (
+             SELECT 1 FROM clues previous
+             WHERE previous.sequence < clues.sequence AND previous.state != 'released'
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM clue_orders WHERE clue_id = ? AND status = 'waiting_verification'
+           )
+           AND (
+             dig_permit_enabled = 0 OR EXISTS (
+               SELECT 1 FROM zones WHERE zones.id = clues.dig_zone_id
+                 AND zones.state = 'open' AND zones.is_published = 1
+             )
+           )`
+      ).bind(timestamp, timestamp, clueId, expectedVersion, clueId),
       this.db.prepare(
         `INSERT INTO clue_events (id, clue_id, actor_type, actor_subject, action, details_json, notification_key, clue_version, occurred_at)
          SELECT ?, id, 'staff', ?, 'released', ?, NULL, ?, ? FROM clues
@@ -627,8 +709,44 @@ export class D1DataStore implements DataStore {
          SELECT ?, ?, 'clue.released', 'clue', clues.id, ?, ?
          FROM clue_events event JOIN clues ON clues.id = event.clue_id WHERE event.id = ?`
       ).bind(id(), actorSubject, json({ state: "released", version: nextVersion }), timestamp, eventId)
-    ]);
-    if (!results[0]?.meta.changes) throw new ConflictError();
+    ];
+    for (const cart of carts) {
+      const orderId = value(cart.id);
+      const orderVersion = Number(cart.version);
+      const cancelledVersion = orderVersion + 1;
+      const orderEventId = id();
+      statements.push(
+        this.db.prepare(
+          `UPDATE clue_orders SET status = 'cancelled', decision_note = NULL, decided_by = ?, decided_at = ?,
+             version = version + 1, updated_at = ?
+           WHERE id = ? AND version = ? AND status = 'created'
+             AND EXISTS (SELECT 1 FROM clues WHERE id = ? AND state = 'released' AND version = ?)`
+        ).bind(actorSubject, timestamp, timestamp, orderId, orderVersion, clueId, nextVersion),
+        this.db.prepare(
+          `INSERT INTO clue_order_events
+           (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
+           SELECT ?, id, 'system', ?, 'cancelled', ?, ?, ? FROM clue_orders
+           WHERE id = ? AND status = 'cancelled' AND version = ? AND changes() = 1`
+        ).bind(orderEventId, actorSubject, json({ reason: "clue_released", status: "cancelled", version: cancelledVersion }),
+          cancelledVersion, timestamp, orderId, cancelledVersion),
+        this.db.prepare(
+          `INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
+           SELECT ?, ?, 'clue_order.cancelled_on_release', 'clue_order', orders.id, ?, ?
+           FROM clue_order_events event JOIN clue_orders orders ON orders.id = event.order_id
+           WHERE event.id = ?`
+        ).bind(id(), actorSubject, json({ clueId, version: cancelledVersion }), timestamp, orderEventId)
+      );
+    }
+    const results = await this.db.batch(statements);
+    if (!results[0]?.meta.changes) {
+      const nowWaiting = await this.db.prepare(
+        "SELECT COUNT(*) AS count FROM clue_orders WHERE clue_id = ? AND status = 'waiting_verification'"
+      ).bind(clueId).first<Row>();
+      if (Number(nowWaiting?.count) > 0) {
+        throw new ApiError(409, "clue_release_payment_pending", "Resolve the payment awaiting Tim's confirmation before releasing this clue.");
+      }
+      throw new ConflictError();
+    }
     const updated = await this.db.prepare("SELECT * FROM clues WHERE id = ?").bind(clueId).first<Row>();
     if (!updated) throw new Error("released clue could not be loaded");
     return paidClueFromRow(updated);
@@ -643,13 +761,13 @@ export class D1DataStore implements DataStore {
     const nextVersion = expectedVersion + 1;
     const eventId = id();
     const results = await this.db.batch([
-      this.db.prepare("UPDATE clues SET state = 'ready', version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND state = 'released'")
+      this.db.prepare("UPDATE clues SET state = 'draft', version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND state = 'released'")
         .bind(timestamp, clueId, expectedVersion),
       this.db.prepare(
         `INSERT INTO clue_events (id, clue_id, actor_type, actor_subject, action, details_json, notification_key, clue_version, occurred_at)
          SELECT ?, id, 'staff', ?, 'retracted', ?, NULL, ?, ? FROM clues
-         WHERE id = ? AND state = 'ready' AND version = ? AND changes() = 1`
-      ).bind(eventId, actorSubject, json({ reason, state: "ready", version: nextVersion }), nextVersion, timestamp,
+         WHERE id = ? AND state = 'draft' AND version = ? AND changes() = 1`
+      ).bind(eventId, actorSubject, json({ reason, state: "draft", version: nextVersion }), nextVersion, timestamp,
         clueId, nextVersion),
       this.db.prepare(
         `INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)
@@ -714,7 +832,7 @@ export class D1DataStore implements DataStore {
     };
   }
 
-  async decideClueOrder(orderId: string, input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null }, actorSubject: string): Promise<PaidClueOrder | null> {
+  async decideClueOrder(orderId: string, input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null; timPaymentConfirmed?: true }, actorSubject: string): Promise<PaidClueOrder | null> {
     const existing = await this.db.prepare("SELECT * FROM clue_orders WHERE id = ? LIMIT 1").bind(orderId).first<Row>();
     if (!existing) return null;
     if (Number(existing.version) !== input.expectedVersion) throw new ApiError(409, "clue_order_stale", "This payment changed. Refresh and try again.");
@@ -724,16 +842,19 @@ export class D1DataStore implements DataStore {
       (["rejected", "cancelled"].includes(oldStatus) && input.status === "created");
     if (!allowed) throw new ApiError(422, "clue_order_transition_invalid", "That payment status cannot be changed this way.");
     if (input.status === "rejected" && !input.decisionNote?.trim()) throw new ApiError(422, "decision_note_required", "Give the hunter a reason before rejecting this payment.");
+    if (input.status === "approved" && input.timPaymentConfirmed !== true) {
+      throw new ApiError(422, "tim_payment_confirmation_required", "Confirm that Tim verified the cleared e-Transfer before unlocking this clue.");
+    }
     const timestamp = this.timestamp();
     const decisionFields = input.status === "created"
       ? [null, null, null, null]
       : [input.status === "rejected" ? input.decisionNote!.trim() : null, actorSubject, timestamp, nullable(existing.sender_name)];
     const nextVersion = input.expectedVersion + 1;
     const update = input.status === "created"
-      ? this.db.prepare("UPDATE clue_orders SET status = 'created', sender_name = NULL, decision_note = NULL, decided_by = NULL, decided_at = NULL, version = version + 1, updated_at = ? WHERE id = ? AND version = ?")
+      ? this.db.prepare("UPDATE clue_orders SET status = 'created', sender_name = NULL, decision_note = NULL, decided_by = NULL, decided_at = NULL, tim_payment_confirmed_at = NULL, version = version + 1, updated_at = ? WHERE id = ? AND version = ?")
           .bind(timestamp, orderId, input.expectedVersion)
-      : this.db.prepare("UPDATE clue_orders SET status = ?, decision_note = ?, decided_by = ?, decided_at = ?, sender_name = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?")
-          .bind(input.status, ...decisionFields, timestamp, orderId, input.expectedVersion);
+      : this.db.prepare("UPDATE clue_orders SET status = ?, decision_note = ?, decided_by = ?, decided_at = ?, sender_name = ?, tim_payment_confirmed_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?")
+          .bind(input.status, ...decisionFields, input.status === "approved" ? timestamp : null, timestamp, orderId, input.expectedVersion);
     const action = input.status === "created" ? "reopened" : input.status;
     const eventId = id();
     let results: D1Result<unknown>[];
@@ -744,7 +865,7 @@ export class D1DataStore implements DataStore {
           `INSERT INTO clue_order_events (id, order_id, actor_type, actor_subject, action, details_json, order_version, occurred_at)
            SELECT ?, id, 'staff', ?, ?, ?, ?, ? FROM clue_orders
            WHERE id = ? AND status = ? AND version = ? AND changes() = 1`
-        ).bind(eventId, actorSubject, action, json({ status: input.status, version: nextVersion }), nextVersion,
+        ).bind(eventId, actorSubject, action, json({ status: input.status, version: nextVersion, ...(input.status === "approved" ? { timPaymentConfirmed: true } : {}) }), nextVersion,
           timestamp, orderId, input.status, nextVersion),
         this.db.prepare(
           `INSERT INTO audit_events (id, actor_subject, action, target_kind, target_id, metadata_json, occurred_at)

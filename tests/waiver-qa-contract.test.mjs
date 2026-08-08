@@ -309,7 +309,7 @@ test("waiver QA scans private fixture values across source and served public out
   assert.match(script, /publicSurfaceOutputs/);
   assert.match(script, /privateBundleOutputs/);
   assert.match(script, /privacyFindings/);
-  assert.match(script, /participation-waiver-2026\.2\.json/);
+  assert.match(script, /participation-waiver-2026\.3\.json/);
   assert.match(script, /privacyMediaVersion:\s*["']2026\.3["']/);
   assert.match(script, /assert\.equal\([^]*?15[^]*?thirteen waypoints plus two fallback choices/i);
   assert.match(script, /const expectedReportOptions = \[/);

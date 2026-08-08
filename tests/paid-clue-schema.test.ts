@@ -60,6 +60,30 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
   await insertClue(db, "clue-09", 9).run();
   await insertClue(db, "clue-10", 10).run();
   await db.prepare(
+    `UPDATE clues SET dig_permit_enabled = 1,
+      dig_zone_id = 'zone-rv-horseshoe-restricted',
+      dig_instruction = 'Use hands only inside the marked loose-sand square.',
+      dig_max_depth_mm = 100,
+      dig_allowed_tools_json = '["hands"]'
+     WHERE id = 'clue-08'`
+  ).run();
+  await expectReject(db.prepare(
+    `UPDATE clues SET dig_permit_enabled = 1,
+      dig_zone_id = 'zone-rv-horseshoe-restricted',
+      dig_instruction = 'Unsafe tool should be rejected.',
+      dig_max_depth_mm = 100,
+      dig_allowed_tools_json = '["full-size shovel"]'
+     WHERE id = 'clue-10'`
+  ));
+  await expectReject(db.prepare(
+    `UPDATE clues SET dig_permit_enabled = 1,
+      dig_zone_id = 'zone-rv-horseshoe-restricted',
+      dig_instruction = 'Unsafe depth should be rejected.',
+      dig_max_depth_mm = 301,
+      dig_allowed_tools_json = '["hands"]'
+     WHERE id = 'clue-10'`
+  ));
+  await db.prepare(
     `UPDATE clues SET state = 'retired', retired_at = '2026-08-07T00:00:00.000Z' WHERE id = 'clue-09'`
   ).run();
   await db.prepare(
@@ -106,7 +130,8 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
   ));
   await db.prepare(
     `UPDATE clue_orders
-     SET status = 'approved', decided_by = 'staff-1', decided_at = '2026-08-07T00:01:00.000Z'
+     SET status = 'approved', decided_by = 'staff-1', decided_at = '2026-08-07T00:01:00.000Z',
+         tim_payment_confirmed_at = '2026-08-07T00:01:00.000Z'
      WHERE id = 'order-07'`
   ).run();
   await expectReject(db.prepare(
@@ -352,8 +377,9 @@ test("the complete D1 migration chain enforces paid clue order and audit-ledger 
   });
   await db.prepare(
     `INSERT INTO clue_orders
-     (id, clue_id, player_subject, reference, sender_name, status, decided_by, decided_at, created_at, updated_at, version)
-     VALUES ('order-11', 'clue-11', 'player-1', 'TLS-C11-K4M2', 'Sender', 'approved', 'staff-1', 't', 't', 't', 1)`
+     (id, clue_id, player_subject, reference, sender_name, status, decided_by, decided_at,
+      tim_payment_confirmed_at, created_at, updated_at, version)
+     VALUES ('order-11', 'clue-11', 'player-1', 'TLS-C11-K4M2', 'Sender', 'approved', 'staff-1', 't', 't', 't', 't', 1)`
   ).run();
   const approvalJob = await store.queueClueOrderApprovalNotice('order-11', 1, 'staff-1');
   assert.ok(approvalJob);

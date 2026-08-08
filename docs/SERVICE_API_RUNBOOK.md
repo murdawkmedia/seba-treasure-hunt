@@ -50,12 +50,17 @@ Paid-clue scope rules:
 
 - `publishing.read` reads the private clue ledger. Payment counts are omitted
   unless the key also has `people.read`.
-- `publishing.write` edits, releases and retracts clues.
+- `publishing.write` edits clues and performs the dedicated sequential release
+  and retraction actions. It cannot publish a later clue first or bypass the
+  current controlled-digging area checks.
 - Release notifications and every clue-order read or decision additionally
   require `people.read`.
 - Machine clue mutations keep the ordinary confirmation and idempotency
-  headers. They cannot release clues out of sequence or approve their own
-  payment claims.
+  headers. They cannot release clues out of sequence, approve their own payment
+  claims, or approve a payment without the explicit Tim-cleared confirmation.
+- Released riddles are public and released decoders are included for active
+  signed-in hunters. Orders are limited to the exact next Ready clue and grant
+  early access to that one riddle and decoder only.
 
 ## Authentication and guards
 

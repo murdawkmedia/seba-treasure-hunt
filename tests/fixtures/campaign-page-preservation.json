@@ -4,14 +4,14 @@
   "normalizationVersion": "campaign-shell-v2",
   "pages": {
     "index.html": {
-      "headSha256": "9f837e1b980d244dcb391fbfd413cced2e6588efa0a54b184e81fa2dad0f9206",
-      "scriptsSha256": "f133b3a0ffed3839dfb3a80d2e1ebc54e2cab5fb62bb49d619ce23e14149db5b",
-      "bodySha256": "b9e9b2b711dd089288ac3d2ea836b4e2a7067b0811df1edb411d9242030508aa"
+      "headSha256": "1698e30e8e835b1d6a06dd7fc2cb5fc20132ab4396074e7b5c1f28a6ff7064f0",
+      "scriptsSha256": "6f16105199f5407bc7dff82b62ecc92d2b0e0507368bdf76619e37c44499a357",
+      "bodySha256": "3f0364a335e482f2a0a808e34a828f279c00219addf28bab37a012efe69a3db3"
     },
     "start.html": {
       "headSha256": "cc4dfa66dd234eec69c20ee9299ffa18c2515b2842fe9ab846b4d3121a9bd909",
       "scriptsSha256": "262f8f0930497e8050dfb3978007566d6248423c30bea3db1fca7d356b1d9bf9",
-      "bodySha256": "ef7b7615644df98bbe02db1cabd38412dd25b4814d835a9bcd3c7526d3af4abf"
+      "bodySha256": "c819b034f3d4be615417ccdb2def84a2620f93cb2757fcecdee5613a0af02287"
     },
     "route.html": {
       "headSha256": "e60486b835f0fba280d9d54a4873b2dbeef8c345905dacc25ebce17af695618d",
@@ -24,9 +24,9 @@
       "bodySha256": "7010e08b39c5686140707eedb77d930857db5fd0de97e5e2d6a169d5894a2e55"
     },
     "clues.html": {
-      "headSha256": "6135e1e3bceb619caeb1de1637f23d2bd0d48e455e4b76b23317857d1e2c3e3f",
+      "headSha256": "4fd4ca48c87c9d65bcf48252fac5beda036c8ed69ef7870c8a74bfe6123dc134",
       "scriptsSha256": "3e74801cdc712ca275f31cd1ed2d8ec6d4affa27aad2fcac39ca20880016f3d6",
-      "bodySha256": "50dc7205e63ed03545ed9333b018a14d21d5b3b16942cd063713eef4e7344d19"
+      "bodySha256": "f6e9684493bc99d9929d753e5e318a29a62462c22b9e400a54e3af822cbddf4d"
     },
     "interview.html": {
       "headSha256": "6f74cfd279858257513cc8918764b104b98c988bab2132d604df6a771f40c794",
@@ -51,12 +51,12 @@
     "rules.html": {
       "headSha256": "ba98cb29e535e1e8e646f067e892dd0bc301badd79fe7b3c66cd5193c5da553d",
       "scriptsSha256": "b5a7da04eb5da28c4ea0fd6a88d3bcba176487d889da2612f3e8f0dcd14e32cd",
-      "bodySha256": "c68fa1c30bde1694b60da3a5a2d89c692735331b5fe44327b49fccaa3186efa2"
+      "bodySha256": "b356305192ce5f73ffcdd7bae06acb33601ac445811fef9756fef6b6c5beb2ba"
     },
     "dashboard.html": {
       "headSha256": "8215cf8ad1fcfe12b7215947fbcc50c7d0ab18cc961b7106d54f4d551f1047e3",
       "scriptsSha256": "3d6e47db34a9cdeed5a65ed0ebf377ed8194ee46446ee286965cf413129c592e",
-      "bodySha256": "725c547223ab6a36a98451202f439e0c73d0f7d80423ea4363299c2491f7ae33"
+      "bodySha256": "b0f2dfb38c4e4a8ddc1be81a57491da2ddaeb42fa6ee630312f95fadd1f54313"
     },
     "privacy.html": {
       "headSha256": "4a5cb1cd4f2d89b79ddeec49975ac17a0611d52b1391579cd4979edc418cfa0e",
@@ -66,7 +66,7 @@
     "waiver.html": {
       "headSha256": "3ffb9af866eb7c5fc24ebeb33e9bb53201ad66e500355053bda74358779a54d3",
       "scriptsSha256": "be9ccbc5f662af1ed9938b9fce381bfdf46ae5fe5e95ad99566926137ada8301",
-      "bodySha256": "5cc2983f0513ad7fcc8f433563aaabcdc39a141d17e385ca95ff077f15d1f8d7"
+      "bodySha256": "5013ff683bee00d52a4ea5f64465b93e1b932e7b1efd374f7be9d3d672a91c67"
     },
     "community-guidelines.html": {
       "headSha256": "11e683387db1fbf3d5b00c3a53137a6095977b3d116f531519be9a7bac1fd26c",

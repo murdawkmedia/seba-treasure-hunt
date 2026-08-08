@@ -5,6 +5,7 @@ import {
   clueWorkflowGuidance,
   normalizeOpsClueOrders,
   normalizeOpsClues,
+  normalizeZones,
   renderOrder,
   responseNextCursor,
   responseWaitingCount,
@@ -15,11 +16,25 @@ test("Ops clue normalization preserves private editorial fields and versions", (
     id: "clue-01", sequence: 1, title: "The Starting Line", riddle: "Riddle",
     decoderExplanation: "Explanation", narrowingSummary: "One place",
     internalNapkinNote: "Review privately", internalScore: 7, state: "released",
-    decoderMode: "paid", version: 4,
+    decoderMode: "paid", version: 4, digPermitEnabled: false,
   }] } });
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.internalNapkinNote, "Review privately");
   assert.equal(rows[0]?.version, 4);
+});
+
+test("Ops treats every area returned by the published-zones endpoint as published", () => {
+  assert.deepEqual(normalizeZones({ data: [{
+    id: "zone-loose-sand",
+    slug: "loose-sand",
+    label: "Marked loose-sand square",
+    state: "open"
+  }] }), [{
+    id: "zone-loose-sand",
+    label: "Marked loose-sand square",
+    state: "open",
+    published: true
+  }]);
 });
 
 test("Ops payment pages preserve the aggregate waiting count and next cursor", () => {
@@ -45,17 +60,28 @@ test("workflow guidance makes the next safe action explicit", () => {
     kind: "empty",
   });
   assert.match(clueWorkflowGuidance([
-    { id: "clue-02", sequence: 2, title: "Second", riddle: "R", decoderExplanation: "D", narrowingSummary: "N", internalNapkinNote: "", internalScore: 0, state: "ready", decoderMode: "paid", version: 1 },
+    { id: "clue-02", sequence: 2, title: "Second", riddle: "R", decoderExplanation: "D", narrowingSummary: "N", internalNapkinNote: "", internalScore: 0, state: "ready", version: 1, digPermitEnabled: false, digZoneId: "", digInstruction: "", digMaxDepthMm: null, digAllowedTools: [], digZoneState: "", digZonePublished: false },
   ], []).next, /Review Clue 02, then use Release the next clue/i);
 });
 
-test("approved decoder orders expose a plain retry-email action", () => {
+test("approved early-access orders expose a plain retry-email action", () => {
   const html = renderOrder({
     id: "order-1", clueId: "clue-01", clueSequence: 1, clueTitle: "The Starting Line",
     reference: "TLS-C01-K4M2", senderName: "A Hunter", status: "approved",
     decisionNote: "", version: 3, updatedAt: "2026-08-07T12:00:00Z",
   });
   assert.match(html, /data-order-notify/);
-  assert.match(html, /retry decoder email/i);
+  assert.match(html, /retry access email/i);
   assert.doesNotMatch(html, /data-order-decision="approve"/);
+});
+
+test("waiting payments require an explicit Tim-cleared confirmation", () => {
+  const html = renderOrder({
+    id: "order-2", clueId: "clue-02", clueSequence: 2, clueTitle: "Private next clue",
+    reference: "TLS-C02-ABCD", senderName: "A Hunter", status: "waiting_verification",
+    decisionNote: "", version: 2, updatedAt: "2026-08-07T12:00:00Z",
+  });
+  assert.match(html, /data-tim-payment-confirmed/);
+  assert.match(html, /Tim personally confirmed/i);
+  assert.match(html, /Confirm payment and unlock early access/i);
 });

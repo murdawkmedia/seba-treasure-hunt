@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const sourcePath = new URL("../legal/participation-waiver-2026.2.json", import.meta.url);
+const sourcePath = new URL("../legal/participation-waiver-2026.3.json", import.meta.url);
 const modulePath = new URL("../src/generated/participation-waiver.ts", import.meta.url);
 const pagePath = new URL("../waiver.html", import.meta.url);
 const privacyPath = new URL("../privacy.html", import.meta.url);

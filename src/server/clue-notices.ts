@@ -48,9 +48,9 @@ export const renderClueNotice = (kind: ClueNoticeKind, canonicalOrigin: string):
   const origin = absoluteOrigin(canonicalOrigin);
   if (!origin) throw new Error("A campaign base URL must be configured.");
   const isApproval = kind === "clue_order_approved";
-  const title = isApproval ? "Your decoder access is ready" : "A new clue is ready";
+  const title = isApproval ? "Your early-access clue is ready" : "A new clue is ready";
   const detail = isApproval
-    ? "Your payment was confirmed. Your decoder access is now available in My Hunt."
+    ? "Your payment was confirmed. Your early-access clue and decoder are now available in My Hunt."
     : "A new Tim Lost Something? clue is available in My Hunt.";
   const huntUrl = `${origin}/dashboard.html`;
   const text = [title, "", detail, "", `Open My Hunt: ${huntUrl}`].join("\n");

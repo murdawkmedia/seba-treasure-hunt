@@ -334,8 +334,12 @@ export class FakeStore {
   }
   async createOrReuseClueOrder(subject: string, clueId: string): Promise<{ order: PaidClueOrder; reused: boolean }> {
     const clue = this.paidClues.find((candidate) => candidate.id === clueId);
-    if (!clue || clue.state !== "released") throw new ApiError(404, "clue_not_available", "That clue is not available.");
-    if (clue.decoderMode === "free") throw new ApiError(409, "clue_decoder_free", "This decoder is already free.");
+    if (clue?.state === "released") throw new ApiError(409, "clue_already_released", "This clue is already public.");
+    const next = [...this.paidClues].sort((left, right) => left.sequence - right.sequence)
+      .find((candidate) => candidate.state !== "released");
+    if (!clue || clue.state !== "ready" || next?.id !== clue.id) {
+      throw new ApiError(404, "clue_not_available", "Only the next Ready clue is available for early access.");
+    }
     const existing = this.paidClueOrders.find((order) => order.playerSubject === subject && order.clueId === clueId && ["created", "waiting_verification", "approved"].includes(String(order.status)));
     if (existing) return { order: { ...existing }, reused: true };
     const timestamp = new Date().toISOString();
@@ -359,7 +363,12 @@ export class FakeStore {
     if (input.state === "released" || (clue.state === "released" && input.state !== undefined && input.state !== "released")) {
       throw new ApiError(422, "clue_lifecycle_route_required", "Use the dedicated release or retract action to change Released state.");
     }
-    const mappings: Array<[string, string]> = [["decoderExplanation", "decoderExplanation"], ["narrowingSummary", "narrowingSummary"], ["internalNapkinNote", "internalNapkinNote"], ["internalScore", "internalScore"], ["decoderMode", "decoderMode"], ["title", "title"], ["riddle", "riddle"], ["state", "state"]];
+    if (input.state !== undefined && input.state !== clue.state && this.paidClueOrders.some((order) =>
+      order.clueId === id && ["created", "waiting_verification"].includes(order.status)
+    )) {
+      throw new ApiError(409, "clue_order_active_exists", "Resolve or cancel active early-access requests before changing this clue's state.");
+    }
+    const mappings: Array<[string, string]> = [["decoderExplanation", "decoderExplanation"], ["narrowingSummary", "narrowingSummary"], ["internalNapkinNote", "internalNapkinNote"], ["internalScore", "internalScore"], ["decoderMode", "decoderMode"], ["digPermitEnabled", "digPermitEnabled"], ["digZoneId", "digZoneId"], ["digInstruction", "digInstruction"], ["digMaxDepthMm", "digMaxDepthMm"], ["digAllowedTools", "digAllowedTools"], ["title", "title"], ["riddle", "riddle"], ["state", "state"]];
     for (const [source, target] of mappings) if (input[source] !== undefined) (clue as any)[target] = input[source];
     clue.version += 1; clue.updatedAt = new Date().toISOString(); this.paidClueEvents.push({ clueId: id, action: "edited", actorSubject }); return { ...clue };
   }
@@ -367,14 +376,26 @@ export class FakeStore {
     const clue = this.paidClues.find((candidate) => candidate.id === id); if (!clue) return null;
     if (clue.version !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
     if (clue.state !== "ready") throw new ApiError(422, "clue_not_ready", "Only a Ready clue can be released.");
+    if (clue.digPermitEnabled && (clue.digZoneState !== "open" || clue.digZonePublished !== true)) {
+      throw new ApiError(422, "clue_dig_zone_unavailable", "Open and publish the controlled-digging area before releasing this clue.");
+    }
     if (this.paidClues.filter((candidate) => candidate.state === "released" && candidate.sequence < clue.sequence).length !== clue.sequence - 1) throw new ApiError(422, "clue_release_order", "Release the next numbered Ready clue first.");
-    clue.state = "released"; clue.releasedAt = new Date().toISOString(); clue.version += 1; clue.updatedAt = clue.releasedAt; this.paidClueEvents.push({ clueId: id, action: "released", actorSubject }); return { ...clue };
+    if (this.paidClueOrders.some((order) => order.clueId === id && order.status === "waiting_verification")) {
+      throw new ApiError(409, "clue_release_payment_pending", "Resolve the payment awaiting Tim's confirmation before releasing this clue.");
+    }
+    const releasedAt = new Date().toISOString();
+    for (const order of this.paidClueOrders.filter((candidate) => candidate.clueId === id && candidate.status === "created")) {
+      order.status = "cancelled"; order.decidedBy = actorSubject; order.decidedAt = releasedAt;
+      order.version += 1; order.updatedAt = releasedAt;
+      this.paidClueOrderEvents.push({ orderId: order.id, action: "cancelled", actorSubject, reason: "clue_released" });
+    }
+    clue.state = "released"; clue.releasedAt = releasedAt; clue.version += 1; clue.updatedAt = releasedAt; this.paidClueEvents.push({ clueId: id, action: "released", actorSubject }); return { ...clue };
   }
   async retractPaidClue(id: string, expectedVersion: number, reason: string, actorSubject: string) {
     const clue = this.paidClues.find((candidate) => candidate.id === id); if (!clue) return null;
     if (clue.version !== expectedVersion) throw new ApiError(409, "clue_stale", "This clue changed. Refresh and try again.");
     if (clue.state !== "released") throw new ApiError(422, "clue_not_released", "Only a released clue can be retracted.");
-    clue.state = "ready"; clue.version += 1; clue.updatedAt = new Date().toISOString(); this.paidClueEvents.push({ clueId: id, action: "retracted", reason, actorSubject }); return { ...clue };
+    clue.state = "draft"; clue.version += 1; clue.updatedAt = new Date().toISOString(); this.paidClueEvents.push({ clueId: id, action: "retracted", reason, actorSubject }); return { ...clue };
   }
   async listOpsClueOrders(options: { status?: PaidClueOrder["status"] | null; limit?: number; cursor?: string | null } = {}) {
     const counts = { created: 0, waiting_verification: 0, approved: 0, rejected: 0, cancelled: 0 };
@@ -408,13 +429,14 @@ export class FakeStore {
       : null;
     return { items, counts, nextCursor };
   }
-  async decideClueOrder(id: string, input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null }, actorSubject: string): Promise<PaidClueOrder | null> {
+  async decideClueOrder(id: string, input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null; timPaymentConfirmed?: true }, actorSubject: string): Promise<PaidClueOrder | null> {
     const order = this.paidClueOrders.find((candidate) => candidate.id === id); if (!order) return null;
     if (order.version !== input.expectedVersion) throw new ApiError(409, "clue_order_stale", "This payment changed. Refresh and try again.");
     const allowed = (order.status === "created" && input.status === "cancelled") ||
       (order.status === "waiting_verification" && ["approved", "rejected", "cancelled"].includes(input.status)) ||
       (["rejected", "cancelled"].includes(String(order.status)) && input.status === "created");
     if (!allowed) throw new ApiError(422, "clue_order_transition_invalid", "That payment status cannot be changed this way.");
+    if (input.status === "approved" && input.timPaymentConfirmed !== true) throw new ApiError(422, "tim_payment_confirmation_required", "Confirm that Tim verified the cleared e-Transfer before unlocking this clue.");
     if (input.status === "created" && this.paidClueOrders.some((candidate) =>
       candidate.id !== order.id && candidate.playerSubject === order.playerSubject && candidate.clueId === order.clueId &&
       ["created", "waiting_verification", "approved"].includes(candidate.status)
@@ -425,7 +447,8 @@ export class FakeStore {
     order.status = input.status; order.version = Number(order.version) + 1; order.updatedAt = new Date().toISOString();
     if (input.status === "created") { order.senderName = null; order.decisionNote = null; order.decidedBy = null; order.decidedAt = null; }
     else { order.decisionNote = input.status === "rejected" ? input.decisionNote?.trim() ?? null : null; order.decidedBy = actorSubject; order.decidedAt = order.updatedAt; }
-    this.paidClueOrderEvents.push({ orderId: id, action: input.status, actorSubject }); return { ...order };
+    if (input.status === "approved" && input.timPaymentConfirmed) order.timPaymentConfirmedAt = order.updatedAt;
+    this.paidClueOrderEvents.push({ orderId: id, action: input.status, actorSubject, timPaymentConfirmed: input.status === "approved" && input.timPaymentConfirmed === true }); return { ...order };
   }
   async queueClueOrderApprovalNotice(orderId: string, expectedVersion: number, actorSubject: string) {
     if (this.clueNoticeQueueFails) throw new Error("notice queue unavailable");

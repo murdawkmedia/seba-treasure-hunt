@@ -994,34 +994,85 @@ const clueLabel = (sequence: number, title: string | null, entitled: boolean) =>
 const publicClueProjection = (
   clue: Record<string, any>,
   subject: string | null,
-  orderStatuses: Map<string, string>
+  orderStatuses: Map<string, string>,
+  earlyAccessClueId: string | null,
+  controlledDiggingUnlocked: boolean
 ) => {
-  const released = clue.state === "released" || (clue.state === "retired" && orderStatuses.get(clue.id) === "approved");
-  const riddleEntitled = released && (clue.sequence === 1 || Boolean(subject));
-  const orderStatus = orderStatuses.get(clue.id) ?? null;
-  const decoderUnlocked = released && riddleEntitled && (clue.decoderMode === "free" || orderStatus === "approved");
-  if (!released) return {
-    id: clue.id, sequence: clue.sequence, label: clueLabel(clue.sequence, null, false), state: "sealed" as const
+  const digPermit = () => {
+    if (!clue.digPermitEnabled) return {};
+    if (clue.digZoneState !== "open" || clue.digZonePublished !== true) {
+      return { digPermit: { access: "unavailable" as const } };
+    }
+    if (!subject) return { digPermit: { access: "sign_in_required" as const } };
+    if (!controlledDiggingUnlocked) return { digPermit: { access: "waiver_required" as const } };
+    return { digPermit: {
+      access: "permitted" as const,
+      zoneId: clue.digZoneId,
+      instruction: clue.digInstruction,
+      maxDepthMm: clue.digMaxDepthMm,
+      allowedTools: clue.digAllowedTools
+    } };
   };
+  const orderStatus = orderStatuses.get(clue.id) ?? null;
+  const approvedEarlyAccess = orderStatus === "approved" && (clue.state === "ready" || clue.state === "retired");
+  if (approvedEarlyAccess) {
+    return {
+      id: clue.id,
+      sequence: clue.sequence,
+      label: clueLabel(clue.sequence, clue.title, true),
+      state: "early_access" as const,
+      title: clue.title,
+      riddle: clue.riddle,
+      decoder: {
+        priceCad: 5,
+        access: "early_access" as const,
+        explanation: clue.decoderExplanation,
+        narrowingSummary: clue.narrowingSummary
+      },
+      ...digPermit()
+    };
+  }
+  if (clue.state !== "released") {
+    const canPurchase = Boolean(subject) && clue.id === earlyAccessClueId && clue.state === "ready";
+    return {
+      id: clue.id,
+      sequence: clue.sequence,
+      label: clueLabel(clue.sequence, null, false),
+      state: "sealed" as const,
+      ...(canPurchase ? {
+        earlyAccess: {
+          priceCad: 5,
+          access: orderStatus === "waiting_verification" ? "waiting_verification" : "purchase_required"
+        }
+      } : {})
+    };
+  }
+  const publicSample = clue.sequence === 1;
+  const memberDecoder = Boolean(subject);
+  const decoderUnlocked = publicSample || memberDecoder;
   return {
     id: clue.id,
     sequence: clue.sequence,
-    label: clueLabel(clue.sequence, clue.title, riddleEntitled),
+    label: clueLabel(clue.sequence, clue.title, true),
     state: "released" as const,
-    ...(riddleEntitled ? { title: clue.title, riddle: clue.riddle } : {}),
+    title: clue.title,
+    riddle: clue.riddle,
     decoder: {
-      mode: clue.decoderMode,
       priceCad: 5,
       access: decoderUnlocked
-        ? "unlocked"
-        : orderStatus === "waiting_verification"
-          ? "waiting_verification"
-          : subject
-            ? "purchase_required"
-            : "sign_in_required",
+        ? publicSample ? "public_sample" : "released_member"
+        : "sign_in_required",
       ...(decoderUnlocked ? { explanation: clue.decoderExplanation, narrowingSummary: clue.narrowingSummary } : {})
-    }
+    },
+    ...digPermit()
   };
+};
+
+const earlyAccessClueId = (clues: Array<Record<string, any>>) => {
+  const next = [...clues]
+    .sort((left, right) => Number(left.sequence) - Number(right.sequence))
+    .find((clue) => clue.state !== "released");
+  return next?.state === "ready" ? String(next.id) : null;
 };
 
 const activeClueOrderStatuses = (orders: Array<{ clueId: string; status: string }>) => {
@@ -1571,10 +1622,14 @@ export const createApi = (deps: ApiDependencies) => {
   app.get("/api/v1/clues", async (c) => {
     const hunter = await optionalHunter(deps, c.req.raw);
     if (hunter) await requireActiveHunterAccount(deps, hunter);
+    const access = hunter ? await deps.store.getPlayerAccess(hunter.subject) : null;
     const orders = hunter ? await deps.store.listPlayerClueOrders(hunter.subject) : [];
     const statuses = activeClueOrderStatuses(orders);
     const clues = await deps.store.listPaidClues();
-    return success(c, { clues: clues.map((clue) => publicClueProjection(clue, hunter?.subject ?? null, statuses)) });
+    const purchasableClueId = earlyAccessClueId(clues);
+    return success(c, { clues: clues.map((clue) => publicClueProjection(
+      clue, hunter?.subject ?? null, statuses, purchasableClueId, access?.participationUnlocked === true
+    )) });
   });
 
   app.get("/api/v1/rules/current", async (c) => success(c, await deps.store.getCurrentRules()));
@@ -1824,9 +1879,11 @@ export const createApi = (deps: ApiDependencies) => {
     const [clues, orders] = await Promise.all([
       deps.store.listPaidClues(), deps.store.listPlayerClueOrders(hunter.subject)
     ]);
+    const access = await deps.store.getPlayerAccess(hunter.subject);
     const statuses = activeClueOrderStatuses(orders);
+    const purchasableClueId = earlyAccessClueId(clues);
     return success(c, {
-      clues: clues.map((clue) => publicClueProjection(clue, hunter.subject, statuses)),
+      clues: clues.map((clue) => publicClueProjection(clue, hunter.subject, statuses, purchasableClueId, access.participationUnlocked)),
       orders: orders.map(hunterClueOrderProjection)
     });
   });
@@ -1836,7 +1893,7 @@ export const createApi = (deps: ApiDependencies) => {
     await requireActiveHunterAccount(deps, hunter);
     await applyRateLimit(deps, c.req.raw, "clue_order", hunter);
     const { files } = await requestBody(c.req.raw);
-    if (files.length) throw new ApiError(415, "unsupported_media_type", "Decoder purchases accept JSON only.");
+    if (files.length) throw new ApiError(415, "unsupported_media_type", "Early-access purchases accept JSON only.");
     const result = await deps.store.createOrReuseClueOrder(hunter.subject, c.req.param("id"));
     const validation = deps.config?.deploymentEnvironment === "validation";
     const payment = result.order.status === "approved"
@@ -2453,12 +2510,52 @@ export const createApi = (deps: ApiDependencies) => {
     const expectedVersion = body.expectedVersion;
     if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new ApiError(422, "validation_failed", "expectedVersion is required.", { field: "expectedVersion" });
     const decoderMode = body.decoderMode;
-    if (decoderMode !== undefined && decoderMode !== "paid" && decoderMode !== "free") throw new ApiError(422, "validation_failed", "Decoder mode is invalid.", { field: "decoderMode" });
+    if (decoderMode !== undefined) throw new ApiError(422, "decoder_access_fixed", "Released decoders are included for signed-in hunters; only the next clue may be purchased early.", { field: "decoderMode" });
     const state = body.state;
     if (state === "released") throw new ApiError(422, "clue_lifecycle_route_required", "Use the dedicated release action to publish a clue.", { field: "state" });
     if (state !== undefined && !["draft", "ready", "retired"].includes(String(state))) throw new ApiError(422, "validation_failed", "Clue state is invalid.", { field: "state" });
     const score = body.internalScore;
     if (score !== undefined && (!Number.isInteger(score) || Number(score) < 0 || Number(score) > 100)) throw new ApiError(422, "validation_failed", "Internal score must be 0 to 100.", { field: "internalScore" });
+    const digPermit = body.digPermit;
+    const allowedDigTools = new Set(["hands", "hand trowel", "short beach shovel"]);
+    let digPermitFields: Record<string, unknown> = {};
+    if (digPermit !== undefined) {
+      if (digPermit === null) {
+        digPermitFields = {
+          digPermitEnabled: false, digZoneId: null, digInstruction: null,
+          digMaxDepthMm: null, digAllowedTools: []
+        };
+      } else {
+        if (typeof digPermit !== "object") {
+          throw new ApiError(422, "validation_failed", "Controlled digging settings are invalid.", { field: "digPermit" });
+        }
+        const permit = digPermit as Record<string, unknown>;
+        if (permit.enabled === false) {
+          digPermitFields = {
+            digPermitEnabled: false, digZoneId: null, digInstruction: null,
+            digMaxDepthMm: null, digAllowedTools: []
+          };
+        } else if (permit.enabled !== true) {
+          throw new ApiError(422, "validation_failed", "Controlled digging settings are invalid.", { field: "digPermit" });
+        } else {
+          const tools = Array.isArray(permit.allowedTools) ? permit.allowedTools : [];
+          if (!tools.length || tools.some((tool: unknown) => typeof tool !== "string" || !allowedDigTools.has(tool))) {
+            throw new ApiError(422, "validation_failed", "Choose only approved hand-digging tools.", { field: "digPermit.allowedTools" });
+          }
+          const maxDepthMm = Number(permit.maxDepthMm);
+          if (!Number.isInteger(maxDepthMm) || maxDepthMm < 1 || maxDepthMm > 300) {
+            throw new ApiError(422, "validation_failed", "Controlled digging depth must be between 1 and 300 millimetres.", { field: "digPermit.maxDepthMm" });
+          }
+          digPermitFields = {
+            digPermitEnabled: true,
+            digZoneId: requiredString(permit, "zoneId", { min: 1, max: 100, label: "Digging zone" }),
+            digInstruction: requiredString(permit, "instruction", { min: 10, max: 1_000, label: "Digging instruction" }),
+            digMaxDepthMm: maxDepthMm,
+            digAllowedTools: tools
+          };
+        }
+      }
+    }
     const clue = await deps.store.updatePaidClue(c.req.param("id"), {
       expectedVersion: Number(expectedVersion),
       title: optionalString(body, "title", 160) ?? undefined,
@@ -2467,8 +2564,8 @@ export const createApi = (deps: ApiDependencies) => {
       narrowingSummary: optionalString(body, "narrowingSummary", 2_000) ?? undefined,
       internalNapkinNote: optionalString(body, "internalNapkinNote", 8_000) ?? undefined,
       internalScore: score === undefined ? undefined : Number(score),
-      decoderMode: decoderMode as "paid" | "free" | undefined,
-      state: state as any
+      state: state as any,
+      ...digPermitFields
     }, staff.subject);
     if (!clue) throw new ApiError(404, "clue_not_found", "That clue was not found.");
     return success(c, { clue });
@@ -2558,7 +2655,15 @@ export const createApi = (deps: ApiDependencies) => {
     if (!["approved", "rejected", "cancelled", "created"].includes(status)) throw new ApiError(404, "clue_order_decision_not_found", "That payment decision is not available.");
     const expectedVersion = body.expectedVersion;
     if (!Number.isInteger(expectedVersion)) throw new ApiError(422, "validation_failed", "expectedVersion is required.", { field: "expectedVersion" });
-    const order = await deps.store.decideClueOrder(c.req.param("id"), { expectedVersion: Number(expectedVersion), status: status as any, decisionNote: optionalString(body, "decisionNote", 1_000) }, staff.subject);
+    if (status === "approved" && body.timPaymentConfirmed !== true) {
+      throw new ApiError(422, "tim_payment_confirmation_required", "Confirm that Tim verified the cleared e-Transfer before unlocking this clue.", { field: "timPaymentConfirmed" });
+    }
+    const order = await deps.store.decideClueOrder(c.req.param("id"), {
+      expectedVersion: Number(expectedVersion),
+      status: status as any,
+      decisionNote: optionalString(body, "decisionNote", 1_000),
+      ...(status === "approved" ? { timPaymentConfirmed: true as const } : {})
+    }, staff.subject);
     if (!order) throw new ApiError(404, "clue_order_not_found", "That payment request was not found.");
     let noticeJobId: string | null = null;
     if (order.status === "approved") {
