@@ -325,6 +325,31 @@ export interface OperatorAlertSender {
   deliver(jobId: string): Promise<OperatorAlertDeliveryResult>;
 }
 
+export type ClueNoticeKind = "clue_order_approved" | "clue_released";
+
+export interface ClueNoticeRecipientClaim {
+  id: string;
+  jobId: string;
+  kind: ClueNoticeKind;
+  email: string;
+  attempts: number;
+  leaseToken: string;
+  correlationId: string;
+}
+
+export type ClueNoticeRecipientCompletion =
+  | ({ status: "sent" } & TransactionalMailAcceptance)
+  | { status: "retry"; errorCode: OperatorAlertErrorCode; nextAttemptAt: string }
+  | { status: "failed" | "uncertain"; errorCode: OperatorAlertErrorCode };
+
+export interface ClueNoticeSender {
+  deliver(jobId: string): Promise<OperatorAlertDeliveryResult>;
+}
+
+export type ClueNoticeRequeueResult = {
+  status: "queued" | "in_progress" | "uncertain" | "sent" | "not_found";
+};
+
 export interface IdentityLifecycleEvent {
   id: string;
   type: "user.created" | "user.updated" | "user.deleted";
@@ -410,6 +435,92 @@ export interface OfficialUpdateMutation {
   scheduledFor: string | null;
 }
 
+export type PaidClueState = "draft" | "ready" | "released" | "retired";
+export type PaidDecoderMode = "paid" | "free";
+export type PaidClueOrderStatus =
+  | "created"
+  | "waiting_verification"
+  | "approved"
+  | "rejected"
+  | "cancelled";
+
+export interface PaidClueRecord {
+  id: string;
+  sequence: number;
+  title: string;
+  riddle: string;
+  decoderExplanation: string;
+  narrowingSummary: string;
+  internalNapkinNote: string;
+  internalScore: number;
+  state: PaidClueState;
+  decoderMode: PaidDecoderMode;
+  digPermitEnabled?: boolean;
+  digZoneId?: string | null;
+  digInstruction?: string | null;
+  digMaxDepthMm?: number | null;
+  digAllowedTools?: string[];
+  digZoneState?: string | null;
+  digZonePublished?: boolean;
+  version: number;
+  releasedAt: string | null;
+  retiredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaidClueOrder {
+  id: string;
+  clueId: string;
+  playerSubject: string;
+  reference: string;
+  senderName: string | null;
+  status: PaidClueOrderStatus;
+  decisionNote: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  timPaymentConfirmedAt?: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaidClueOrderWithClue extends PaidClueOrder {
+  clueSequence: number;
+  clueTitle: string;
+}
+
+export interface PaidClueOrderCounts {
+  created: number;
+  waiting_verification: number;
+  approved: number;
+  rejected: number;
+  cancelled: number;
+}
+
+export interface PaidClueOrderPage {
+  items: PaidClueOrderWithClue[];
+  counts: PaidClueOrderCounts;
+  nextCursor: string | null;
+}
+
+export interface PaidClueMutation {
+  expectedVersion: number;
+  title?: string | undefined;
+  riddle?: string | undefined;
+  decoderExplanation?: string | undefined;
+  narrowingSummary?: string | undefined;
+  internalNapkinNote?: string | undefined;
+  internalScore?: number | undefined;
+  decoderMode?: PaidDecoderMode | undefined;
+  digPermitEnabled?: boolean | undefined;
+  digZoneId?: string | null | undefined;
+  digInstruction?: string | null | undefined;
+  digMaxDepthMm?: number | null | undefined;
+  digAllowedTools?: string[] | undefined;
+  state?: PaidClueState | undefined;
+}
+
 export interface DataStore {
   getStatus(): Promise<CaseStatus>;
   listUpdates(options?: { limit?: number; cursor?: string | null }): Promise<Page>;
@@ -419,6 +530,34 @@ export interface DataStore {
   listBoard(waypointId: number | null, options?: { limit?: number; cursor?: string | null }): Promise<Page>;
   listPublicCaseItems(): Promise<Record<string, unknown>[]>;
   listHunterFreshDrops(): Promise<Record<string, unknown>[]>;
+  listPaidClues(): Promise<PaidClueRecord[]>;
+  listPlayerClueOrders(subject: string): Promise<PaidClueOrder[]>;
+  createOrReuseClueOrder(subject: string, clueId: string): Promise<{ order: PaidClueOrder; reused: boolean }>;
+  claimClueOrder(subject: string, orderId: string, senderName: string, expectedVersion: number): Promise<PaidClueOrder | null>;
+  listOpsPaidClues(): Promise<PaidClueRecord[]>;
+  updatePaidClue(id: string, input: PaidClueMutation, actorSubject: string): Promise<PaidClueRecord | null>;
+  releasePaidClue(id: string, expectedVersion: number, actorSubject: string): Promise<PaidClueRecord | null>;
+  retractPaidClue(id: string, expectedVersion: number, reason: string, actorSubject: string): Promise<PaidClueRecord | null>;
+  listOpsClueOrders(options?: { status?: PaidClueOrderStatus | null; limit?: number; cursor?: string | null }): Promise<PaidClueOrderPage>;
+  decideClueOrder(
+    id: string,
+    input: { expectedVersion: number; status: "approved" | "rejected" | "cancelled" | "created"; decisionNote?: string | null; timPaymentConfirmed?: true },
+    actorSubject: string
+  ): Promise<PaidClueOrder | null>;
+  queueClueOrderApprovalNotice(orderId: string, expectedVersion: number, actorSubject: string): Promise<string | null>;
+  queueClueReleaseNotice(
+    clueId: string,
+    expectedVersion: number,
+    actorSubject: string
+  ): Promise<{ jobId: string; replayed: boolean } | null>;
+  claimClueNoticeRecipients(jobId: string): Promise<ClueNoticeRecipientClaim[]>;
+  completeClueNoticeRecipient(
+    claim: ClueNoticeRecipientClaim,
+    result: ClueNoticeRecipientCompletion
+  ): Promise<void>;
+  failClueNoticeConfiguration(jobId: string): Promise<void>;
+  requeueClueNoticeJob(jobId: string, actorSubject: string): Promise<ClueNoticeRequeueResult>;
+  reconcileClueNoticeJob(jobId: string): Promise<void>;
   getHunterCaseItemMedia(mediaId: string): Promise<{ key: string; contentType: string } | null>;
   getReportableFreshDrop(id: string): Promise<{ id: string; title: string } | null>;
   getReportableCaseItem(id: string): Promise<{
@@ -760,6 +899,7 @@ export interface ApiDependencies {
   webhooks?: WebhookVerifier;
   waiverReceipts?: LegalReceiptSender;
   operatorAlerts?: OperatorAlertSender;
+  clueNotices?: ClueNoticeSender;
   productionSnapshot?: ProductionSnapshotStore;
   productionSnapshotMedia?: PrivateMediaReader;
   environment: EnvironmentGuard;

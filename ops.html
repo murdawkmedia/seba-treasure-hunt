@@ -118,6 +118,7 @@
           <button class="ops-nav-item" type="button" data-view="moderation"><span aria-hidden="true">03</span>Public Contributions <em id="nav-moderation-count">--</em></button>
           <button class="ops-nav-item" type="button" data-view="items"><span aria-hidden="true">04</span>What&rsquo;s Out There</button>
           <button class="ops-nav-item" type="button" data-view="updates"><span aria-hidden="true">05</span>Latest News</button>
+          <button class="ops-nav-item" type="button" data-view="clues"><span aria-hidden="true">06</span>Clues &amp; Sales <em id="nav-clue-order-count">--</em></button>
           <button class="ops-nav-item" type="button" data-view="sponsors"><span aria-hidden="true">06</span>Sponsors</button>
           <button class="ops-nav-item" type="button" data-view="zones"><span aria-hidden="true">07</span>Search Zones</button>
           <button class="ops-nav-item" type="button" data-view="rules"><span aria-hidden="true">08</span>Rules Ledger</button>
@@ -143,6 +144,7 @@
             <button type="button" data-view-link="moderation"><span>2</span><strong>Moderate public contributions</strong><small>Approve, hide, restore, or reject community content.</small></button>
             <button type="button" data-view-link="items"><span>3</span><strong>Update what's out there</strong><small>Change item status, copy, order, and images.</small></button>
             <button type="button" data-view-link="updates"><span>4</span><strong>Publish Latest News</strong><small>Save a draft, preview it, then schedule or publish.</small></button>
+            <button type="button" data-view-link="clues"><span>5</span><strong>Release clues and verify early access</strong><small>Review clue copy, release the next clue, and match e-transfer references confirmed by Tim.</small></button>
           </nav>
           <div class="ops-metrics" aria-label="Current case totals">
             <article><span>Case status</span><strong id="metric-status">--</strong><small id="metric-status-time">Not loaded</small></article>
@@ -263,6 +265,19 @@
               <p class="ops-ledger-state" data-update-ledger-state role="status" aria-live="polite">Open this workspace to load Official Updates.</p>
               <div class="ops-table-wrap"><table><thead><tr><th>State</th><th>Headline</th><th>When</th><th>Action</th></tr></thead><tbody id="updates-table"><tr><td colspan="4"><span class="ops-table-empty">Source not loaded</span></td></tr></tbody></table></div>
             </section>
+          </div>
+        </section>
+
+        <section class="ops-view" data-view-panel="clues" aria-labelledby="clues-ops-title" hidden>
+          <header class="ops-view__header"><div><p class="ops-kicker">Manual clue publishing and early access</p><h1 id="clues-ops-title">Clues &amp; Early-Access Sales</h1></div><p>Sequential release &middot; next clue only &middot; Tim-confirmed e-transfers</p></header>
+          <div class="ops-view-guide"><div class="ops-workflow-guide" data-ops-guide="clues" role="status" aria-live="polite" aria-atomic="true"><strong data-guide-state>Clue ledger not loaded</strong><span data-guide-next>Refresh this workspace before editing or verifying anything.</span></div><button class="ops-button ops-button--quiet" type="button" data-view-retry="clues">Refresh Clues</button></div>
+          <section class="ops-panel" aria-labelledby="clue-workflow-help-title">
+            <header class="ops-panel__header"><div><p class="ops-kicker">Three plain steps</p><h2 id="clue-workflow-help-title">Nothing publishes automatically</h2></div><span class="ops-chip">Version checked</span></header>
+            <ol class="ops-status-key"><li><strong>1. Review</strong><span>Edit private copy and safety settings until the next clue is Ready.</span></li><li><strong>2. Verify or release</strong><span>Verify any waiting early-access payment only after Tim confirms it cleared; otherwise release the next clue when marketing decides.</span></li><li><strong>3. Notify</strong><span>Optionally send one separate notice to opted-in hunters.</span></li></ol>
+          </section>
+          <div class="ops-columns">
+            <section class="ops-panel" aria-labelledby="clue-ledger-ops-title"><header class="ops-panel__header"><div><p class="ops-kicker">Private source</p><h2 id="clue-ledger-ops-title">Release the next clue</h2></div></header><p class="ops-ledger-state" data-ops-clues-state role="status" aria-live="polite">Open this workspace to load the clue ledger.</p><div data-ops-clues></div></section>
+            <section class="ops-panel" aria-labelledby="clue-orders-ops-title"><header class="ops-panel__header"><div><p class="ops-kicker">Manual payment matching</p><h2 id="clue-orders-ops-title">Pending e-transfer verification</h2></div></header><p class="ops-panel__note"><strong>Do not approve from the sender name alone.</strong> Match the unique reference outside the website and obtain Tim's confirmation that the $5 cleared. Approval unlocks only the one next clue; it publishes nothing.</p><p class="ops-ledger-state" data-ops-clue-orders-state role="status" aria-live="polite">No payment records loaded.</p><div data-ops-clue-orders></div><button class="ops-button ops-button--quiet" type="button" data-ops-clue-orders-more hidden>Load more payment records</button></section>
           </div>
         </section>
 

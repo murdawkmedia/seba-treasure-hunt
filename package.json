@@ -8,6 +8,7 @@
     "legal:generate": "node scripts/generate-waiver.mjs",
     "legal:verify": "node scripts/generate-waiver.mjs --check",
     "snapshot:refresh": "node scripts/refresh-production-snapshot.mjs",
+    "clues:import": "tsx scripts/import-paid-clues.ts",
     "build": "node scripts/build.mjs",
     "dev": "npm run build && wrangler pages dev dist --persist-to .wrangler/state",
     "test": "node --test tests/*.test.mjs && tsx --test \"tests/**/*.test.ts\"",

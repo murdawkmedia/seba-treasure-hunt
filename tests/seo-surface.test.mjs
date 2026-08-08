@@ -12,6 +12,7 @@ test("sitemap exposes every indexable answer surface and no private tool", () =>
   for (const route of [
     "/",
     "/route",
+    "/clues",
     "/interview",
     "/updates",
     "/rules",

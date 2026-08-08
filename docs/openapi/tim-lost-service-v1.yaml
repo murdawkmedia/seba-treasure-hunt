@@ -33,6 +33,54 @@ paths:
       security: []
       responses:
         "200": { $ref: "#/components/responses/Success" }
+  /clues:
+    get:
+      summary: Read the leak-safe clue catalogue
+      description: Clue 01 is public. Later released riddles require an active hunter; sealed records expose only their number and sealed label.
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /me/clues:
+    get:
+      summary: Read released riddles, decoder access and the current hunter's orders
+      security:
+        - hunterSession: []
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /clues/{clueId}/orders:
+    post:
+      summary: Create or reuse the current hunter's decoder order
+      security:
+        - hunterSession: []
+      parameters:
+        - $ref: "#/components/parameters/ClueId"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "201": { $ref: "#/components/responses/Success" }
+  /me/clue-orders/{orderId}/claim:
+    post:
+      summary: Confirm that the current hunter sent the e-transfer
+      security:
+        - hunterSession: []
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [senderName, expectedVersion]
+              additionalProperties: false
+              properties:
+                senderName: { type: string, minLength: 2, maxLength: 100 }
+                expectedVersion: { type: integer, minimum: 1 }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
   /ops/dashboard:
     get:
       summary: Read the complete Ops summary
@@ -109,6 +157,98 @@ paths:
         $ref: "#/components/requestBodies/ImageUpload"
       responses:
         "201": { $ref: "#/components/responses/Success" }
+  /ops/clues:
+    get:
+      summary: Read the private clue ledger
+      description: Requires publishing.read. Payment counts are included only when people.read is also present.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/clues/{clueId}:
+    patch:
+      summary: Edit one clue without bypassing release or retraction controls
+      parameters:
+        - $ref: "#/components/parameters/ClueId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/clues/{clueId}/release:
+    post:
+      summary: Release the next numbered Ready clue
+      parameters:
+        - $ref: "#/components/parameters/ClueId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/clues/{clueId}/retract:
+    post:
+      summary: Retract a released clue to Ready with a private reason
+      parameters:
+        - $ref: "#/components/parameters/ClueId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/clues/{clueId}/notify:
+    post:
+      summary: Queue one confirmed, non-duplicating release notice to current hunt-email subscribers
+      description: Requires publishing.write and people.read. The JSON body must include confirmNotify true and the current clue version.
+      parameters:
+        - $ref: "#/components/parameters/ClueId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/clue-orders:
+    get:
+      summary: Read the cursor-paginated decoder-payment queue and aggregate counts
+      description: Requires publishing.read and people.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /ops/clue-orders/{orderId}/{decision}:
+    post:
+      summary: Approve, reject, cancel or reopen one decoder-payment claim
+      description: Requires publishing.write and people.read. Approval unlocks access before email is queued.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+        - $ref: "#/components/parameters/OrderDecision"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /ops/clue-orders/{orderId}/notify:
+    post:
+      summary: Check or retry the approved decoder-access email when delivery is safely retryable
+      description: Requires publishing.write and people.read. Sent, uncertain and in-progress deliveries cannot be duplicated.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+        - $ref: "#/components/parameters/Confirmation"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/JsonMutation"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "202": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Problem" }
   /ops/updates:
     get:
       summary: List Official Update drafts, schedules, and publications
@@ -262,6 +402,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: Clerk staff session JWT
+    hunterSession:
+      type: http
+      scheme: bearer
+      bearerFormat: Clerk hunter session JWT
   parameters:
     Confirmation:
       in: header
@@ -286,6 +430,21 @@ components:
       name: itemId
       required: true
       schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$" }
+    ClueId:
+      in: path
+      name: clueId
+      required: true
+      schema: { type: string, pattern: "^clue-(0[1-9]|[12][0-9]|30)$" }
+    OrderId:
+      in: path
+      name: orderId
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 128 }
+    OrderDecision:
+      in: path
+      name: decision
+      required: true
+      schema: { type: string, enum: [approve, reject, cancel, reopen] }
     UpdateId:
       in: path
       name: updateId
@@ -339,6 +498,7 @@ components:
         ok: { type: boolean, const: true }
         data: {}
         meta: { type: object, additionalProperties: true }
+        page: { type: object, additionalProperties: true }
     ProblemEnvelope:
       type: object
       required: [ok, error]

@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-08-05
+Last updated: 2026-08-07
 
 ## Current state
 
@@ -24,6 +24,62 @@ and mobile-operable image frame when selected.
 
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
+
+## Update 2026-08-07 — Paid Clues access refinement validation candidate
+
+- Refined the 30-record clue case file so Clue 01 is a complete public sample,
+  later released riddles are public, and their decoders are included for active
+  signed-in hunters without payment.
+- Limited $5 CAD early access to the exact next Ready clue. No later clue or
+  bundle can be bought. Approval now requires an Ops attestation that Tim
+  confirmed the e-Transfer cleared.
+- Release remains manual and sequential. Waiting claims block release, created
+  carts cancel atomically on release, and retraction returns a clue to Draft.
+  Decoder Paid/Free controls were removed.
+- Added the versioned 2026.3 waiver and a clue-specific controlled-digging
+  permit. No digging remains the default; exact permit details require an
+  active hunter, the current waiver, and a published open zone.
+- Applied Preview-only migration `0026`, after confirming the validation D1
+  sentinel. Production D1 was not changed.
+- Verification passed 695 automated tests, all TypeScript projects, legal
+  verification, the production build, deploy-output privacy scanning, remote
+  API checks, and desktop/mobile browser smoke tests.
+- Deployed source commit `6ba4236` only to `codex-validation`. The immutable
+  candidate is `https://a82d6173.seba-treasure-hunt.pages.dev`; owner review
+  starts at
+  `https://codex-validation.seba-treasure-hunt.pages.dev/clues?release=6ba4236`.
+- Production remained unchanged and `/api/v1/clues` is still unavailable
+  there. Full evidence and owner-acceptance steps are in
+  `docs/operations/2026-08-07-paid-clues-access-refinement-validation.md`.
+
+## Update 2026-08-07 — Original Paid Clues validation candidate
+
+- Added a 30-record `/clues` case file without changing the 13 Stops. Clue 01
+  is public and Released; Clues 02–30 remain private Drafts and appear to
+  anonymous visitors only as numbered Sealed records.
+- Added optional $5 CAD decoder orders for signed-in hunters, reusable payment
+  references, manual Interac claim verification, audited approve/reject/cancel/
+  reopen decisions, immediate access on approval, and durable purchaser-email
+  retries that cannot relock access.
+- Added manual sequential clue release/retraction, Paid/Free decoder controls,
+  confirmed opted-in-hunter notices, My Hunt decoder access, and the private
+  Clues & Decoder Sales Ops workspace. No scheduler, banking integration,
+  automatic free conversion, or automatic Latest News post was added.
+- Applied Preview-only migrations `0024` and `0025`, imported the reviewed 30
+  clues through the validation-sentinel and public-leak guards, and proved the
+  importer idempotent with a zero-write second pass.
+- Verification passed 688 automated tests, all TypeScript projects, legal
+  verification, the production build, the 356-asset privacy scan, 78 responsive
+  page/view checks, 120 shell states, 23 screenshots, and the complete isolated
+  waiver/account browser journey.
+- Deployed source commit `b14f552` only to the `codex-validation` Pages branch.
+  The immutable candidate is `https://0f765e7b.seba-treasure-hunt.pages.dev`;
+  owner review starts at
+  `https://codex-validation.seba-treasure-hunt.pages.dev/clues?release=b14f552`.
+- Production was not deployed, migrated, imported or otherwise mutated. It
+  still reports the production environment and does not expose the new clue
+  endpoint. Full evidence and owner-acceptance steps are recorded in
+  `docs/operations/2026-08-07-paid-clues-validation.md`.
 
 ## Update 2026-08-05 - production Service API and Console integration
 

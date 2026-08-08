@@ -14,6 +14,7 @@ test("the canonical shell exposes three obvious actions and four secondary desti
     ["My Hunt", "/dashboard"],
   ]);
   assert.deepEqual(CAMPAIGN_MORE_MENU.map(({ label, href }) => [label, href]), [
+    ["Clues", "/clues"],
     ["Latest News", "/updates"],
     ["What People Found", "/clue-board"],
     ["Tim's Story", "/interview"],

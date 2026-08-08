@@ -117,6 +117,7 @@ const makeApp = (email: string) => {
   store.staff.add(`staff:${email}`);
   const serviceKeys = new FakeServiceKeys();
   return {
+    store,
     app: createApi({
       store,
       identity: identityFor(email),
@@ -234,6 +235,49 @@ test("service sessions expose capabilities and enforce route scopes", async () =
     ...json({}, headers),
   });
   assert.equal(createItem.status, 403);
+});
+
+test("clue release notices require publishing and people scopes, confirmation, idempotency, and leave an audit", async () => {
+  const { app, serviceKeys, store } = makeApp("tech@sebahub.com");
+  serviceKeys.principal = {
+    kind: "service", subject: "service:clue-notify", email: null, keyId: "key-clue-notify",
+    name: "Clue publisher", environment: "validation", scopes: ["publishing.write"],
+  };
+  const url = "https://www.timlostsomething.com/api/v1/ops/clues/clue-01/notify";
+  const headers = {
+    authorization: "Bearer service-token", origin: "https://www.timlostsomething.com",
+    "x-tim-confirm": "true", "idempotency-key": "clue-release-notice-1",
+  };
+  const denied = await app.request(url, {
+    method: "POST", ...json({ expectedVersion: 1, confirmNotify: true }, headers),
+  });
+  assert.equal(denied.status, 403);
+  assert.deepEqual((await responseJson(denied)).error.details.requiredScopes, ["publishing.write", "people.read"]);
+
+  serviceKeys.principal.scopes.push("people.read");
+  const allowed = await app.request(url, {
+    method: "POST", ...json({ expectedVersion: 1, confirmNotify: true }, headers),
+  });
+  assert.equal(allowed.status, 202);
+  assert.ok(store.audits.some((audit) => audit.action === "clue.notified"));
+});
+
+test("publishing scope reads the clue ledger but payment counts additionally require people scope", async () => {
+  const { app, serviceKeys } = makeApp("tech@sebahub.com");
+  serviceKeys.principal = {
+    kind: "service", subject: "service:clue-read", email: null, keyId: "key-clue-read",
+    name: "Clue reader", environment: "validation", scopes: ["publishing.read"],
+  };
+  const headers = { authorization: "Bearer service-token" };
+  const clueOnly = await app.request("https://www.timlostsomething.com/api/v1/ops/clues", { headers });
+  assert.equal(clueOnly.status, 200);
+  const clueOnlyBody = await responseJson(clueOnly);
+  assert.ok(Array.isArray(clueOnlyBody.data.clues));
+  assert.equal("paymentCounts" in clueOnlyBody.data, false);
+  serviceKeys.principal.scopes.push("people.read");
+  const allowed = await app.request("https://www.timlostsomething.com/api/v1/ops/clues", { headers });
+  assert.equal(allowed.status, 200);
+  assert.ok((await responseJson(allowed)).data.paymentCounts);
 });
 
 test("service keys can never access service-key or account-security administration", async () => {

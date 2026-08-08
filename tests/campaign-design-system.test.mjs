@@ -94,6 +94,7 @@ const PAGE_FAMILIES = Object.freeze({
   "updates.html": "landing",
   "route.html": "route",
   "golf-balls.html": "landing",
+  "clues.html": "ledger",
   "interview.html": "editorial",
   "clue-board.html": "ledger",
   "dashboard.html": "workspace",

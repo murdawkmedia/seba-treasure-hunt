@@ -4,22 +4,22 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-const WAIVER_HASH = "cc687dd75974155c0bde30dfdc07925c69a7e80aeba4edf6012d077b2e99a380";
+const WAIVER_HASH = "c98ffa50be117e89903a0f2529692c9f4a2a819b4f51fb7afffb6793aecd3e8b";
 const PRIVACY_HASH = "7008d366a8c96b789bceba97a1e207fe25a94d4f3c057f624fb3b82316c8c82e";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
-test("waiver 2026.2 is generated from one approved source while 2026.1 remains archived", () => {
+test("waiver 2026.3 is generated from one approved source while earlier versions remain archived", () => {
   execFileSync(process.execPath, ["scripts/generate-waiver.mjs", "--check"], { stdio: "pipe" });
   const html = readFileSync("waiver.html", "utf8");
   const generated = readFileSync("src/generated/participation-waiver.ts", "utf8");
 
   assert.match(html, /SebaHub Tim Lost Something\? Participant Acknowledgement, Waiver and Release/);
-  assert.match(html, /Effective July 15, 2026/);
+  assert.match(html, /Effective August 7, 2026/);
   assert.match(html, /In an emergency, I will call 911\./);
-  assert.match(html, /official website form or another contact method published on the campaign website/);
+  assert.match(html, /official website form or another contact method published on the case website/);
   assert.doesNotMatch(html, /Lost Wallet Mystery|campaign hotline|\[what is/i);
-  assert.match(generated, /"version": "2026\.2"/);
+  assert.match(generated, /"version": "2026\.3"/);
   assert.match(generated, /Report publication and minor privacy/);
   assert.match(generated, /A participant under 18 may create an individual account/);
   assert.match(generated, /"hash": "[a-f0-9]{64}"/);
@@ -50,7 +50,8 @@ test("legal documents load the presentation-only signup embed outside authoritat
 
 test("the approved waiver and privacy legal bodies retain their exact hashes", () => {
   const archivedWaiverSource = JSON.parse(readFileSync("legal/participation-waiver-2026.1.json", "utf8"));
-  const waiverSource = JSON.parse(readFileSync("legal/participation-waiver-2026.2.json", "utf8"));
+  const archivedWaiverSource20262 = JSON.parse(readFileSync("legal/participation-waiver-2026.2.json", "utf8"));
+  const waiverSource = JSON.parse(readFileSync("legal/participation-waiver-2026.3.json", "utf8"));
   const privacyHtml = readFileSync("privacy.html", "utf8");
   const privacyMain = privacyHtml.match(/<main id="main" tabindex="-1">[\s\S]*?<\/main>/)?.[0];
   const generatedWaiver = readFileSync("src/generated/participation-waiver.ts", "utf8");
@@ -58,7 +59,8 @@ test("the approved waiver and privacy legal bodies retain their exact hashes", (
 
   assert.ok(privacyMain, "privacy.html contains its canonical legal main content");
   assert.equal(archivedWaiverSource.version, "2026.1");
-  assert.equal(waiverSource.version, "2026.2");
+  assert.equal(archivedWaiverSource20262.version, "2026.2");
+  assert.equal(waiverSource.version, "2026.3");
   assert.equal(sha256(`${JSON.stringify(waiverSource)}\n`), WAIVER_HASH);
   assert.equal(sha256(`${privacyMain.replaceAll("\r\n", "\n").trim()}\n`), PRIVACY_HASH);
   assert.match(generatedWaiver, new RegExp(`"hash": "${WAIVER_HASH}"`));

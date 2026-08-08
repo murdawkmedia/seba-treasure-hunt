@@ -3,6 +3,7 @@
 .superpowers/
 node_modules/
 planning/
+.private/
 source-media/
 .DS_Store
 Thumbs.db

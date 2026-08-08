@@ -9,6 +9,7 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 | `/` | Full investigation board, real evidence and current item status |
 | `/route` | Where to Look: 13 public place stories; signed-in hunters receive exact directions and a private checklist |
 | `/golf-balls` | Casey's separate search for marked In the Woods golf balls and current festival-ticket redemption details |
+| `/clues` | Public released riddles, signed-in decoder access and one optional next-clue early-access offer |
 | `/interview` | Tim's Story, preserving the 19-entry account recorded before the ID was found |
 | `/updates` | Latest News and approved public reports |
 | `/report` | I Found Something: guest-friendly private find, observation and safety intake |
@@ -18,6 +19,39 @@ The public website and hunter platform for Tim's community-led Seba Beach search
 | `/waiver` | Participation Acknowledgement, Waiver and Release |
 
 Member tools live at `/start` and `/dashboard`. Staff tools live at `/ops` and are protected by authenticated company-domain access.
+
+## Clues and optional early access
+
+The clue case file contains 30 sequential records. Clue 01 is a complete public
+sample with its riddle and decoder. Marketing releases Clues 02–30 manually and
+in order, with no public cadence or automatic scheduler. Once released, a
+clue's title and riddle are public; any active signed-in hunter receives its
+decoder without paying. Unreleased records remain `Clue ## — Sealed`, and their
+titles, riddles, decoders and private editorial notes stay server-side.
+
+A signed-in hunter may optionally pay exactly $5 CAD for advance access to the
+one next Ready clue—never a later clue or a bundle. The hunter receives one
+reusable reference, confirms the sender name after sending an Interac
+e-Transfer, and sees **Waiting for verification** until Tim has confirmed the
+transfer cleared and an authorized staff user records the audited decision.
+Validation creates disposable test orders and never presents a real payment
+address. Approval unlocks the upcoming riddle and decoder before email is
+attempted, so a mail failure can never relock access.
+
+Marketing uses the private **Clues & Early Access** workspace. Releasing a clue
+is blocked while a claimed payment awaits review; unclaimed carts are cancelled
+at release. Retraction returns a clue to Draft. There is no banking integration,
+automatic Latest News/social post, automatic decoder-mode change, or upfront
+purchase of all remaining clues. The reviewed 30-clue source stays in the
+gitignored `.private/` controller folder; the public build and tracked-source
+leak scan must pass before any import.
+
+Digging remains prohibited by default. A clue can permit controlled shallow
+hand digging only inside one open, published and explicitly named loose-sand
+area. Exact instructions require a signed-in hunter with the current waiver;
+the maximum is 300 mm (12 inches), a smaller clue limit wins, and only hands, a
+hand trowel or a short child beach shovel may be authorized. Closures and staff
+instructions always override a permit.
 
 Public sponsorship is withdrawn. The dormant `sponsors.html` source remains in the repository for possible future review, but it is not built or routed publicly and no public submission form is available. Existing sponsor inquiry records remain private in the Ops Sponsors ledger.
 
