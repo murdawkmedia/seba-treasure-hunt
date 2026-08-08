@@ -25,6 +25,32 @@ and mobile-operable image frame when selected.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
+Paid Clues is now live in production. Clue 01 is the complete public sample;
+later released riddles are public and their decoders are included for active
+signed-in hunters. Paid early access is limited to the exact next Ready clue.
+
+## Update 2026-08-07 — Paid Clues production release
+
+- Merged the validation-tested source through pull request 5 as production
+  commit `a1cdb846351f1e49f7c9276ee2389a1be90e99de`.
+- Exported and hashed production D1 before the first write. Applied only
+  migrations `0024`–`0026`; protected player, report, item, media, update,
+  staff, legal and service-key counts remained unchanged.
+- Imported all 30 canonical clue records behind the production sentinel and
+  leak guards. Clue 01 is Released, Clues 02–30 are Draft, and there are zero
+  starting orders. A second import made no write.
+- Deployed the `main` production branch at immutable deployment
+  `https://176996bf.seba-treasure-hunt.pages.dev`; the canonical page is
+  `https://www.timlostsomething.com/clues`.
+- Verification passed 695 automated tests, all TypeScript and legal checks,
+  production build and privacy scans, D1 foreign-key and reconciliation checks,
+  public API/auth boundaries, bare-domain redirect, and desktop/mobile layout
+  smoke tests.
+- The existing CSP blocks Cloudflare's injected analytics beacon and logs a
+  non-functional warning; the CSP was not broadened during this release.
+- Full production evidence and rollback instructions are in
+  `docs/operations/2026-08-07-paid-clues-production-release.md`.
+
 ## Update 2026-08-07 — Paid Clues access refinement validation candidate
 
 - Refined the 30-record clue case file so Clue 01 is a complete public sample,
