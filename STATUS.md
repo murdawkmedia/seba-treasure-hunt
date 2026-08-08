@@ -25,7 +25,34 @@ and mobile-operable image frame when selected.
 The validation environment remains separate and disposable. Do not copy
 validation accounts, submissions, or credentials into production.
 
-## Update 2026-08-07 — Paid Clues validation candidate
+## Update 2026-08-07 — Paid Clues access refinement validation candidate
+
+- Refined the 30-record clue case file so Clue 01 is a complete public sample,
+  later released riddles are public, and their decoders are included for active
+  signed-in hunters without payment.
+- Limited $5 CAD early access to the exact next Ready clue. No later clue or
+  bundle can be bought. Approval now requires an Ops attestation that Tim
+  confirmed the e-Transfer cleared.
+- Release remains manual and sequential. Waiting claims block release, created
+  carts cancel atomically on release, and retraction returns a clue to Draft.
+  Decoder Paid/Free controls were removed.
+- Added the versioned 2026.3 waiver and a clue-specific controlled-digging
+  permit. No digging remains the default; exact permit details require an
+  active hunter, the current waiver, and a published open zone.
+- Applied Preview-only migration `0026`, after confirming the validation D1
+  sentinel. Production D1 was not changed.
+- Verification passed 695 automated tests, all TypeScript projects, legal
+  verification, the production build, deploy-output privacy scanning, remote
+  API checks, and desktop/mobile browser smoke tests.
+- Deployed source commit `6ba4236` only to `codex-validation`. The immutable
+  candidate is `https://a82d6173.seba-treasure-hunt.pages.dev`; owner review
+  starts at
+  `https://codex-validation.seba-treasure-hunt.pages.dev/clues?release=6ba4236`.
+- Production remained unchanged and `/api/v1/clues` is still unavailable
+  there. Full evidence and owner-acceptance steps are in
+  `docs/operations/2026-08-07-paid-clues-access-refinement-validation.md`.
+
+## Update 2026-08-07 — Original Paid Clues validation candidate
 
 - Added a 30-record `/clues` case file without changing the 13 Stops. Clue 01
   is public and Released; Clues 02–30 remain private Drafts and appear to
