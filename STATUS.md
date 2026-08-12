@@ -29,7 +29,7 @@ Paid Clues is now live in production. Clue 01 is the complete public sample;
 later released riddles are public and their decoders are included for active
 signed-in hunters. Paid early access is limited to the exact next Ready clue.
 
-## Update 2026-08-12 — protected Fresh Drops media hotfix validation
+## Update 2026-08-12 — protected Fresh Drops media hotfix production release
 
 - Corrected the signed-in Fresh Drops media handler so an authorized D1 JPEG,
   PNG or WebP content type is used when the corresponding R2 object has missing
@@ -52,9 +52,15 @@ signed-in hunters. Paid early access is limited to the exact next Ready clue.
   390 x 844 mobile viewport, including the three-photo story, camera and Apple
   Watch. Every observed media response was HTTP 200 with an image content type,
   `private, no-store` and `nosniff`; no unavailable-image fallback appeared.
-- Pull request 7 is ready for normal production promotion. Full evidence and
-  rollback scope are in
-  `docs/operations/2026-08-12-fresh-drops-media-hotfix-validation.md`.
+- Merged pull request 7 as source `30dfe844aaf3b4dab5f5c6c0c5b1d8ad8b3e8e64`
+  and deployed immutable production release
+  `https://ad01795b.seba-treasure-hunt.pages.dev`. Canonical config and My Hunt
+  returned HTTP 200; signed-out protected-media access returned HTTP 401.
+- The immediately previous production deployment remains available at
+  `https://176996bf.seba-treasure-hunt.pages.dev` for code rollback. No D1,
+  R2, account, legal or item rollback is required for this code-only release.
+- Full production evidence and rollback scope are in
+  `docs/operations/2026-08-12-fresh-drops-media-hotfix-production.md`.
 
 ## Update 2026-08-07 — Paid Clues production release
 
