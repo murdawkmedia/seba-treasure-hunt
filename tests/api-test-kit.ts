@@ -2665,6 +2665,7 @@ export class FakeTurnstile {
 export class FakeUploads {
   saved: Array<{ name: string; type: string; size: number }> = [];
   contexts: Array<{ kind: "field_note" | "report" | "official_update" | "case_item"; subject: string | null }> = [];
+  contentTypes = new Map<string, string>();
 
   async save(
     files: File[],
@@ -2695,7 +2696,7 @@ export class FakeUploads {
     }
     return {
       body: new Blob([new Uint8Array([0x52, 0x49, 0x46, 0x46])]).stream(),
-      contentType: "image/webp",
+      contentType: this.contentTypes.get(key) ?? "image/webp",
       etag: "etag-ready"
     };
   }

@@ -1,6 +1,6 @@
 # STATUS — Tim Lost Something?
 
-Last updated: 2026-08-07
+Last updated: 2026-08-12
 
 ## Current state
 
@@ -28,6 +28,33 @@ validation accounts, submissions, or credentials into production.
 Paid Clues is now live in production. Clue 01 is the complete public sample;
 later released riddles are public and their decoders are included for active
 signed-in hunters. Paid early access is limited to the exact next Ready clue.
+
+## Update 2026-08-12 — protected Fresh Drops media hotfix validation
+
+- Corrected the signed-in Fresh Drops media handler so an authorized D1 JPEG,
+  PNG or WebP content type is used when the corresponding R2 object has missing
+  or generic HTTP metadata. Authentication, participation, item/media
+  authorization, object existence and private response protections remain
+  unchanged.
+- Added regressions for the safe fallback, invalid media types, signed-out
+  access and locked participation. Verification passed 698 automated tests,
+  all TypeScript projects, legal verification, the production build and the
+  served-output privacy scan.
+- Deployed source commit `460c95b` only to the `codex-validation` Pages branch.
+  The immutable deployment is `https://3c8539a9.seba-treasure-hunt.pages.dev`;
+  owner review starts at
+  `https://codex-validation.seba-treasure-hunt.pages.dev/dashboard?release=460c95b#fresh-drops`.
+- The validation runtime reports `validation`; all 25 selected Fresh Drops
+  media records have allowlisted D1 types and ready derivative keys; signed-out
+  protected-media requests still return 401.
+- A recovered disposable validation hunter accepted the current waiver and
+  completed the browser gate. All 25 protected images loaded on desktop and a
+  390 x 844 mobile viewport, including the three-photo story, camera and Apple
+  Watch. Every observed media response was HTTP 200 with an image content type,
+  `private, no-store` and `nosniff`; no unavailable-image fallback appeared.
+- Pull request 7 is ready for normal production promotion. Full evidence and
+  rollback scope are in
+  `docs/operations/2026-08-12-fresh-drops-media-hotfix-validation.md`.
 
 ## Update 2026-08-07 — Paid Clues production release
 
