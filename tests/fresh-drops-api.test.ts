@@ -66,7 +66,7 @@ const makeApp = () => {
     operatorAlerts: new FakeOperatorAlertSender(),
     environment: new FakeEnvironment()
   });
-  return { app, store };
+  return { app, store, uploads };
 };
 
 const unlockedAccess: PlayerAccessState = {
@@ -114,6 +114,49 @@ test("an unlocked hunter receives hunter-only items and private media", async ()
   });
   assert.equal(media.status, 200);
   assert.equal(media.headers.get("cache-control"), "private, no-store");
+});
+
+test("protected Fresh Drops media falls back to its authorized D1 image type", async () => {
+  const { app, store, uploads } = makeApp();
+  store.getPlayerAccess = async () => unlockedAccess;
+  uploads.contentTypes.set("derivatives/media-ready.webp", "application/octet-stream");
+
+  const media = await app.request(`${origin}/api/v1/me/fresh-drops/media/private-media`, {
+    headers: hunterHeaders
+  });
+
+  assert.equal(media.status, 200);
+  assert.equal(media.headers.get("content-type"), "image/webp");
+  assert.equal(media.headers.get("cache-control"), "private, no-store");
+  assert.equal(media.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(media.headers.get("cross-origin-resource-policy"), "same-origin");
+});
+
+test("protected Fresh Drops media rejects invalid D1 and R2 types", async () => {
+  const { app, store, uploads } = makeApp();
+  store.getPlayerAccess = async () => unlockedAccess;
+  const privateItem = store.caseItems.find((candidate) => candidate.id === "private");
+  const privateUpload = Array.isArray(privateItem?.uploads) ? privateItem.uploads[0] : null;
+  if (privateUpload) privateUpload.contentType = "text/plain";
+  uploads.contentTypes.set("derivatives/media-ready.webp", "application/octet-stream");
+
+  const media = await app.request(`${origin}/api/v1/me/fresh-drops/media/private-media`, {
+    headers: hunterHeaders
+  });
+
+  assert.equal(media.status, 404);
+  assert.equal((await responseJson(media)).error.code, "case_item_media_not_found");
+});
+
+test("protected Fresh Drops media preserves hunter and participation gates", async () => {
+  const { app } = makeApp();
+  assert.equal((await app.request(`${origin}/api/v1/me/fresh-drops/media/private-media`)).status, 401);
+
+  const locked = await app.request(`${origin}/api/v1/me/fresh-drops/media/private-media`, {
+    headers: hunterHeaders
+  });
+  assert.equal(locked.status, 403);
+  assert.equal((await responseJson(locked)).error.code, "participation_locked");
 });
 
 test("hunter media cannot be read through the public media endpoint", async () => {

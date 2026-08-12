@@ -2341,12 +2341,15 @@ export const createApi = (deps: ApiDependencies) => {
       throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
     }
     const object = await deps.uploads.read(authorized.key);
-    if (!object || !validImageTypes.has(object.contentType)) {
+    if (!object || !validImageTypes.has(authorized.contentType)) {
       throw new ApiError(404, "case_item_media_not_found", "Item image not found.");
     }
+    const contentType = validImageTypes.has(object.contentType)
+      ? object.contentType
+      : authorized.contentType;
     return new Response(object.body, {
       headers: {
-        "content-type": object.contentType,
+        "content-type": contentType,
         "cache-control": "private, no-store",
         "x-content-type-options": "nosniff",
         "content-security-policy": "default-src 'none'; sandbox",
