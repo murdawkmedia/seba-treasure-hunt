@@ -46,11 +46,14 @@ signed-in hunters. Paid early access is limited to the exact next Ready clue.
   `https://codex-validation.seba-treasure-hunt.pages.dev/dashboard?release=460c95b#fresh-drops`.
 - The validation runtime reports `validation`; all 25 selected Fresh Drops
   media records have allowlisted D1 types and ready derivative keys; signed-out
-  protected-media requests still return 401. The final browser-level signed-in
-  gallery check remains human-gated before production promotion.
-- Production has not been deployed or mutated. Pull request 7 remains draft
-  until that signed-in validation check passes. Full evidence and rollback
-  scope are in
+  protected-media requests still return 401.
+- A recovered disposable validation hunter accepted the current waiver and
+  completed the browser gate. All 25 protected images loaded on desktop and a
+  390 x 844 mobile viewport, including the three-photo story, camera and Apple
+  Watch. Every observed media response was HTTP 200 with an image content type,
+  `private, no-store` and `nosniff`; no unavailable-image fallback appeared.
+- Pull request 7 is ready for normal production promotion. Full evidence and
+  rollback scope are in
   `docs/operations/2026-08-12-fresh-drops-media-hotfix-validation.md`.
 
 ## Update 2026-08-07 — Paid Clues production release

@@ -47,14 +47,22 @@ changed.
   allowlisted image types and ready derivative keys.
 - Signed-out protected-media requests return 401 and unknown public media
   returns 404.
+- A recovered disposable validation hunter completed the current waiver and
+  opened the authenticated Fresh Drops case file.
+- All 25 protected images rendered with nonzero natural dimensions on desktop
+  and at a 390 x 844 mobile viewport. The three-photo story, camera, Apple
+  Watch, rings, purse, Gucci belt and wanted poster were included.
+- All 25 observed protected-media requests returned HTTP 200 with an image
+  content type, `private, no-store` caching and `nosniff`; no unavailable-image
+  fallback appeared.
+- The full-image controls remain keyboard-operable links with descriptive
+  labels. The mobile case file had no horizontal overflow.
 
-## Remaining validation gate
+## Validation decision
 
-Sign in with a disposable validation hunter and confirm the complete Fresh
-Drops gallery renders on desktop and mobile, including the three-photo story,
-camera and Apple Watch. Open one image in the shared viewer and confirm it
-renders at full size. Production promotion remains blocked until this check is
-confirmed.
+The signed-in browser gate passed on 2026-08-12. This immutable candidate is
+approved for normal pull-request promotion with the prior production Pages
+deployment retained for immediate rollback.
 
 ## Release and rollback
 
