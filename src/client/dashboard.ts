@@ -3349,12 +3349,17 @@ function setupAccountForms(
     const submit = signUp.querySelector<HTMLButtonElement>('button[type="submit"]');
     const label = submit?.textContent ?? "Create account";
     const operationGeneration = beginSignupOperation();
-    if (submit) { submit.disabled = true; submit.textContent = "Sending code…"; }
+    if (submit) { submit.disabled = true; submit.textContent = "Complete human check…"; }
     try {
       const resume = createHunterSignupResume(draft);
       let persisted = persistSignupResume(resume);
       signUpAttempt = null;
-      const createdAttempt = await waitForProviderOperation(createProviderSignup(draft.emailAddress, draft.password));
+      authMessage("Complete the human check if it appears. Your email code will be sent as soon as it finishes.");
+      // Clerk's Smart CAPTCHA intentionally keeps signUp.create pending while a
+      // person completes an interactive challenge. Do not race that promise
+      // against the ordinary short provider timeout or the UI abandons a valid
+      // signup and forces the person to start the challenge again.
+      const createdAttempt = await createProviderSignup(draft.emailAddress, draft.password);
       if (!signupOperationIsCurrent(operationGeneration)) return;
       currentSignupResume = updateHunterSignupResume(resume, { providerAttemptId: createdAttempt.id ?? null });
       persisted = persistSignupResume(currentSignupResume) && persisted;
