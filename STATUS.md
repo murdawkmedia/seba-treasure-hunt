@@ -29,6 +29,36 @@ Paid Clues is now live in production. Clue 01 is the complete public sample;
 later released riddles are public and their decoders are included for active
 signed-in hunters. Paid early access is limited to the exact next Ready clue.
 
+## Update 2026-08-12 — Clerk human-check signup repair
+
+- Removed the application's 20-second timeout from Clerk's initial
+  `signUp.create` operation. Clerk Smart CAPTCHA may intentionally keep that
+  promise pending while a person completes an interactive challenge; the
+  ordinary timeout was abandoning a valid signup and forcing the person into
+  a restart loop.
+- Signup now remains visible with the explicit prompt `Complete human check…`
+  until Clerk finishes, then continues into the existing email-code and legal
+  acceptance flow. Other sign-in, resend, recovery and verification operations
+  retain their bounded provider timeouts.
+- Added a browser regression that holds account creation past the ordinary
+  timeout, confirms no lost-attempt screen appears, completes the simulated
+  challenge and reaches email verification.
+- Verification passed 698 automated tests, all TypeScript projects, legal
+  verification, production build and served-output privacy scans.
+- Deployed validation source `52090af` at immutable deployment
+  `https://375f0f48.seba-treasure-hunt.pages.dev`. A real Clerk challenge
+  remained visible and usable beyond 23 seconds without losing the signup.
+- Merged pull request 9 as production source
+  `a09966b0c70fe12b6b7e06b3a0063096fb3da6af` and deployed immutable release
+  `https://07644280.seba-treasure-hunt.pages.dev`. Canonical My Hunt and config
+  returned HTTP 200, config reported `production`, and the production signup
+  form exposes the Clerk CAPTCHA mount without a validation banner.
+- The immediately previous production deployment
+  `https://ad01795b.seba-treasure-hunt.pages.dev` remains available for code
+  rollback. This release changed no D1, R2, account, legal, clue or item data.
+- Full release evidence is in
+  `docs/operations/2026-08-12-clerk-signup-captcha-production.md`.
+
 ## Update 2026-08-12 — protected Fresh Drops media hotfix production release
 
 - Corrected the signed-in Fresh Drops media handler so an authorized D1 JPEG,
