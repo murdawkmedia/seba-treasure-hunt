@@ -396,29 +396,28 @@ test("failed initial provider preparation retains safe resume and exposes recove
   }
 });
 
-test("a stalled initial provider request returns signup to explicit recovery", async () => {
+test("an interactive signup challenge is not abandoned by the ordinary provider timeout", async () => {
   const page = await signupPage();
   try {
     await setup(page, preparedAttempt(), 200, 50);
     await installOperationGate(page, "create");
     await fillValidSignup(page);
     await page.locator("#hunter-sign-up-form").evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-signup-lost-state")?.hidden);
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator("#hunter-sign-up-form").isVisible(), true);
+    assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), false);
+    assert.equal(await page.locator('#hunter-sign-up-form button[type="submit"]').isDisabled(), true);
     assert.match(
-      await page.locator("[data-signup-lost-detail]").textContent() ?? "",
-      /taking longer than expected/i,
+      await page.locator("[data-auth-message]").textContent() ?? "",
+      /human check/i,
     );
-    assert.equal(await page.locator('#hunter-sign-up-form button[type="submit"]').isDisabled(), false);
-    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-retry]").isVisible(), false);
-    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-restart]").isVisible(), true);
-    assert.equal(await page.locator("#hunter-signup-lost-state [data-signup-back-to-sign-in]").isVisible(), true);
     await page.evaluate(() => {
       const release = (window as unknown as Record<string, unknown>).__releaseCreate;
       if (typeof release !== "function") throw new Error("Create gate release is unavailable.");
       release();
     });
-    await page.waitForTimeout(100);
-    assert.equal(await page.locator("#hunter-signup-lost-state").isVisible(), true);
+    await page.waitForFunction(() => !document.querySelector<HTMLElement>("#hunter-verify-form")?.hidden);
+    assert.equal(await page.locator("#hunter-verify-form").isVisible(), true);
   } finally {
     await page.close();
   }
